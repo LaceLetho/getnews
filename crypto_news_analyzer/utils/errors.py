@@ -49,6 +49,13 @@ class AuthError(CryptoNewsAnalyzerError):
         super().__init__(message, ErrorType.AUTH_ERROR, details)
 
 
+class AuthenticationError(AuthError):
+    """认证失败错误（AuthError的别名，用于向后兼容）"""
+    
+    def __init__(self, message: str, service: str = "unknown", details: Optional[Dict[str, Any]] = None):
+        super().__init__(message, service, details)
+
+
 class ParseError(CryptoNewsAnalyzerError):
     """解析相关错误"""
     
