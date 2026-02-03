@@ -259,17 +259,22 @@ class RSSCrawler:
         content = ""
         
         # 优先使用content字段
-        if hasattr(entry, 'content') and entry.content:
-            if isinstance(entry.content, list) and len(entry.content) > 0:
-                content = entry.content[0].get('value', '')
-            else:
-                content = str(entry.content)
+        if hasattr(entry, 'content'):
+            content_value = entry.content
+            if content_value and not str(content_value).startswith('<Mock'):  # 排除Mock对象
+                if isinstance(content_value, list):
+                    if len(content_value) > 0 and isinstance(content_value[0], dict):
+                        content = content_value[0].get('value', '')
+                    elif len(content_value) > 0:
+                        content = str(content_value[0])
+                else:
+                    content = str(content_value)
         
         # 如果content为空，尝试其他字段
         if not content:
             for field in content_fields[1:]:  # 跳过content，已经尝试过了
                 field_value = getattr(entry, field, '')
-                if field_value:
+                if field_value and not str(field_value).startswith('<Mock'):  # 排除Mock对象
                     content = str(field_value)
                     break
         
@@ -333,6 +338,10 @@ class RSSCrawler:
             return ""
         
         try:
+            # 如果文本不包含HTML标签，直接返回清理后的文本
+            if '<' not in text and '>' not in text:
+                return ' '.join(text.split())
+            
             # 使用BeautifulSoup清理HTML
             soup = BeautifulSoup(text, 'html.parser')
             
@@ -352,7 +361,8 @@ class RSSCrawler:
             
         except Exception as e:
             self.logger.warning(f"HTML清理失败: {e}")
-            return text
+            # 如果HTML清理失败，返回原始文本的清理版本
+            return ' '.join(text.split())
     
     def _is_valid_url(self, url: str) -> bool:
         """验证URL格式"""

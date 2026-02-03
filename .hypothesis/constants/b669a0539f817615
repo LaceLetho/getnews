@@ -1,0 +1,4 @@
+# file: /Users/xiaohanshi/MyWorkspace/openclaw/getnews/crypto_news_analyzer/utils/logging.py
+# hypothesis_version: 6.141.1
+
+[1024, '%Y-%m-%d %H:%M:%S', './logs', 'INFO', 'analysis', 'crawl_status', 'errors.log', 'execution', 'utf-8']
