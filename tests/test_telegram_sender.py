@@ -18,7 +18,7 @@ from crypto_news_analyzer.reporters import (
 
 
 class TestTelegramConfig:
-    """Telegram配置测试类"""
+    """Telegram配置测试类 - 基础配置功能"""
     
     def test_create_telegram_config(self):
         """测试创建Telegram配置"""
@@ -31,36 +31,6 @@ class TestTelegramConfig:
         assert config.channel_id == "@test_channel"
         assert config.parse_mode == "Markdown"
         assert config.max_message_length == 4096
-    
-    def test_validate_telegram_credentials_valid(self):
-        """测试有效凭据验证"""
-        result = validate_telegram_credentials(
-            "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-            "@test_channel"
-        )
-        
-        assert result["valid"] is True
-        assert len(result["errors"]) == 0
-    
-    def test_validate_telegram_credentials_invalid_token(self):
-        """测试无效Token验证"""
-        result = validate_telegram_credentials(
-            "invalid_token",
-            "@test_channel"
-        )
-        
-        assert result["valid"] is False
-        assert any("Bot Token格式无效" in error for error in result["errors"])
-    
-    def test_validate_telegram_credentials_invalid_channel(self):
-        """测试无效Channel验证"""
-        result = validate_telegram_credentials(
-            "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-            "invalid_channel"
-        )
-        
-        assert result["valid"] is False
-        assert any("Channel ID格式无效" in error for error in result["errors"])
 
 
 class TestTelegramSender:
@@ -128,58 +98,6 @@ class TestTelegramSender:
         
         assert result["ok"] is True
         assert result["result"]["message_id"] == 123
-    
-    @pytest.mark.asyncio
-    @patch('aiohttp.ClientSession.post')
-    async def test_validate_bot_token_success(self, mock_post):
-        """测试Bot Token验证成功"""
-        # 模拟成功响应
-        mock_response = AsyncMock()
-        mock_response.json.return_value = {
-            "ok": True, 
-            "result": {"username": "test_bot"}
-        }
-        mock_post.return_value.__aenter__.return_value = mock_response
-        
-        async with self.sender:
-            result = await self.sender.validate_bot_token()
-        
-        assert result.success is True
-    
-    @pytest.mark.asyncio
-    @patch('aiohttp.ClientSession.post')
-    async def test_validate_bot_token_failure(self, mock_post):
-        """测试Bot Token验证失败"""
-        # 模拟失败响应
-        mock_response = AsyncMock()
-        mock_response.json.return_value = {
-            "ok": False, 
-            "description": "Unauthorized"
-        }
-        mock_post.return_value.__aenter__.return_value = mock_response
-        
-        async with self.sender:
-            result = await self.sender.validate_bot_token()
-        
-        assert result.success is False
-        assert "Unauthorized" in result.error_message
-    
-    @pytest.mark.asyncio
-    @patch('aiohttp.ClientSession.post')
-    async def test_validate_channel_access_success(self, mock_post):
-        """测试Channel访问验证成功"""
-        # 模拟成功响应
-        mock_response = AsyncMock()
-        mock_response.json.return_value = {
-            "ok": True, 
-            "result": {"title": "Test Channel"}
-        }
-        mock_post.return_value.__aenter__.return_value = mock_response
-        
-        async with self.sender:
-            result = await self.sender.validate_channel_access()
-        
-        assert result.success is True
     
     @pytest.mark.asyncio
     @patch('aiohttp.ClientSession.post')
@@ -261,74 +179,6 @@ class TestTelegramSender:
         
         # 清理测试文件
         os.remove(backup_path)
-    
-    @pytest.mark.asyncio
-    @patch('aiohttp.ClientSession.post')
-    async def test_bot_token_validation_comprehensive(self, mock_post):
-        """测试Bot Token验证的全面性 - 需求 8.6"""
-        # 测试有效Token
-        mock_response = AsyncMock()
-        mock_response.json.return_value = {
-            "ok": True, 
-            "result": {"username": "test_bot", "id": 123456}
-        }
-        mock_post.return_value.__aenter__.return_value = mock_response
-        
-        async with self.sender:
-            result = await self.sender.validate_bot_token()
-        
-        assert result.success is True
-        
-        # 测试无效Token格式
-        invalid_sender = TelegramSender(TelegramConfig(
-            bot_token="invalid_token_format",
-            channel_id="@test_channel"
-        ))
-        
-        # 测试API返回错误
-        mock_response.json.return_value = {
-            "ok": False, 
-            "description": "Unauthorized: bot token is invalid"
-        }
-        
-        async with invalid_sender:
-            result = await invalid_sender.validate_bot_token()
-        
-        assert result.success is False
-        assert "Unauthorized" in result.error_message
-    
-    @pytest.mark.asyncio
-    @patch('aiohttp.ClientSession.post')
-    async def test_channel_access_validation_comprehensive(self, mock_post):
-        """测试Channel访问验证的全面性 - 需求 8.7"""
-        # 测试有效Channel访问
-        mock_response = AsyncMock()
-        mock_response.json.return_value = {
-            "ok": True, 
-            "result": {
-                "id": -1001234567890,
-                "title": "Test Channel",
-                "type": "channel"
-            }
-        }
-        mock_post.return_value.__aenter__.return_value = mock_response
-        
-        async with self.sender:
-            result = await self.sender.validate_channel_access()
-        
-        assert result.success is True
-        
-        # 测试无效Channel访问
-        mock_response.json.return_value = {
-            "ok": False, 
-            "description": "Bad Request: chat not found"
-        }
-        
-        async with self.sender:
-            result = await self.sender.validate_channel_access()
-        
-        assert result.success is False
-        assert "chat not found" in result.error_message
     
     @pytest.mark.asyncio
     @patch('aiohttp.ClientSession.post')

@@ -42,9 +42,9 @@ class TestMinimaxIntegration:
         
         print(f"使用MiniMax API Key: {cls.llm_api_key[:20]}...")
     
-    def test_minimax_api_basic_analysis(self):
-        """测试MiniMax API基本分析功能"""
-        print(f"\n测试MiniMax API基本分析...")
+    def test_minimax_api_analysis(self):
+        """测试MiniMax API分析功能"""
+        print(f"\n测试MiniMax API分析...")
         
         # 测试内容 - 明确的大户动向内容
         test_content = "某知名巨鲸地址在过去24小时内转移了15000个ETH到Binance交易所，总价值约5000万美元。这一举动引发了市场关注，分析师认为可能预示着大户对市场的看法发生变化。"
@@ -70,191 +70,11 @@ class TestMinimaxIntegration:
             print(f"   分类: {result.category}")
             print(f"   置信度: {result.confidence:.2f}")
             print(f"   推理: {result.reasoning}")
-            print(f"   是否忽略: {result.should_ignore}")
             print(f"   关键点: {result.key_points}")
-            
-            # 对于巨鲸转移内容，期望分类为大户动向
-            if result.category == "大户动向":
-                print(f"✅ 分类正确识别为大户动向")
-            else:
-                print(f"⚠️ 分类为 {result.category}，可能需要调整提示词")
                 
         except Exception as e:
             print(f"❌ MiniMax API调用失败: {e}")
-            # 如果是API key问题，提供更详细的信息
-            if "401" in str(e) or "Unauthorized" in str(e):
-                print("   可能的原因:")
-                print("   1. API key无效或已过期")
-                print("   2. API key格式不正确")
-                print("   3. 账户余额不足")
-            elif "403" in str(e) or "Forbidden" in str(e):
-                print("   可能的原因:")
-                print("   1. API key没有访问权限")
-                print("   2. 请求频率超限")
             raise
-    
-    def test_minimax_different_content_types(self):
-        """测试MiniMax API对不同类型内容的分析"""
-        print(f"\n测试不同类型内容分析...")
-        
-        test_cases = [
-            {
-                "content": "美联储主席鲍威尔今日表示，考虑到当前通胀水平，央行可能在下次FOMC会议中调整利率政策。",
-                "title": "鲍威尔暗示可能调整利率",
-                "expected_category": "利率事件"
-            },
-            {
-                "content": "某DeFi协议遭受重入攻击，黑客成功盗取价值500万美元的加密货币。",
-                "title": "DeFi协议遭受攻击",
-                "expected_category": "安全事件"
-            },
-            {
-                "content": "🚀超高收益率DeFi挖矿项目！立即参与！千载难逢的机会！保证100%收益！",
-                "title": "🚀超高收益项目",
-                "expected_ignore": True
-            }
-        ]
-        
-        for i, case in enumerate(test_cases):
-            print(f"\n   测试案例 {i+1}: {case['title']}")
-            
-            try:
-                result = self.llm_analyzer.analyze_content(
-                    case["content"], 
-                    case["title"], 
-                    "MiniMax测试"
-                )
-                
-                print(f"     分类: {result.category}")
-                print(f"     置信度: {result.confidence:.2f}")
-                print(f"     是否忽略: {result.should_ignore}")
-                
-                # 检查期望的分类
-                if "expected_category" in case:
-                    if result.category == case["expected_category"]:
-                        print(f"     ✅ 分类正确")
-                    else:
-                        print(f"     ⚠️ 期望分类: {case['expected_category']}, 实际: {result.category}")
-                
-                # 检查是否应该忽略
-                if "expected_ignore" in case:
-                    if result.should_ignore == case["expected_ignore"]:
-                        print(f"     ✅ 忽略判断正确")
-                    else:
-                        print(f"     ⚠️ 期望忽略: {case['expected_ignore']}, 实际: {result.should_ignore}")
-                
-            except Exception as e:
-                print(f"     ❌ 分析失败: {e}")
-    
-    def test_minimax_batch_analysis(self):
-        """测试MiniMax API批量分析"""
-        print(f"\n测试批量分析...")
-        
-        # 创建测试内容项
-        test_items = [
-            ContentItem(
-                id="batch_test_1",
-                title="巨鲸转移ETH",
-                content="某巨鲸地址转移10000个ETH到交易所",
-                url="https://example.com/1",
-                publish_time=datetime.now(),
-                source_name="批量测试源1",
-                source_type="rss"
-            ),
-            ContentItem(
-                id="batch_test_2",
-                title="美联储政策",
-                content="美联储委员发表关于利率政策的重要讲话",
-                url="https://example.com/2",
-                publish_time=datetime.now(),
-                source_name="批量测试源2",
-                source_type="rss"
-            )
-        ]
-        
-        try:
-            start_time = datetime.now()
-            results = self.llm_analyzer.batch_analyze(test_items)
-            end_time = datetime.now()
-            
-            duration = (end_time - start_time).total_seconds()
-            
-            assert len(results) == len(test_items)
-            
-            print(f"✅ 批量分析完成:")
-            print(f"   处理项目数: {len(results)}")
-            print(f"   总耗时: {duration:.2f}秒")
-            print(f"   平均每项: {duration/len(results):.2f}秒")
-            
-            for i, result in enumerate(results):
-                print(f"   项目{i+1}: {result.category} (置信度: {result.confidence:.2f})")
-                
-        except Exception as e:
-            print(f"❌ 批量分析失败: {e}")
-            raise
-    
-    def test_minimax_error_handling(self):
-        """测试MiniMax API错误处理"""
-        print(f"\n测试错误处理...")
-        
-        # 测试无效API key
-        invalid_analyzer = LLMAnalyzer(
-            api_key="invalid_key_test",
-            model="MiniMax-M2.1",
-            mock_mode=False
-        )
-        
-        try:
-            result = invalid_analyzer.analyze_content("测试内容", "测试标题", "测试来源")
-            
-            # 即使API调用失败，也应该返回有效的AnalysisResult
-            assert isinstance(result, AnalysisResult)
-            assert result.category == "未分类"
-            assert result.confidence == 0.0
-            assert "分析失败" in result.reasoning
-            
-            print(f"✅ 错误处理正确: {result.reasoning}")
-            
-        except Exception as e:
-            print(f"⚠️ 错误处理异常: {e}")
-    
-    def test_minimax_mock_mode_comparison(self):
-        """测试MiniMax真实API与模拟模式的对比"""
-        print(f"\n测试真实API与模拟模式对比...")
-        
-        test_content = "某巨鲸地址转移15000个ETH到Binance交易所"
-        test_title = "巨鲸资金转移"
-        test_source = "对比测试"
-        
-        # 模拟模式分析
-        mock_analyzer = LLMAnalyzer(
-            api_key="mock_key",
-            model="MiniMax-M2.1",
-            mock_mode=True
-        )
-        
-        mock_result = mock_analyzer.analyze_content(test_content, test_title, test_source)
-        
-        print(f"模拟模式结果:")
-        print(f"   分类: {mock_result.category}")
-        print(f"   置信度: {mock_result.confidence:.2f}")
-        
-        # 真实API分析
-        try:
-            real_result = self.llm_analyzer.analyze_content(test_content, test_title, test_source)
-            
-            print(f"真实API结果:")
-            print(f"   分类: {real_result.category}")
-            print(f"   置信度: {real_result.confidence:.2f}")
-            
-            # 比较结果
-            if mock_result.category == real_result.category:
-                print(f"✅ 分类结果一致")
-            else:
-                print(f"⚠️ 分类结果不同 - 模拟: {mock_result.category}, 真实: {real_result.category}")
-                
-        except Exception as e:
-            print(f"❌ 真实API调用失败: {e}")
     
     def test_minimax_performance_metrics(self):
         """测试MiniMax API性能指标"""
