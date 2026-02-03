@@ -8,8 +8,11 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import logging
+import json
+import os
 
 from ..models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult, ContentCategory
+from ..analyzers.prompt_manager import DynamicCategoryManager
 
 
 @dataclass
@@ -28,21 +31,35 @@ class ReportGenerator:
     根据需求7生成结构化的Markdown格式报告：
     - 需求7.1: 生成包含时间窗口信息的报告头部
     - 需求7.2: 生成网站爬取状态表格，显示每个数据源的状态和获取数量
-    - 需求7.3: 按六大类别组织分析结果
+    - 需求7.3: 按配置文件中定义的分类标准组织分析结果
     - 需求7.4: 为每条信息包含原文链接
     - 需求7.5: 生成可选的总结部分
     - 需求7.6: 使用Markdown格式输出报告
     - 需求7.7: 当某个类别没有内容时显示该类别为空
     """
     
-    def __init__(self, include_summary: bool = True):
+    def __init__(self, include_summary: bool = True, prompt_config_path: str = "./prompts/analysis_prompt.json"):
         """初始化报告生成器
         
         Args:
             include_summary: 是否包含总结部分
+            prompt_config_path: 提示词配置文件路径
         """
         self.include_summary = include_summary
         self.logger = logging.getLogger(__name__)
+        self.category_manager = DynamicCategoryManager(prompt_config_path)
+        
+        # 默认分类显示配置
+        self.default_category_display = {
+            "大户动向": {"emoji": "🐋", "order": 1},
+            "利率事件": {"emoji": "📈", "order": 2},
+            "美国政府监管政策": {"emoji": "🏛️", "order": 3},
+            "安全事件": {"emoji": "🔒", "order": 4},
+            "新产品": {"emoji": "🚀", "order": 5},
+            "市场新现象": {"emoji": "📊", "order": 6},
+            "未分类": {"emoji": "❓", "order": 999},
+            "忽略": {"emoji": "🚫", "order": 1000}
+        }
     
     def generate_report(self, data: AnalyzedData, status: CrawlStatus) -> str:
         """生成完整报告
@@ -166,16 +183,20 @@ class ReportGenerator:
         """
         sections = []
         
-        # 定义类别显示顺序和中文名称
-        category_order = [
-            ("大户动向", "🐋"),
-            ("利率事件", "📈"),
-            ("美国政府监管政策", "🏛️"),
-            ("安全事件", "🔒"),
-            ("新产品", "🚀"),
-            ("市场新现象", "📊"),
-            ("未分类", "❓")
-        ]
+        # 从配置文件获取分类信息
+        try:
+            categories_config = self.category_manager.load_categories()
+        except Exception as e:
+            self.logger.warning(f"无法加载分类配置，使用默认配置: {e}")
+            categories_config = {}
+        
+        # 获取所有需要显示的分类（包括有内容的和配置中定义的）
+        all_categories = set(categorized_items.keys())
+        all_categories.update(categories_config.keys())
+        all_categories.update(["未分类"])  # 确保包含系统保留分类
+        
+        # 创建分类显示顺序
+        category_order = self._get_category_display_order(all_categories, categories_config)
         
         for category_name, emoji in category_order:
             items = categorized_items.get(category_name, [])
@@ -183,6 +204,42 @@ class ReportGenerator:
             sections.append(section)
         
         return sections
+    
+    def _get_category_display_order(self, categories: set, categories_config: Dict) -> List[tuple]:
+        """获取分类显示顺序
+        
+        Args:
+            categories: 所有分类名称集合
+            categories_config: 分类配置字典
+            
+        Returns:
+            (分类名称, 图标) 的有序列表
+        """
+        category_info = []
+        
+        for category_name in categories:
+            # 跳过被忽略的内容
+            if category_name == "忽略":
+                continue
+                
+            # 从配置中获取显示信息
+            if category_name in categories_config:
+                config = categories_config[category_name]
+                emoji = config.get("display_emoji", "📄")
+                order = config.get("display_order", config.get("priority", 999))
+            else:
+                # 使用默认配置
+                default_info = self.default_category_display.get(category_name, {})
+                emoji = default_info.get("emoji", "📄")
+                order = default_info.get("order", 999)
+            
+            category_info.append((order, category_name, emoji))
+        
+        # 按显示顺序排序
+        category_info.sort(key=lambda x: x[0])
+        
+        # 返回 (名称, 图标) 元组列表
+        return [(name, emoji) for order, name, emoji in category_info]
     
     def generate_category_section(
         self, 
@@ -336,6 +393,39 @@ class ReportGenerator:
                 ])
         
         return "\n".join(summary_lines)
+    
+    def reload_category_config(self) -> None:
+        """重新加载分类配置"""
+        try:
+            self.category_manager.reload_categories()
+            self.logger.info("分类配置已重新加载")
+        except Exception as e:
+            self.logger.error(f"重新加载分类配置失败: {e}")
+    
+    def update_category_display_config(self, config: Dict[str, Any]) -> None:
+        """更新分类显示配置
+        
+        Args:
+            config: 新的显示配置
+        """
+        if isinstance(config, dict):
+            self.default_category_display.update(config)
+            self.logger.info("分类显示配置已更新")
+    
+    def get_available_categories(self) -> List[str]:
+        """获取可用的分类列表
+        
+        Returns:
+            分类名称列表
+        """
+        try:
+            categories_config = self.category_manager.load_categories()
+            categories = list(categories_config.keys())
+            categories.extend(["未分类", "忽略"])
+            return list(set(categories))  # 去重
+        except Exception as e:
+            self.logger.warning(f"获取分类列表失败，使用默认分类: {e}")
+            return list(self.default_category_display.keys())
     
     def _generate_error_report(self, error_message: str, status: CrawlStatus) -> str:
         """生成错误报告

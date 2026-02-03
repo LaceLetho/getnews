@@ -46,20 +46,23 @@
 
 ### 需求 2: 配置文件管理
 
-**用户故事:** 作为用户，我希望系统能够通过配置文件管理信息源，以便方便地增减和修改数据源。
+**用户故事:** 作为用户，我希望系统能够通过配置文件管理信息源和分析规则，以便方便地增减和修改数据源及分类标准。
 
 #### 验收标准
 
-1. THE System SHALL 创建和维护一个配置文件存储所有信息源
+1. THE System SHALL 创建和维护一个配置文件存储所有信息源和分析规则
 2. THE Config_File SHALL 包含所有RSS订阅源的URL和描述信息
 3. THE Config_File SHALL 包含所有X/Twitter信息源的URL和描述信息
 4. THE Config_File SHALL 存储认证参数（ct0、auth_token、LLM API密钥、Telegram配置）
-5. WHEN 系统启动前 THEN System SHALL 读取并验证配置文件的有效性
-6. WHEN 配置文件不存在 THEN System SHALL 创建默认配置文件包含预设信息源
-7. WHEN 配置文件格式无效 THEN System SHALL 提示用户修正配置文件
-8. THE System SHALL 支持用户通过编辑配置文件来增加、删除或修改信息源
-9. WHEN 配置文件更新 THEN System SHALL 在下次运行时使用新的配置
-10. THE System SHALL 验证配置文件中每个信息源URL的格式有效性
+5. THE Config_File SHALL 包含内容分类类别定义和对应的识别规则
+6. THE Config_File SHALL 包含需要忽略的内容类型定义
+7. WHEN 系统启动前 THEN System SHALL 读取并验证配置文件的有效性
+8. WHEN 配置文件不存在 THEN System SHALL 创建默认配置文件包含预设信息源和默认分类标准
+9. WHEN 配置文件格式无效 THEN System SHALL 提示用户修正配置文件
+10. THE System SHALL 支持用户通过编辑配置文件来增加、删除或修改信息源和分类规则
+11. WHEN 配置文件更新 THEN System SHALL 在下次运行时使用新的配置
+12. THE System SHALL 验证配置文件中每个信息源URL的格式有效性
+13. THE System SHALL 验证配置文件中分类规则的格式有效性
 
 ### 需求 3: RSS内容爬取
 
@@ -91,20 +94,20 @@
 
 ### 需求 5: 内容智能分析和分类
 
-**用户故事:** 作为用户，我希望系统能够智能分析收集到的内容并按照预定义的类别进行分类，以便快速了解不同类型的市场信息。
+**用户故事:** 作为用户，我希望系统能够智能分析收集到的内容并按照可配置的类别进行分类，以便快速了解不同类型的市场信息。
 
 #### 验收标准
 
 1. WHEN 分析内容 THEN System SHALL 使用大模型进行内容理解和分类
 2. WHEN 大模型API调用 THEN System SHALL 使用提供的LLM API密钥进行认证
-3. THE Content_Analyzer SHALL 识别大户动向类别（巨鲸资金流动、大户态度变化、知名地址操作）
-4. THE Content_Analyzer SHALL 识别利率事件类别（美联储发言、FOMC会议、利率政策预期）
-5. THE Content_Analyzer SHALL 识别美国政府监管政策类别（SEC/CFTC/财政部政策、立法进展、监管执法）
-6. THE Content_Analyzer SHALL 识别安全事件类别（黑客攻击、资金被盗、安全预警）
-7. THE Content_Analyzer SHALL 识别新产品类别（KOL提及的创新项目，排除广告）
-8. THE Content_Analyzer SHALL 识别市场新现象类别（新趋势、链上数据异常、新市场模式）
-9. WHEN 内容属于忽略类别 THEN System SHALL 过滤掉广告软文、重复信息、情绪发泄、空洞预测和立场争论
-10. WHEN 内容无法分类 THEN System SHALL 标记为未分类但保留在报告中
+3. THE Content_Analyzer SHALL 根据配置文件中定义的分类标准进行内容分类
+4. THE Config_File SHALL 包含可配置的内容分类类别和对应的识别规则
+5. THE System SHALL 支持默认的六大类别配置：大户动向、利率事件、美国政府监管政策、安全事件、新产品、市场新现象
+6. THE Content_Analyzer SHALL 支持用户自定义新的分类类别和识别规则
+7. THE Config_File SHALL 定义需要忽略的内容类型（如广告软文、重复信息、情绪发泄、空洞预测和立场争论）
+8. WHEN 内容属于忽略类别 THEN System SHALL 过滤掉该内容
+9. WHEN 内容无法分类 THEN System SHALL 标记为未分类但保留在报告中
+10. WHEN 配置文件中分类规则更新 THEN System SHALL 在下次运行时使用新的分类规则
 
 ### 需求 6: 爬取状态监控
 
@@ -127,11 +130,14 @@
 
 1. THE Report_Generator SHALL 生成包含时间窗口信息的报告头部
 2. THE Report_Generator SHALL 生成网站爬取状态表格，显示每个数据源的状态和获取数量
-3. THE Report_Generator SHALL 按六大类别组织分析结果
-4. WHEN 生成分类内容 THEN System SHALL 为每条信息包含原文链接
-5. THE Report_Generator SHALL 生成可选的总结部分，突出最重要的信息
-6. THE Report_Generator SHALL 使用Markdown格式输出报告
-7. WHEN 某个类别没有内容 THEN System SHALL 在报告中显示该类别为空
+3. THE Report_Generator SHALL 按配置文件中定义的分类标准组织分析结果
+4. THE System SHALL 支持通过配置文件灵活调整分析规则和分类标准
+5. THE Config_File SHALL 包含可配置的内容分类类别定义
+6. WHEN 生成分类内容 THEN System SHALL 为每条信息包含原文链接
+7. THE Report_Generator SHALL 生成可选的总结部分，突出最重要的信息
+8. THE Report_Generator SHALL 使用Markdown格式输出报告
+9. WHEN 某个类别没有内容 THEN System SHALL 在报告中显示该类别为空
+10. WHEN 配置文件中分类标准更新 THEN System SHALL 在下次运行时使用新的分类标准
 
 ### 需求 8: Telegram报告发送
 

@@ -20,7 +20,34 @@ class TestReportGenerator:
     
     def setup_method(self):
         """测试前置设置"""
-        self.generator = ReportGenerator()
+        # 创建临时配置文件
+        self.temp_config = {
+            "categories": {
+                "大户动向": {
+                    "description": "大户资金流动和态度变化",
+                    "criteria": ["巨鲸资金流动", "大户态度变化"],
+                    "priority": 1,
+                    "display_emoji": "🐋",
+                    "display_order": 1
+                },
+                "市场新现象": {
+                    "description": "重要的市场新趋势和变化",
+                    "criteria": ["新趋势", "链上数据异常"],
+                    "priority": 2,
+                    "display_emoji": "📊",
+                    "display_order": 6
+                }
+            }
+        }
+        
+        # 创建临时配置文件
+        import tempfile
+        import json
+        self.temp_config_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+        json.dump(self.temp_config, self.temp_config_file)
+        self.temp_config_file.close()
+        
+        self.generator = ReportGenerator(include_summary=True, prompt_config_path=self.temp_config_file.name)
         
         # 创建测试数据
         self.test_time = datetime.now()
@@ -74,6 +101,15 @@ class TestReportGenerator:
             total_items=2,
             execution_time=self.test_time
         )
+    
+    def teardown_method(self):
+        """测试后清理"""
+        import os
+        if hasattr(self, 'temp_config_file'):
+            try:
+                os.unlink(self.temp_config_file.name)
+            except:
+                pass
     
     def test_generate_header(self):
         """测试报告头部生成"""

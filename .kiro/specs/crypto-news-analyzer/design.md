@@ -8,9 +8,16 @@
 - 配置文件驱动的信息源管理
 - 多源数据爬取（RSS + X/Twitter）
 - LLM驱动的内容分析和分类
+- **可配置的分类标准和识别规则**
 - 定时任务调度
 - Telegram自动报告发送
 - 云服务器部署支持
+
+### 最新变更
+本设计文档已更新以反映需求文档的重要变更：
+- **需求2 - 配置文件管理**: 扩展为管理信息源和分析规则，包含分类类别定义和识别规则
+- **需求5 - 内容智能分析和分类**: 从固定的六大类别改为基于配置文件的可配置分类标准
+- **需求7 - 结构化报告生成**: 从"按六大类别组织"改为"按配置文件中定义的分类标准组织"
 
 ## 架构
 
@@ -119,6 +126,12 @@ class ConfigManager:
         "max_tokens": 1000,
         "prompt_config_path": "./prompts/analysis_prompt.json",
         "batch_size": 10
+    },
+    "classification_config": {
+        "categories_config_path": "./prompts/analysis_prompt.json",
+        "default_categories": ["大户动向", "利率事件", "美国政府监管政策", "安全事件", "新产品", "市场新现象"],
+        "enable_custom_categories": true,
+        "auto_reload_config": true
     },
     "rss_sources": [
         {
@@ -264,19 +277,21 @@ CREATE TABLE content_items (
 
 ### 5. LLM分析器 (LLMAnalyzer)
 
-与大语言模型API集成，使用精心设计的提示词进行内容分析和分类。
+与大语言模型API集成，使用**可配置的提示词和分类标准**进行内容分析和分类。
 
 ```python
 class LLMAnalyzer:
     def __init__(self, api_key: str, model: str = "gpt-4", prompt_config_path: str = "./prompts/analysis_prompt.json")
-    def analyze_content(self, content: str) -> AnalysisResult
+    def analyze_content(self, content: str, title: str = "", source: str = "", content_id: str = "") -> AnalysisResult
     def batch_analyze(self, items: List[ContentItem]) -> List[AnalysisResult]
-    def classify_content(self, content: str) -> ContentCategory
+    def classify_content(self, content: str) -> str
     def should_ignore_content(self, content: str) -> bool
-    def build_analysis_prompt(self, content: str) -> str
+    def build_analysis_prompt(self, content: str, title: str, source: str) -> str
     def parse_llm_response(self, response: str) -> AnalysisResult
     def reload_prompt_config(self) -> None
     def validate_category_response(self, category: str) -> bool
+    def get_available_categories(self) -> List[str]
+    def update_classification_config(self, new_config: Dict[str, Any]) -> None
 ```
 
 **LLM提示词设计**:
@@ -408,6 +423,8 @@ class CategoryConfig:
 
 **动态分类系统**:
 
+系统的核心特性是支持完全可配置的分类标准，用户可以通过配置文件自定义分析标准和分类类别：
+
 ```python
 class DynamicCategoryManager:
     def __init__(self, config_path: str = "./prompts/analysis_prompt.json")
@@ -415,57 +432,68 @@ class DynamicCategoryManager:
     def add_category(self, name: str, config: CategoryConfig) -> None
     def remove_category(self, name: str) -> None
     def update_category(self, name: str, config: CategoryConfig) -> None
-    def get_category_enum(self) -> Enum
+    def get_category_list(self) -> List[str]
     def validate_category_config(self, config: CategoryConfig) -> bool
     def reload_categories(self) -> None
+    def export_categories_config(self) -> Dict[str, Any]
+    def import_categories_config(self, config: Dict[str, Any]) -> None
 
-# 动态生成的ContentCategory枚举
-def create_content_category_enum(categories: Dict[str, CategoryConfig]) -> Enum:
-    category_dict = {
-        name.upper().replace(' ', '_'): name 
-        for name in categories.keys()
-    }
-    category_dict['UNCATEGORIZED'] = '未分类'
-    category_dict['IGNORED'] = '忽略'
-    
-    return Enum('ContentCategory', category_dict)
+# 动态分类配置
+def create_dynamic_categories(categories: Dict[str, CategoryConfig]) -> List[str]:
+    """根据配置文件动态创建分类列表"""
+    category_list = list(categories.keys())
+    category_list.extend(['未分类', '忽略'])  # 系统保留分类
+    return category_list
 ```
 
 **支持的LLM服务**: OpenAI GPT, Anthropic Claude, 其他兼容OpenAI API的服务
 
 ### 6. 内容分类器 (ContentClassifier)
 
-基于LLM分析结果进行内容分类。
+基于LLM分析结果和**可配置的分类标准**进行内容分类。
 
 ```python
 class ContentClassifier:
-    def classify_item(self, item: ContentItem, analysis: AnalysisResult) -> ContentCategory
-    def get_category_items(self, category: ContentCategory) -> List[ContentItem]
-    def generate_category_summary(self, category: ContentCategory) -> str
+    def __init__(self, llm_analyzer: LLMAnalyzer, category_manager: DynamicCategoryManager)
+    def classify_item(self, item: ContentItem, analysis: AnalysisResult) -> str
+    def get_category_items(self, category: str) -> List[ContentItem]
+    def generate_category_summary(self, category: str) -> str
+    def get_available_categories(self) -> List[str]
+    def get_classification_stats(self) -> Dict[str, int]
+    def validate_category(self, category: str) -> bool
+    def update_category_config(self, new_config: Dict[str, CategoryConfig]) -> None
 ```
 
-**分类类别**:
-- 大户动向 (WHALE_MOVEMENTS)
-- 利率事件 (INTEREST_RATE_EVENTS)  
-- 美国政府监管政策 (US_REGULATORY_POLICY)
-- 安全事件 (SECURITY_EVENTS)
-- 新产品 (NEW_PRODUCTS)
-- 市场新现象 (MARKET_PHENOMENA)
-- 未分类 (UNCATEGORIZED)
-- 忽略 (IGNORED)
+**可配置分类特性**:
+- **动态分类列表**: 分类类别完全由配置文件定义，支持运行时更新
+- **自定义识别规则**: 每个分类都有独立的识别标准和优先级
+- **默认分类支持**: 系统提供默认的六大类别配置，用户可以修改或扩展
+- **分类验证**: 自动验证分类配置的有效性和完整性
+- **热重载**: 支持配置文件更新后自动重载，无需重启系统
 
 ### 7. 报告生成器 (ReportGenerator)
 
-生成Markdown格式的结构化报告。
+生成Markdown格式的结构化报告，**支持基于配置文件定义的分类标准**组织内容。
 
 ```python
 class ReportGenerator:
+    def __init__(self, category_manager: DynamicCategoryManager, include_summary: bool = True)
     def generate_report(self, data: AnalyzedData, status: CrawlStatus) -> str
-    def generate_header(self, time_window: int) -> str
+    def generate_header(self, time_window: int, start_time: datetime, end_time: datetime) -> str
     def generate_status_table(self, status: CrawlStatus) -> str
-    def generate_category_section(self, category: ContentCategory, items: List[ContentItem]) -> str
-    def generate_summary(self, categories: Dict[ContentCategory, List[ContentItem]]) -> str
+    def generate_category_sections(self, categorized_items: Dict[str, List[ContentItem]], analysis_results: Dict[str, AnalysisResult]) -> List[str]
+    def generate_category_section(self, category_name: str, emoji: str, items: List[ContentItem], analysis_results: Dict[str, AnalysisResult]) -> str
+    def generate_summary(self, categories: Dict[str, List[ContentItem]]) -> str
+    def update_category_display_config(self, config: Dict[str, Any]) -> None
+    def get_category_display_order(self) -> List[Tuple[str, str]]
 ```
+
+**可配置报告特性**:
+- **动态分类组织**: 报告按配置文件中定义的分类标准组织内容
+- **分类显示配置**: 支持自定义分类的显示顺序、图标和描述
+- **灵活模板系统**: 支持多种报告模板和自定义格式
+- **分类统计**: 自动统计各分类的内容数量和分布
+- **空分类处理**: 当某个分类没有内容时显示相应提示
 
 ### 8. Telegram发送器 (TelegramSender)
 
@@ -598,7 +626,7 @@ class StorageConfig:
 @dataclass
 class AnalysisResult:
     content_id: str
-    category: ContentCategory
+    category: str  # 动态分类，由配置文件定义
     confidence: float
     reasoning: str
     should_ignore: bool
@@ -618,18 +646,27 @@ class CrawlStatus:
     total_items: int
     execution_time: datetime
 
-# 动态生成的ContentCategory枚举，基于配置文件
-# 示例：如果配置文件包含上述类别，则生成：
-# ContentCategory = Enum('ContentCategory', {
-#     'WHALE_MOVEMENTS': '大户动向',
-#     'INTEREST_RATE_EVENTS': '利率事件', 
-#     'US_REGULATORY_POLICY': '美国政府监管政策',
-#     'SECURITY_EVENTS': '安全事件',
-#     'NEW_PRODUCTS': '新产品',
-#     'MARKET_PHENOMENA': '市场新现象',
-#     'UNCATEGORIZED': '未分类',
-#     'IGNORED': '忽略'
-# })
+# 动态分类系统，基于配置文件
+# 分类列表由配置文件 ./prompts/analysis_prompt.json 中的 categories 字段定义
+# 默认包含以下分类（可通过配置文件修改）：
+# - 大户动向
+# - 利率事件
+# - 美国政府监管政策
+# - 安全事件
+# - 新产品
+# - 市场新现象
+# - 未分类（系统保留）
+# - 忽略（系统保留）
+
+@dataclass
+class CategoryConfig:
+    name: str
+    description: str
+    criteria: List[str]
+    examples: List[str]
+    priority: int = 1
+    display_emoji: str = "📄"
+    display_order: int = 999
 ```
 
 ## 错误处理
@@ -695,34 +732,38 @@ class ErrorHandler:
 **验证: 需求 1.8**
 
 ### 属性 3: 配置文件管理
-*对于任何*系统启动，如果配置文件不存在，系统应该创建包含默认信息源的配置文件；如果存在，应该成功验证其有效性
-**验证: 需求 2.1, 2.5, 2.6**
+*对于任何*系统启动，如果配置文件不存在，系统应该创建包含默认信息源和分类标准的配置文件；如果存在，应该成功验证其有效性
+**验证: 需求 2.1, 2.5, 2.8, 2.13**
 
-### 属性 4: 内容解析完整性
+### 属性 4: 分类配置一致性
+*对于任何*配置文件中定义的分类标准，系统应该能够正确加载并应用于内容分析，分类结果应该符合配置的识别规则
+**验证: 需求 5.4, 5.6, 5.10, 5.11**
+
+### 属性 5: 内容解析完整性
 *对于任何*有效的RSS或X内容，解析后的ContentItem应该包含标题、内容、发布时间和原文链接等所有必需字段
 **验证: 需求 3.4, 4.5**
 
-### 属性 5: 内容分类一致性
-*对于任何*输入内容，LLM分析器应该将其分类到六大预定义类别之一，或标记为未分类/忽略
-**验证: 需求 5.1, 5.3**
+### 属性 6: 内容分类一致性
+*对于任何*输入内容，LLM分析器应该将其分类到配置文件中定义的分类类别之一，或标记为未分类/忽略
+**验证: 需求 5.3, 5.4, 5.6**
 
-### 属性 6: 报告格式完整性
-*对于任何*生成的报告，应该包含时间窗口信息的头部、数据源状态表格，以及每条信息的原文链接
-**验证: 需求 7.1, 7.4**
+### 属性 7: 报告格式完整性
+*对于任何*生成的报告，应该包含时间窗口信息的头部、数据源状态表格，以及按配置文件中定义的分类标准组织的内容，每条信息包含原文链接
+**验证: 需求 7.1, 7.3, 7.4**
 
-### 属性 7: Telegram发送可靠性
+### 属性 8: Telegram发送可靠性
 *对于任何*生成的报告，如果Telegram配置有效，系统应该成功发送报告到指定频道
 **验证: 需求 8.1**
 
-### 属性 8: 定时调度准确性
+### 属性 9: 定时调度准确性
 *对于任何*配置的执行间隔，调度器应该按照该间隔自动触发分析任务
 **验证: 需求 9.2**
 
-### 属性 9: 时间窗口过滤正确性
+### 属性 10: 时间窗口过滤正确性
 *对于任何*内容项，只有发布时间在指定时间窗口内的内容应该被包含在最终分析中
 **验证: 需求 10.1**
 
-### 属性 10: 容错处理一致性
+### 属性 11: 容错处理一致性
 *对于任何*数据源失败，系统应该记录错误信息并继续处理其他可用数据源，不应该导致整个流程中断
 **验证: 需求 11.1**
 
@@ -800,9 +841,9 @@ factory.register_source("x", XCrawler)
 }
 ```
 
-### 扩展分析规则
+### 扩展分析规则和分类标准
 
-系统支持通过配置文件灵活调整分析规则和分类标准：
+系统的核心优势是支持通过配置文件灵活调整分析规则和分类标准，无需修改代码：
 
 #### 1. 修改现有分类标准
 
@@ -812,12 +853,20 @@ factory.register_source("x", XCrawler)
 {
     "categories": {
         "大户动向": {
+            "description": "大户资金流动和态度变化",
             "criteria": [
                 "巨鲸资金流入流出（单笔>500 ETH或等值）",  // 降低阈值
                 "大户对crypto市场的态度变化",
                 "知名地址的链上操作",
                 "机构投资者的持仓变化"  // 新增标准
-            ]
+            ],
+            "examples": [
+                "某巨鲸地址转移10000 ETH到交易所",
+                "MicroStrategy宣布增持比特币"
+            ],
+            "priority": 1,
+            "display_emoji": "🐋",
+            "display_order": 1
         }
     }
 }
@@ -839,7 +888,24 @@ factory.register_source("x", XCrawler)
                 "以太坊2.0升级完成",
                 "新的Layer2解决方案上线"
             ],
-            "priority": 2
+            "priority": 2,
+            "display_emoji": "⚙️",
+            "display_order": 7
+        },
+        "宏观经济": {
+            "description": "影响加密货币市场的宏观经济事件",
+            "criteria": [
+                "全球经济政策变化",
+                "通胀数据发布",
+                "地缘政治事件"
+            ],
+            "examples": [
+                "美国CPI数据超预期",
+                "欧洲央行政策调整"
+            ],
+            "priority": 1,
+            "display_emoji": "🌍",
+            "display_order": 8
         }
     }
 }
@@ -849,10 +915,11 @@ factory.register_source("x", XCrawler)
 
 ```json
 {
-    "prompt_template": "你是一个{expertise}专家。请根据以下标准分析内容：\n\n{categories_description}\n\n分析内容：{content}\n\n{output_format}",
+    "prompt_template": "你是一个{expertise}专家。请根据以下标准分析内容：\n\n{categories_description}\n\n分析内容：\n标题：{title}\n内容：{content}\n来源：{source}\n\n{ignore_criteria}\n\n{output_format}",
     "template_variables": {
         "expertise": "加密货币市场分析"
-    }
+    },
+    "categories_description_template": "### {category_name} ({emoji})\n{description}\n\n**识别标准**:\n{criteria_list}\n\n**示例**:\n{examples_list}\n\n**优先级**: {priority}\n\n---\n"
 }
 ```
 
@@ -862,6 +929,38 @@ factory.register_source("x", XCrawler)
 # 系统支持运行时重载配置，无需重启
 analyzer.reload_prompt_config()
 category_manager.reload_categories()
+
+# 验证新配置
+validation_result = category_manager.validate_categories_config()
+if validation_result.is_valid:
+    print("配置更新成功")
+else:
+    print(f"配置验证失败: {validation_result.errors}")
+```
+
+#### 5. 配置文件管理API
+
+```python
+class CategoryConfigManager:
+    def export_current_config(self) -> Dict[str, Any]:
+        """导出当前分类配置"""
+        pass
+    
+    def import_config_from_file(self, file_path: str) -> bool:
+        """从文件导入分类配置"""
+        pass
+    
+    def backup_current_config(self) -> str:
+        """备份当前配置，返回备份文件路径"""
+        pass
+    
+    def restore_config_from_backup(self, backup_path: str) -> bool:
+        """从备份恢复配置"""
+        pass
+    
+    def get_config_history(self) -> List[ConfigVersion]:
+        """获取配置变更历史"""
+        pass
 ```
 
 ### 扩展输出格式
