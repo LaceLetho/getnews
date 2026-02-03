@@ -13646,3 +13646,252 @@
 2026-02-03 19:25:00 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 1小时
 2026-02-03 19:25:00 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 13小时
 2026-02-03 19:25:00 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 13小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X认证验证成功
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X认证失败，请检查ct0和auth_token
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X访问被禁止，可能账户被限制
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 网络连接失败
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 请求超时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 速率限制中，等待 10.0 秒
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 遇到速率限制 (429)，将等待 900 秒
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 遇到速率限制 (429)，将等待 900 秒
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 访问被禁止 (403)
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 服务器错误 (500)
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 服务器错误 (502)
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/user/profile
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 解析Twitter时间失败: invalid_time_format, 错误: time data 'invalid_time_format' does not match format '%a %b %d %H:%M:%S %z %Y'
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1234567890
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: 服务器错误
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取 3 个X信息源
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 源1 (list)
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1111111111
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多推文，停止爬取
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 0 条内容
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 源1 爬取成功，获得 0 条内容
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 源2 (list)
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 2222222222
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多推文，停止爬取
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 0 条内容
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 源2 爬取成功，获得 0 条内容
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 源3 (list)
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 3333333333
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多推文，停止爬取
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 0 条内容
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 源3 爬取成功，获得 0 条内容
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取完成，成功: 3/3
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有配置X信息源，跳过X爬取
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X时间线
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X时间线失败: X认证失败
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 解析Twitter时间失败: , 错误: time data '' does not match format '%a %b %d %H:%M:%S %z %Y'
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取 1 个X信息源
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 测试列表 (list)
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1234567890
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X认证验证成功
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多页面，停止爬取
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 1 条内容
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 测试列表 爬取成功，获得 1 条内容
+2026-02-03 19:28:18 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取完成，成功: 1/1
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X认证验证成功
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X认证失败，请检查ct0和auth_token
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X访问被禁止，可能账户被限制
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 网络连接失败
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 请求超时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 速率限制中，等待 10.0 秒
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 遇到速率限制 (429)，将等待 900 秒
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 遇到速率限制 (429)，将等待 900 秒
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 访问被禁止 (403)
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 服务器错误 (500)
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 服务器错误 (502)
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/user/profile
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: invalid_url
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: 
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/i/lists/
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 解析Twitter时间失败: invalid_time_format, 错误: time data 'invalid_time_format' does not match format '%a %b %d %H:%M:%S %z %Y'
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1234567890
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: 服务器错误
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取 3 个X信息源
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 源1 (list)
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1111111111
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多推文，停止爬取
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 0 条内容
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 源1 爬取成功，获得 0 条内容
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 源2 (list)
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 2222222222
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多推文，停止爬取
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 0 条内容
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 源2 爬取成功，获得 0 条内容
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 源3 (list)
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 3333333333
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多推文，停止爬取
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 0 条内容
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 源3 爬取成功，获得 0 条内容
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取完成，成功: 3/3
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有配置X信息源，跳过X爬取
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X时间线
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X时间线失败: X认证失败
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 解析Twitter时间失败: , 错误: time data '' does not match format '%a %b %d %H:%M:%S %z %Y'
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取 1 个X信息源
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 测试列表 (list)
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1234567890
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X认证验证成功
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多页面，停止爬取
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 1 条内容
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 测试列表 爬取成功，获得 1 条内容
+2026-02-03 19:29:45 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取完成，成功: 1/1
+2026-02-03 19:30:38 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X认证验证成功
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X认证失败，请检查ct0和auth_token
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X访问被禁止，可能账户被限制
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 网络连接失败
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 请求超时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 速率限制中，等待 10.0 秒
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 遇到速率限制 (429)，将等待 900 秒
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 遇到速率限制 (429)，将等待 900 秒
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 访问被禁止 (403)
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 服务器错误 (500)
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 服务器错误 (502)
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/user/profile
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: invalid_url
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: 
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/i/lists/
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 解析Twitter时间失败: invalid_time_format, 错误: time data 'invalid_time_format' does not match format '%a %b %d %H:%M:%S %z %Y'
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1234567890
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: 服务器错误
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取 3 个X信息源
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 源1 (list)
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1111111111
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多推文，停止爬取
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 0 条内容
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 源1 爬取成功，获得 0 条内容
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 源2 (list)
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 2222222222
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: X认证失败，请检查ct0和auth_token
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X源 源2 爬取失败: 爬取X列表失败: X认证失败，请检查ct0和auth_token
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 源3 (list)
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 3333333333
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多推文，停止爬取
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 0 条内容
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 源3 爬取成功，获得 0 条内容
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取完成，成功: 2/3
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有配置X信息源，跳过X爬取
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X时间线
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X时间线失败: X认证失败
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - WARNING - 解析Twitter时间失败: , 错误: time data '' does not match format '%a %b %d %H:%M:%S %z %Y'
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取 1 个X信息源
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 爬取X源: 测试列表 (list)
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1234567890
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X认证验证成功
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - 没有更多页面，停止爬取
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 1 条内容
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X源 测试列表 爬取成功，获得 1 条内容
+2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取完成，成功: 1/1
+2026-02-03 19:38:41 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:38:43 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证失败: 404
+2026-02-03 19:39:30 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:39:31 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证失败: 404
+2026-02-03 19:46:32 - crypto_news_analyzer.crawlers.x_crawler - INFO - X爬取器初始化完成，时间窗口: 24小时
+2026-02-03 19:46:34 - crypto_news_analyzer.crawlers.x_crawler - INFO - X认证验证成功
+2026-02-03 19:46:34 - crypto_news_analyzer.crawlers.x_crawler - INFO - 开始爬取X列表: 1826855418095980750
+2026-02-03 19:47:00 - crypto_news_analyzer.crawlers.x_crawler - INFO - X列表爬取完成，共获得 0 条内容

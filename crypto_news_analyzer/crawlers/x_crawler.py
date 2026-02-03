@@ -117,11 +117,23 @@ class XCrawler:
         self.session.cookies.set("ct0", self.auth_config.ct0, domain=".x.com")
         self.session.cookies.set("auth_token", self.auth_config.auth_token, domain=".x.com")
         
+        # 添加必要的额外cookies（基于2024-2025年研究）
+        import time
+        current_time = int(time.time())
+        self.session.cookies.set("personalization_id", f"v1_{current_time}", domain=".x.com")
+        self.session.cookies.set("guest_id", f"v1_{current_time}", domain=".x.com")
+        self.session.cookies.set("gt", str(current_time), domain=".x.com")
+        
         # 设置X-Csrf-Token
         self.session.headers["X-Csrf-Token"] = self.auth_config.ct0
         
-        # 设置其他必需的头部
+        # 设置其他必需的头部（基于最新研究）
         self.session.headers["Authorization"] = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
+        self.session.headers["X-Twitter-Auth-Type"] = "OAuth2Session"
+        self.session.headers["X-Twitter-Client-Language"] = "en"
+        self.session.headers["X-Twitter-Active-User"] = "yes"
+        self.session.headers["Referer"] = "https://x.com/home"
+        self.session.headers["Origin"] = "https://x.com"
         
         self.logger.debug("会话配置完成")
     
@@ -166,7 +178,7 @@ class XCrawler:
             
             self.rate_limited_until = time.time() + delay
             self.logger.warning(f"遇到速率限制 (429)，将等待 {delay} 秒")
-            raise RateLimitError(f"X API速率限制，需等待 {delay} 秒")
+            raise RateLimitError(f"X API速率限制，需等待 {delay} 秒", "X/Twitter")
         
         elif response.status_code == 401:
             self.logger.error("认证失败 (401)")
@@ -191,19 +203,41 @@ class XCrawler:
             # 尝试获取用户信息来验证认证
             self.add_random_delays()
             
-            # 使用简单的API端点验证认证
-            url = "https://x.com/i/api/1.1/account/verify_credentials.json"
-            response = self.session.get(url, timeout=30)
+            # 使用更新的GraphQL端点验证认证
+            url = "https://x.com/i/api/graphql/k5XapwcSikNsEsILW5FvgA/UserByScreenName"
+            params = {
+                "variables": json.dumps({"screen_name": "elonmusk", "withSafetyModeUserFields": True}),
+                "features": json.dumps({
+                    "hidden_profile_likes_enabled": True,
+                    "hidden_profile_subscriptions_enabled": True,
+                    "responsive_web_graphql_exclude_directive_enabled": True,
+                    "verified_phone_label_enabled": False,
+                    "subscriptions_verification_info_is_identity_verified_enabled": True,
+                    "subscriptions_verification_info_verified_since_enabled": True,
+                    "highlights_tweets_tab_ui_enabled": True,
+                    "responsive_web_twitter_article_notes_tab_enabled": False,
+                    "creator_subscriptions_tweet_preview_api_enabled": True,
+                    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
+                    "responsive_web_graphql_timeline_navigation_enabled": True
+                })
+            }
+            
+            response = self.session.get(url, params=params, timeout=30)
             
             if response.status_code == 200:
-                self.authenticated = True
-                self.logger.info("X认证验证成功")
-                return True
-            else:
-                self.handle_rate_limit_response(response)
-                self.authenticated = False
-                self.logger.error(f"X认证验证失败: {response.status_code}")
-                return False
+                try:
+                    data = response.json()
+                    if 'data' in data and 'user' in data['data']:
+                        self.authenticated = True
+                        self.logger.info("X认证验证成功")
+                        return True
+                except json.JSONDecodeError:
+                    pass
+                
+            self.handle_rate_limit_response(response)
+            self.authenticated = False
+            self.logger.error(f"X认证验证失败: {response.status_code}")
+            return False
                 
         except Exception as e:
             self.authenticated = False
