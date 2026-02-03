@@ -210,7 +210,7 @@ class ReportGenerator:
         
         Args:
             categories: 所有分类名称集合
-            categories_config: 分类配置字典
+            categories_config: 分类配置字典，值为CategoryConfig对象
             
         Returns:
             (分类名称, 图标) 的有序列表
@@ -225,8 +225,9 @@ class ReportGenerator:
             # 从配置中获取显示信息
             if category_name in categories_config:
                 config = categories_config[category_name]
-                emoji = config.get("display_emoji", "📄")
-                order = config.get("display_order", config.get("priority", 999))
+                # CategoryConfig是dataclass，直接访问属性
+                emoji = config.display_emoji if hasattr(config, 'display_emoji') else "📄"
+                order = config.display_order if hasattr(config, 'display_order') else config.priority
             else:
                 # 使用默认配置
                 default_info = self.default_category_display.get(category_name, {})

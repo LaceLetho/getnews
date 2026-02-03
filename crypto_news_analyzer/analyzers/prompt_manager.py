@@ -20,6 +20,8 @@ class CategoryConfig:
     criteria: List[str]
     examples: List[str]
     priority: int = 1
+    display_emoji: str = "📄"
+    display_order: int = 999
 
 
 class PromptManager:
@@ -62,7 +64,9 @@ class PromptManager:
                 description=config["description"],
                 criteria=config["criteria"],
                 examples=config["examples"],
-                priority=config.get("priority", 1)
+                priority=config.get("priority", 1),
+                display_emoji=config.get("display_emoji", "📄"),
+                display_order=config.get("display_order", config.get("priority", 999))
             )
         
         return categories
@@ -240,6 +244,39 @@ class DynamicCategoryManager:
             config: 新的分类配置
         """
         self.logger.info(f"更新分类: {name}")
+    
+    def get_category_list(self) -> List[str]:
+        """获取分类名称列表"""
+        categories = self.load_categories()
+        category_list = list(categories.keys())
+        category_list.extend(["未分类", "忽略"])
+        return list(set(category_list))  # 去重
+    
+    def get_category_by_name(self, name: str) -> Optional[CategoryConfig]:
+        """根据名称获取分类配置"""
+        categories = self.load_categories()
+        return categories.get(name)
+    
+    def export_categories_config(self) -> Dict[str, Any]:
+        """导出分类配置"""
+        categories = self.load_categories()
+        config = {}
+        for name, category in categories.items():
+            config[name] = {
+                "description": category.description,
+                "criteria": category.criteria,
+                "examples": category.examples,
+                "priority": category.priority,
+                "display_emoji": category.display_emoji,
+                "display_order": category.display_order
+            }
+        return config
+    
+    def import_categories_config(self, config: Dict[str, Any]) -> None:
+        """导入分类配置"""
+        # 这里可以实现配置导入逻辑
+        # 目前通过修改配置文件实现
+        self.logger.info(f"导入 {len(config)} 个分类配置")
     
     def get_category_enum(self) -> Enum:
         """

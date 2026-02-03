@@ -376,44 +376,35 @@ class LLMAnalyzer:
         
         content_lower = actual_content.lower()
         
-        # 更精确的关键词匹配
-        if any(keyword in content_lower for keyword in ["15000", "eth", "binance", "巨鲸地址转移"]) and "转移" in content_lower:
-            return json.dumps({
-                "category": "大户动向",
-                "confidence": 0.92,
-                "reasoning": "这是典型的巨鲸资金流动事件，涉及大额加密货币转移，符合大户动向的分类标准。",
-                "should_ignore": False,
-                "key_points": ["巨鲸资金转移", "大额交易", "市场影响"]
-            }, ensure_ascii=False)
+        # 获取可用的分类列表
+        try:
+            categories = self.category_manager.load_categories()
+            available_categories = list(categories.keys())
+        except Exception:
+            # 如果无法加载配置，使用默认分类
+            available_categories = ["大户动向", "利率事件", "美国政府监管政策", "安全事件", "新产品", "市场新现象"]
         
-        elif any(keyword in content_lower for keyword in ["美联储", "会议纪要", "降息", "鲍威尔", "通胀数据"]):
-            return json.dumps({
-                "category": "利率事件", 
-                "confidence": 0.88,
-                "reasoning": "内容涉及美联储政策和利率相关信息，属于利率事件分类。",
-                "should_ignore": False,
-                "key_points": ["美联储政策", "利率变化", "货币政策"]
-            }, ensure_ascii=False)
+        # 基于内容关键词进行智能分类匹配
+        category_keywords = {
+            # 大户动向相关关键词
+            "大户动向": ["15000", "eth", "binance", "巨鲸地址转移", "转移", "巨鲸", "大户", "资金流动"],
+            # 利率事件相关关键词  
+            "利率事件": ["美联储", "会议纪要", "降息", "鲍威尔", "通胀数据", "fomc", "利率", "委员"],
+            # 监管政策相关关键词
+            "美国政府监管政策": ["sec", "监管", "政策", "法案", "cftc", "财政部"],
+            # 安全事件相关关键词
+            "安全事件": ["黑客攻击", "defi协议", "500万美元", "重入漏洞", "被盗", "安全", "漏洞", "攻击"],
+            # 新产品相关关键词
+            "新产品": ["新项目", "协议", "创新", "发布", "上线"],
+            # 市场新现象相关关键词
+            "市场新现象": ["新趋势", "链上数据", "异常", "新模式", "现象"]
+        }
         
-        elif any(keyword in content_lower for keyword in ["sec", "监管", "政策", "法案"]):
-            return json.dumps({
-                "category": "美国政府监管政策",
-                "confidence": 0.85,
-                "reasoning": "内容涉及政府监管政策变化，符合监管政策分类标准。",
-                "should_ignore": False,
-                "key_points": ["监管政策", "政府态度", "合规要求"]
-            }, ensure_ascii=False)
+        # 检查是否应该忽略（先检查忽略条件）
+        ignore_keywords = ["🚀", "超高收益率", "立即参与", "千载难逢"]
+        should_ignore = any(keyword in content_lower for keyword in ignore_keywords)
         
-        elif any(keyword in content_lower for keyword in ["黑客攻击", "defi协议", "500万美元", "重入漏洞"]):
-            return json.dumps({
-                "category": "安全事件",
-                "confidence": 0.90,
-                "reasoning": "内容涉及安全相关事件，如黑客攻击或资金被盗，属于安全事件分类。",
-                "should_ignore": False,
-                "key_points": ["安全威胁", "资金损失", "技术漏洞"]
-            }, ensure_ascii=False)
-        
-        elif any(keyword in content_lower for keyword in ["🚀", "超高收益率", "立即参与", "千载难逢"]):
+        if should_ignore:
             return json.dumps({
                 "category": "忽略",
                 "confidence": 0.95,
@@ -422,6 +413,28 @@ class LLMAnalyzer:
                 "key_points": ["广告内容", "推广信息"]
             }, ensure_ascii=False)
         
+        # 查找匹配的分类
+        matched_category = None
+        max_matches = 0
+        
+        for category_name in available_categories:
+            if category_name in category_keywords:
+                keywords = category_keywords[category_name]
+                matches = sum(1 for keyword in keywords if keyword in content_lower)
+                if matches > max_matches:
+                    max_matches = matches
+                    matched_category = category_name
+        
+        if matched_category and max_matches > 0:
+            # 根据匹配的分类生成响应
+            confidence = min(0.95, 0.7 + (max_matches * 0.05))
+            return json.dumps({
+                "category": matched_category,
+                "confidence": confidence,
+                "reasoning": f"内容符合{matched_category}的分类标准，检测到相关关键词。",
+                "should_ignore": False,
+                "key_points": [f"{matched_category}相关", "关键词匹配"]
+            }, ensure_ascii=False)
         else:
             return json.dumps({
                 "category": "未分类",
@@ -431,7 +444,16 @@ class LLMAnalyzer:
                 "key_points": ["一般信息"]
             }, ensure_ascii=False)
     
-    def _validate_category_response(self, category: str) -> bool:
+    def get_available_categories(self) -> List[str]:
+        """获取可用的分类列表"""
+        return self.category_manager.get_category_list()
+    
+    def update_classification_config(self, new_config: Dict[str, Any]) -> None:
+        """更新分类配置"""
+        # 这里可以实现配置更新逻辑
+        # 目前通过重新加载配置文件实现
+        self.reload_prompt_config()
+        self.logger.info("分类配置已更新")
         """
         验证分类响应有效性
         
@@ -479,6 +501,34 @@ class LLMAnalyzer:
             should_ignore=should_ignore,
             key_points=key_points
         )
+    
+    def get_available_categories(self) -> List[str]:
+        """获取可用的分类列表"""
+        return self.category_manager.get_category_list()
+    
+    def update_classification_config(self, new_config: Dict[str, Any]) -> None:
+        """更新分类配置"""
+        # 这里可以实现配置更新逻辑
+        # 目前通过重新加载配置文件实现
+        self.reload_prompt_config()
+        self.logger.info("分类配置已更新")
+    
+    def _validate_category_response(self, category: str) -> bool:
+        """
+        验证分类响应有效性
+        
+        Args:
+            category: 分类名称
+            
+        Returns:
+            是否有效
+        """
+        try:
+            categories = self.category_manager.load_categories()
+            valid_categories = list(categories.keys()) + ["未分类", "忽略"]
+            return category in valid_categories
+        except Exception:
+            return False
 
 
 class ContentClassifier:
@@ -565,3 +615,15 @@ class ContentClassifier:
     def get_classification_stats(self) -> Dict[str, int]:
         """获取分类统计信息"""
         return {category: len(items) for category, items in self.classified_items.items()}
+    
+    def get_available_categories(self) -> List[str]:
+        """获取可用的分类列表"""
+        return self.llm_analyzer.get_available_categories()
+    
+    def validate_category(self, category: str) -> bool:
+        """验证分类是否有效"""
+        return self.llm_analyzer._validate_category_response(category)
+    
+    def update_category_config(self, new_config: Dict[str, Any]) -> None:
+        """更新分类配置"""
+        self.llm_analyzer.update_classification_config(new_config)

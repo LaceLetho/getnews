@@ -13,7 +13,9 @@
                 "某巨鲸地址转移10000 ETH到交易所",
                 "MicroStrategy宣布增持比特币"
             ],
-            "priority": 1
+            "priority": 1,
+            "display_emoji": "🐋",
+            "display_order": 1
         },
         "利率事件": {
             "description": "美联储相关的利率政策事件",
@@ -26,7 +28,9 @@
                 "鲍威尔发表鹰派言论",
                 "FOMC会议纪要显示加息预期"
             ],
-            "priority": 1
+            "priority": 1,
+            "display_emoji": "📈",
+            "display_order": 2
         },
         "美国政府监管政策": {
             "description": "美国政府对加密货币的监管政策变化",
@@ -39,7 +43,9 @@
                 "SEC批准比特币ETF",
                 "国会通过加密货币监管法案"
             ],
-            "priority": 1
+            "priority": 1,
+            "display_emoji": "🏛️",
+            "display_order": 3
         },
         "安全事件": {
             "description": "影响较大的安全相关事件",
@@ -52,7 +58,9 @@
                 "某DeFi协议被黑客攻击损失1000万美元",
                 "发现智能合约重大漏洞"
             ],
-            "priority": 1
+            "priority": 1,
+            "display_emoji": "🔒",
+            "display_order": 4
         },
         "新产品": {
             "description": "KOL提及的真正创新产品（非广告）",
@@ -65,7 +73,9 @@
                 "V神推荐的新Layer2解决方案",
                 "知名开发者发布的新DeFi协议"
             ],
-            "priority": 2
+            "priority": 2,
+            "display_emoji": "🚀",
+            "display_order": 5
         },
         "市场新现象": {
             "description": "重要的市场新趋势和变化",
@@ -78,7 +88,9 @@
                 "NFT市场出现新的交易模式",
                 "链上活跃度异常增长"
             ],
-            "priority": 2
+            "priority": 2,
+            "display_emoji": "📊",
+            "display_order": 6
         }
     },
     
