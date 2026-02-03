@@ -1,0 +1,44 @@
+{
+  "execution_interval": 3600,
+  "time_window_hours": 24,
+  "storage": {
+    "retention_days": 30,
+    "max_storage_mb": 1000,
+    "cleanup_frequency": "daily",
+    "database_path": "./data/crypto_news.db"
+  },
+  "auth": {
+    "x_ct0": "",
+    "x_auth_token": "",
+    "llm_api_key": "",
+    "telegram_bot_token": "",
+    "telegram_channel_id": ""
+  },
+  "llm_config": {
+    "model": "gpt-4",
+    "temperature": 0.1,
+    "max_tokens": 1000,
+    "prompt_config_path": "./prompts/analysis_prompt.json",
+    "batch_size": 10
+  },
+  "rss_sources": [
+    {
+      "name": "PANews",
+      "url": "https://www.panewslab.com/zh/rss/newsflash.xml",
+      "description": "PANews 快讯"
+    },
+    {
+      "name": "金色财经",
+      "url": "https://www.jinse.com/rss/flash.xml",
+      "description": "金色财经快讯"
+    }
+  ],
+  "x_sources": [
+    {
+      "name": "Crypto List 1",
+      "url": "https://x.com/i/lists/1826855418095980750",
+      "type": "list"
+    }
+  ],
+  "rest_api_sources": []
+}

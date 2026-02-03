@@ -1,0 +1,6 @@
+2026-02-03 17:58:18 - crypto_news_analyzer.main - INFO - 开始初始化加密货币新闻分析系统
+2026-02-03 17:58:18 - crypto_news_analyzer.config.manager - INFO - 配置文件验证通过
+2026-02-03 17:58:18 - crypto_news_analyzer.config.manager - INFO - 配置文件加载成功
+2026-02-03 17:58:18 - crypto_news_analyzer.main - INFO - 配置管理器初始化完成
+2026-02-03 17:58:18 - crypto_news_analyzer.main - INFO - 错误处理框架初始化完成
+2026-02-03 17:58:18 - crypto_news_analyzer.main - INFO - 系统初始化完成

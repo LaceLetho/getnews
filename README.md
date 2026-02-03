@@ -1,0 +1,89 @@
+# 加密货币新闻分析工具
+
+一个自动化系统，用于从多个信息源收集加密货币相关新闻和社交媒体内容，并通过大模型进行智能分析和分类，生成结构化的新闻快讯报告。
+
+## 功能特性
+
+- 🔄 **多源数据收集**: 支持RSS订阅和X/Twitter内容爬取
+- 🤖 **智能分析**: 使用大语言模型进行内容分析和分类
+- 📊 **结构化报告**: 生成Markdown格式的分析报告
+- 📱 **自动发送**: 通过Telegram Bot自动发送报告
+- ⏰ **定时调度**: 支持定时自动执行
+- 🔧 **配置驱动**: 通过配置文件管理所有信息源
+- 🛡️ **容错设计**: 完善的错误处理和恢复机制
+
+## 项目结构
+
+```
+crypto_news_analyzer/
+├── __init__.py                 # 包初始化
+├── main.py                     # 主程序入口
+├── models.py                   # 数据模型定义
+├── config/                     # 配置管理
+│   ├── __init__.py
+│   └── manager.py              # 配置管理器
+├── crawlers/                   # 爬取器模块
+│   └── __init__.py
+├── analyzers/                  # 分析器模块
+│   └── __init__.py
+├── reporters/                  # 报告生成模块
+│   └── __init__.py
+└── utils/                      # 工具模块
+    ├── __init__.py
+    ├── logging.py              # 日志管理
+    └── errors.py               # 错误处理
+```
+
+## 快速开始
+
+### 1. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. 配置系统
+
+首次运行会自动创建默认配置文件 `config.json`，请根据需要修改：
+
+```json
+{
+  "auth": {
+    "llm_api_key": "your_llm_api_key",
+    "telegram_bot_token": "your_bot_token",
+    "telegram_channel_id": "your_channel_id"
+  }
+}
+```
+
+### 3. 运行系统
+
+```bash
+python -m crypto_news_analyzer.main
+```
+
+## 配置说明
+
+系统通过 `config.json` 文件进行配置，主要包括：
+
+- **execution_interval**: 执行间隔（秒）
+- **time_window_hours**: 时间窗口（小时）
+- **storage**: 存储配置
+- **auth**: 认证信息
+- **rss_sources**: RSS订阅源列表
+- **x_sources**: X/Twitter信息源列表
+
+## 开发状态
+
+当前项目处于开发阶段，已完成：
+
+✅ 项目结构搭建  
+✅ 配置管理系统  
+✅ 日志系统  
+✅ 错误处理框架  
+
+待开发功能请参考 `.kiro/specs/crypto-news-analyzer/tasks.md`
+
+## 许可证
+
+MIT License
