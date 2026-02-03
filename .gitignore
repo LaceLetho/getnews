@@ -34,8 +34,13 @@ Thumbs.db
 *.tmp
 *.temp
 *~
+test_*.py  # 临时测试文件
 
 # 构建输出
 build/
 dist/
 *.egg-info/
+
+# Kiro 相关
+.kiro/cache/
+.kiro/temp/

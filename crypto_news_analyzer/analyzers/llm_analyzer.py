@@ -51,15 +51,15 @@ class LLMAnalyzer:
         
         # 根据模型自动选择API配置
         if model.startswith("MiniMax"):
-            # 使用 OpenAI 兼容的 API 端点
-            self.api_base_url = "https://api.minimax.chat/v1"
-            self.use_openai_format = True
+            # 使用 MiniMax 平台 API 端点（新 API key 格式）
+            self.api_base_url = "https://platform.minimax.io/v1"
+            self.use_minimax_format = True
         elif model.startswith("gpt"):
             self.api_base_url = "https://api.openai.com/v1"
-            self.use_openai_format = True
+            self.use_minimax_format = False
         else:
             self.api_base_url = api_base_url
-            self.use_openai_format = True
+            self.use_minimax_format = False
             
         self.headers = {
             "Authorization": f"Bearer {api_key}",
@@ -199,8 +199,11 @@ class LLMAnalyzer:
             解析后的响应对象
         """
         try:
+            # 清理响应文本，移除 <think> 标签和其他非JSON内容
+            cleaned_response = self._clean_response_text(response)
+            
             # 尝试解析JSON响应
-            response_data = json.loads(response.strip())
+            response_data = json.loads(cleaned_response)
             
             return LLMResponse(
                 category=response_data.get("category", "未分类"),
@@ -224,6 +227,29 @@ class LLMAnalyzer:
                 key_points=[]
             )
     
+    def _clean_response_text(self, response: str) -> str:
+        """
+        清理响应文本，提取JSON部分
+        
+        Args:
+            response: 原始响应文本
+            
+        Returns:
+            清理后的JSON字符串
+        """
+        import re
+        
+        # 移除 <think> 标签及其内容
+        response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
+        
+        # 查找JSON对象
+        json_match = re.search(r'\{.*\}', response, flags=re.DOTALL)
+        if json_match:
+            return json_match.group(0).strip()
+        
+        # 如果没有找到JSON，返回原始响应
+        return response.strip()
+    
     def reload_prompt_config(self) -> None:
         """重新加载提示词配置"""
         self.prompt_manager.reload_configuration()
@@ -245,22 +271,39 @@ class LLMAnalyzer:
             
         llm_settings = self.prompt_manager.get_llm_settings()
         
-        payload = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "temperature": llm_settings.get("temperature", 0.1),
-            "max_tokens": llm_settings.get("max_tokens", 1000)
-        }
+        if self.model.startswith("MiniMax"):
+            # 使用 OpenAI 兼容格式（适用于 platform.minimax.io）
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": llm_settings.get("temperature", 0.1),
+                "max_tokens": llm_settings.get("max_tokens", 1000)
+            }
+            endpoint = f"{self.api_base_url}/chat/completions"
+        else:
+            # 使用 OpenAI 格式
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": llm_settings.get("temperature", 0.1),
+                "max_tokens": llm_settings.get("max_tokens", 1000)
+            }
+            endpoint = f"{self.api_base_url}/chat/completions"
         
         for attempt in range(self.max_retries):
             try:
                 response = requests.post(
-                    f"{self.api_base_url}/chat/completions",
+                    endpoint,
                     headers=self.headers,
                     json=payload,
                     timeout=30
@@ -268,7 +311,19 @@ class LLMAnalyzer:
                 
                 if response.status_code == 200:
                     response_data = response.json()
-                    return response_data["choices"][0]["message"]["content"]
+                    
+                    # 统一使用 OpenAI 格式解析
+                    if "choices" in response_data and len(response_data["choices"]) > 0:
+                        choice = response_data["choices"][0]
+                        if "message" in choice and "content" in choice["message"]:
+                            return choice["message"]["content"]
+                        elif "text" in choice:
+                            return choice["text"]
+                    
+                    # 如果没有找到标准格式，记录错误
+                    self.logger.error(f"无法解析响应格式: {response_data}")
+                    return ""
+                        
                 elif response.status_code == 429:
                     # 速率限制，等待更长时间
                     wait_time = self.retry_delay * (2 ** attempt)
