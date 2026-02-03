@@ -76,3 +76,85 @@
 2026-02-03 19:31:15 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X时间线失败: X认证失败
 2026-02-03 19:38:43 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证失败: 404
 2026-02-03 19:39:31 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证失败: 404
+2026-02-03 19:53:45 - crypto_news_analyzer.config.manager - ERROR - 缺少必需配置字段: storage
+2026-02-03 19:54:06 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: 网络连接失败
+2026-02-03 19:54:08 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 源2 爬取失败: 源2失败
+2026-02-03 19:54:14 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 连接超时
+2026-02-03 19:54:18 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 无法连接到服务器
+2026-02-03 19:54:22 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 404 Not Found
+2026-02-03 19:54:26 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 500 Internal Server Error
+2026-02-03 19:54:30 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: DNS解析失败
+2026-02-03 19:54:33 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: SSL证书验证失败
+2026-02-03 19:54:38 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败
+2026-02-03 19:54:38 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 失败源 爬取失败: 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证失败: 200
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X认证失败，请检查ct0和auth_token
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X访问被禁止，可能账户被限制
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 网络连接失败
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 请求超时
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 访问被禁止 (403)
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/user/profile
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: invalid_url
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: 
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/i/lists/
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: 服务器错误
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: X认证失败，请检查ct0和auth_token
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X源 源2 爬取失败: 爬取X列表失败: X认证失败，请检查ct0和auth_token
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X时间线失败: X认证失败
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证失败: 200
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: X认证失败
+2026-02-03 19:54:41 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X源 测试列表 爬取失败: 爬取X列表失败: X认证失败
+2026-02-03 19:55:34 - crypto_news_analyzer.config.manager - ERROR - 缺少必需配置字段: storage
+2026-02-03 19:55:54 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: 网络连接失败
+2026-02-03 19:55:56 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 源2 爬取失败: 源2失败
+2026-02-03 19:56:01 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 连接超时
+2026-02-03 19:56:06 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 无法连接到服务器
+2026-02-03 19:56:10 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 404 Not Found
+2026-02-03 19:56:14 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 500 Internal Server Error
+2026-02-03 19:56:18 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: DNS解析失败
+2026-02-03 19:56:22 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: SSL证书验证失败
+2026-02-03 19:56:28 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败
+2026-02-03 19:56:28 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 失败源 爬取失败: 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X认证失败，请检查ct0和auth_token
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X访问被禁止，可能账户被限制
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 网络连接失败
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 请求超时
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 访问被禁止 (403)
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/user/profile
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: invalid_url
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: 
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/i/lists/
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: 服务器错误
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: X认证失败，请检查ct0和auth_token
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X源 源2 爬取失败: 爬取X列表失败: X认证失败，请检查ct0和auth_token
+2026-02-03 19:56:30 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X时间线失败: X认证失败
+2026-02-03 19:57:25 - crypto_news_analyzer.config.manager - ERROR - 缺少必需配置字段: storage
+2026-02-03 19:57:45 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: 网络连接失败
+2026-02-03 19:57:47 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 源2 爬取失败: 源2失败
+2026-02-03 19:57:54 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 连接超时
+2026-02-03 19:57:59 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 无法连接到服务器
+2026-02-03 19:58:03 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 404 Not Found
+2026-02-03 19:58:08 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 500 Internal Server Error
+2026-02-03 19:58:13 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: DNS解析失败
+2026-02-03 19:58:17 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: SSL证书验证失败
+2026-02-03 19:58:23 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败
+2026-02-03 19:58:23 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 失败源 爬取失败: 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X认证失败，请检查ct0和auth_token
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: X访问被禁止，可能账户被限制
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 网络连接失败
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X认证验证异常: 请求超时
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 访问被禁止 (403)
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/user/profile
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: invalid_url
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: 
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 无法从URL提取列表ID: https://x.com/i/lists/
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: 服务器错误
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 认证失败 (401)
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X列表失败: X认证失败，请检查ct0和auth_token
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - X源 源2 爬取失败: 爬取X列表失败: X认证失败，请检查ct0和auth_token
+2026-02-03 19:58:26 - crypto_news_analyzer.crawlers.x_crawler - ERROR - 爬取X时间线失败: X认证失败

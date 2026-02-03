@@ -125,7 +125,17 @@ class TestXCrawlerAuthentication:
         # 模拟成功的认证响应
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"screen_name": "test_user"}
+        mock_response.json.return_value = {
+            "data": {
+                "user": {
+                    "result": {
+                        "legacy": {
+                            "screen_name": "test_user"
+                        }
+                    }
+                }
+            }
+        }
         mock_get.return_value = mock_response
         
         result = self.crawler.authenticate()
@@ -699,7 +709,17 @@ class TestXCrawlerIntegration:
         # 模拟认证成功
         auth_response = Mock()
         auth_response.status_code = 200
-        auth_response.json.return_value = {"screen_name": "test_user"}
+        auth_response.json.return_value = {
+            "data": {
+                "user": {
+                    "result": {
+                        "legacy": {
+                            "screen_name": "test_user"
+                        }
+                    }
+                }
+            }
+        }
         
         # 模拟列表爬取成功
         crawl_response = Mock()
