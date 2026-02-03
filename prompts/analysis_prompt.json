@@ -1,0 +1,100 @@
+{
+    "prompt_template": "你是一个专业的加密货币新闻分析师。请分析以下内容并进行分类。\n\n## 分析标准\n\n### 需要关注的内容类别：\n\n{categories_description}\n\n### 需要忽略的内容：\n\n{ignore_criteria}\n\n## 分析任务\n\n请分析以下内容：\n\n---\n标题：{title}\n内容：{content}\n来源：{source}\n---\n\n## 输出格式\n\n{output_format}",
+    
+    "categories": {
+        "大户动向": {
+            "description": "大户资金流动和态度变化",
+            "criteria": [
+                "巨鲸资金流入流出（单笔>1000 ETH或等值）",
+                "大户对crypto市场的态度变化（增持/减持/公开表态）",
+                "知名地址的链上操作"
+            ],
+            "examples": [
+                "某巨鲸地址转移10000 ETH到交易所",
+                "MicroStrategy宣布增持比特币"
+            ],
+            "priority": 1
+        },
+        "利率事件": {
+            "description": "美联储相关的利率政策事件",
+            "criteria": [
+                "美联储委员的发言表态",
+                "FOMC会议相关消息",
+                "利率政策预期变化"
+            ],
+            "examples": [
+                "鲍威尔发表鹰派言论",
+                "FOMC会议纪要显示加息预期"
+            ],
+            "priority": 1
+        },
+        "美国政府监管政策": {
+            "description": "美国政府对加密货币的监管政策变化",
+            "criteria": [
+                "SEC/CFTC/财政部重大政策调整",
+                "立法进展（国会法案）",
+                "监管执法行动"
+            ],
+            "examples": [
+                "SEC批准比特币ETF",
+                "国会通过加密货币监管法案"
+            ],
+            "priority": 1
+        },
+        "安全事件": {
+            "description": "影响较大的安全相关事件",
+            "criteria": [
+                "黑客攻击、漏洞披露（影响较大的）",
+                "资金被盗、协议被黑",
+                "重大安全预警"
+            ],
+            "examples": [
+                "某DeFi协议被黑客攻击损失1000万美元",
+                "发现智能合约重大漏洞"
+            ],
+            "priority": 1
+        },
+        "新产品": {
+            "description": "KOL提及的真正创新产品（非广告）",
+            "criteria": [
+                "KOL提及的新项目/协议",
+                "必须是真正的创新，不是项目方广告",
+                "特别注意：如果疑似广告软文则归类为'忽略'"
+            ],
+            "examples": [
+                "V神推荐的新Layer2解决方案",
+                "知名开发者发布的新DeFi协议"
+            ],
+            "priority": 2
+        },
+        "市场新现象": {
+            "description": "重要的市场新趋势和变化",
+            "criteria": [
+                "新趋势、新变化",
+                "链上数据异常",
+                "新的市场模式"
+            ],
+            "examples": [
+                "NFT市场出现新的交易模式",
+                "链上活跃度异常增长"
+            ],
+            "priority": 2
+        }
+    },
+    
+    "ignore_criteria": [
+        "广告和软文 - 明显的推广内容",
+        "重复信息 - 与已有信息重复的内容",
+        "情绪发泄 - 纯粹的情绪表达，无实质信息",
+        "空洞的道理和预测 - 没有具体依据的预测或泛泛而谈",
+        "立场争论和口水仗 - 争论性内容，无实质信息价值"
+    ],
+    
+    "output_format": "请严格按照以下JSON格式输出：\n\n{\n    \"category\": \"类别名称\",\n    \"confidence\": 0.85,\n    \"reasoning\": \"详细说明分类理由\",\n    \"should_ignore\": false,\n    \"key_points\": [\"关键信息点1\", \"关键信息点2\"]\n}",
+    
+    "llm_settings": {
+        "temperature": 0.1,
+        "max_tokens": 1000,
+        "model": "MiniMax-M2.1"
+    }
+}

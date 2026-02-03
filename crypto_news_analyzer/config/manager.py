@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import logging
+from dotenv import load_dotenv
 
 from ..models import RSSSource, XSource, AuthConfig, StorageConfig, RESTAPISource
 
@@ -26,6 +27,10 @@ class ConfigManager:
         self.config_path = Path(config_path)
         self.config_data: Dict[str, Any] = {}
         self.logger = logging.getLogger(__name__)
+        
+        # 加载环境变量
+        load_dotenv()
+        self.logger.info("环境变量已加载")
         
     def load_config(self) -> Dict[str, Any]:
         """
@@ -193,14 +198,16 @@ class ConfigManager:
         return sources
     
     def get_auth_config(self) -> AuthConfig:
-        """获取认证配置"""
+        """获取认证配置，优先使用环境变量"""
         auth_data = self.config_data["auth"]
+        
+        # 从环境变量获取敏感信息，如果不存在则使用配置文件中的值
         return AuthConfig(
-            x_ct0=auth_data.get("x_ct0", ""),
-            x_auth_token=auth_data.get("x_auth_token", ""),
-            llm_api_key=auth_data["llm_api_key"],
-            telegram_bot_token=auth_data["telegram_bot_token"],
-            telegram_channel_id=auth_data["telegram_channel_id"]
+            x_ct0=os.getenv("x_ct0", auth_data.get("x_ct0", "")),
+            x_auth_token=os.getenv("x_auth_token", auth_data.get("x_auth_token", "")),
+            llm_api_key=os.getenv("llm_api_key", auth_data.get("llm_api_key", "")),
+            telegram_bot_token=os.getenv("telegram_bot_token", auth_data.get("telegram_bot_token", "")),
+            telegram_channel_id=os.getenv("telegram_channel_id", auth_data.get("telegram_channel_id", ""))
         )
     
     def get_storage_config(self) -> StorageConfig:
@@ -265,7 +272,7 @@ class ConfigManager:
                 "telegram_channel_id": ""
             },
             "llm_config": {
-                "model": "gpt-4",
+                "model": "MiniMax-M2.1",
                 "temperature": 0.1,
                 "max_tokens": 1000,
                 "prompt_config_path": "./prompts/analysis_prompt.json",
