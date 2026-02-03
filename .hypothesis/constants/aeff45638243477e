@@ -1,4 +1,0 @@
-# file: /Users/xiaohanshi/MyWorkspace/openclaw/getnews/crypto_news_analyzer/crawlers/__init__.py
-# hypothesis_version: 6.141.1
-
-['RSSCrawler', 'XCrawler']

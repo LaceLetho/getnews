@@ -1,0 +1,41 @@
+# 日志文件
+logs/
+*.log
+
+# 测试缓存和数据
+.pytest_cache/
+.hypothesis/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 数据文件
+data/
+test_data/
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local
+
+# IDE文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.temp
+*~
+
+# 构建输出
+build/
+dist/
+*.egg-info/

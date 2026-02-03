@@ -1,4 +1,0 @@
-# file: /Users/xiaohanshi/MyWorkspace/openclaw/getnews/crypto_news_analyzer/crawlers/rss_crawler.py
-# hypothesis_version: 6.141.1
-
-[200, '<', '>', 'Accept', 'Accept-Encoding', 'Accept-Language', 'Cache-Control', 'Connection', 'RSS条目缺少URL，跳过', 'RSS条目缺少内容，跳过', 'RSS条目缺少发布时间，使用当前时间', 'RSS条目缺少标题，跳过', 'User-Agent', 'atom', 'content', 'content-type', 'created', 'created_parsed', 'description', 'entry_count', 'error', 'feed', 'guid', 'gzip, deflate', 'html.parser', 'id', 'items', 'keep-alive', 'language', 'link', 'no-cache', 'published', 'published_parsed', 'results', 'rss', 'script', 'style', 'subtitle', 'success', 'summary', 'title', 'total_items', 'updated', 'updated_parsed', 'value', 'version', 'xml']
