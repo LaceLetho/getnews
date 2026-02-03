@@ -109,6 +109,15 @@ class XPlatformError(CryptoNewsAnalyzerError):
         super().__init__(message, ErrorType.X_PLATFORM_ERROR, details)
 
 
+class CrawlerError(CryptoNewsAnalyzerError):
+    """爬取器通用错误"""
+    
+    def __init__(self, message: str, crawler_type: str = "unknown", details: Optional[Dict[str, Any]] = None):
+        details = details or {}
+        details["crawler_type"] = crawler_type
+        super().__init__(message, ErrorType.NETWORK_ERROR, details)
+
+
 @dataclass
 class RecoveryAction:
     """错误恢复动作"""

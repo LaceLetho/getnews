@@ -1,3 +1,5 @@
 2026-02-03 18:26:53 - crypto_news_analyzer.config.manager - ERROR - 缺少必需配置字段: storage
 2026-02-03 18:30:33 - crypto_news_analyzer.config.manager - ERROR - 配置文件格式无效: Expecting value: line 1 column 1 (char 0)
 2026-02-03 18:31:39 - crypto_news_analyzer.config.manager - ERROR - 缺少必需配置字段: storage
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: 网络连接失败
+2026-02-03 18:38:45 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 源2 爬取失败: 源2失败

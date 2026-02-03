@@ -9357,3 +9357,43 @@
 2026-02-03 18:31:48 - crypto_news_analyzer.storage.data_manager - INFO - 时间窗口过滤完成，删除了 0 个过期项
 2026-02-03 18:31:48 - crypto_news_analyzer.storage.data_manager - INFO - 获取到 48 个内容项
 2026-02-03 18:31:48 - crypto_news_analyzer.storage.data_manager - INFO - 数据管理器已关闭
+2026-02-03 18:36:53 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 12小时，截止时间: 2026-02-03 06:36:53.741280
+2026-02-03 18:37:05 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:37:05.549237
+2026-02-03 18:37:47 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:37:47.931699
+2026-02-03 18:38:08 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:08.022186
+2026-02-03 18:38:16 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:16.867489
+2026-02-03 18:38:34 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 12小时，截止时间: 2026-02-03 06:38:34.991809
+2026-02-03 18:38:34 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:34.994132
+2026-02-03 18:38:34 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:34.996363
+2026-02-03 18:38:34 - crypto_news_analyzer.crawlers.rss_crawler - WARNING - RSS请求失败 (尝试 1/3): 连接失败
+2026-02-03 18:38:36 - crypto_news_analyzer.crawlers.rss_crawler - WARNING - RSS请求失败 (尝试 2/3): 超时
+2026-02-03 18:38:39 - crypto_news_analyzer.crawlers.rss_crawler - WARNING - 可能不是RSS内容，Content-Type: 
+2026-02-03 18:38:39 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:39.764294
+2026-02-03 18:38:39 - crypto_news_analyzer.crawlers.rss_crawler - WARNING - RSS请求失败 (尝试 1/3): 连接失败
+2026-02-03 18:38:41 - crypto_news_analyzer.crawlers.rss_crawler - WARNING - RSS请求失败 (尝试 2/3): 连接失败
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - WARNING - RSS请求失败 (尝试 3/3): 连接失败
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.706234
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.709297
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.711162
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.712995
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.714578
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.717240
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.740042
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.742233
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.743309
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.744171
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - 开始爬取RSS源: 测试RSS源 (https://example.com/rss.xml)
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS源 测试RSS源 爬取完成，获得 0 条内容
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.749768
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - 开始爬取RSS源: 测试RSS源 (https://example.com/rss.xml)
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: 网络连接失败
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:43.751845
+2026-02-03 18:38:43 - crypto_news_analyzer.crawlers.rss_crawler - INFO - 开始爬取 3 个RSS源
+2026-02-03 18:38:45 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 源2 爬取失败: 源2失败
+2026-02-03 18:38:48 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取完成，总共获得 1 条内容
+2026-02-03 18:38:48 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:48.188321
+2026-02-03 18:38:48 - crypto_news_analyzer.crawlers.rss_crawler - WARNING - RSS源验证失败 测试RSS源: 
+2026-02-03 18:38:48 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:48.191406
+2026-02-03 18:38:48 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:38:48.195311
+2026-02-03 18:39:18 - crypto_news_analyzer.crawlers.rss_crawler - INFO - RSS爬取器初始化完成，时间窗口: 24小时，截止时间: 2026-02-02 18:39:18.271215
+2026-02-03 18:39:20 - crypto_news_analyzer.crawlers.rss_crawler - WARNING - RSS源验证失败 测试RSS源2: HTTPSConnectionPool(host='rss.cnn.com', port=443): Max retries exceeded with url: /rss/edition.rss (Caused by SSLError(SSLEOFError(8, 'EOF occurred in violation of protocol (_ssl.c:1129)')))

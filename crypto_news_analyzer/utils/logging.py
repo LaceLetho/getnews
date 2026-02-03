@@ -186,3 +186,17 @@ def setup_logging(log_level: str = "INFO", log_dir: str = "./logs") -> None:
     global _log_manager
     _log_manager = LogManager(log_dir)
     _log_manager.setup_logging(log_level)
+
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    获取指定名称的日志器
+    
+    Args:
+        name: 日志器名称
+        
+    Returns:
+        日志器实例
+    """
+    log_manager = get_log_manager()
+    return log_manager.get_logger(name)
