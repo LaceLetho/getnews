@@ -181,6 +181,80 @@ class TestReportGenerator:
         assert "错误报告" in error_report
         assert "测试错误" in error_report
         assert "❌ 报告生成失败" in error_report
+    
+    def test_report_format_completeness(self):
+        """测试报告格式完整性 - 需求 7.1, 7.2, 7.4"""
+        categorized_items = {
+            "大户动向": [self.test_items[0]],
+            "市场新现象": [self.test_items[1]]
+        }
+        
+        analyzed_data = create_analyzed_data(
+            categorized_items, 
+            self.test_analysis_results, 
+            24, 
+            self.test_time
+        )
+        
+        report = self.generator.generate_report(analyzed_data, self.test_crawl_status)
+        
+        # 验证报告头部包含时间窗口信息 (需求 7.1)
+        assert "数据时间窗口**: 24 小时" in report
+        assert "数据时间范围**:" in report
+        
+        # 验证包含数据源状态表格 (需求 7.2)
+        assert "## 数据源爬取状态" in report
+        assert "| 数据源类型 | 数据源名称 | 状态 | 获取数量 | 错误信息 |" in report
+        
+        # 验证每条信息包含原文链接 (需求 7.4)
+        assert "[查看原文](https://example.com/news1)" in report
+        assert "[查看原文](https://example.com/news2)" in report
+        
+        # 验证按类别组织 (需求 7.3)
+        assert "## 🐋 大户动向" in report
+        assert "## 📊 市场新现象" in report
+    
+    def test_empty_category_display(self):
+        """测试空类别显示 - 需求 7.7"""
+        categorized_items = {
+            "大户动向": [],
+            "安全事件": []
+        }
+        
+        analyzed_data = create_analyzed_data(
+            categorized_items, 
+            {}, 
+            24, 
+            self.test_time
+        )
+        
+        report = self.generator.generate_report(analyzed_data, self.test_crawl_status)
+        
+        # 验证空类别显示为空 (需求 7.7)
+        assert "*本时间窗口内暂无相关内容*" in report
+    
+    def test_markdown_format_output(self):
+        """测试Markdown格式输出 - 需求 7.6"""
+        categorized_items = {
+            "大户动向": [self.test_items[0]]
+        }
+        
+        analyzed_data = create_analyzed_data(
+            categorized_items, 
+            self.test_analysis_results, 
+            24, 
+            self.test_time
+        )
+        
+        report = self.generator.generate_report(analyzed_data, self.test_crawl_status)
+        
+        # 验证Markdown格式元素
+        assert report.startswith("# ")  # 主标题
+        assert "## " in report  # 二级标题
+        assert "### " in report  # 三级标题
+        assert "**" in report  # 粗体
+        assert "| " in report  # 表格
+        assert "[" in report and "](" in report  # 链接格式
 
 
 class TestAnalyzedData:

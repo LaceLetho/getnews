@@ -242,6 +242,123 @@ class TestTelegramSender:
                 saved_content = f.read()
             
             assert saved_content == report_content
+    
+    def test_telegram_send_failure_backup(self):
+        """测试Telegram发送失败时的备份功能 - 需求 8.5"""
+        report_content = "# 测试报告\n\n发送失败测试"
+        
+        # 测试备份功能
+        backup_path = self.sender.save_report_backup(report_content)
+        
+        # 验证备份文件存在
+        import os
+        assert os.path.exists(backup_path)
+        
+        # 验证备份内容正确
+        with open(backup_path, 'r', encoding='utf-8') as f:
+            saved_content = f.read()
+        assert saved_content == report_content
+        
+        # 清理测试文件
+        os.remove(backup_path)
+    
+    @pytest.mark.asyncio
+    @patch('aiohttp.ClientSession.post')
+    async def test_bot_token_validation_comprehensive(self, mock_post):
+        """测试Bot Token验证的全面性 - 需求 8.6"""
+        # 测试有效Token
+        mock_response = AsyncMock()
+        mock_response.json.return_value = {
+            "ok": True, 
+            "result": {"username": "test_bot", "id": 123456}
+        }
+        mock_post.return_value.__aenter__.return_value = mock_response
+        
+        async with self.sender:
+            result = await self.sender.validate_bot_token()
+        
+        assert result.success is True
+        
+        # 测试无效Token格式
+        invalid_sender = TelegramSender(TelegramConfig(
+            bot_token="invalid_token_format",
+            channel_id="@test_channel"
+        ))
+        
+        # 测试API返回错误
+        mock_response.json.return_value = {
+            "ok": False, 
+            "description": "Unauthorized: bot token is invalid"
+        }
+        
+        async with invalid_sender:
+            result = await invalid_sender.validate_bot_token()
+        
+        assert result.success is False
+        assert "Unauthorized" in result.error_message
+    
+    @pytest.mark.asyncio
+    @patch('aiohttp.ClientSession.post')
+    async def test_channel_access_validation_comprehensive(self, mock_post):
+        """测试Channel访问验证的全面性 - 需求 8.7"""
+        # 测试有效Channel访问
+        mock_response = AsyncMock()
+        mock_response.json.return_value = {
+            "ok": True, 
+            "result": {
+                "id": -1001234567890,
+                "title": "Test Channel",
+                "type": "channel"
+            }
+        }
+        mock_post.return_value.__aenter__.return_value = mock_response
+        
+        async with self.sender:
+            result = await self.sender.validate_channel_access()
+        
+        assert result.success is True
+        
+        # 测试无效Channel访问
+        mock_response.json.return_value = {
+            "ok": False, 
+            "description": "Bad Request: chat not found"
+        }
+        
+        async with self.sender:
+            result = await self.sender.validate_channel_access()
+        
+        assert result.success is False
+        assert "chat not found" in result.error_message
+    
+    @pytest.mark.asyncio
+    @patch('aiohttp.ClientSession.post')
+    async def test_error_handling_and_logging(self, mock_post):
+        """测试错误处理和日志记录 - 需求 8.5"""
+        # 模拟网络错误
+        mock_post.side_effect = aiohttp.ClientError("Network error")
+        
+        async with self.sender:
+            result = await self.sender.send_report("测试消息")
+        
+        assert result.success is False
+        assert "Network error" in result.error_message
+        
+        # 重置mock
+        mock_post.side_effect = None
+        
+        # 模拟API错误响应
+        mock_response = AsyncMock()
+        mock_response.json.return_value = {
+            "ok": False,
+            "error_code": 400,
+            "description": "Bad Request: message is too long"
+        }
+        mock_post.return_value.__aenter__.return_value = mock_response
+        
+        async with self.sender:
+            result = await self.sender._send_message_part("测试消息", 1, 1)
+        
+        assert result.success is False
 
 
 class TestTelegramSenderSync:
