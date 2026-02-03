@@ -1,0 +1,4 @@
+# file: /Users/xiaohanshi/MyWorkspace/openclaw/getnews/crypto_news_analyzer/models.py
+# hypothesis_version: 6.141.1
+
+[0.0, 1.0, 1000, 'AnalysisResult', 'AuthConfig', 'ContentItem', 'CrawlResult', 'CrawlStatus', 'DELETE', 'GET', 'LLM API密钥不能为空', 'POST', 'PUT', 'REST API源名称不能为空', 'RESTAPISource', 'RSSSource', 'RSS源名称不能为空', 'RSS结果必须是列表', 'StorageConfig', 'XSource', 'X源名称不能为空', 'X结果必须是列表', 'content_field', 'daily', 'error', 'execution_time', 'key_points必须是列表', 'list', 'monthly', 'publish_time', 'rest_api', 'rss', 'rss_results', 'should_ignore必须是布尔值', 'success', 'time_field', 'timeline', 'title_field', 'url_field', 'utf-8', 'weekly', 'x', 'x_results', '内容ID不能为空', '内容不能为空', '分类不能为空', '利率事件', '发布时间必须是datetime对象', '大户动向', '安全事件', '市场新现象', '忽略', '总项目数不能为负数', '执行时间必须是datetime对象', '数据保留天数必须大于0', '数据库路径不能为空', '数据源名称不能为空', '新产品', '时间窗口必须是正整数', '最大存储空间必须大于0MB', '未分类', '标题不能为空', '置信度必须在0.0到1.0之间', '美国政府监管政策', '错误状态必须包含错误信息', '项目数量不能为负数']

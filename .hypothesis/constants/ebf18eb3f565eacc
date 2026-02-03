@@ -1,0 +1,4 @@
+# file: /Users/xiaohanshi/MyWorkspace/openclaw/getnews/crypto_news_analyzer/config/manager.py
+# hypothesis_version: 6.141.1
+
+[0.1, 1000, 3600, './config.json', 'Crypto List 1', 'PANews', 'PANews 快讯', 'auth', 'batch_size', 'cleanup_frequency', 'daily', 'database_path', 'description', 'endpoint', 'execution_interval', 'gpt-4', 'headers', 'http://', 'https://', 'https://x.com/', 'list', 'llm_api_key', 'llm_config', 'max_storage_mb', 'max_tokens', 'method', 'model', 'name', 'params', 'prompt_config_path', 'r', 'response_mapping', 'rest_api_sources', 'retention_days', 'rss_sources', 'storage', 'telegram_bot_token', 'telegram_channel_id', 'temperature', 'time_window_hours', 'timeline', 'type', 'url', 'utf-8', 'w', 'x_auth_token', 'x_ct0', 'x_sources', '执行间隔必须为正整数', '数据保留天数必须为正整数', '时间窗口参数必须为正整数', '配置数据验证失败，无法保存', '配置文件加载成功', '配置文件验证失败', '配置文件验证通过', '金色财经', '金色财经快讯']

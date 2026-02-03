@@ -1,0 +1,4 @@
+# file: /Users/xiaohanshi/MyWorkspace/openclaw/getnews/crypto_news_analyzer/utils/errors.py
+# hypothesis_version: 6.141.1
+
+[0.0, 1.0, 5.0, 60.0, 900.0, 300, 401, 403, 429, 500, 900, '\n### 详细错误', '## 错误报告', '### 错误统计', 'X平台服务器错误，稍后重试', 'X平台认证失败', 'X平台速率限制，将延长等待时间', 'api_error', 'api_name', 'auth_error', 'config_error', 'config_field', 'delay', 'fail', 'max_retries', 'network_error', 'operation', 'parse_error', 'rate_limit_error', 'response_code', 'retry', 'retry_after', 'service', 'skip', 'source', 'status_code', 'storage_error', 'x_platform_error', '操作失败', '无错误', '服务器错误，稍后重试', '认证失败，请检查认证信息', '跳过当前项目', '遇到速率限制，延长等待时间']
