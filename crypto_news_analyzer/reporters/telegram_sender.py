@@ -94,9 +94,14 @@ class TelegramSender:
             # 发送所有部分
             sent_parts = 0
             last_message_id = None
+            total_retry_budget = self.config.retry_attempts
             
             for i, part in enumerate(message_parts):
-                part_result = await self._send_message_part(part, i + 1, len(message_parts))
+                # 为每个部分分配重试预算
+                remaining_parts = len(message_parts) - i
+                part_retry_budget = max(1, total_retry_budget // remaining_parts)
+                
+                part_result = await self._send_message_part(part, i + 1, len(message_parts), part_retry_budget)
                 
                 if part_result.success:
                     sent_parts += 1
@@ -104,6 +109,9 @@ class TelegramSender:
                     self.logger.info(f"成功发送消息部分 {i + 1}/{len(message_parts)}")
                 else:
                     self.logger.error(f"发送消息部分 {i + 1}/{len(message_parts)} 失败: {part_result.error_message}")
+                    
+                    # 减少剩余的重试预算
+                    total_retry_budget -= part_retry_budget
                     
                     # 如果不是最后一部分，继续尝试发送剩余部分
                     if i < len(message_parts) - 1:
@@ -124,13 +132,14 @@ class TelegramSender:
             self.logger.error(error_msg)
             return SendResult(success=False, error_message=error_msg)
     
-    async def _send_message_part(self, message: str, part_num: int, total_parts: int) -> SendResult:
+    async def _send_message_part(self, message: str, part_num: int, total_parts: int, max_retries: int = None) -> SendResult:
         """发送单个消息部分
         
         Args:
             message: 消息内容
             part_num: 当前部分编号
             total_parts: 总部分数
+            max_retries: 最大重试次数，如果为None则使用配置值
             
         Returns:
             发送结果
@@ -140,7 +149,9 @@ class TelegramSender:
             header = f"📊 *加密货币新闻分析报告 ({part_num}/{total_parts})*\n\n"
             message = header + message
         
-        for attempt in range(self.config.retry_attempts):
+        retry_attempts = max_retries if max_retries is not None else self.config.retry_attempts
+        
+        for attempt in range(retry_attempts):
             try:
                 result = await self._make_api_request("sendMessage", {
                     "chat_id": self.config.channel_id,
@@ -154,15 +165,15 @@ class TelegramSender:
                     return SendResult(success=True, message_id=message_id)
                 else:
                     error_desc = result.get("description", "未知错误")
-                    self.logger.warning(f"API返回错误 (尝试 {attempt + 1}/{self.config.retry_attempts}): {error_desc}")
+                    self.logger.warning(f"API返回错误 (尝试 {attempt + 1}/{retry_attempts}): {error_desc}")
                     
-                    if attempt < self.config.retry_attempts - 1:
+                    if attempt < retry_attempts - 1:
                         await asyncio.sleep(self.config.retry_delay * (2 ** attempt))  # 指数退避
                     
             except Exception as e:
-                self.logger.warning(f"发送消息失败 (尝试 {attempt + 1}/{self.config.retry_attempts}): {str(e)}")
+                self.logger.warning(f"发送消息失败 (尝试 {attempt + 1}/{retry_attempts}): {str(e)}")
                 
-                if attempt < self.config.retry_attempts - 1:
+                if attempt < retry_attempts - 1:
                     await asyncio.sleep(self.config.retry_delay * (2 ** attempt))
         
         return SendResult(success=False, error_message="达到最大重试次数")
