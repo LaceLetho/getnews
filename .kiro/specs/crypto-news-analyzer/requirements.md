@@ -1,0 +1,193 @@
+# 需求文档
+
+## 介绍
+
+加密货币新闻爬取和分析工具是一个自动化系统，用于从多个信息源收集加密货币相关新闻和社交媒体内容，并通过大模型进行智能分析和分类，生成结构化的新闻快讯报告。
+
+## 术语表
+
+- **System**: 加密货币新闻分析系统
+- **RSS_Crawler**: RSS订阅源爬取组件
+- **X_Crawler**: X/Twitter内容爬取组件  
+- **Content_Analyzer**: 内容分析和分类组件
+- **Report_Generator**: 报告生成组件
+- **Time_Window**: 用户指定的时间窗口参数（小时数）
+- **Auth_Token**: X/Twitter认证令牌
+- **CT0**: X/Twitter认证参数
+- **LLM_API_Key**: 大模型服务的API密钥
+- **Telegram_Bot_Token**: Telegram机器人认证令牌
+- **Telegram_Channel_ID**: Telegram频道标识符
+- **Config_File**: 系统配置文件，存储信息源和认证参数
+- **RSS_Source**: RSS订阅源配置项
+- **X_Source**: X/Twitter信息源配置项
+- **Scheduler**: 定时任务调度器
+- **Execution_Interval**: 自动执行间隔时间
+- **Content_Item**: 单条新闻或社交媒体内容
+- **Category**: 六大信息分类类别之一
+
+## 需求
+
+### 需求 1: 参数配置
+
+**用户故事:** 作为用户，我希望能够配置分析参数，以便控制数据收集的范围和认证信息。
+
+#### 验收标准
+
+1. WHEN 用户启动系统 THEN System SHALL 接受时间窗口参数（小时数）
+2. WHEN 用户提供X认证信息 THEN System SHALL 接受ct0和auth_token参数
+3. WHEN 用户提供大模型认证信息 THEN System SHALL 接受LLM API密钥参数
+4. WHEN 用户提供Telegram配置信息 THEN System SHALL 接受bot_token和channel_id参数
+5. WHEN 参数无效或缺失 THEN System SHALL 返回明确的错误信息
+6. THE System SHALL 验证时间窗口参数为正整数
+7. THE System SHALL 验证认证参数格式的有效性
+8. WHEN 接收到有效参数 THEN System SHALL 自动保存参数配置以供后续使用
+9. WHEN 系统启动前 THEN System SHALL 检查所有必需参数的有效性
+10. IF 发现参数无效或缺失 THEN System SHALL 及时提醒用户进行参数设置
+
+### 需求 2: 配置文件管理
+
+**用户故事:** 作为用户，我希望系统能够通过配置文件管理信息源，以便方便地增减和修改数据源。
+
+#### 验收标准
+
+1. THE System SHALL 创建和维护一个配置文件存储所有信息源
+2. THE Config_File SHALL 包含所有RSS订阅源的URL和描述信息
+3. THE Config_File SHALL 包含所有X/Twitter信息源的URL和描述信息
+4. THE Config_File SHALL 存储认证参数（ct0、auth_token、LLM API密钥、Telegram配置）
+5. WHEN 系统启动前 THEN System SHALL 读取并验证配置文件的有效性
+6. WHEN 配置文件不存在 THEN System SHALL 创建默认配置文件包含预设信息源
+7. WHEN 配置文件格式无效 THEN System SHALL 提示用户修正配置文件
+8. THE System SHALL 支持用户通过编辑配置文件来增加、删除或修改信息源
+9. WHEN 配置文件更新 THEN System SHALL 在下次运行时使用新的配置
+10. THE System SHALL 验证配置文件中每个信息源URL的格式有效性
+
+### 需求 3: RSS内容爬取
+
+**用户故事:** 作为用户，我希望系统能够从配置文件读取RSS订阅源并自动爬取内容，以便获取全面的新闻信息。
+
+#### 验收标准
+
+1. THE System SHALL 从配置文件读取所有RSS订阅源URL
+2. THE System SHALL 爬取配置文件中定义的每个RSS订阅源
+3. WHEN RSS源不可访问 THEN System SHALL 记录错误状态并继续处理其他源
+4. WHEN 爬取RSS内容 THEN System SHALL 提取标题、内容、发布时间和原文链接
+5. WHEN 内容发布时间超出时间窗口 THEN System SHALL 过滤掉该内容
+6. THE System SHALL 支持标准RSS 2.0和Atom格式的订阅源
+7. WHEN 配置文件中RSS源为空 THEN System SHALL 跳过RSS爬取阶段
+
+### 需求 4: X/Twitter内容爬取
+
+**用户故事:** 作为用户，我希望系统能够从配置文件读取X/Twitter信息源并爬取内容，以便获取社交媒体上的实时信息。
+
+#### 验收标准
+
+1. THE System SHALL 从配置文件读取所有X/Twitter信息源URL
+2. THE System SHALL 爬取配置文件中定义的每个X列表和时间线
+3. WHEN 使用X认证参数 THEN System SHALL 通过ct0和auth_token进行身份验证
+4. WHEN X API调用失败 THEN System SHALL 记录错误状态并继续处理其他源
+5. WHEN 爬取X内容 THEN System SHALL 提取推文文本、发布时间和原文链接
+6. WHEN 推文发布时间超出时间窗口 THEN System SHALL 过滤掉该推文
+7. WHEN 配置文件中X信息源为空 THEN System SHALL 跳过X爬取阶段
+
+### 需求 5: 内容智能分析和分类
+
+**用户故事:** 作为用户，我希望系统能够智能分析收集到的内容并按照预定义的类别进行分类，以便快速了解不同类型的市场信息。
+
+#### 验收标准
+
+1. WHEN 分析内容 THEN System SHALL 使用大模型进行内容理解和分类
+2. WHEN 大模型API调用 THEN System SHALL 使用提供的LLM API密钥进行认证
+3. THE Content_Analyzer SHALL 识别大户动向类别（巨鲸资金流动、大户态度变化、知名地址操作）
+4. THE Content_Analyzer SHALL 识别利率事件类别（美联储发言、FOMC会议、利率政策预期）
+5. THE Content_Analyzer SHALL 识别美国政府监管政策类别（SEC/CFTC/财政部政策、立法进展、监管执法）
+6. THE Content_Analyzer SHALL 识别安全事件类别（黑客攻击、资金被盗、安全预警）
+7. THE Content_Analyzer SHALL 识别新产品类别（KOL提及的创新项目，排除广告）
+8. THE Content_Analyzer SHALL 识别市场新现象类别（新趋势、链上数据异常、新市场模式）
+9. WHEN 内容属于忽略类别 THEN System SHALL 过滤掉广告软文、重复信息、情绪发泄、空洞预测和立场争论
+10. WHEN 内容无法分类 THEN System SHALL 标记为未分类但保留在报告中
+
+### 需求 6: 爬取状态监控
+
+**用户故事:** 作为用户，我希望了解各个数据源的爬取状态，以便知道数据收集的完整性。
+
+#### 验收标准
+
+1. THE System SHALL 记录每个RSS订阅源的爬取状态（成功/失败）
+2. THE System SHALL 记录每个RSS订阅源的获取数量
+3. THE System SHALL 记录每个X列表的爬取状态（成功/失败）
+4. THE System SHALL 记录每个X列表的获取数量
+5. WHEN 数据源爬取失败 THEN System SHALL 记录具体的错误原因
+6. THE System SHALL 在最终报告中展示所有数据源的状态信息
+
+### 需求 7: 结构化报告生成
+
+**用户故事:** 作为用户，我希望获得格式化的分析报告，以便快速浏览和理解收集到的信息。
+
+#### 验收标准
+
+1. THE Report_Generator SHALL 生成包含时间窗口信息的报告头部
+2. THE Report_Generator SHALL 生成网站爬取状态表格，显示每个数据源的状态和获取数量
+3. THE Report_Generator SHALL 按六大类别组织分析结果
+4. WHEN 生成分类内容 THEN System SHALL 为每条信息包含原文链接
+5. THE Report_Generator SHALL 生成可选的总结部分，突出最重要的信息
+6. THE Report_Generator SHALL 使用Markdown格式输出报告
+7. WHEN 某个类别没有内容 THEN System SHALL 在报告中显示该类别为空
+
+### 需求 8: Telegram报告发送
+
+**用户故事:** 作为用户，我希望系统能够自动将生成的报告发送到指定的Telegram频道，以便及时获得分析结果。
+
+#### 验收标准
+
+1. WHEN 报告生成完成 THEN System SHALL 通过Telegram Bot发送报告到指定频道
+2. WHEN 发送Telegram消息 THEN System SHALL 使用保存的bot_token进行认证
+3. WHEN 发送Telegram消息 THEN System SHALL 发送到指定的channel_id
+4. THE System SHALL 保持报告的Markdown格式在Telegram中的可读性
+5. WHEN Telegram发送失败 THEN System SHALL 记录错误信息并提供本地报告备份
+6. THE System SHALL 验证Telegram Bot Token的有效性
+7. THE System SHALL 验证Telegram Channel ID的可访问性
+
+### 需求 9: 定时任务调度
+
+**用户故事:** 作为用户，我希望系统能够定时自动执行分析任务，以便在云服务器上持续监控加密货币新闻。
+
+#### 验收标准
+
+1. THE System SHALL 支持配置自动执行间隔时间
+2. THE Scheduler SHALL 按照配置的间隔时间自动触发分析任务
+3. WHEN 定时任务启动 THEN System SHALL 执行完整的爬取、分析和报告流程
+4. THE System SHALL 支持以守护进程模式运行
+5. WHEN 系统部署到云服务器 THEN System SHALL 能够无人值守运行
+6. THE System SHALL 记录每次定时执行的日志信息
+7. WHEN 定时任务执行失败 THEN System SHALL 记录错误并在下个周期重试
+8. THE System SHALL 支持手动触发执行而不影响定时调度
+9. THE Config_File SHALL 包含执行间隔配置参数
+10. WHEN 间隔时间配置无效 THEN System SHALL 使用默认间隔时间并记录警告
+
+### 需求 10: 时间窗口过滤
+
+**用户故事:** 作为用户，我希望只分析指定时间窗口内的内容，以便获得时效性强的信息。
+
+#### 验收标准
+
+1. WHEN 处理任何内容 THEN System SHALL 检查其发布时间是否在指定的时间窗口内
+2. THE System SHALL 计算时间窗口为当前时间向前推算指定小时数
+3. WHEN 内容发布时间早于时间窗口起始时间 THEN System SHALL 排除该内容
+4. THE System SHALL 在报告中显示实际的数据时间窗口范围
+5. WHEN 时间窗口参数为0或负数 THEN System SHALL 返回错误信息
+
+### 需求 11: 错误处理和容错
+
+**用户故事:** 作为系统管理员，我希望系统能够优雅地处理各种错误情况，以便保证系统的稳定性和可用性。
+
+#### 验收标准
+
+1. WHEN 网络连接失败 THEN System SHALL 记录错误并继续处理其他数据源
+2. WHEN RSS解析失败 THEN System SHALL 记录错误详情并跳过该订阅源
+3. WHEN X API认证失败 THEN System SHALL 返回明确的认证错误信息
+4. WHEN 大模型API认证失败 THEN System SHALL 返回明确的API密钥错误信息
+5. WHEN Telegram Bot认证失败 THEN System SHALL 返回明确的Bot Token错误信息
+6. WHEN 大模型API调用失败 THEN System SHALL 记录错误并将内容标记为未分析
+7. IF 所有数据源都失败 THEN System SHALL 生成包含错误信息的报告
+8. THE System SHALL 为每种错误类型提供具体的错误描述
+9. WHEN 部分数据源成功 THEN System SHALL 基于可用数据生成报告并标注数据源状态
