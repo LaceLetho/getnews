@@ -183,22 +183,27 @@
 13. WHEN 部分消息发送成功 THEN System SHALL 记录成功发送的部分数量和总部分数量
 14. THE System SHALL 在发送失败时自动创建带时间戳的本地备份文件
 
-### 需求 9: 定时任务调度
+### 需求 9: Docker化部署和容器调度
 
-**用户故事:** 作为用户，我希望系统能够定时自动执行分析任务，以便在云服务器上持续监控加密货币新闻。
+**用户故事:** 作为用户，我希望系统能够通过Docker容器化部署，并支持灵活的调度方式，以便在云环境中高效运行和管理。
 
 #### 验收标准
 
-1. THE System SHALL 支持配置自动执行间隔时间
-2. THE Scheduler SHALL 按照配置的间隔时间自动触发分析任务
-3. WHEN 定时任务启动 THEN System SHALL 执行完整的爬取、分析和报告流程
-4. THE System SHALL 支持以守护进程模式运行
-5. WHEN 系统部署到云服务器 THEN System SHALL 能够无人值守运行
-6. THE System SHALL 记录每次定时执行的日志信息
-7. WHEN 定时任务执行失败 THEN System SHALL 记录错误并在下个周期重试
-8. THE System SHALL 支持手动触发执行而不影响定时调度
-9. THE Config_File SHALL 包含执行间隔配置参数
-10. WHEN 间隔时间配置无效 THEN System SHALL 使用默认间隔时间并记录警告
+1. THE System SHALL 提供Dockerfile支持完整的容器化部署
+2. THE System SHALL 支持通过环境变量进行配置管理
+3. THE System SHALL 提供Docker Compose配置文件支持服务编排
+4. THE System SHALL 实现容器健康检查机制，验证服务可用性
+5. THE System SHALL 支持数据卷挂载，包括配置文件、日志目录和数据存储
+6. THE System SHALL 支持通过外部调度器（如cron、Kubernetes CronJob）进行定时执行
+7. THE System SHALL 支持一次性执行模式，适合容器化调度环境
+8. WHEN 容器接收到停止信号 THEN System SHALL 优雅停止并清理资源
+9. THE System SHALL 在容器启动时验证所有必需的环境变量和挂载卷
+10. WHEN 容器环境配置无效 THEN System SHALL 快速失败并提供明确的错误信息
+11. THE System SHALL 支持多种容器运行时环境（Docker、Podman、Kubernetes）
+12. THE System SHALL 提供轻量级的基础镜像，优化容器启动时间和资源占用
+13. WHEN 容器重启 THEN System SHALL 自动恢复到正常工作状态
+14. THE System SHALL 支持容器日志的标准输出，便于日志收集和监控
+15. THE System SHALL 提供健康检查端点，支持容器编排系统的健康监控
 
 ### 需求 10: 时间窗口过滤
 

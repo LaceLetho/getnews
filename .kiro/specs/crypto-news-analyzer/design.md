@@ -46,8 +46,8 @@ graph TB
         TG[Telegram发送器]
     end
     
-    subgraph "调度层"
-        SCH[定时调度器]
+    subgraph "协调层"
+        COORD[执行协调器]
         LOG[日志管理器]
     end
     
@@ -59,9 +59,9 @@ graph TB
     end
     
     CF --> CONFIG
-    SCH --> CF
-    SCH --> RSS
-    SCH --> X
+    COORD --> CF
+    COORD --> RSS
+    COORD --> X
     RSS --> RSSSRC
     X --> XAPI
     RSS --> DM
@@ -72,7 +72,7 @@ graph TB
     CAT --> RG
     RG --> TG
     TG --> TGAPI
-    SCH --> LOG
+    COORD --> LOG
 ```
 
 ### 架构原则
@@ -510,21 +510,41 @@ class TelegramSender:
 
 **依赖库**: python-telegram-bot 或 pyTelegramBotAPI
 
-### 9. 定时调度器 (Scheduler)
+### 9. 执行协调器 (ExecutionCoordinator)
 
-管理定时任务执行。
+协调系统内部各组件的执行顺序和工作流管理。在Docker化部署中，定时调度由外部系统（cron、Kubernetes CronJob）负责，协调器专注于内部工作流协调。
 
 ```python
-class Scheduler:
-    def __init__(self, interval_seconds: int)
-    def start_daemon(self) -> None
+class ExecutionCoordinator:
+    def __init__(self, config_manager: ConfigManager, data_manager: DataManager)
+    def run_once(self) -> ExecutionResult
+    def coordinate_workflow(self) -> WorkflowResult
+    def start_daemon(self, interval_seconds: int) -> None  # 传统模式，向后兼容
     def stop_daemon(self) -> None
-    def run_once(self) -> None
-    def schedule_next_run(self) -> None
-    def is_running(self) -> bool
+    def handle_execution_errors(self, errors: List[Exception]) -> RecoveryAction
+    def get_execution_status(self) -> ExecutionStatus
+    def cleanup_resources(self) -> None
+    def validate_prerequisites(self) -> ValidationResult
 ```
 
-**依赖库**: schedule, threading
+**主要功能**:
+- **一次性执行模式**: 适合容器化调度，执行完整的爬取→分析→报告→发送工作流
+- **工作流协调**: 管理各组件的执行顺序和依赖关系
+- **错误恢复**: 处理执行过程中的错误和异常情况
+- **资源管理**: 确保执行完成后正确清理资源
+- **状态监控**: 提供执行状态和进度信息
+
+**Docker化适配**:
+- 在容器环境中，通过 `run_once()` 方法执行单次完整工作流
+- 外部调度器（cron、Kubernetes CronJob）负责定时触发容器
+- 支持环境变量配置和容器信号处理
+- 提供健康检查和状态查询接口
+
+**传统部署兼容**:
+- 保留 `start_daemon()` 方法支持传统守护进程模式
+- 向后兼容现有的定时调度配置
+
+**依赖库**: threading（仅守护进程模式需要）
 
 ### 11. 数据源工厂 (DataSourceFactory)
 
@@ -755,9 +775,9 @@ class ErrorHandler:
 *对于任何*生成的报告，如果Telegram配置有效，系统应该成功发送报告到指定频道
 **验证: 需求 8.1**
 
-### 属性 9: 定时调度准确性
-*对于任何*配置的执行间隔，调度器应该按照该间隔自动触发分析任务
-**验证: 需求 9.2**
+### 属性 9: 执行协调一致性
+*对于任何*一次性执行请求，执行协调器应该按照正确的顺序协调各组件执行完整的工作流（爬取→分析→报告→发送）
+**验证: 需求 9.7**
 
 ### 属性 10: 时间窗口过滤正确性
 *对于任何*内容项，只有发布时间在指定时间窗口内的内容应该被包含在最终分析中
