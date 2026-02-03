@@ -5,3 +5,25 @@
 2026-02-03 18:38:45 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 源2 爬取失败: 源2失败
 2026-02-03 19:06:58 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: 网络连接失败
 2026-02-03 19:06:59 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 源2 爬取失败: 源2失败
+2026-02-03 19:12:35 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: 网络连接失败
+2026-02-03 19:12:36 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 源2 爬取失败: 源2失败
+2026-02-03 19:12:42 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 连接超时
+2026-02-03 19:12:45 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 无法连接到服务器
+2026-02-03 19:12:49 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 404 Not Found
+2026-02-03 19:12:53 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 500 Internal Server Error
+2026-02-03 19:12:57 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: DNS解析失败
+2026-02-03 19:13:01 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: SSL证书验证失败
+2026-02-03 19:13:07 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 成功源2: 
+2026-02-03 19:13:07 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 成功源2 爬取失败: 爬取RSS源失败 成功源2: 
+2026-02-03 19:13:40 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败
+2026-02-03 19:13:40 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 失败源 爬取失败: 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败
+2026-02-03 19:13:59 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: 网络连接失败
+2026-02-03 19:14:02 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 源2 爬取失败: 源2失败
+2026-02-03 19:14:08 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 连接超时
+2026-02-03 19:14:13 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 无法连接到服务器
+2026-02-03 19:14:18 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 404 Not Found
+2026-02-03 19:14:22 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: 500 Internal Server Error
+2026-02-03 19:14:26 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: DNS解析失败
+2026-02-03 19:14:30 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 测试RSS源: RSS请求失败，已重试 3 次: SSL证书验证失败
+2026-02-03 19:14:35 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败
+2026-02-03 19:14:35 - crypto_news_analyzer.crawlers.rss_crawler - ERROR - RSS源 失败源 爬取失败: 爬取RSS源失败 失败源: RSS请求失败，已重试 3 次: 连接失败

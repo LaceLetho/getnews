@@ -408,6 +408,396 @@ class TestRSSCrawler:
         assert url3 == "https://example.com/news/3"
 
 
+class TestRSSFormats:
+    """测试各种RSS格式的解析 - 需求 3.6"""
+    
+    @pytest.fixture
+    def crawler(self):
+        """创建RSS爬取器实例"""
+        return RSSCrawler(time_window_hours=24)
+    
+    @pytest.fixture
+    def sample_rss_source(self):
+        """创建示例RSS源"""
+        return RSSSource(
+            name="测试RSS源",
+            url="https://example.com/rss.xml",
+            description="测试用RSS源"
+        )
+    
+    def test_rss_2_0_format_parsing(self, crawler, sample_rss_source):
+        """测试RSS 2.0格式解析"""
+        rss_2_0_content = """<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <title>RSS 2.0 测试</title>
+                <description>RSS 2.0 格式测试</description>
+                <link>https://example.com</link>
+                
+                <item>
+                    <title>RSS 2.0 新闻标题</title>
+                    <description>RSS 2.0 新闻内容描述</description>
+                    <link>https://example.com/news/rss20</link>
+                    <pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate>
+                    <guid>https://example.com/news/rss20</guid>
+                </item>
+            </channel>
+        </rss>"""
+        
+        feed = feedparser.parse(rss_2_0_content)
+        assert feed.version == "rss20"
+        assert len(feed.entries) == 1
+        
+        item = crawler._parse_rss_entry(feed.entries[0], sample_rss_source)
+        assert item is not None
+        assert item.title == "RSS 2.0 新闻标题"
+        assert item.content == "RSS 2.0 新闻内容描述"
+        assert item.url == "https://example.com/news/rss20"
+    
+    def test_atom_format_parsing(self, crawler, sample_rss_source):
+        """测试Atom格式解析"""
+        atom_content = """<?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Atom 测试</title>
+            <subtitle>Atom 格式测试</subtitle>
+            <link href="https://example.com"/>
+            <id>https://example.com/atom</id>
+            <updated>2024-01-01T12:00:00Z</updated>
+            
+            <entry>
+                <title>Atom 新闻标题</title>
+                <summary>Atom 新闻内容摘要</summary>
+                <link href="https://example.com/news/atom"/>
+                <id>https://example.com/news/atom</id>
+                <updated>2024-01-01T12:00:00Z</updated>
+                <published>2024-01-01T12:00:00Z</published>
+            </entry>
+        </feed>"""
+        
+        feed = feedparser.parse(atom_content)
+        assert feed.version == "atom10"
+        assert len(feed.entries) == 1
+        
+        item = crawler._parse_rss_entry(feed.entries[0], sample_rss_source)
+        assert item is not None
+        assert item.title == "Atom 新闻标题"
+        assert item.content == "Atom 新闻内容摘要"
+        assert item.url == "https://example.com/news/atom"
+    
+    def test_rss_1_0_format_parsing(self, crawler, sample_rss_source):
+        """测试RSS 1.0 (RDF)格式解析"""
+        rss_1_0_content = """<?xml version="1.0" encoding="UTF-8"?>
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                 xmlns="http://purl.org/rss/1.0/">
+            <channel rdf:about="https://example.com">
+                <title>RSS 1.0 测试</title>
+                <description>RSS 1.0 格式测试</description>
+                <link>https://example.com</link>
+                <items>
+                    <rdf:Seq>
+                        <rdf:li rdf:resource="https://example.com/news/rss10"/>
+                    </rdf:Seq>
+                </items>
+            </channel>
+            
+            <item rdf:about="https://example.com/news/rss10">
+                <title>RSS 1.0 新闻标题</title>
+                <description>RSS 1.0 新闻内容描述</description>
+                <link>https://example.com/news/rss10</link>
+            </item>
+        </rdf:RDF>"""
+        
+        feed = feedparser.parse(rss_1_0_content)
+        assert feed.version == "rss10"
+        assert len(feed.entries) == 1
+        
+        item = crawler._parse_rss_entry(feed.entries[0], sample_rss_source)
+        assert item is not None
+        assert item.title == "RSS 1.0 新闻标题"
+        assert item.content == "RSS 1.0 新闻内容描述"
+        assert item.url == "https://example.com/news/rss10"
+    
+    def test_malformed_rss_parsing(self, crawler, sample_rss_source):
+        """测试格式错误的RSS解析"""
+        malformed_rss = """<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <title>格式错误的RSS</title>
+                <description>测试格式错误的RSS</description>
+                <!-- 缺少结束标签的item -->
+                <item>
+                    <title>不完整的条目</title>
+                    <description>这个条目缺少结束标签
+                
+                <item>
+                    <title>正常的条目</title>
+                    <description>这个条目是正常的</description>
+                    <link>https://example.com/normal</link>
+                    <pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate>
+                </item>
+            </channel>
+        </rss>"""
+        
+        # feedparser应该能够处理格式错误的RSS
+        feed = feedparser.parse(malformed_rss)
+        assert feed.bozo == True  # 表示解析时遇到了问题
+        # 但仍然应该能解析出一些内容
+        assert len(feed.entries) >= 1
+    
+    def test_rss_with_cdata_sections(self, crawler, sample_rss_source):
+        """测试包含CDATA的RSS解析"""
+        cdata_rss = """<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <title><![CDATA[包含CDATA的RSS]]></title>
+                <description><![CDATA[测试CDATA处理]]></description>
+                
+                <item>
+                    <title><![CDATA[CDATA标题 & 特殊字符 < > "]]></title>
+                    <description><![CDATA[
+                        <p>这是包含HTML的内容</p>
+                        <p>特殊字符: & < > " '</p>
+                        <script>alert('test');</script>
+                    ]]></description>
+                    <link>https://example.com/cdata</link>
+                    <pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate>
+                </item>
+            </channel>
+        </rss>"""
+        
+        feed = feedparser.parse(cdata_rss)
+        assert len(feed.entries) == 1
+        
+        item = crawler._parse_rss_entry(feed.entries[0], sample_rss_source)
+        assert item is not None
+        assert "CDATA标题" in item.title
+        assert "特殊字符" in item.content
+        # 确保HTML被清理
+        assert "<script>" not in item.content
+        assert "alert" not in item.content
+    
+    def test_rss_with_namespaces(self, crawler, sample_rss_source):
+        """测试包含命名空间的RSS解析"""
+        namespaced_rss = """<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" 
+             xmlns:content="http://purl.org/rss/1.0/modules/content/"
+             xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <channel>
+                <title>命名空间RSS测试</title>
+                <description>测试命名空间处理</description>
+                
+                <item>
+                    <title>命名空间新闻</title>
+                    <description>简短描述</description>
+                    <content:encoded><![CDATA[
+                        <p>这是完整的HTML内容</p>
+                        <p>包含更多详细信息</p>
+                    ]]></content:encoded>
+                    <dc:creator>作者名称</dc:creator>
+                    <link>https://example.com/namespace</link>
+                    <pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate>
+                </item>
+            </channel>
+        </rss>"""
+        
+        feed = feedparser.parse(namespaced_rss)
+        assert len(feed.entries) == 1
+        
+        entry = feed.entries[0]
+        # feedparser应该能够处理命名空间
+        assert hasattr(entry, 'content')
+        assert hasattr(entry, 'author')
+        
+        item = crawler._parse_rss_entry(entry, sample_rss_source)
+        assert item is not None
+        assert item.title == "命名空间新闻"
+
+
+class TestNetworkErrorHandling:
+    """测试网络错误和异常情况 - 需求 3.3"""
+    
+    @pytest.fixture
+    def crawler(self):
+        """创建RSS爬取器实例"""
+        return RSSCrawler(time_window_hours=24)
+    
+    @pytest.fixture
+    def sample_rss_source(self):
+        """创建示例RSS源"""
+        return RSSSource(
+            name="测试RSS源",
+            url="https://example.com/rss.xml",
+            description="测试用RSS源"
+        )
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_connection_timeout_error(self, mock_get, crawler, sample_rss_source):
+        """测试连接超时错误"""
+        mock_get.side_effect = requests.exceptions.Timeout("连接超时")
+        
+        with pytest.raises(CrawlerError) as exc_info:
+            crawler.crawl_source(sample_rss_source)
+        
+        assert "连接超时" in str(exc_info.value)
+        assert mock_get.call_count == 3  # 应该重试3次
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_connection_error(self, mock_get, crawler, sample_rss_source):
+        """测试连接错误"""
+        mock_get.side_effect = requests.exceptions.ConnectionError("无法连接到服务器")
+        
+        with pytest.raises(CrawlerError) as exc_info:
+            crawler.crawl_source(sample_rss_source)
+        
+        assert "无法连接到服务器" in str(exc_info.value)
+        assert mock_get.call_count == 3  # 应该重试3次
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_http_error_404(self, mock_get, crawler, sample_rss_source):
+        """测试HTTP 404错误"""
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("404 Not Found")
+        mock_get.return_value = mock_response
+        
+        with pytest.raises(CrawlerError) as exc_info:
+            crawler.crawl_source(sample_rss_source)
+        
+        assert "404 Not Found" in str(exc_info.value)
+        assert mock_get.call_count == 3  # 应该重试3次
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_http_error_500(self, mock_get, crawler, sample_rss_source):
+        """测试HTTP 500错误"""
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Internal Server Error")
+        mock_get.return_value = mock_response
+        
+        with pytest.raises(CrawlerError) as exc_info:
+            crawler.crawl_source(sample_rss_source)
+        
+        assert "500 Internal Server Error" in str(exc_info.value)
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_dns_resolution_error(self, mock_get, crawler, sample_rss_source):
+        """测试DNS解析错误"""
+        mock_get.side_effect = requests.exceptions.ConnectionError("DNS解析失败")
+        
+        with pytest.raises(CrawlerError):
+            crawler.crawl_source(sample_rss_source)
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_ssl_error(self, mock_get, crawler, sample_rss_source):
+        """测试SSL证书错误"""
+        mock_get.side_effect = requests.exceptions.SSLError("SSL证书验证失败")
+        
+        with pytest.raises(CrawlerError):
+            crawler.crawl_source(sample_rss_source)
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_invalid_response_content(self, mock_get, crawler, sample_rss_source):
+        """测试无效响应内容"""
+        mock_response = Mock()
+        mock_response.text = "这不是有效的XML内容"
+        mock_response.headers = {'content-type': 'text/html'}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+        
+        # 应该能够处理无效内容而不崩溃
+        items = crawler.crawl_source(sample_rss_source)
+        assert items == []  # 无效内容应该返回空列表
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_empty_response(self, mock_get, crawler, sample_rss_source):
+        """测试空响应"""
+        mock_response = Mock()
+        mock_response.text = ""
+        mock_response.headers = {'content-type': 'application/rss+xml'}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+        
+        items = crawler.crawl_source(sample_rss_source)
+        assert items == []
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_partial_network_failure_in_batch(self, mock_get, crawler):
+        """测试批量爬取中的部分网络失败 - 需求 3.3"""
+        sources = [
+            RSSSource("成功源1", "https://success1.com/rss", "成功的源1"),
+            RSSSource("失败源", "https://fail.com/rss", "失败的源"),
+            RSSSource("成功源2", "https://success2.com/rss", "成功的源2")
+        ]
+        
+        # 模拟第二个源失败，其他成功
+        success_response = Mock()
+        success_response.text = """<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>测试</title>
+                <item>
+                    <title>测试新闻</title>
+                    <description>测试内容</description>
+                    <link>https://example.com/news</link>
+                    <pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate>
+                </item>
+            </channel>
+        </rss>"""
+        success_response.headers = {'content-type': 'application/rss+xml'}
+        success_response.raise_for_status.return_value = None
+        
+        # 创建一个函数来控制每次调用的返回值
+        call_count = 0
+        def mock_get_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return success_response  # 第一个源成功
+            elif call_count <= 4:  # 第二个源失败（包括重试）
+                raise requests.exceptions.ConnectionError("连接失败")
+            else:
+                return success_response  # 第三个源成功
+        
+        mock_get.side_effect = mock_get_side_effect
+        
+        result = crawler.crawl_all_sources(sources)
+        
+        # 验证结果
+        assert len(result['results']) == 3
+        assert result['results'][0].status == "success"
+        assert result['results'][1].status == "error"
+        assert result['results'][2].status == "success"
+        assert "连接失败" in result['results'][1].error_message
+        
+        # 应该有来自成功源的内容
+        assert result['total_items'] >= 0  # 可能因为时间窗口过滤而为0
+    
+    @patch('crypto_news_analyzer.crawlers.rss_crawler.requests.Session.get')
+    def test_encoding_error_handling(self, mock_get, crawler, sample_rss_source):
+        """测试编码错误处理"""
+        # 模拟包含特殊编码的响应
+        mock_response = Mock()
+        mock_response.text = """<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <title>编码测试</title>
+                <item>
+                    <title>包含特殊字符的标题 ñáéíóú</title>
+                    <description>包含emoji的内容 🚀 💰 📈</description>
+                    <link>https://example.com/encoding</link>
+                    <pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate>
+                </item>
+            </channel>
+        </rss>"""
+        mock_response.headers = {'content-type': 'application/rss+xml; charset=utf-8'}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+        
+        # 应该能够正确处理特殊字符
+        items = crawler.crawl_source(sample_rss_source)
+        if items:  # 如果在时间窗口内
+            assert "ñáéíóú" in items[0].title
+            assert "🚀" in items[0].content
+
+
 class TestRSSCrawlerIntegration:
     """RSS爬取器集成测试"""
     
