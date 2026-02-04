@@ -117,6 +117,25 @@ health_check() {
         return 1
     fi
     
+    # 检查Node.js环境
+    if ! node --version 2>/dev/null; then
+        log_error "Node.js环境检查失败"
+        return 1
+    fi
+    
+    # 检查npm环境
+    if ! npm --version 2>/dev/null; then
+        log_error "npm环境检查失败"
+        return 1
+    fi
+    
+    # 检查bird工具
+    if ! bird --version 2>/dev/null; then
+        log_warn "bird工具检查失败，可能需要配置认证信息"
+    else
+        log_info "bird工具可用"
+    fi
+    
     # 检查核心模块
     if ! python -c "from crypto_news_analyzer.main import main" 2>/dev/null; then
         log_error "核心模块导入失败"

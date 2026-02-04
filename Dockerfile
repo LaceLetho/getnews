@@ -27,11 +27,23 @@ LABEL maintainer="crypto-news-analyzer"
 LABEL description="加密货币新闻分析工具"
 LABEL version="1.0.0"
 
-# 安装运行时依赖
+# 安装Node.js和运行时依赖
 RUN apt-get update && apt-get install -y \
     curl \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# 验证Node.js和npm安装
+RUN node --version && npm --version
+
+# 全局安装bird工具
+RUN npm install -g @steipete/bird@latest
+
+# 验证bird工具安装
+RUN bird --version || echo "Bird工具安装完成，但可能需要配置认证信息"
 
 # 创建非root用户
 RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
@@ -47,8 +59,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --chown=appuser:appuser . .
 
 # 创建必要的目录并设置权限
-RUN mkdir -p /app/data /app/logs /app/prompts && \
-    chown -R appuser:appuser /app && \
+RUN mkdir -p /app/data /app/logs /app/prompts /home/appuser/.bird && \
+    chown -R appuser:appuser /app /home/appuser && \
     chmod -R 755 /app
 
 # 切换到非root用户
@@ -63,6 +75,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV TIME_WINDOW_HOURS=24
 ENV EXECUTION_INTERVAL=3600
 ENV CONFIG_PATH=/app/config.json
+
+# Bird工具相关环境变量
+ENV BIRD_CONFIG_PATH=/home/appuser/.bird/config.json
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

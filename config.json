@@ -7,6 +7,16 @@
     "cleanup_frequency": "daily",
     "database_path": "./data/crypto_news.db"
   },
+  "bird_config": {
+    "executable_path": "bird",
+    "timeout_seconds": 300,
+    "max_retries": 3,
+    "output_format": "json",
+    "rate_limit_delay": 1.0,
+    "config_file_path": "~/.bird/config.json",
+    "enable_auto_retry": true,
+    "retry_delay_seconds": 60
+  },
   "llm_config": {
     "model": "MiniMax-M2.1",
     "temperature": 0.1,

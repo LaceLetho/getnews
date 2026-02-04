@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional
 import logging
 from dotenv import load_dotenv
 
-from ..models import RSSSource, XSource, AuthConfig, StorageConfig, RESTAPISource
+from ..models import RSSSource, XSource, AuthConfig, StorageConfig, RESTAPISource, BirdConfig
 
 
 class ConfigManager:
@@ -216,6 +216,51 @@ class ConfigManager:
             database_path=storage_data.get("database_path", "./data/crypto_news.db")
         )
     
+    def get_bird_config(self) -> BirdConfig:
+        """获取Bird工具配置"""
+        bird_data = self.config_data.get("bird_config", {})
+        
+        # 支持从环境变量覆盖配置
+        return BirdConfig(
+            executable_path=os.getenv("BIRD_EXECUTABLE_PATH", bird_data.get("executable_path", "bird")),
+            timeout_seconds=int(os.getenv("BIRD_TIMEOUT_SECONDS", bird_data.get("timeout_seconds", 300))),
+            max_retries=int(os.getenv("BIRD_MAX_RETRIES", bird_data.get("max_retries", 3))),
+            output_format=os.getenv("BIRD_OUTPUT_FORMAT", bird_data.get("output_format", "json")),
+            rate_limit_delay=float(os.getenv("BIRD_RATE_LIMIT_DELAY", bird_data.get("rate_limit_delay", 1.0))),
+            config_file_path=os.getenv("BIRD_CONFIG_PATH", bird_data.get("config_file_path", "~/.bird/config.json")),
+            enable_auto_retry=os.getenv("BIRD_ENABLE_AUTO_RETRY", str(bird_data.get("enable_auto_retry", True))).lower() == "true",
+            retry_delay_seconds=int(os.getenv("BIRD_RETRY_DELAY_SECONDS", bird_data.get("retry_delay_seconds", 60)))
+        )
+    
+    def validate_bird_installation(self) -> bool:
+        """
+        验证bird工具安装状态
+        
+        Returns:
+            bool: 是否已正确安装
+        """
+        try:
+            from ..crawlers.bird_dependency_manager import BirdDependencyManager
+            
+            bird_config = self.get_bird_config()
+            dependency_manager = BirdDependencyManager(bird_config)
+            status = dependency_manager.check_bird_availability()
+            
+            if not status.available:
+                self.logger.warning(f"Bird工具不可用: {status.error_message}")
+                return False
+            
+            self.logger.info(f"Bird工具验证成功: 版本 {status.version}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"验证bird工具安装失败: {str(e)}")
+            return False
+    
+    def load_auth_from_env(self) -> AuthConfig:
+        """从环境变量加载认证配置（别名方法，保持向后兼容）"""
+        return self.get_auth_config()
+    
     def validate_storage_path(self, path: str) -> bool:
         """
         验证存储路径有效性
@@ -259,6 +304,16 @@ class ConfigManager:
                 "max_storage_mb": 1000,
                 "cleanup_frequency": "daily",
                 "database_path": "./data/crypto_news.db"
+            },
+            "bird_config": {
+                "executable_path": "bird",
+                "timeout_seconds": 300,
+                "max_retries": 3,
+                "output_format": "json",
+                "rate_limit_delay": 1.0,
+                "config_file_path": "~/.bird/config.json",
+                "enable_auto_retry": True,
+                "retry_delay_seconds": 60
             },
             "llm_config": {
                 "model": "MiniMax-M2.1",

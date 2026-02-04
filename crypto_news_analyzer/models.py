@@ -298,6 +298,80 @@ class StorageConfig:
 
 
 @dataclass
+class BirdConfig:
+    """Bird工具配置"""
+    executable_path: str = "bird"
+    timeout_seconds: int = 300
+    max_retries: int = 3
+    output_format: str = "json"
+    rate_limit_delay: float = 1.0
+    config_file_path: str = "~/.bird/config.json"
+    enable_auto_retry: bool = True
+    retry_delay_seconds: int = 60
+    
+    def __post_init__(self):
+        """数据验证"""
+        self.validate()
+    
+    def validate(self) -> None:
+        """验证配置有效性"""
+        if not self.executable_path or not self.executable_path.strip():
+            raise ValueError("Bird可执行文件路径不能为空")
+        
+        if self.timeout_seconds <= 0:
+            raise ValueError("超时时间必须大于0秒")
+        
+        if self.max_retries < 0:
+            raise ValueError("最大重试次数不能为负数")
+        
+        if self.output_format not in ["json", "text", "csv"]:
+            raise ValueError(f"不支持的输出格式: {self.output_format}")
+        
+        if self.rate_limit_delay < 0:
+            raise ValueError("速率限制延迟不能为负数")
+        
+        if self.retry_delay_seconds < 0:
+            raise ValueError("重试延迟不能为负数")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典"""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'BirdConfig':
+        """从字典反序列化"""
+        return cls(**data)
+
+
+@dataclass
+class BirdResult:
+    """Bird工具执行结果"""
+    success: bool
+    output: str
+    error: str
+    exit_code: int
+    execution_time: float
+    command: List[str]
+    
+    def __post_init__(self):
+        """数据验证"""
+        if not isinstance(self.command, list):
+            raise ValueError("命令必须是列表格式")
+        
+        if self.execution_time < 0:
+            raise ValueError("执行时间不能为负数")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典"""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'BirdResult':
+        """从字典反序列化"""
+        return cls(**data)
+
+
+@dataclass
 class AnalysisResult:
     """分析结果"""
     content_id: str

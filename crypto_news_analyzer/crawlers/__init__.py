@@ -11,6 +11,8 @@ from .data_source_factory import DataSourceFactory, get_data_source_factory, reg
 from .rest_api_crawler import RESTAPICrawler
 from .rss_crawler_adapter import RSSCrawlerAdapter
 from .x_crawler_adapter import XCrawlerAdapter
+from .bird_dependency_manager import BirdDependencyManager, DependencyStatus, ValidationResult
+from .bird_wrapper import BirdWrapper
 
 # 自动注册内置数据源
 try:
@@ -38,5 +40,11 @@ __all__ = [
     # 新的数据源实现
     'RESTAPICrawler',
     'RSSCrawlerAdapter',
-    'XCrawlerAdapter'
+    'XCrawlerAdapter',
+    
+    # Bird工具相关
+    'BirdDependencyManager',
+    'DependencyStatus',
+    'ValidationResult',
+    'BirdWrapper'
 ]

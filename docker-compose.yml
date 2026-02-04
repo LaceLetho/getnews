@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  crypto-news-analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: crypto-news-analyzer:latest
+    container_name: crypto-news-analyzer
+    
+    # 环境变量配置
+    env_file:
+      - .env.docker
+    
+    # 数据卷挂载
+    volumes:
+      # 配置文件
+      - ./config.json:/app/config.json:ro
+      - ./prompts:/app/prompts:ro
+      
+      # 数据持久化
+      - crypto_data:/app/data
+      - crypto_logs:/app/logs
+      
+      # Bird工具配置目录
+      - bird_config:/home/appuser/.bird
+    
+    # 网络配置
+    networks:
+      - crypto_network
+    
+    # 重启策略
+    restart: unless-stopped
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.insert(0, '/app'); from crypto_news_analyzer.execution_coordinator import MainController; controller = MainController(); status = controller.get_system_status(); sys.exit(0 if status['initialized'] or not status.get('scheduler_running', False) else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # 默认命令：一次性执行
+    command: ["once"]
+
+  # 定时调度服务（可选）
+  crypto-news-scheduler:
+    extends: crypto-news-analyzer
+    container_name: crypto-news-scheduler
+    command: ["schedule"]
+    profiles:
+      - scheduler
+
+  # 命令监听服务（可选，未来实现）
+  crypto-news-commander:
+    extends: crypto-news-analyzer
+    container_name: crypto-news-commander
+    command: ["command"]
+    profiles:
+      - commander
+
+# 数据卷定义
+volumes:
+  crypto_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data
+  
+  crypto_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./logs
+  
+  bird_config:
+    driver: local
+
+# 网络定义
+networks:
+  crypto_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
