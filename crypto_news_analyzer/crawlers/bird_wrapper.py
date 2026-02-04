@@ -115,13 +115,25 @@ class BirdWrapper:
         if timeout is None:
             timeout = self.config.timeout_seconds
         
-        # 构建完整命令
-        command = [self.config.executable_path] + args
+        # 构建完整命令，添加认证参数
+        command = [self.config.executable_path]
+        
+        # 添加认证参数
+        ct0 = os.getenv('x_ct0')
+        auth_token = os.getenv('x_auth_token')
+        
+        if ct0:
+            command.extend(["--ct0", ct0])
+        if auth_token:
+            command.extend(["--auth-token", auth_token])
+        
+        # 添加用户命令参数
+        command.extend(args)
         
         start_time = time.time()
         
         try:
-            self.logger.debug(f"执行bird命令: {' '.join(command)}")
+            self.logger.debug(f"执行bird命令: {' '.join(command[:3])} ... (隐藏认证参数)")
             
             # 执行命令
             result = subprocess.run(
@@ -268,10 +280,10 @@ class BirdWrapper:
         try:
             # 构建命令参数
             args = [
-                "list",
-                "--id", list_id,
-                "--count", str(count),
-                "--format", self.config.output_format
+                "list-timeline",
+                list_id,
+                "--json",
+                "--count", str(count)
             ]
             
             # 添加速率限制延迟
@@ -298,7 +310,7 @@ class BirdWrapper:
                 error=error_msg,
                 exit_code=-1,
                 execution_time=0.0,
-                command=["bird", "list", "--id", list_id]
+                command=["bird", "list-timeline", list_id]
             )
     
     def fetch_user_timeline(self, username: str, count: int = 100) -> BirdResult:
@@ -318,12 +330,21 @@ class BirdWrapper:
                 username = username[1:]
             
             # 构建命令参数
-            args = [
-                "timeline",
-                "--user", username,
-                "--count", str(count),
-                "--format", self.config.output_format
-            ]
+            if username == "home":
+                # 主时间线
+                args = [
+                    "home",
+                    "--json",
+                    "--count", str(count)
+                ]
+            else:
+                # 用户时间线
+                args = [
+                    "user-tweets",
+                    username,
+                    "--json",
+                    "--count", str(count)
+                ]
             
             # 添加速率限制延迟
             if hasattr(self, '_last_request_time'):
@@ -349,7 +370,7 @@ class BirdWrapper:
                 error=error_msg,
                 exit_code=-1,
                 execution_time=0.0,
-                command=["bird", "timeline", "--user", username]
+                command=["bird", "user-tweets", username]
             )
     
     def parse_tweet_data(self, raw_data: str) -> List[Dict[str, Any]]:
@@ -385,23 +406,29 @@ class BirdWrapper:
             # 尝试解析为JSON
             data = json.loads(raw_data)
             
-            # 如果是单个对象，转换为列表
-            if isinstance(data, dict):
-                data = [data]
-            
-            # 如果是嵌套结构，提取推文数据
-            if isinstance(data, dict) and 'tweets' in data:
-                data = data['tweets']
+            # bird工具返回的数据可能是数组或单个对象
+            if isinstance(data, list):
+                tweets = data
+            elif isinstance(data, dict):
+                # 如果是单个对象，检查是否有tweets字段
+                if 'tweets' in data:
+                    tweets = data['tweets']
+                elif 'data' in data:
+                    tweets = data['data'] if isinstance(data['data'], list) else [data['data']]
+                else:
+                    tweets = [data]
+            else:
+                return []
             
             # 标准化推文数据格式
-            tweets = []
-            for item in data:
+            normalized_tweets = []
+            for item in tweets:
                 if isinstance(item, dict):
                     tweet = self._normalize_tweet_data(item)
                     if tweet:
-                        tweets.append(tweet)
+                        normalized_tweets.append(tweet)
             
-            return tweets
+            return normalized_tweets
             
         except json.JSONDecodeError as e:
             self.logger.error(f"JSON解析失败: {str(e)}")
@@ -447,28 +474,35 @@ class BirdWrapper:
     def _normalize_tweet_data(self, raw_tweet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """标准化推文数据格式"""
         try:
-            # 提取基本字段
+            # bird工具的输出格式可能包含以下字段
             tweet = {
-                'id': raw_tweet.get('id', ''),
-                'text': raw_tweet.get('text', raw_tweet.get('full_text', '')),
+                'id': raw_tweet.get('id_str', raw_tweet.get('id', '')),
+                'text': raw_tweet.get('full_text', raw_tweet.get('text', '')),
                 'created_at': raw_tweet.get('created_at', ''),
-                'user': raw_tweet.get('user', {}),
+                'user': {},
                 'entities': raw_tweet.get('entities', {}),
                 'public_metrics': raw_tweet.get('public_metrics', {})
             }
             
+            # 处理用户信息
+            user_data = raw_tweet.get('user', {})
+            if user_data:
+                tweet['user'] = {
+                    'screen_name': user_data.get('screen_name', user_data.get('username', '')),
+                    'name': user_data.get('name', ''),
+                    'id': user_data.get('id_str', user_data.get('id', ''))
+                }
+            else:
+                # 如果没有用户信息，尝试从其他字段获取
+                tweet['user'] = {
+                    'screen_name': raw_tweet.get('username', raw_tweet.get('screen_name', 'unknown')),
+                    'name': raw_tweet.get('name', ''),
+                    'id': raw_tweet.get('user_id', '')
+                }
+            
             # 确保必需字段存在
             if not tweet['id'] or not tweet['text']:
                 return None
-            
-            # 标准化用户信息
-            if isinstance(tweet['user'], dict):
-                user = tweet['user']
-                tweet['user'] = {
-                    'screen_name': user.get('screen_name', user.get('username', '')),
-                    'name': user.get('name', ''),
-                    'id': user.get('id', '')
-                }
             
             return tweet
             
@@ -484,8 +518,8 @@ class BirdWrapper:
             bool: 连接是否成功
         """
         try:
-            # 尝试获取一个简单的用户信息
-            result = self.execute_command(["user", "--username", "twitter", "--format", "json"], timeout=30)
+            # 使用whoami命令测试连接
+            result = self.execute_command(["whoami"], timeout=30)
             
             if result.success:
                 self.logger.info("Bird工具连接测试成功")

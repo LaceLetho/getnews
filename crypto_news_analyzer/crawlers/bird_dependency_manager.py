@@ -47,7 +47,7 @@ class BirdDependencyManager:
     """
     
     # 支持的bird工具版本范围
-    MIN_SUPPORTED_VERSION = "1.0.0"
+    MIN_SUPPORTED_VERSION = "0.8.0"
     MAX_SUPPORTED_VERSION = "2.0.0"
     
     # 常见的bird工具安装路径
