@@ -43,8 +43,9 @@ class ContentItem:
         if not self.source_name or not self.source_name.strip():
             raise ValueError("数据源名称不能为空")
         
-        if self.source_type not in ["rss", "x", "rest_api"]:
-            raise ValueError(f"无效的数据源类型: {self.source_type}")
+        # 允许任何非空的数据源类型，不限制为固定列表
+        if not self.source_type or not self.source_type.strip():
+            raise ValueError("数据源类型不能为空")
         
         if not isinstance(self.publish_time, datetime):
             raise ValueError("发布时间必须是datetime对象")
