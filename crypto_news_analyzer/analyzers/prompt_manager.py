@@ -147,12 +147,29 @@ class PromptManager:
     
     def get_llm_settings(self) -> Dict[str, Any]:
         """获取LLM设置"""
-        self._load_config()
-        return self.config_data.get("llm_settings", {
-            "temperature": 0.1,
-            "max_tokens": 1000,
-            "model": "gpt-4"
-        })
+        # 从主配置文件获取LLM设置，而不是从prompt配置文件
+        from ..config.manager import ConfigManager
+        
+        try:
+            config_manager = ConfigManager()
+            main_config = config_manager.load_config()
+            llm_config = main_config.get("llm_config", {})
+            
+            # 返回LLM设置，保持向后兼容
+            return {
+                "temperature": llm_config.get("temperature", 0.1),
+                "max_tokens": llm_config.get("max_tokens", 1000),
+                "model": llm_config.get("model", "gpt-4"),
+                "batch_size": llm_config.get("batch_size", 10)
+            }
+        except Exception as e:
+            self.logger.warning(f"无法从主配置获取LLM设置，使用默认值: {e}")
+            return {
+                "temperature": 0.1,
+                "max_tokens": 1000,
+                "model": "gpt-4",
+                "batch_size": 10
+            }
     
     def _load_config(self) -> None:
         """加载配置文件"""

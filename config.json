@@ -8,7 +8,7 @@
     "database_path": "./data/crypto_news.db"
   },
   "llm_config": {
-    "model": "gpt-4",
+    "model": "MiniMax-M2.1",
     "temperature": 0.1,
     "max_tokens": 1000,
     "prompt_config_path": "./prompts/analysis_prompt.json",
@@ -21,15 +21,35 @@
       "description": "PANews 快讯"
     },
     {
-      "name": "金色财经",
-      "url": "https://www.jinse.com/rss/flash.xml",
-      "description": "金色财经快讯"
+      "name": "CoinDesk",
+      "url": "https://www.coindesk.com/arc/outboundfeeds/rss",
+      "description": "CoinDesk 快讯"
+    },
+    {
+      "name": "BlockBeats",
+      "url": "https://api.theblockbeats.news/v2/rss/all",
+      "description": "BlockBeats 快讯与文章"
+    },
+    {
+      "name": "Cointelegraph",
+      "url": "https://cointelegraph.com/rss",
+      "description": "Cointelegraph 快讯"
+    },
+    {
+      "name": "TechFlow",
+      "url": "https://www.techflowpost.com/api/client/common/rss.xml",
+      "description": "TechFlow 快讯"
     }
   ],
   "x_sources": [
     {
-      "name": "Crypto List 1",
+      "name": "英文区优质投研博主",
       "url": "https://x.com/i/lists/1826855418095980750",
+      "type": "list"
+    },
+    {
+      "name": "华语CT名人堂",
+      "url": "https://x.com/i/lists/1469191354446401543",
       "type": "list"
     }
   ],

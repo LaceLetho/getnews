@@ -125,7 +125,8 @@ class TestPromptConstruction(unittest.TestCase):
         
         self.assertEqual(settings["temperature"], 0.1)
         self.assertEqual(settings["max_tokens"], 1000)
-        self.assertEqual(settings["model"], "gpt-4")
+        # 现在从主配置文件读取，应该是 MiniMax-M2.1
+        self.assertEqual(settings["model"], "MiniMax-M2.1")
 
 
 class TestResponseParsing(unittest.TestCase):

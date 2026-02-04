@@ -102,11 +102,5 @@
         "立场争论和口水仗 - 争论性内容，无实质信息价值"
     ],
     
-    "output_format": "请严格按照以下JSON格式输出：\n\n{\n    \"category\": \"类别名称\",\n    \"confidence\": 0.85,\n    \"reasoning\": \"详细说明分类理由\",\n    \"should_ignore\": false,\n    \"key_points\": [\"关键信息点1\", \"关键信息点2\"]\n}",
-    
-    "llm_settings": {
-        "temperature": 0.1,
-        "max_tokens": 1000,
-        "model": "MiniMax-M2.1"
-    }
+    "output_format": "请严格按照以下JSON格式输出：\n\n{\n    \"category\": \"类别名称\",\n    \"confidence\": 0.85,\n    \"reasoning\": \"详细说明分类理由\",\n    \"should_ignore\": false,\n    \"key_points\": [\"关键信息点1\", \"关键信息点2\"]\n}"
 }
