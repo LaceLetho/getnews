@@ -38,6 +38,15 @@ class PromptManager:
         self.config_data: Dict[str, Any] = {}
         self.logger = logging.getLogger(__name__)
         
+    def get_analysis_prompt_template(self) -> str:
+        """
+        获取分析提示词模板
+        
+        Returns:
+            提示词模板字符串
+        """
+        return self.load_prompt_template()
+    
     def load_prompt_template(self) -> str:
         """
         加载提示词模板

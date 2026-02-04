@@ -128,7 +128,7 @@ class LLMAnalyzer:
     
     def batch_analyze(self, items: List[ContentItem]) -> List[AnalysisResult]:
         """
-        批量分析内容
+        批量分析内容 - 真正的批量处理，将多个内容打包到一个API请求中
         
         Args:
             items: 内容项列表
@@ -136,6 +136,9 @@ class LLMAnalyzer:
         Returns:
             分析结果列表
         """
+        if not items:
+            return []
+        
         results = []
         
         # 获取批量大小配置
@@ -147,20 +150,241 @@ class LLMAnalyzer:
         for i in range(0, len(items), batch_size):
             batch = items[i:i + batch_size]
             
-            for item in batch:
-                result = self.analyze_content(item.content, item.title, item.source_name)
-                result.content_id = item.id
-                results.append(result)
+            try:
+                # 构建批量分析提示词
+                batch_prompt = self._build_batch_analysis_prompt(batch)
                 
-                # 添加延迟避免API限制
-                time.sleep(0.1)
-            
-            # 批次间延迟
-            if i + batch_size < len(items):
-                time.sleep(1.0)
+                # 调用LLM API进行批量分析
+                llm_response = self._call_llm_api(batch_prompt)
+                
+                # 解析批量响应
+                batch_results = self._parse_batch_llm_response(llm_response, batch)
+                
+                # 验证和修正结果
+                for j, result in enumerate(batch_results):
+                    if not self._validate_category_response(result.category):
+                        self.logger.warning(f"无效分类: {result.category}，设为未分类")
+                        result.category = "未分类"
+                    
+                    # 设置正确的content_id
+                    if j < len(batch):
+                        result.content_id = batch[j].id
+                
+                results.extend(batch_results)
+                
+                self.logger.info(f"批次 {i//batch_size + 1} 分析完成，处理了 {len(batch)} 个项目")
+                
+                # 批次间延迟，避免API限制
+                if i + batch_size < len(items):
+                    time.sleep(2.0)
+                    
+            except Exception as e:
+                self.logger.error(f"批量分析失败，回退到单个分析: {e}")
+                # 回退到单个分析
+                for item in batch:
+                    try:
+                        result = self.analyze_content(item.content, item.title, item.source_name, item.id)
+                        results.append(result)
+                        time.sleep(0.1)  # 单个分析时的短暂延迟
+                    except Exception as single_error:
+                        self.logger.error(f"单个内容分析也失败: {single_error}")
+                        # 创建默认结果
+                        results.append(AnalysisResult(
+                            content_id=item.id,
+                            category="未分类",
+                            confidence=0.0,
+                            reasoning=f"分析失败: {str(single_error)}",
+                            should_ignore=False,
+                            key_points=[]
+                        ))
         
         self.logger.info(f"批量分析完成，共处理 {len(results)} 个项目")
         return results
+    
+    def _build_batch_analysis_prompt(self, items: List[ContentItem]) -> str:
+        """
+        构建批量分析提示词
+        
+        Args:
+            items: 内容项列表
+            
+        Returns:
+            批量分析提示词
+        """
+        # 获取基础提示词模板
+        base_prompt = self.prompt_manager.get_analysis_prompt_template()
+        
+        # 构建批量内容
+        batch_content = "请分析以下多个加密货币新闻内容，为每个内容返回JSON格式的分析结果。\n\n"
+        
+        for i, item in enumerate(items, 1):
+            batch_content += f"=== 内容 {i} ===\n"
+            batch_content += f"标题: {item.title}\n"
+            batch_content += f"内容: {item.content[:500]}{'...' if len(item.content) > 500 else ''}\n"
+            batch_content += f"来源: {item.source_name}\n\n"
+        
+        batch_content += """
+请为每个内容返回一个JSON对象，格式如下：
+{
+  "results": [
+    {
+      "content_index": 1,
+      "category": "分类名称",
+      "confidence": 0.85,
+      "reasoning": "分类理由",
+      "should_ignore": false,
+      "key_points": ["关键点1", "关键点2"]
+    },
+    {
+      "content_index": 2,
+      "category": "分类名称",
+      "confidence": 0.90,
+      "reasoning": "分类理由", 
+      "should_ignore": false,
+      "key_points": ["关键点1", "关键点2"]
+    }
+  ]
+}
+
+可用的分类包括：""" + ", ".join(self.get_available_categories())
+        
+        return batch_content
+    
+    def _parse_batch_llm_response(self, response: str, items: List[ContentItem]) -> List[AnalysisResult]:
+        """
+        解析批量LLM响应
+        
+        Args:
+            response: LLM响应文本
+            items: 对应的内容项列表
+            
+        Returns:
+            分析结果列表
+        """
+        try:
+            # 清理响应文本
+            cleaned_response = self._clean_response_text(response)
+            
+            # 解析JSON响应
+            response_data = json.loads(cleaned_response)
+            
+            results = []
+            
+            if "results" in response_data and isinstance(response_data["results"], list):
+                for result_data in response_data["results"]:
+                    content_index = result_data.get("content_index", 1) - 1  # 转换为0基索引
+                    
+                    # 确保索引有效
+                    if 0 <= content_index < len(items):
+                        item = items[content_index]
+                        
+                        result = AnalysisResult(
+                            content_id=item.id,
+                            category=result_data.get("category", "未分类"),
+                            confidence=float(result_data.get("confidence", 0.0)),
+                            reasoning=result_data.get("reasoning", ""),
+                            should_ignore=bool(result_data.get("should_ignore", False)),
+                            key_points=result_data.get("key_points", [])
+                        )
+                        results.append(result)
+                    else:
+                        self.logger.warning(f"无效的内容索引: {content_index}")
+            
+            # 如果结果数量不匹配，补充默认结果
+            while len(results) < len(items):
+                missing_index = len(results)
+                results.append(AnalysisResult(
+                    content_id=items[missing_index].id,
+                    category="未分类",
+                    confidence=0.0,
+                    reasoning="批量解析失败，使用默认结果",
+                    should_ignore=False,
+                    key_points=[]
+                ))
+            
+            return results
+            
+        except json.JSONDecodeError as e:
+            self.logger.error(f"解析批量LLM响应JSON失败: {e}")
+            # 回退到单个解析逻辑
+            return self._fallback_parse_batch_response(response, items)
+        except Exception as e:
+            self.logger.error(f"解析批量LLM响应失败: {e}")
+            # 返回默认结果
+            return [AnalysisResult(
+                content_id=item.id,
+                category="未分类",
+                confidence=0.0,
+                reasoning=f"批量解析失败: {str(e)}",
+                should_ignore=False,
+                key_points=[]
+            ) for item in items]
+    
+    def _fallback_parse_batch_response(self, response: str, items: List[ContentItem]) -> List[AnalysisResult]:
+        """
+        批量响应解析失败时的回退方法
+        
+        Args:
+            response: LLM响应文本
+            items: 内容项列表
+            
+        Returns:
+            分析结果列表
+        """
+        # 尝试从文本中提取信息
+        results = []
+        
+        # 简单的文本解析逻辑
+        lines = response.split('\n')
+        current_result = None
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith('内容') and '：' in line:
+                # 开始新的结果
+                if current_result:
+                    results.append(current_result)
+                current_result = {
+                    "category": "未分类",
+                    "confidence": 0.5,
+                    "reasoning": "",
+                    "should_ignore": False,
+                    "key_points": []
+                }
+            elif current_result and '分类' in line:
+                # 提取分类
+                for category in self.get_available_categories():
+                    if category in line:
+                        current_result["category"] = category
+                        break
+        
+        if current_result:
+            results.append(current_result)
+        
+        # 转换为AnalysisResult对象
+        analysis_results = []
+        for i, item in enumerate(items):
+            if i < len(results):
+                result_data = results[i]
+            else:
+                result_data = {
+                    "category": "未分类",
+                    "confidence": 0.0,
+                    "reasoning": "文本解析失败",
+                    "should_ignore": False,
+                    "key_points": []
+                }
+            
+            analysis_results.append(AnalysisResult(
+                content_id=item.id,
+                category=result_data["category"],
+                confidence=result_data["confidence"],
+                reasoning=result_data["reasoning"],
+                should_ignore=result_data["should_ignore"],
+                key_points=result_data["key_points"]
+            ))
+        
+        return analysis_results
     
     def classify_content(self, content: str) -> str:
         """

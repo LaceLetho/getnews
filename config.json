@@ -1,6 +1,6 @@
 {
   "execution_interval": 3600,
-  "time_window_hours": 24,
+  "time_window_hours": 4,
   "storage": {
     "retention_days": 30,
     "max_storage_mb": 1000,

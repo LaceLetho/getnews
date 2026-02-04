@@ -498,7 +498,7 @@ class MainController:
             for rss_source in rss_sources:
                 try:
                     crawler = factory.create_source("rss", time_window_hours)
-                    items = crawler.crawl(rss_source.to_dict(), time_window_hours)
+                    items = crawler.crawl(rss_source.to_dict())
                     all_content_items.extend(items)
                     
                     rss_results.append(CrawlResult(
@@ -528,7 +528,7 @@ class MainController:
                         crawler = factory.create_source("x", time_window_hours, 
                                                       ct0=auth_config.x_ct0, 
                                                       auth_token=auth_config.x_auth_token)
-                        items = crawler.crawl(x_source.to_dict(), time_window_hours)
+                        items = crawler.crawl(x_source.to_dict())
                         all_content_items.extend(items)
                         
                         x_results.append(CrawlResult(
