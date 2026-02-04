@@ -122,6 +122,12 @@ class ConfigManager:
                     if not self._validate_x_source(source):
                         return False
             
+            # 验证REST API源配置
+            if "rest_api_sources" in config:
+                for source in config["rest_api_sources"]:
+                    if not self._validate_rest_api_source(source):
+                        return False
+            
             # 验证存储路径
             storage_path = storage_config.get("database_path", "./data/crypto_news.db")
             if not self.validate_storage_path(storage_path):
@@ -312,7 +318,7 @@ class ConfigManager:
         
         # 简单的URL格式验证
         url = source["url"]
-        if not (url.startswith("http://") or url.startswith("https://")):
+        if not (url.startswith("http://") or url.startswith("https://")) or len(url) < 10:
             self.logger.error(f"RSS源URL格式无效: {url}")
             return False
         
@@ -333,8 +339,46 @@ class ConfigManager:
         
         # 简单的URL格式验证
         url = source["url"]
-        if not url.startswith("https://x.com/"):
+        if not url.startswith("https://x.com/") or len(url) < 20:
             self.logger.error(f"X源URL格式无效: {url}")
             return False
+        
+        return True
+    
+    def _validate_rest_api_source(self, source: Dict[str, Any]) -> bool:
+        """验证REST API源配置"""
+        required_fields = ["name", "endpoint", "method", "response_mapping"]
+        for field in required_fields:
+            if field not in source:
+                self.logger.error(f"REST API源配置字段缺失: {field}")
+                return False
+        
+        # 验证名称
+        if not isinstance(source["name"], str) or not source["name"].strip():
+            self.logger.error("REST API源名称无效")
+            return False
+        
+        # 验证endpoint URL格式
+        endpoint = source["endpoint"]
+        if not isinstance(endpoint, str) or not (endpoint.startswith("http://") or endpoint.startswith("https://")) or len(endpoint) < 10:
+            self.logger.error(f"REST API源endpoint格式无效: {endpoint}")
+            return False
+        
+        # 验证HTTP方法
+        if source["method"] not in ["GET", "POST", "PUT", "DELETE"]:
+            self.logger.error(f"REST API源HTTP方法无效: {source['method']}")
+            return False
+        
+        # 验证response_mapping
+        response_mapping = source["response_mapping"]
+        if not isinstance(response_mapping, dict):
+            self.logger.error("REST API源response_mapping必须是字典")
+            return False
+        
+        required_mapping_fields = ["title_field", "content_field", "url_field", "time_field"]
+        for field in required_mapping_fields:
+            if field not in response_mapping or not isinstance(response_mapping[field], str):
+                self.logger.error(f"REST API源response_mapping字段无效: {field}")
+                return False
         
         return True
