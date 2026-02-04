@@ -335,6 +335,211 @@ class TestBirdWrapperMocked(unittest.TestCase):
             self.assertFalse(result.success)
             self.assertEqual(result.error, "command failed")
             self.assertEqual(result.exit_code, 1)
+    
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    @patch('subprocess.run')
+    def test_execute_command_timeout(self, mock_run, mock_manager_class):
+        """测试命令执行超时"""
+        # 模拟依赖管理器
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+        
+        # 模拟超时异常
+        from subprocess import TimeoutExpired
+        mock_run.side_effect = TimeoutExpired(["bird", "--version"], 30)
+        
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            result = wrapper.execute_command(["--version"], timeout=30)
+            
+            self.assertIsInstance(result, BirdResult)
+            self.assertFalse(result.success)
+            self.assertIn("超时", result.error)
+            self.assertEqual(result.exit_code, -1)
+    
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    def test_setup_authentication(self, mock_manager_class):
+        """测试设置认证信息"""
+        # 模拟依赖管理器
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+        
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            with tempfile.TemporaryDirectory() as temp_dir:
+                config_path = os.path.join(temp_dir, "config.json")
+                test_config = BirdConfig(config_file_path=config_path)
+                
+                wrapper = BirdWrapper(test_config)
+                wrapper.setup_authentication("new_ct0", "new_token")
+                
+                # 验证配置文件是否创建
+                self.assertTrue(os.path.exists(config_path))
+                
+                # 验证配置内容
+                with open(config_path, 'r') as f:
+                    config_data = json.load(f)
+                
+                self.assertEqual(config_data["auth"]["ct0"], "new_ct0")
+                self.assertEqual(config_data["auth"]["auth_token"], "new_token")
+    
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    @patch('subprocess.run')
+    def test_fetch_list_tweets(self, mock_run, mock_manager_class):
+        """测试获取列表推文"""
+        # 模拟依赖管理器
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+        
+        # 模拟成功的命令执行
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = '{"tweets": [{"id": "123", "text": "test tweet"}]}'
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+        
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            result = wrapper.fetch_list_tweets("test_list_id", 50)
+            
+            self.assertIsInstance(result, BirdResult)
+            self.assertTrue(result.success)
+            self.assertIn("test tweet", result.output)
+    
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    @patch('subprocess.run')
+    def test_fetch_user_timeline(self, mock_run, mock_manager_class):
+        """测试获取用户时间线"""
+        # 模拟依赖管理器
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+        
+        # 模拟成功的命令执行
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = '{"tweets": [{"id": "456", "text": "user tweet"}]}'
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+        
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            result = wrapper.fetch_user_timeline("testuser", 25)
+            
+            self.assertIsInstance(result, BirdResult)
+            self.assertTrue(result.success)
+            self.assertIn("user tweet", result.output)
+    
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    def test_parse_tweet_data_json(self, mock_manager_class):
+        """测试解析JSON格式推文数据"""
+        # 模拟依赖管理器
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+        
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            
+            # 测试JSON格式数据
+            json_data = '''[
+                {
+                    "id": "123456789",
+                    "text": "This is a test tweet",
+                    "created_at": "2024-01-01T12:00:00Z",
+                    "user": {"screen_name": "testuser", "name": "Test User"}
+                }
+            ]'''
+            
+            tweets = wrapper.parse_tweet_data(json_data)
+            
+            self.assertEqual(len(tweets), 1)
+            self.assertEqual(tweets[0]["id"], "123456789")
+            self.assertEqual(tweets[0]["text"], "This is a test tweet")
+    
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    def test_parse_tweet_data_empty(self, mock_manager_class):
+        """测试解析空数据"""
+        # 模拟依赖管理器
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+        
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            
+            # 测试空数据
+            tweets = wrapper.parse_tweet_data("")
+            self.assertEqual(len(tweets), 0)
+            
+            # 测试None数据
+            tweets = wrapper.parse_tweet_data(None)
+            self.assertEqual(len(tweets), 0)
+    
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    @patch('subprocess.run')
+    def test_test_connection(self, mock_run, mock_manager_class):
+        """测试连接测试功能"""
+        # 模拟依赖管理器
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+        
+        # 模拟成功的连接测试
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = '{"user": {"screen_name": "twitter"}}'
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+        
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            result = wrapper.test_connection()
+            
+            self.assertTrue(result)
+    
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    def test_get_diagnostic_info(self, mock_manager_class):
+        """测试获取诊断信息"""
+        # 模拟依赖管理器
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_status.version = "1.2.3"
+        mock_status.executable_path = "/usr/bin/bird"
+        mock_status.error_message = None
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+        
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            
+            # 模拟get_version方法
+            with patch.object(wrapper, 'get_version', return_value="1.2.3"):
+                with patch.object(wrapper, 'test_connection', return_value=True):
+                    diagnostic = wrapper.get_diagnostic_info()
+            
+            self.assertIsInstance(diagnostic, dict)
+            self.assertIn("config", diagnostic)
+            self.assertIn("dependency_status", diagnostic)
+            self.assertIn("connection_test", diagnostic)
+            self.assertTrue(diagnostic["connection_test"])
 
 
 if __name__ == '__main__':
