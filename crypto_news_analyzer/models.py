@@ -458,6 +458,118 @@ class ContentCategory(Enum):
     IGNORED = "忽略"
 
 
+@dataclass
+class TelegramCommandConfig:
+    """Telegram命令配置"""
+    enabled: bool = True
+    authorized_users: List[Dict[str, Any]] = None
+    execution_timeout_minutes: int = 30
+    max_concurrent_executions: int = 1
+    command_rate_limit: Dict[str, int] = None
+
+    def __post_init__(self):
+        if self.authorized_users is None:
+            self.authorized_users = []
+        if self.command_rate_limit is None:
+            self.command_rate_limit = {
+                "max_commands_per_hour": 10,
+                "cooldown_minutes": 5
+            }
+
+
+@dataclass
+class ExecutionInfo:
+    """执行信息"""
+    execution_id: str
+    trigger_type: str  # "scheduled", "manual", "startup"
+    trigger_user: Optional[str]
+    start_time: datetime
+    end_time: Optional[datetime]
+    status: str  # "running", "completed", "failed", "timeout"
+    progress: float  # 0.0 to 1.0
+    current_stage: str  # "crawling", "analyzing", "reporting", "sending"
+    error_message: Optional[str]
+    items_processed: int = 0
+    categories_found: Dict[str, int] = None
+
+    def __post_init__(self):
+        if self.categories_found is None:
+            self.categories_found = {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典"""
+        data = asdict(self)
+        data['start_time'] = self.start_time.isoformat()
+        if self.end_time:
+            data['end_time'] = self.end_time.isoformat()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ExecutionInfo':
+        """从字典反序列化"""
+        if isinstance(data['start_time'], str):
+            data['start_time'] = datetime.fromisoformat(data['start_time'])
+        if data.get('end_time') and isinstance(data['end_time'], str):
+            data['end_time'] = datetime.fromisoformat(data['end_time'])
+        return cls(**data)
+
+
+@dataclass
+class ExecutionResult:
+    """执行结果"""
+    execution_id: str
+    success: bool
+    start_time: datetime
+    end_time: datetime
+    duration_seconds: float
+    items_processed: int
+    categories_found: Dict[str, int]
+    errors: List[str]
+    trigger_user: Optional[str]
+    report_sent: bool
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        data = asdict(self)
+        data['start_time'] = self.start_time.isoformat()
+        data['end_time'] = self.end_time.isoformat()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ExecutionResult':
+        """从字典反序列化"""
+        if isinstance(data['start_time'], str):
+            data['start_time'] = datetime.fromisoformat(data['start_time'])
+        if isinstance(data['end_time'], str):
+            data['end_time'] = datetime.fromisoformat(data['end_time'])
+        return cls(**data)
+
+
+@dataclass
+class CommandExecutionHistory:
+    """命令执行历史"""
+    command: str
+    user_id: str
+    username: str
+    timestamp: datetime
+    execution_id: Optional[str]
+    success: bool
+    response_message: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典"""
+        data = asdict(self)
+        data['timestamp'] = self.timestamp.isoformat()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'CommandExecutionHistory':
+        """从字典反序列化"""
+        if isinstance(data['timestamp'], str):
+            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+        return cls(**data)
+
+
 # 数据验证工具函数
 def validate_time_window(hours: int) -> None:
     """验证时间窗口参数"""
