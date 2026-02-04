@@ -5,12 +5,12 @@ X/Twitter爬取器适配器
 保持向后兼容性的同时支持新的插件化架构。
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 from .data_source_interface import DataSourceInterface, CrawlError, ConfigValidationError
 from .x_crawler import XCrawler
-from ..models import ContentItem, XSource
+from ..models import ContentItem, XSource, BirdConfig
 from ..utils.logging import get_logger
 
 
@@ -22,27 +22,24 @@ class XCrawlerAdapter(DataSourceInterface):
     提供统一的接口同时保持原有功能。
     """
     
-    def __init__(self, time_window_hours: int, ct0: str = "", auth_token: str = ""):
+    def __init__(self, time_window_hours: int, bird_config: Optional[BirdConfig] = None):
         """
         初始化X爬取器适配器
         
         Args:
             time_window_hours: 时间窗口（小时）
-            ct0: X认证参数ct0
-            auth_token: X认证令牌
+            bird_config: Bird工具配置，如果为None则使用默认配置
         """
         self.time_window_hours = time_window_hours
-        self.ct0 = ct0
-        self.auth_token = auth_token
+        self.bird_config = bird_config
         self.logger = get_logger(__name__)
         
-        # 创建底层X爬取器实例（如果有认证信息）
+        # 创建底层X爬取器实例
         self.x_crawler = None
-        if ct0 and auth_token:
-            try:
-                self.x_crawler = XCrawler(ct0=ct0, auth_token=auth_token, time_window_hours=time_window_hours)
-            except Exception as e:
-                self.logger.warning(f"X爬取器初始化失败: {str(e)}")
+        try:
+            self.x_crawler = XCrawler(time_window_hours=time_window_hours, bird_config=bird_config)
+        except Exception as e:
+            self.logger.warning(f"X爬取器初始化失败: {str(e)}")
         
         self.logger.info(f"X爬取器适配器初始化完成，时间窗口: {time_window_hours}小时")
     
@@ -52,7 +49,7 @@ class XCrawlerAdapter(DataSourceInterface):
     
     def get_supported_config_fields(self) -> List[str]:
         """获取支持的配置字段列表"""
-        return ["name", "url", "type", "ct0", "auth_token", "description"]
+        return ["name", "url", "type", "description"]
     
     def get_required_config_fields(self) -> List[str]:
         """获取必需的配置字段列表"""
@@ -86,10 +83,6 @@ class XCrawlerAdapter(DataSourceInterface):
             x_source = self._config_to_x_source(config)
             x_source.validate()  # 这会抛出ValueError如果配置无效
             
-            # 检查认证信息（如果需要）
-            if not self._has_auth_info(config):
-                self.logger.warning("X配置缺少认证信息，可能无法正常爬取")
-            
             return True
             
         except ValueError as e:
@@ -118,14 +111,7 @@ class XCrawlerAdapter(DataSourceInterface):
         try:
             # 如果没有爬取器实例，尝试创建
             if not self.x_crawler:
-                ct0 = config.get("ct0", self.ct0)
-                auth_token = config.get("auth_token", self.auth_token)
-                
-                if not ct0 or not auth_token:
-                    self.logger.warning("缺少X认证信息，无法验证可访问性")
-                    return False
-                
-                temp_crawler = XCrawler(ct0=ct0, auth_token=auth_token, time_window_hours=self.time_window_hours)
+                temp_crawler = XCrawler(time_window_hours=self.time_window_hours, bird_config=self.bird_config)
                 result = temp_crawler.authenticate()
                 temp_crawler.cleanup()
                 return result
@@ -165,7 +151,7 @@ class XCrawlerAdapter(DataSourceInterface):
             if x_source.type == "list":
                 items = crawler.crawl_list(x_source.url)
             elif x_source.type == "timeline":
-                items = crawler.crawl_timeline()
+                items = crawler.crawl_timeline(x_source.url)
             else:
                 raise CrawlError(
                     f"不支持的X源类型: {x_source.type}",
@@ -191,18 +177,8 @@ class XCrawlerAdapter(DataSourceInterface):
             Dict[str, Any]: 包含爬取结果和状态的字典
         """
         try:
-            # 如果没有源或没有认证信息，返回空结果
+            # 如果没有源，返回空结果
             if not sources:
-                return {
-                    'items': [],
-                    'results': [],
-                    'total_items': 0
-                }
-            
-            # 检查是否有认证信息
-            has_auth = any(self._has_auth_info(config) for config in sources)
-            if not has_auth and not self.x_crawler:
-                self.logger.warning("没有X认证信息，跳过X源爬取")
                 return {
                     'items': [],
                     'results': [],
@@ -216,7 +192,7 @@ class XCrawlerAdapter(DataSourceInterface):
                 x_sources.append(self._config_to_x_source(config))
             
             # 确保有爬取器实例
-            crawler = self._get_or_create_crawler(sources[0])  # 使用第一个配置的认证信息
+            crawler = self._get_or_create_crawler()
             
             # 使用底层爬取器进行批量爬取
             crawl_results = crawler.crawl_all_sources(x_sources)
@@ -259,18 +235,16 @@ class XCrawlerAdapter(DataSourceInterface):
             "auth_required": True,
             "rate_limited": True,
             "features": [
+                "基于bird工具的稳定爬取",
                 "列表和时间线爬取",
-                "反封控策略",
-                "速率限制管理",
-                "会话管理",
-                "随机延迟",
-                "User-Agent轮换",
-                "时间窗口过滤"
+                "自动速率限制管理",
+                "时间窗口过滤",
+                "错误恢复机制"
             ],
-            "rate_limit_info": {
-                "min_delay": 2.0,
-                "max_delay": 8.0,
-                "rate_limit_delay": 900
+            "bird_tool_info": {
+                "required": True,
+                "auto_retry": True,
+                "rate_limit_managed": True
             }
         })
         
@@ -300,27 +274,10 @@ class XCrawlerAdapter(DataSourceInterface):
             type=config["type"]
         )
     
-    def _has_auth_info(self, config: Dict[str, Any]) -> bool:
-        """
-        检查配置是否包含认证信息
-        
-        Args:
-            config: X配置字典
-            
-        Returns:
-            bool: 是否包含认证信息
-        """
-        ct0 = config.get("ct0", self.ct0)
-        auth_token = config.get("auth_token", self.auth_token)
-        return bool(ct0 and auth_token)
-    
-    def _get_or_create_crawler(self, config: Dict[str, Any]) -> XCrawler:
+    def _get_or_create_crawler(self) -> XCrawler:
         """
         获取或创建X爬取器实例
         
-        Args:
-            config: X配置字典
-            
         Returns:
             XCrawler: X爬取器实例
             
@@ -330,25 +287,14 @@ class XCrawlerAdapter(DataSourceInterface):
         if self.x_crawler:
             return self.x_crawler
         
-        # 尝试从配置获取认证信息
-        ct0 = config.get("ct0", self.ct0)
-        auth_token = config.get("auth_token", self.auth_token)
-        
-        if not ct0 or not auth_token:
-            raise CrawlError(
-                "缺少X认证信息 (ct0 和 auth_token)",
-                source_type=self.get_source_type(),
-                source_name=config.get("name", "Unknown")
-            )
-        
         try:
-            crawler = XCrawler(ct0=ct0, auth_token=auth_token, time_window_hours=self.time_window_hours)
+            crawler = XCrawler(time_window_hours=self.time_window_hours, bird_config=self.bird_config)
             return crawler
         except Exception as e:
             raise CrawlError(
                 f"创建X爬取器失败: {str(e)}",
                 source_type=self.get_source_type(),
-                source_name=config.get("name", "Unknown")
+                source_name="Unknown"
             ) from e
     
     def cleanup(self) -> None:
