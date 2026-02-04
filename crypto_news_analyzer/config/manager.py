@@ -78,7 +78,7 @@ class ConfigManager:
             # 验证必需的顶级字段
             required_fields = [
                 "execution_interval", "time_window_hours", 
-                "storage", "auth", "llm_config"
+                "storage", "llm_config"
             ]
             
             for field in required_fields:
@@ -101,14 +101,6 @@ class ConfigManager:
             if not isinstance(storage_config.get("retention_days"), int) or storage_config["retention_days"] <= 0:
                 self.logger.error("数据保留天数必须为正整数")
                 return False
-            
-            # 验证认证配置格式
-            auth_config = config["auth"]
-            auth_fields = ["llm_api_key", "telegram_bot_token", "telegram_channel_id"]
-            for field in auth_fields:
-                if field not in auth_config or not isinstance(auth_config[field], str):
-                    self.logger.error(f"认证配置字段格式无效: {field}")
-                    return False
             
             # 验证RSS源配置
             if "rss_sources" in config:
@@ -204,16 +196,14 @@ class ConfigManager:
         return sources
     
     def get_auth_config(self) -> AuthConfig:
-        """获取认证配置，优先使用环境变量"""
-        auth_data = self.config_data["auth"]
-        
-        # 从环境变量获取敏感信息，如果不存在则使用配置文件中的值
+        """获取认证配置，从环境变量读取"""
+        # 所有认证参数都从环境变量获取
         return AuthConfig(
-            x_ct0=os.getenv("x_ct0", auth_data.get("x_ct0", "")),
-            x_auth_token=os.getenv("x_auth_token", auth_data.get("x_auth_token", "")),
-            llm_api_key=os.getenv("llm_api_key", auth_data.get("llm_api_key", "")),
-            telegram_bot_token=os.getenv("telegram_bot_token", auth_data.get("telegram_bot_token", "")),
-            telegram_channel_id=os.getenv("telegram_channel_id", auth_data.get("telegram_channel_id", ""))
+            x_ct0=os.getenv("x_ct0", ""),
+            x_auth_token=os.getenv("x_auth_token", ""),
+            llm_api_key=os.getenv("llm_api_key", ""),
+            telegram_bot_token=os.getenv("telegram_bot_token", ""),
+            telegram_channel_id=os.getenv("telegram_channel_id", "")
         )
     
     def get_storage_config(self) -> StorageConfig:
@@ -269,13 +259,6 @@ class ConfigManager:
                 "max_storage_mb": 1000,
                 "cleanup_frequency": "daily",
                 "database_path": "./data/crypto_news.db"
-            },
-            "auth": {
-                "x_ct0": "",
-                "x_auth_token": "",
-                "llm_api_key": "",
-                "telegram_bot_token": "",
-                "telegram_channel_id": ""
             },
             "llm_config": {
                 "model": "MiniMax-M2.1",

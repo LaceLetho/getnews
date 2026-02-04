@@ -243,7 +243,7 @@ class MainController:
             config_data = self.config_manager.load_config()
             
             # 验证必需的配置项
-            required_configs = ["time_window_hours", "execution_interval", "storage", "auth", "llm_config"]
+            required_configs = ["time_window_hours", "execution_interval", "storage", "llm_config"]
             for config_key in required_configs:
                 if config_key not in config_data:
                     validation_result["errors"].append(f"缺少必需配置项: {config_key}")
@@ -871,12 +871,7 @@ class MainController:
         # 从环境变量覆盖配置
         env_mappings = {
             "TIME_WINDOW_HOURS": "time_window_hours",
-            "EXECUTION_INTERVAL": "execution_interval",
-            "LLM_API_KEY": "auth.llm_api_key",
-            "TELEGRAM_BOT_TOKEN": "auth.telegram_bot_token",
-            "TELEGRAM_CHANNEL_ID": "auth.telegram_channel_id",
-            "X_CT0": "auth.x_ct0",
-            "X_AUTH_TOKEN": "auth.x_auth_token"
+            "EXECUTION_INTERVAL": "execution_interval"
         }
         
         config_updates = {}

@@ -32,13 +32,6 @@ class TestMainController:
                 "cleanup_frequency": "daily",
                 "database_path": ":memory:"  # 使用内存数据库
             },
-            "auth": {
-                "x_ct0": "",
-                "x_auth_token": "",
-                "llm_api_key": "test_key",
-                "telegram_bot_token": "test_token",
-                "telegram_channel_id": "test_channel"
-            },
             "llm_config": {
                 "model": "MiniMax-M2.1",
                 "temperature": 0.1,
@@ -82,9 +75,9 @@ class TestMainController:
                 "time_window_hours": 24,
                 "execution_interval": 10,
                 "storage": {"database_path": ":memory:"},
-                "auth": {"llm_api_key": "test"},
                 "llm_config": {}
             }
+            controller.config_manager.load_config.return_value = controller.config_manager.config_data
             controller.config_manager.get_rss_sources.return_value = []
             controller.config_manager.get_x_sources.return_value = []
             controller.config_manager.get_auth_config.return_value = Mock(
@@ -254,19 +247,32 @@ class TestMainController:
         # 设置环境变量
         os.environ["TIME_WINDOW_HOURS"] = "48"
         os.environ["EXECUTION_INTERVAL"] = "7200"
-        os.environ["LLM_API_KEY"] = "env_api_key"
+        os.environ["llm_api_key"] = "env_api_key"
         
         try:
+            # 为这个测试使用真实的配置管理器
+            from crypto_news_analyzer.config.manager import ConfigManager
+            mock_controller.config_manager = ConfigManager(mock_controller.config_path)
+            mock_controller.config_manager.config_data = {
+                "time_window_hours": 24,
+                "execution_interval": 3600,
+                "storage": {"database_path": ":memory:"},
+                "llm_config": {}
+            }
+            
             mock_controller.setup_environment_config()
             
             config = mock_controller.config_manager.config_data
             assert config["time_window_hours"] == 48
             assert config["execution_interval"] == 7200
-            assert config["auth"]["llm_api_key"] == "env_api_key"
+            
+            # 验证认证配置从环境变量读取
+            auth_config = mock_controller.config_manager.get_auth_config()
+            assert auth_config.llm_api_key == "env_api_key"
             
         finally:
             # 清理环境变量
-            for key in ["TIME_WINDOW_HOURS", "EXECUTION_INTERVAL", "LLM_API_KEY"]:
+            for key in ["TIME_WINDOW_HOURS", "EXECUTION_INTERVAL", "llm_api_key"]:
                 if key in os.environ:
                     del os.environ[key]
     
@@ -410,13 +416,6 @@ class TestMainControllerIntegration:
                 "cleanup_frequency": "daily",
                 "database_path": ":memory:"
             },
-            "auth": {
-                "x_ct0": "",
-                "x_auth_token": "",
-                "llm_api_key": "test_key",
-                "telegram_bot_token": "test_token",
-                "telegram_channel_id": "test_channel"
-            },
             "llm_config": {
                 "model": "MiniMax-M2.1",
                 "temperature": 0.1,
@@ -449,10 +448,23 @@ class TestMainControllerIntegration:
             
             # 模拟所有组件
             controller.config_manager = Mock()
-            controller.config_manager.config_data = {"time_window_hours": 24}
+            controller.config_manager.config_data = {
+                "time_window_hours": 24,
+                "execution_interval": 10,
+                "storage": {"database_path": ":memory:"},
+                "llm_config": {}
+            }
+            controller.config_manager.load_config.return_value = controller.config_manager.config_data
             controller.config_manager.get_rss_sources.return_value = []
             controller.config_manager.get_x_sources.return_value = []
-            controller.config_manager.get_auth_config.return_value = Mock()
+            controller.config_manager.get_auth_config.return_value = Mock(
+                x_ct0="", x_auth_token="", llm_api_key="test_key",
+                telegram_bot_token="", telegram_channel_id=""
+            )
+            controller.config_manager.get_storage_config.return_value = Mock(
+                database_path=":memory:", retention_days=30
+            )
+            controller.config_manager.validate_storage_path.return_value = True
             
             controller.data_manager = Mock()
             controller.data_manager.add_content_items.return_value = 0

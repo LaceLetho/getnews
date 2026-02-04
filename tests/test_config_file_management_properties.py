@@ -184,7 +184,6 @@ def valid_complete_config(draw):
         "execution_interval": draw(st.integers(min_value=60, max_value=86400)),
         "time_window_hours": draw(st.integers(min_value=1, max_value=168)),
         "storage": draw(valid_storage_config()),
-        "auth": draw(valid_auth_config()),
         "llm_config": draw(valid_llm_config()),
         "rss_sources": draw(st.lists(valid_rss_source(), min_size=0, max_size=10)),
         "x_sources": draw(st.lists(valid_x_source(), min_size=0, max_size=5)),
@@ -198,7 +197,7 @@ def invalid_config_missing_fields(draw):
     config = draw(valid_complete_config())
     
     # 随机删除一些必需字段
-    required_fields = ["execution_interval", "time_window_hours", "storage", "auth", "llm_config"]
+    required_fields = ["execution_interval", "time_window_hours", "storage", "llm_config"]
     fields_to_remove = draw(st.lists(
         st.sampled_from(required_fields),
         min_size=1, max_size=len(required_fields)
@@ -377,7 +376,7 @@ class TestConfigFileManagementProperties:
         assert os.path.exists(self.config_path), "默认配置文件应该被创建"
         
         # 验证默认配置包含必需字段
-        required_fields = ["execution_interval", "time_window_hours", "storage", "auth", "llm_config"]
+        required_fields = ["execution_interval", "time_window_hours", "storage", "llm_config"]
         for field in required_fields:
             assert field in config, f"默认配置应该包含必需字段: {field}"
         
@@ -402,7 +401,7 @@ class TestConfigFileManagementProperties:
         assert self.manager.validate_config(config_data), "有效的完整配置应该通过验证"
         
         # 测试缺少必需字段的情况
-        required_fields = ["execution_interval", "time_window_hours", "storage", "auth", "llm_config"]
+        required_fields = ["execution_interval", "time_window_hours", "storage", "llm_config"]
         
         for field in required_fields:
             incomplete_config = config_data.copy()
@@ -530,13 +529,6 @@ class TestConfigFileManagementProperties:
                 "max_storage_mb": 1000,
                 "cleanup_frequency": "daily",
                 "database_path": "./data/test.db"
-            },
-            "auth": {
-                "x_ct0": "",
-                "x_auth_token": "",
-                "llm_api_key": "test_key",
-                "telegram_bot_token": "test_token",
-                "telegram_channel_id": "test_channel"
             },
             "llm_config": {
                 "model": "gpt-4",

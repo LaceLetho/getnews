@@ -7,13 +7,6 @@
     "cleanup_frequency": "daily",
     "database_path": "./data/crypto_news.db"
   },
-  "auth": {
-    "x_ct0": "",
-    "x_auth_token": "",
-    "llm_api_key": "",
-    "telegram_bot_token": "",
-    "telegram_channel_id": ""
-  },
   "llm_config": {
     "model": "gpt-4",
     "temperature": 0.1,

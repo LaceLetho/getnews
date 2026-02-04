@@ -37,7 +37,6 @@ class TestConfigManager:
         assert "execution_interval" in config
         assert "time_window_hours" in config
         assert "storage" in config
-        assert "auth" in config
         assert "rss_sources" in config
         
         # 验证默认值
@@ -53,11 +52,6 @@ class TestConfigManager:
             "storage": {
                 "retention_days": 30,
                 "database_path": "./test.db"
-            },
-            "auth": {
-                "llm_api_key": "test_key",
-                "telegram_bot_token": "test_token",
-                "telegram_channel_id": "test_channel"
             },
             "llm_config": {
                 "model": "gpt-4"
