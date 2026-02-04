@@ -344,7 +344,8 @@ class XCrawler:
             
             # 尝试多种时间格式
             time_formats = [
-                "%a %b %d %H:%M:%S %z %Y",  # Twitter标准格式
+                "%a %b %d %H:%M:%S %z %Y",  # Bird工具格式: "Wed Feb 04 14:57:51 +0000 2026"
+                "%a %b %d %H:%M:%S +0000 %Y",  # Twitter标准格式
                 "%Y-%m-%dT%H:%M:%S.%fZ",    # ISO格式
                 "%Y-%m-%dT%H:%M:%SZ",       # ISO格式（无毫秒）
                 "%Y-%m-%d %H:%M:%S",        # 简单格式
@@ -353,8 +354,19 @@ class XCrawler:
             for fmt in time_formats:
                 try:
                     dt = datetime.strptime(time_str, fmt)
-                    # 移除时区信息，使用本地时间
-                    return dt.replace(tzinfo=None)
+                    
+                    # 如果解析出的时间有时区信息，需要转换为本地时间
+                    if dt.tzinfo is not None:
+                        # 转换为UTC时间戳，然后转换为本地时间
+                        import time
+                        utc_timestamp = dt.timestamp()
+                        local_dt = datetime.fromtimestamp(utc_timestamp)
+                        self.logger.debug(f"时区转换: UTC {dt} -> 本地 {local_dt}")
+                        return local_dt
+                    else:
+                        # 没有时区信息，直接返回
+                        return dt
+                        
                 except ValueError:
                     continue
             
@@ -362,7 +374,17 @@ class XCrawler:
             try:
                 from dateutil import parser
                 dt = parser.parse(time_str)
-                return dt.replace(tzinfo=None)
+                
+                # 如果有时区信息，转换为本地时间
+                if dt.tzinfo is not None:
+                    import time
+                    utc_timestamp = dt.timestamp()
+                    local_dt = datetime.fromtimestamp(utc_timestamp)
+                    self.logger.debug(f"dateutil时区转换: UTC {dt} -> 本地 {local_dt}")
+                    return local_dt
+                else:
+                    return dt
+                    
             except Exception:
                 pass
             

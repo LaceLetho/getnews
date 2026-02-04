@@ -474,34 +474,39 @@ class BirdWrapper:
     def _normalize_tweet_data(self, raw_tweet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """标准化推文数据格式"""
         try:
-            # bird工具的输出格式可能包含以下字段
+            # bird工具的输出格式
             tweet = {
-                'id': raw_tweet.get('id_str', raw_tweet.get('id', '')),
-                'text': raw_tweet.get('full_text', raw_tweet.get('text', '')),
-                'created_at': raw_tweet.get('created_at', ''),
+                'id': raw_tweet.get('id', ''),
+                'text': raw_tweet.get('text', ''),
+                'created_at': raw_tweet.get('createdAt', ''),  # bird工具使用createdAt字段
                 'user': {},
                 'entities': raw_tweet.get('entities', {}),
-                'public_metrics': raw_tweet.get('public_metrics', {})
+                'public_metrics': {
+                    'retweet_count': raw_tweet.get('retweetCount', 0),
+                    'like_count': raw_tweet.get('likeCount', 0),
+                    'reply_count': raw_tweet.get('replyCount', 0)
+                }
             }
             
-            # 处理用户信息
-            user_data = raw_tweet.get('user', {})
-            if user_data:
+            # 处理用户信息 - bird工具使用author字段
+            author_data = raw_tweet.get('author', {})
+            if author_data:
                 tweet['user'] = {
-                    'screen_name': user_data.get('screen_name', user_data.get('username', '')),
-                    'name': user_data.get('name', ''),
-                    'id': user_data.get('id_str', user_data.get('id', ''))
+                    'screen_name': author_data.get('username', ''),
+                    'name': author_data.get('name', ''),
+                    'id': raw_tweet.get('authorId', '')
                 }
             else:
-                # 如果没有用户信息，尝试从其他字段获取
+                # 如果没有author信息，尝试从其他字段获取
                 tweet['user'] = {
-                    'screen_name': raw_tweet.get('username', raw_tweet.get('screen_name', 'unknown')),
+                    'screen_name': raw_tweet.get('username', 'unknown'),
                     'name': raw_tweet.get('name', ''),
-                    'id': raw_tweet.get('user_id', '')
+                    'id': raw_tweet.get('authorId', raw_tweet.get('user_id', ''))
                 }
             
             # 确保必需字段存在
             if not tweet['id'] or not tweet['text']:
+                self.logger.warning(f"推文缺少必需字段: id={tweet['id']}, text_length={len(tweet['text'])}")
                 return None
             
             return tweet
