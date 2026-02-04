@@ -512,43 +512,50 @@ class TelegramSender:
 
 ### 9. 执行协调器 (ExecutionCoordinator)
 
-协调系统内部各组件的执行顺序和工作流管理。支持一次性执行模式，适合Docker容器化部署和cron定时调度。
+协调系统内部各组件的执行顺序和工作流管理。支持一次性执行模式和内部定时调度，适合Docker容器化部署。
 
 ```python
 class ExecutionCoordinator:
     def __init__(self, config_manager: ConfigManager, data_manager: DataManager)
     def run_once(self) -> ExecutionResult
     def coordinate_workflow(self) -> WorkflowResult
-    def start_daemon(self, interval_seconds: int) -> None  # 传统模式，向后兼容
-    def stop_daemon(self) -> None
+    def start_scheduler(self, interval_seconds: int) -> None
+    def stop_scheduler(self) -> None
     def handle_execution_errors(self, errors: List[Exception]) -> RecoveryAction
     def get_execution_status(self) -> ExecutionStatus
     def cleanup_resources(self) -> None
     def validate_prerequisites(self) -> ValidationResult
     def handle_container_signals(self) -> None
     def setup_environment_config(self) -> None
+    def get_next_execution_time(self) -> datetime
+    def log_execution_cycle(self, start_time: datetime, end_time: datetime, status: str) -> None
 ```
 
 **主要功能**:
 - **一次性执行模式**: 执行完整的爬取→分析→报告→发送工作流后自动退出
+- **内部定时调度**: 程序内部实现的定时器，支持周期性任务执行
 - **工作流协调**: 管理各组件的执行顺序和依赖关系
 - **错误恢复**: 处理执行过程中的错误和异常情况
 - **资源管理**: 确保执行完成后正确清理资源
 - **状态监控**: 提供执行状态和进度信息
 - **容器信号处理**: 支持Docker容器的优雅关闭
 
+**内部调度特性**:
+- **自包含调度**: 无需依赖外部cron服务，程序内部实现定时逻辑
+- **可配置间隔**: 通过配置文件或环境变量设置执行间隔
+- **持续运行模式**: 支持容器持续运行并按间隔执行任务
+- **调度状态记录**: 记录每次执行的开始时间、结束时间和执行状态
+- **优雅停止**: 接收停止信号时完成当前任务后退出
+
 **Docker化部署特性**:
 - **主控制器模式**: 通过 `run_once()` 方法执行单次完整工作流
+- **调度器模式**: 通过 `start_scheduler()` 方法启动持续运行的定时调度
 - **环境变量配置**: 支持通过环境变量覆盖配置文件设置
 - **容器信号处理**: 正确处理SIGTERM和SIGINT信号
 - **退出状态码**: 根据执行结果返回适当的退出状态码
 - **健康检查**: 提供容器健康检查接口
 
-**传统部署兼容**:
-- 保留 `start_daemon()` 方法支持传统守护进程模式
-- 向后兼容现有的定时调度配置
-
-**依赖库**: threading（仅守护进程模式需要）
+**依赖库**: threading, schedule
 
 ### 11. 数据源工厂 (DataSourceFactory)
 
