@@ -6,7 +6,7 @@ python-telegram-bot>=20.0
 
 # 数据处理
 pandas>=2.0.0
-sqlite3  # 内置模块
+# sqlite3 是Python内置模块，无需安装
 
 # 测试框架
 pytest>=7.0.0
