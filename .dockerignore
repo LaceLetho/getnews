@@ -83,6 +83,7 @@ pyproject.toml
 .env
 .env.local
 .env.production
+.env.docker
 
 # Docker相关（避免递归）
 Dockerfile*
