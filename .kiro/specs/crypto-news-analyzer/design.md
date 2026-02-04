@@ -497,7 +497,7 @@ class ReportGenerator:
 
 ### 8. Telegram发送器 (TelegramSender)
 
-通过Telegram Bot API发送报告。
+通过Telegram Bot API发送报告和处理用户命令。
 
 ```python
 class TelegramSender:
@@ -506,13 +506,73 @@ class TelegramSender:
     def validate_bot_token(self) -> bool
     def validate_channel_access(self) -> bool
     def split_long_message(self, message: str) -> List[str]
+    def send_message(self, message: str, chat_id: str = None) -> bool
+    def send_notification(self, message: str, user_id: str) -> bool
 ```
 
 **依赖库**: python-telegram-bot 或 pyTelegramBotAPI
 
+### 8.1. Telegram命令处理器 (TelegramCommandHandler)
+
+处理用户通过Telegram发送的命令，支持手动触发系统执行。
+
+```python
+class TelegramCommandHandler:
+    def __init__(self, bot_token: str, execution_coordinator: ExecutionCoordinator, config_manager: ConfigManager)
+    def start_command_listener(self) -> None
+    def stop_command_listener(self) -> None
+    def handle_command(self, update: Update, context: CallbackContext) -> None
+    def handle_run_command(self, user_id: str, username: str) -> str
+    def handle_status_command(self, user_id: str) -> str
+    def handle_help_command(self, user_id: str) -> str
+    def is_authorized_user(self, user_id: str, username: str) -> bool
+    def get_execution_status(self) -> ExecutionStatus
+    def trigger_manual_execution(self, user_id: str) -> ExecutionResult
+    def log_command_execution(self, command: str, user_id: str, result: str) -> None
+    def validate_user_permissions(self, user_id: str) -> bool
+    def send_execution_notification(self, user_id: str, result: ExecutionResult) -> None
+```
+
+**支持的命令**:
+- **/run**: 触发一次完整的数据收集和分析工作流
+- **/status**: 查询当前系统运行状态和上次执行信息
+- **/help**: 显示可用命令列表和使用说明
+
+**权限管理**:
+- **授权用户列表**: 通过配置文件管理有权限执行命令的用户
+- **用户ID验证**: 验证命令发送者的Telegram用户ID
+- **权限拒绝处理**: 对未授权用户返回友好的拒绝消息
+
+**执行状态管理**:
+- **并发控制**: 防止多个用户同时触发执行
+- **执行超时**: 为手动触发的执行设置超时限制
+- **状态通知**: 执行完成后自动通知触发用户
+
+**配置文件扩展**:
+```json
+{
+    "telegram_commands": {
+        "enabled": true,
+        "authorized_users": [
+            {
+                "user_id": "123456789",
+                "username": "admin_user",
+                "permissions": ["run", "status", "help"]
+            }
+        ],
+        "execution_timeout_minutes": 30,
+        "max_concurrent_executions": 1,
+        "command_rate_limit": {
+            "max_commands_per_hour": 10,
+            "cooldown_minutes": 5
+        }
+    }
+}
+```
+
 ### 9. 执行协调器 (ExecutionCoordinator)
 
-协调系统内部各组件的执行顺序和工作流管理。支持一次性执行模式和内部定时调度，适合Docker容器化部署。
+协调系统内部各组件的执行顺序和工作流管理。支持一次性执行模式、内部定时调度和命令触发执行，适合Docker容器化部署。
 
 ```python
 class ExecutionCoordinator:
@@ -529,11 +589,17 @@ class ExecutionCoordinator:
     def setup_environment_config(self) -> None
     def get_next_execution_time(self) -> datetime
     def log_execution_cycle(self, start_time: datetime, end_time: datetime, status: str) -> None
+    def trigger_manual_execution(self, user_id: str = None) -> ExecutionResult
+    def is_execution_running(self) -> bool
+    def get_current_execution_info(self) -> Optional[ExecutionInfo]
+    def cancel_current_execution(self) -> bool
+    def set_execution_timeout(self, timeout_minutes: int) -> None
 ```
 
 **主要功能**:
 - **一次性执行模式**: 执行完整的爬取→分析→报告→发送工作流后自动退出
 - **内部定时调度**: 程序内部实现的定时器，支持周期性任务执行
+- **命令触发执行**: 支持通过Telegram命令手动触发执行
 - **工作流协调**: 管理各组件的执行顺序和依赖关系
 - **错误恢复**: 处理执行过程中的错误和异常情况
 - **资源管理**: 确保执行完成后正确清理资源
@@ -547,15 +613,23 @@ class ExecutionCoordinator:
 - **调度状态记录**: 记录每次执行的开始时间、结束时间和执行状态
 - **优雅停止**: 接收停止信号时完成当前任务后退出
 
+**命令触发特性**:
+- **手动触发**: 支持通过Telegram命令立即触发执行
+- **并发控制**: 防止多个执行同时进行
+- **执行超时**: 为手动触发的执行设置超时限制
+- **状态查询**: 提供当前执行状态的实时查询
+- **用户通知**: 执行完成后自动通知触发用户
+
 **Docker化部署特性**:
 - **主控制器模式**: 通过 `run_once()` 方法执行单次完整工作流
 - **调度器模式**: 通过 `start_scheduler()` 方法启动持续运行的定时调度
+- **命令监听模式**: 启动Telegram命令监听器，支持用户交互
 - **环境变量配置**: 支持通过环境变量覆盖配置文件设置
 - **容器信号处理**: 正确处理SIGTERM和SIGINT信号
 - **退出状态码**: 根据执行结果返回适当的退出状态码
 - **健康检查**: 提供容器健康检查接口
 
-**依赖库**: threading, schedule
+**依赖库**: threading, schedule, python-telegram-bot
 
 ### 11. 数据源工厂 (DataSourceFactory)
 
@@ -698,6 +772,49 @@ class CategoryConfig:
     priority: int = 1
     display_emoji: str = "📄"
     display_order: int = 999
+
+@dataclass
+class TelegramCommandConfig:
+    enabled: bool = True
+    authorized_users: List[Dict[str, Any]] = None
+    execution_timeout_minutes: int = 30
+    max_concurrent_executions: int = 1
+    command_rate_limit: Dict[str, int] = None
+
+@dataclass
+class ExecutionInfo:
+    execution_id: str
+    trigger_type: str  # "scheduled", "manual", "startup"
+    trigger_user: Optional[str]
+    start_time: datetime
+    end_time: Optional[datetime]
+    status: str  # "running", "completed", "failed", "timeout"
+    progress: float  # 0.0 to 1.0
+    current_stage: str  # "crawling", "analyzing", "reporting", "sending"
+    error_message: Optional[str]
+
+@dataclass
+class ExecutionResult:
+    execution_id: str
+    success: bool
+    start_time: datetime
+    end_time: datetime
+    duration_seconds: float
+    items_processed: int
+    categories_found: Dict[str, int]
+    errors: List[str]
+    trigger_user: Optional[str]
+    report_sent: bool
+
+@dataclass
+class CommandExecutionHistory:
+    command: str
+    user_id: str
+    username: str
+    timestamp: datetime
+    execution_id: Optional[str]
+    success: bool
+    response_message: str
 ```
 
 ## 错误处理
@@ -797,6 +914,10 @@ class ErrorHandler:
 ### 属性 11: 容错处理一致性
 *对于任何*数据源失败，系统应该记录错误信息并继续处理其他可用数据源，不应该导致整个流程中断
 **验证: 需求 11.1**
+
+### 属性 12: 命令权限验证一致性
+*对于任何*通过Telegram发送的命令，系统应该验证发送者的权限，只有授权用户才能触发执行，未授权用户应该收到权限拒绝消息
+**验证: 需求 16.5, 16.10, 16.11**
 
 ## 系统扩展性
 

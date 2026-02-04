@@ -32,6 +32,9 @@
 - **Exponential_Backoff**: 指数退避算法，用于智能重试延迟
 - **Message_Splitting**: 消息分割机制，处理超长Telegram消息
 - **Observability**: 可观测性，包括监控、日志和指标收集
+- **Telegram_Command**: Telegram命令，用户通过发送特定消息触发系统执行
+- **Command_Handler**: 命令处理器，解析和执行Telegram命令
+- **Manual_Trigger**: 手动触发，通过外部命令启动系统执行
 
 ## 需求
 
@@ -313,3 +316,25 @@
 8. THE System SHALL 监控LLM分析的处理时间和分类分布
 9. THE System SHALL 记录Telegram发送的成功率和消息分割统计
 10. THE System SHALL 提供可视化的监控面板显示关键指标趋势
+
+### 需求 16: Telegram命令触发
+
+**用户故事:** 作为用户，我希望能够通过向Telegram Bot发送命令来手动触发一次程序运行，以便在需要时立即获取最新的分析报告。
+
+#### 验收标准
+
+1. THE System SHALL 支持通过Telegram Bot接收用户命令
+2. WHEN 用户发送"/run"命令 THEN System SHALL 立即触发一次完整的数据收集和分析工作流
+3. WHEN 用户发送"/status"命令 THEN System SHALL 返回当前系统运行状态和上次执行信息
+4. WHEN 用户发送"/help"命令 THEN System SHALL 返回可用命令列表和使用说明
+5. THE System SHALL 验证命令发送者的权限，只允许授权用户触发执行
+6. WHEN 系统正在执行任务 THEN System SHALL 拒绝新的执行命令并返回当前执行状态
+7. WHEN 手动触发执行完成 THEN System SHALL 发送执行结果通知给触发用户
+8. THE System SHALL 记录所有手动触发的执行历史和触发用户信息
+9. WHEN 手动触发执行失败 THEN System SHALL 发送详细的错误信息给触发用户
+10. THE System SHALL 支持配置授权用户列表，限制命令执行权限
+11. WHEN 未授权用户发送命令 THEN System SHALL 返回权限拒绝消息
+12. THE System SHALL 支持在定时调度模式和命令触发模式之间切换
+13. WHEN 收到无效命令 THEN System SHALL 返回友好的错误提示和帮助信息
+14. THE System SHALL 为手动触发的执行设置超时限制，避免长时间占用资源
+15. WHEN 手动触发执行超时 THEN System SHALL 终止执行并通知用户
