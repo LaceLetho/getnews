@@ -8,7 +8,9 @@
 
 - **System**: 加密货币新闻分析系统
 - **RSS_Crawler**: RSS订阅源爬取组件
-- **X_Crawler**: X/Twitter内容爬取组件  
+- **X_Crawler**: X/Twitter内容爬取组件，通过bird工具实现
+- **Bird_Tool**: 第三方X/Twitter数据获取工具 (https://github.com/steipete/bird)
+- **Bird_Wrapper**: Python封装层，用于调用bird工具的命令行接口  
 - **Content_Analyzer**: 内容分析和分类组件
 - **Report_Generator**: 报告生成组件
 - **Time_Window**: 用户指定的时间窗口参数（小时数）
@@ -100,17 +102,22 @@
 
 ### 需求 4: X/Twitter内容爬取
 
-**用户故事:** 作为用户，我希望系统能够从配置文件读取X/Twitter信息源并爬取内容，以便获取社交媒体上的实时信息。
+**用户故事:** 作为用户，我希望系统能够从配置文件读取X/Twitter信息源并通过bird工具爬取内容，以便获取社交媒体上的实时信息并避免复杂的反爬机制。
 
 #### 验收标准
 
 1. THE System SHALL 从配置文件读取所有X/Twitter信息源URL
-2. THE System SHALL 爬取配置文件中定义的每个X列表和时间线
-3. WHEN 使用X认证参数 THEN System SHALL 通过ct0和auth_token进行身份验证
-4. WHEN X API调用失败 THEN System SHALL 记录错误状态并继续处理其他源
-5. WHEN 爬取X内容 THEN System SHALL 提取推文文本、发布时间和原文链接
-6. WHEN 推文发布时间超出时间窗口 THEN System SHALL 过滤掉该推文
-7. WHEN 配置文件中X信息源为空 THEN System SHALL 跳过X爬取阶段
+2. THE System SHALL 通过bird工具爬取配置文件中定义的每个X列表和时间线
+3. THE System SHALL 安装并配置bird工具作为X/Twitter数据获取的底层工具
+4. THE System SHALL 创建Python封装层调用bird工具的命令行接口
+5. WHEN 调用bird工具 THEN System SHALL 通过命令行参数传递认证信息和目标URL
+6. WHEN bird工具执行失败 THEN System SHALL 记录错误状态并继续处理其他源
+7. WHEN 爬取X内容 THEN System SHALL 解析bird工具的输出并提取推文文本、发布时间和原文链接
+8. WHEN 推文发布时间超出时间窗口 THEN System SHALL 过滤掉该推文
+9. WHEN 配置文件中X信息源为空 THEN System SHALL 跳过X爬取阶段
+10. THE System SHALL 处理bird工具的各种输出格式和错误状态
+11. WHEN bird工具不可用或未正确安装 THEN System SHALL 返回明确的依赖错误信息
+12. THE System SHALL 通过bird工具的配置文件或环境变量管理X/Twitter认证信息
 
 ### 需求 5: 内容智能分析和分类
 
@@ -233,19 +240,23 @@
 
 1. WHEN 网络连接失败 THEN System SHALL 记录错误并继续处理其他数据源
 2. WHEN RSS解析失败 THEN System SHALL 记录错误详情并跳过该订阅源
-3. WHEN X API认证失败 THEN System SHALL 返回明确的认证错误信息
-4. WHEN 大模型API认证失败 THEN System SHALL 返回明确的API密钥错误信息
-5. WHEN Telegram Bot认证失败 THEN System SHALL 返回明确的Bot Token错误信息
-6. WHEN 大模型API调用失败 THEN System SHALL 记录错误并将内容标记为未分析
-7. IF 所有数据源都失败 THEN System SHALL 生成包含错误信息的报告
-8. THE System SHALL 为每种错误类型提供具体的错误描述
-9. WHEN 部分数据源成功 THEN System SHALL 基于可用数据生成报告并标注数据源状态
-10. WHEN API调用超时 THEN System SHALL 实施超时重试机制，避免无限等待
-11. WHEN 配置文件格式错误 THEN System SHALL 提供详细的格式错误位置和修复建议
-12. WHEN 系统资源不足 THEN System SHALL 优雅降级，优先保证核心功能运行
-13. THE System SHALL 实施断路器模式，在连续失败时暂时停止调用失败的服务
-14. WHEN 临时文件创建失败 THEN System SHALL 尝试使用备用目录或内存缓存
-15. THE System SHALL 记录所有错误的详细上下文信息，包括时间戳、错误类型和堆栈跟踪
+3. WHEN bird工具执行失败 THEN System SHALL 记录详细的工具错误信息并跳过该X源
+4. WHEN bird工具未安装或配置错误 THEN System SHALL 返回明确的依赖错误信息
+5. WHEN bird工具输出格式异常 THEN System SHALL 记录解析错误并跳过该批次数据
+6. WHEN 大模型API认证失败 THEN System SHALL 返回明确的API密钥错误信息
+7. WHEN Telegram Bot认证失败 THEN System SHALL 返回明确的Bot Token错误信息
+8. WHEN 大模型API调用失败 THEN System SHALL 记录错误并将内容标记为未分析
+9. IF 所有数据源都失败 THEN System SHALL 生成包含错误信息的报告
+10. THE System SHALL 为每种错误类型提供具体的错误描述
+11. WHEN 部分数据源成功 THEN System SHALL 基于可用数据生成报告并标注数据源状态
+12. WHEN API调用超时 THEN System SHALL 实施超时重试机制，避免无限等待
+13. WHEN 配置文件格式错误 THEN System SHALL 提供详细的格式错误位置和修复建议
+14. WHEN 系统资源不足 THEN System SHALL 优雅降级，优先保证核心功能运行
+15. THE System SHALL 实施断路器模式，在连续失败时暂时停止调用失败的服务
+16. WHEN 临时文件创建失败 THEN System SHALL 尝试使用备用目录或内存缓存
+17. THE System SHALL 记录所有错误的详细上下文信息，包括时间戳、错误类型和堆栈跟踪
+18. WHEN bird工具返回认证错误 THEN System SHALL 提供bird工具配置指导信息
+19. WHEN bird工具进程超时 THEN System SHALL 终止进程并记录超时错误
 
 ### 需求 12: 系统健壮性和生产就绪
 

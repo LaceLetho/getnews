@@ -2,11 +2,11 @@
 
 ## 概述
 
-加密货币新闻爬取和分析工具是一个基于Python的自动化系统，采用模块化架构设计。系统通过配置文件管理多个信息源，定时爬取RSS订阅和X/Twitter内容，使用大语言模型进行智能分析和分类，最终生成结构化报告并通过Telegram Bot自动发送。
+加密货币新闻爬取和分析工具是一个基于Python的自动化系统，采用模块化架构设计。系统通过配置文件管理多个信息源，定时爬取RSS订阅和X/Twitter内容（通过bird工具），使用大语言模型进行智能分析和分类，最终生成结构化报告并通过Telegram Bot自动发送。
 
 ### 核心功能
 - 配置文件驱动的信息源管理
-- 多源数据爬取（RSS + X/Twitter）
+- 多源数据爬取（RSS + X/Twitter通过bird工具）
 - LLM驱动的内容分析和分类
 - **可配置的分类标准和识别规则**
 - 定时任务调度
@@ -16,8 +16,10 @@
 ### 最新变更
 本设计文档已更新以反映需求文档的重要变更：
 - **需求2 - 配置文件管理**: 扩展为管理信息源和分析规则，包含分类类别定义和识别规则
+- **需求4 - X/Twitter内容爬取**: 从直接API调用改为通过bird工具实现，避免复杂的反爬机制
 - **需求5 - 内容智能分析和分类**: 从固定的六大类别改为基于配置文件的可配置分类标准
 - **需求7 - 结构化报告生成**: 从"按六大类别组织"改为"按配置文件中定义的分类标准组织"
+- **需求11 - 错误处理和容错**: 增加对bird工具相关错误的处理策略
 
 ## 架构
 
@@ -32,7 +34,7 @@ graph TB
     
     subgraph "数据收集层"
         RSS[RSS爬取器]
-        X[X/Twitter爬取器]
+        X[X/Twitter爬取器<br/>通过bird工具]
         DM[数据管理器]
     end
     
@@ -53,7 +55,8 @@ graph TB
     
     subgraph "外部服务"
         RSSSRC[RSS订阅源]
-        XAPI[X/Twitter API]
+        BIRD[Bird工具]
+        XAPI[X/Twitter平台]
         LLMAPI[LLM API服务]
         TGAPI[Telegram Bot API]
     end
@@ -63,7 +66,8 @@ graph TB
     COORD --> RSS
     COORD --> X
     RSS --> RSSSRC
-    X --> XAPI
+    X --> BIRD
+    BIRD --> XAPI
     RSS --> DM
     X --> DM
     DM --> LLM
@@ -97,9 +101,11 @@ class ConfigManager:
     def save_config(self, config: Dict[str, Any]) -> None
     def get_rss_sources(self) -> List[RSSSource]
     def get_x_sources(self) -> List[XSource]
-    def get_auth_config(self) -> AuthConfig
+    def get_bird_config(self) -> BirdConfig
     def get_storage_config(self) -> StorageConfig
     def validate_storage_path(self, path: str) -> bool
+    def validate_bird_installation(self) -> bool
+    def load_auth_from_env(self) -> AuthConfig
 ```
 
 **配置文件结构**:
@@ -113,12 +119,15 @@ class ConfigManager:
         "cleanup_frequency": "daily",
         "database_path": "./data/crypto_news.db"
     },
-    "auth": {
-        "x_ct0": "...",
-        "x_auth_token": "...",
-        "llm_api_key": "...",
-        "telegram_bot_token": "...",
-        "telegram_channel_id": "..."
+    "bird_config": {
+        "executable_path": "bird",
+        "timeout_seconds": 300,
+        "max_retries": 3,
+        "output_format": "json",
+        "rate_limit_delay": 1.0,
+        "config_file_path": "~/.bird/config.json",
+        "enable_auto_retry": true,
+        "retry_delay_seconds": 60
     },
     "llm_config": {
         "model": "gpt-4",
@@ -170,6 +179,27 @@ class ConfigManager:
     ]
 }
 ```
+```
+
+**环境变量配置** (`.env` 和 `.env.docker`):
+```bash
+# X/Twitter认证信息
+X_CT0=your_ct0_token_here
+X_AUTH_TOKEN=your_auth_token_here
+
+# LLM API配置
+LLM_API_KEY=your_llm_api_key_here
+
+# Telegram配置
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_CHANNEL_ID=your_channel_id_here
+
+# Bird工具配置（可选，覆盖配置文件设置）
+BIRD_EXECUTABLE_PATH=bird
+BIRD_TIMEOUT_SECONDS=300
+BIRD_CONFIG_PATH=~/.bird/config.json
+```
+```
 
 ### 2. RSS爬取器 (RSSCrawler)
 
@@ -188,42 +218,116 @@ class RSSCrawler:
 
 ### 3. X/Twitter爬取器 (XCrawler)
 
-基于类似bird工具的实现，爬取X/Twitter内容。考虑到X平台的反爬虫机制，采用多重策略降低封控风险。
+基于bird工具的实现，通过Python封装层调用bird工具爬取X/Twitter内容。采用这种方式可以避免直接处理X平台复杂的反爬机制，提高稳定性和可靠性。
 
 ```python
 class XCrawler:
-    def __init__(self, ct0: str, auth_token: str, time_window_hours: int)
+    def __init__(self, time_window_hours: int, bird_config_path: str = None)
     def crawl_list(self, list_url: str) -> List[ContentItem]
-    def crawl_timeline(self) -> List[ContentItem]
+    def crawl_timeline(self, username: str = None) -> List[ContentItem]
     def crawl_all_sources(self, sources: List[XSource]) -> CrawlResult
-    def authenticate(self) -> bool
-    def parse_tweet(self, tweet_data: Dict) -> ContentItem
-    def implement_rate_limiting(self) -> None
-    def rotate_user_agents(self) -> None
-    def add_random_delays(self) -> None
-    def handle_rate_limit_response(self, response: requests.Response) -> None
+    def execute_bird_command(self, command: List[str]) -> BirdResult
+    def parse_bird_output(self, output: str) -> List[ContentItem]
+    def validate_bird_installation(self) -> bool
+    def setup_bird_config(self, auth_config: AuthConfig) -> None
+    def handle_bird_errors(self, error_output: str) -> None
+    def is_within_time_window(self, publish_time: datetime) -> bool
+
+class BirdWrapper:
+    """Python封装层，用于调用bird工具"""
+    def __init__(self, bird_executable_path: str = "bird")
+    def check_installation(self) -> bool
+    def get_version(self) -> str
+    def execute_command(self, args: List[str], timeout: int = 300) -> BirdResult
+    def setup_authentication_from_env(self) -> None
+    def setup_authentication(self, ct0: str, auth_token: str) -> None
+    def fetch_list_tweets(self, list_id: str, count: int = 100) -> BirdResult
+    def fetch_user_timeline(self, username: str, count: int = 100) -> BirdResult
+    def parse_tweet_data(self, raw_data: str) -> List[Dict[str, Any]]
+
+@dataclass
+class BirdResult:
+    success: bool
+    output: str
+    error: str
+    exit_code: int
+    execution_time: float
 ```
 
-**反封控策略**:
-1. **速率限制**: 严格控制请求频率，模拟人类行为
-2. **随机延迟**: 在请求间添加随机延迟（1-5秒）
-3. **User-Agent轮换**: 使用多个真实浏览器User-Agent
-4. **会话管理**: 维护长期会话，避免频繁登录
-5. **错误处理**: 检测429状态码，自动延长等待时间
-6. **备用方案**: 当X源不可用时，依然可以通过RSS源获取信息
+**bird工具集成策略**:
 
-**风险评估**:
-- **高风险**: 频繁大量请求、使用明显的爬虫标识
-- **中风险**: 正常频率的API调用，使用真实认证信息
-- **低风险**: 模拟人类行为的访问模式
+1. **安装和配置**:
+   - 系统启动时检查bird工具是否已安装
+   - 支持通过环境变量或配置文件指定bird可执行文件路径
+   - 从环境变量读取X/Twitter认证信息（X_CT0, X_AUTH_TOKEN）
 
-**备用策略**:
-如果X爬取受限，系统设计支持：
-1. 完全依赖RSS源运行
-2. 集成其他社交媒体API（如Mastodon、Bluesky）
-3. 使用第三方数据聚合服务
+2. **命令行调用**:
+   - 通过subprocess模块调用bird工具
+   - 支持超时控制，避免长时间等待
+   - 捕获标准输出和错误输出
 
-**认证机制**: 使用ct0和auth_token进行会话认证，避免使用官方API的高成本
+3. **数据解析**:
+   - 解析bird工具的JSON输出格式
+   - 提取推文文本、发布时间、URL等关键信息
+   - 处理各种数据格式异常
+
+4. **错误处理**:
+   - 检测bird工具的各种错误状态
+   - 处理认证失败、网络错误、限流等情况
+   - 提供详细的错误诊断信息
+
+**认证机制**: 
+- X/Twitter认证信息通过环境变量管理（X_CT0, X_AUTH_TOKEN）
+- 支持通过bird工具的配置文件或命令行参数传递认证信息
+- 系统启动时自动从环境变量读取并配置bird工具
+- bird工具会自动管理会话状态和cookie信息
+
+**依赖管理**:
+```python
+class BirdDependencyManager:
+    def check_bird_availability(self) -> DependencyStatus
+    def install_bird_if_missing(self) -> bool
+    def update_bird_to_latest(self) -> bool
+    def get_installation_instructions(self) -> str
+    def validate_bird_configuration(self) -> ValidationResult
+```
+
+**配置文件扩展**:
+```json
+{
+    "bird_config": {
+        "executable_path": "bird",
+        "timeout_seconds": 300,
+        "max_retries": 3,
+        "output_format": "json",
+        "rate_limit_delay": 1.0,
+        "config_file_path": "~/.bird/config.json"
+    },
+    "auth": {
+        "x_ct0": "...",
+        "x_auth_token": "...",
+        "bird_session_file": "~/.bird/session.json"
+    }
+}
+```
+
+**优势对比**:
+
+与原有直接API调用方式相比，使用bird工具的优势：
+
+1. **反爬机制处理**: bird工具专门处理X平台的反爬机制，更加稳定
+2. **维护成本降低**: 无需自己维护复杂的反爬逻辑
+3. **更新及时**: bird工具由专门团队维护，能及时适应平台变化
+4. **风险降低**: 减少账号被封的风险
+5. **功能完整**: 支持更多X平台功能和数据类型
+
+**风险缓解**:
+1. **依赖风险**: 定期检查bird工具的可用性和更新
+2. **兼容性**: 支持多个版本的bird工具
+3. **备用方案**: 当bird工具不可用时，可以完全依赖RSS源运行
+4. **错误恢复**: 完善的错误处理和重试机制
+
+**认证机制**: 通过bird工具的配置文件或命令行参数传递ct0和auth_token
 
 ### 4. 数据管理器 (DataManager)
 
@@ -715,11 +819,44 @@ class RESTAPISource:
 
 @dataclass
 class AuthConfig:
-    x_ct0: str
-    x_auth_token: str
-    llm_api_key: str
-    telegram_bot_token: str
-    telegram_channel_id: str
+    """所有认证信息从环境变量读取"""
+    x_ct0: str  # 从环境变量X_CT0读取
+    x_auth_token: str  # 从环境变量X_AUTH_TOKEN读取
+    llm_api_key: str  # 从环境变量LLM_API_KEY读取
+    telegram_bot_token: str  # 从环境变量TELEGRAM_BOT_TOKEN读取
+    telegram_channel_id: str  # 从环境变量TELEGRAM_CHANNEL_ID读取
+    
+    @classmethod
+    def from_env(cls) -> 'AuthConfig':
+        """从环境变量创建AuthConfig实例"""
+        import os
+        return cls(
+            x_ct0=os.getenv('X_CT0', ''),
+            x_auth_token=os.getenv('X_AUTH_TOKEN', ''),
+            llm_api_key=os.getenv('LLM_API_KEY', ''),
+            telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN', ''),
+            telegram_channel_id=os.getenv('TELEGRAM_CHANNEL_ID', '')
+        )
+
+@dataclass
+class BirdConfig:
+    executable_path: str = "bird"
+    timeout_seconds: int = 300
+    max_retries: int = 3
+    output_format: str = "json"
+    rate_limit_delay: float = 1.0
+    config_file_path: str = "~/.bird/config.json"
+    enable_auto_retry: bool = True
+    retry_delay_seconds: int = 60
+
+@dataclass
+class BirdResult:
+    success: bool
+    output: str
+    error: str
+    exit_code: int
+    execution_time: float
+    command: List[str]
 
 @dataclass
 class StorageConfig:
@@ -826,6 +963,8 @@ class CommandExecutionHistory:
 3. **解析错误**: 跳过单个项目，继续处理其他内容
 4. **API限制**: 实现速率限制和队列机制
 5. **配置错误**: 启动时验证，提供详细错误提示
+6. **Bird工具错误**: 检查工具安装、配置和执行状态
+7. **依赖错误**: 验证外部工具的可用性和版本兼容性
 
 ### 错误恢复机制
 
@@ -835,7 +974,11 @@ class ErrorHandler:
     def handle_auth_error(self, service: str, error: Exception) -> None
     def handle_parsing_error(self, item: Any, error: Exception) -> None
     def handle_api_rate_limit(self, service: str) -> None
+    def handle_bird_error(self, bird_result: BirdResult) -> RecoveryAction
+    def handle_dependency_error(self, tool: str, error: Exception) -> None
     def generate_error_report(self, errors: List[Exception]) -> str
+    def validate_bird_installation(self) -> ValidationResult
+    def suggest_bird_fix(self, error_type: str) -> str
 ```
 
 ## 测试策略
@@ -888,34 +1031,38 @@ class ErrorHandler:
 **验证: 需求 5.4, 5.6, 5.10, 5.11**
 
 ### 属性 5: 内容解析完整性
-*对于任何*有效的RSS或X内容，解析后的ContentItem应该包含标题、内容、发布时间和原文链接等所有必需字段
-**验证: 需求 3.4, 4.5**
+*对于任何*有效的RSS内容或通过bird工具获取的X内容，解析后的ContentItem应该包含标题、内容、发布时间和原文链接等所有必需字段
+**验证: 需求 3.4, 4.7**
 
-### 属性 6: 内容分类一致性
+### 属性 6: Bird工具集成一致性
+*对于任何*有效的X源配置，系统应该能够成功调用bird工具并解析其输出，或在bird工具不可用时返回明确的错误信息
+**验证: 需求 4.3, 4.6, 4.11**
+
+### 属性 7: 内容分类一致性
 *对于任何*输入内容，LLM分析器应该将其分类到配置文件中定义的分类类别之一，或标记为未分类/忽略
 **验证: 需求 5.3, 5.4, 5.6**
 
-### 属性 7: 报告格式完整性
+### 属性 8: 报告格式完整性
 *对于任何*生成的报告，应该包含时间窗口信息的头部、数据源状态表格，以及按配置文件中定义的分类标准组织的内容，每条信息包含原文链接
 **验证: 需求 7.1, 7.3, 7.4**
 
-### 属性 8: Telegram发送可靠性
+### 属性 9: Telegram发送可靠性
 *对于任何*生成的报告，如果Telegram配置有效，系统应该成功发送报告到指定频道
 **验证: 需求 8.1**
 
-### 属性 9: 执行协调一致性
+### 属性 10: 执行协调一致性
 *对于任何*一次性执行请求，执行协调器应该按照正确的顺序协调各组件执行完整的工作流（爬取→分析→报告→发送）
 **验证: 需求 9.7**
 
-### 属性 10: 时间窗口过滤正确性
+### 属性 11: 时间窗口过滤正确性
 *对于任何*内容项，只有发布时间在指定时间窗口内的内容应该被包含在最终分析中
 **验证: 需求 10.1**
 
-### 属性 11: 容错处理一致性
-*对于任何*数据源失败，系统应该记录错误信息并继续处理其他可用数据源，不应该导致整个流程中断
-**验证: 需求 11.1**
+### 属性 12: 容错处理一致性
+*对于任何*数据源失败（包括bird工具失败），系统应该记录错误信息并继续处理其他可用数据源，不应该导致整个流程中断
+**验证: 需求 11.1, 11.3**
 
-### 属性 12: 命令权限验证一致性
+### 属性 13: 命令权限验证一致性
 *对于任何*通过Telegram发送的命令，系统应该验证发送者的权限，只有授权用户才能触发执行，未授权用户应该收到权限拒绝消息
 **验证: 需求 16.5, 16.10, 16.11**
 
@@ -1181,7 +1328,15 @@ report_factory.register_generator("json", JSONReportGenerator)
    - 账户被限制或封禁
    - 处理: 根据错误类型采用不同策略，X平台错误采用指数退避
 
-5. **系统错误**
+5. **Bird工具错误**
+   - 工具未安装或路径错误
+   - 配置文件格式错误
+   - 认证信息无效
+   - 命令执行超时
+   - 输出格式异常
+   - 处理: 检查依赖、验证配置、提供修复建议
+
+6. **系统错误**
    - 磁盘空间不足
    - 数据库连接失败
    - 文件权限错误
@@ -1198,13 +1353,15 @@ class ErrorRecoveryManager:
             AuthError: NoRetryStrategy(),
             ParseError: SkipAndContinueStrategy(),
             RateLimitError: DelayRetryStrategy(),
-            XPlatformRateLimitError: ExtendedDelayRetryStrategy(base_delay=900)  # 15分钟基础延迟
+            BirdToolError: BirdSpecificRetryStrategy(),
+            DependencyError: DependencyRecoveryStrategy()
         }
     
     def handle_error(self, error: Exception, context: str) -> RecoveryAction
     def should_retry(self, error: Exception, attempt: int) -> bool
     def calculate_delay(self, attempt: int) -> float
-    def handle_x_platform_errors(self, response_code: int) -> RecoveryAction
+    def handle_bird_tool_errors(self, bird_result: BirdResult) -> RecoveryAction
+    def validate_dependencies(self) -> List[DependencyStatus]
     def log_recovery_action(self, action: RecoveryAction) -> None
 ```
 
