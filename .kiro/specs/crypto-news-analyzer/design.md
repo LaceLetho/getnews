@@ -512,7 +512,7 @@ class TelegramSender:
 
 ### 9. 执行协调器 (ExecutionCoordinator)
 
-协调系统内部各组件的执行顺序和工作流管理。在Docker化部署中，定时调度由外部系统（cron、Kubernetes CronJob）负责，协调器专注于内部工作流协调。
+协调系统内部各组件的执行顺序和工作流管理。支持一次性执行模式，适合Docker容器化部署和cron定时调度。
 
 ```python
 class ExecutionCoordinator:
@@ -525,20 +525,24 @@ class ExecutionCoordinator:
     def get_execution_status(self) -> ExecutionStatus
     def cleanup_resources(self) -> None
     def validate_prerequisites(self) -> ValidationResult
+    def handle_container_signals(self) -> None
+    def setup_environment_config(self) -> None
 ```
 
 **主要功能**:
-- **一次性执行模式**: 适合容器化调度，执行完整的爬取→分析→报告→发送工作流
+- **一次性执行模式**: 执行完整的爬取→分析→报告→发送工作流后自动退出
 - **工作流协调**: 管理各组件的执行顺序和依赖关系
 - **错误恢复**: 处理执行过程中的错误和异常情况
 - **资源管理**: 确保执行完成后正确清理资源
 - **状态监控**: 提供执行状态和进度信息
+- **容器信号处理**: 支持Docker容器的优雅关闭
 
-**Docker化适配**:
-- 在容器环境中，通过 `run_once()` 方法执行单次完整工作流
-- 外部调度器（cron、Kubernetes CronJob）负责定时触发容器
-- 支持环境变量配置和容器信号处理
-- 提供健康检查和状态查询接口
+**Docker化部署特性**:
+- **主控制器模式**: 通过 `run_once()` 方法执行单次完整工作流
+- **环境变量配置**: 支持通过环境变量覆盖配置文件设置
+- **容器信号处理**: 正确处理SIGTERM和SIGINT信号
+- **退出状态码**: 根据执行结果返回适当的退出状态码
+- **健康检查**: 提供容器健康检查接口
 
 **传统部署兼容**:
 - 保留 `start_daemon()` 方法支持传统守护进程模式
