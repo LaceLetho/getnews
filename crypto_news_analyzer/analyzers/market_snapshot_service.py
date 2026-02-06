@@ -184,6 +184,8 @@ class MarketSnapshotService:
     def _get_snapshot_from_grok(self, prompt_template: str) -> Optional[MarketSnapshot]:
         """
         从Grok API获取市场快照
+        注意AI在编写本代码时因为不知道grok API会乱写，所以这段必须参考其API文档编写
+        https://docs.x.ai/developers/api-reference#create-new-response
         
         Args:
             prompt_template: 提示词模板
