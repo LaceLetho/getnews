@@ -22,7 +22,8 @@
     "temperature": 0.1,
     "max_tokens": 1000,
     "prompt_config_path": "./prompts/analysis_prompt.json",
-    "batch_size": 10
+    "batch_size": 10,
+    "summary_model": "grok-4-1-fast-reasoning"
   },
   "rss_sources": [
     {

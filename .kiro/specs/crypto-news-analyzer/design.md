@@ -131,6 +131,7 @@ class ConfigManager:
     },
     "llm_config": {
         "model": "gpt-4",
+        "summary_model": "grok-beta",
         "temperature": 0.1,
         "max_tokens": 1000,
         "prompt_config_path": "./prompts/analysis_prompt.json",
@@ -189,6 +190,9 @@ X_AUTH_TOKEN=your_auth_token_here
 
 # LLM API配置
 LLM_API_KEY=your_llm_api_key_here
+
+# Grok API配置（用于市场快照）
+GROK_API_KEY=your_grok_api_key_here
 
 # Telegram配置
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
@@ -381,223 +385,200 @@ CREATE TABLE content_items (
 
 ### 5. LLM分析器 (LLMAnalyzer)
 
-与大语言模型API集成，使用**可配置的提示词和分类标准**进行内容分析和分类。
+实现多步骤智能分析流程，集成联网AI获取市场快照，使用结构化输出工具强制大模型返回结构化数据。
 
 ```python
 class LLMAnalyzer:
-    def __init__(self, api_key: str, model: str = "gpt-4", prompt_config_path: str = "./prompts/analysis_prompt.json")
-    def analyze_content(self, content: str, title: str = "", source: str = "", content_id: str = "") -> AnalysisResult
-    def batch_analyze(self, items: List[ContentItem]) -> List[AnalysisResult]
-    def classify_content(self, content: str) -> str
+    def __init__(self, api_key: str, grok_api_key: str = None, model: str = "gpt-4", 
+                 market_prompt_path: str = "./prompts/market_summary_prompt.md",
+                 analysis_prompt_path: str = "./prompts/analysis_prompt.md")
+    def get_market_snapshot(self) -> str
+    def merge_prompts_with_snapshot(self, market_snapshot: str) -> str
+    def analyze_content_batch(self, items: List[ContentItem]) -> List[AnalysisResult]
+    def setup_structured_output(self) -> None
+    def classify_content_dynamic(self, content: str, market_context: str) -> AnalysisResult
     def should_ignore_content(self, content: str) -> bool
-    def build_analysis_prompt(self, content: str, title: str, source: str) -> str
-    def parse_llm_response(self, response: str) -> AnalysisResult
-    def reload_prompt_config(self) -> None
-    def validate_category_response(self, category: str) -> bool
-    def get_available_categories(self) -> List[str]
-    def update_classification_config(self, new_config: Dict[str, Any]) -> None
+    def build_system_prompt(self, market_snapshot: str) -> str
+    def build_user_prompt(self, items: List[ContentItem]) -> str
+    def parse_structured_response(self, response: str) -> List[AnalysisResult]
+    def validate_response_format(self, response: Dict) -> bool
+    def get_dynamic_categories(self, response_data: List[Dict]) -> List[str]
+    def handle_empty_batch_response(self) -> List[AnalysisResult]
+    def retry_with_fallback_model(self, items: List[ContentItem], error: Exception) -> List[AnalysisResult]
 ```
 
-**LLM提示词设计**:
+**四步分析流程**:
 
-系统支持灵活的提示词配置，用户可以通过配置文件自定义分析标准和提示词模板：
+1. **第一步 - 市场快照获取**: 
+   - 使用prompts/market_summary_prompt.md中的提示词
+   - 向联网AI（如Grok）请求当前市场现状快照
+   - 获取实时市场信息作为分析上下文
+
+2. **第二步 - 提示词合并**: 
+   - 合并市场快照和analysis_prompt.md提示词
+   - 构建包含市场上下文的系统提示词
+   - 为大模型提供完整的分析背景
+
+3. **第三步 - 结构化输出**: 
+   - 使用instructor等工具强制大模型返回结构化数据
+   - 确保输出格式的一致性和可解析性
+   - 支持JSON格式的标准化响应
+
+4. **第四步 - 批量分析**: 
+   - 将所有新闻批量作为用户提示词发送
+   - 通过提示词让大模型完成语义去重和筛选
+   - 支持动态分类，不硬编码具体类别
+
+**联网AI集成**:
 
 ```python
-class PromptManager:
-    def __init__(self, config_path: str = "./prompts/analysis_prompt.json")
-    def load_prompt_template(self) -> str
-    def load_categories_config(self) -> Dict[str, CategoryConfig]
-    def build_analysis_prompt(self, content: str, categories: Dict[str, CategoryConfig]) -> str
-    def validate_prompt_template(self, template: str) -> bool
-    def reload_configuration(self) -> None
+class MarketSnapshotService:
+    def __init__(self, grok_api_key: str, summary_model: str = "grok-beta", fallback_providers: List[str] = None)
+    def get_market_snapshot(self, prompt_template: str) -> MarketSnapshot
+    def call_grok_api(self, prompt: str) -> str
+    def validate_snapshot_quality(self, snapshot: str) -> bool
+    def get_fallback_snapshot(self) -> str
+    def cache_snapshot(self, snapshot: str, ttl_minutes: int = 30) -> None
+    def get_cached_snapshot(self) -> Optional[str]
 
 @dataclass
-class CategoryConfig:
-    name: str
-    description: str
-    criteria: List[str]
-    examples: List[str]
-    priority: int = 1
+class MarketSnapshot:
+    content: str
+    timestamp: datetime
+    source: str  # "grok", "fallback", "cached"
+    quality_score: float
+    is_valid: bool
 ```
 
-**提示词配置文件结构** (`./prompts/analysis_prompt.json`):
+**结构化输出工具集成**:
 
-```json
-{
-    "prompt_template": "你是一个专业的加密货币新闻分析师。请分析以下内容并进行分类。\n\n## 分析标准\n\n### 需要关注的内容类别：\n\n{categories_description}\n\n### 需要忽略的内容：\n\n{ignore_criteria}\n\n## 分析任务\n\n请分析以下内容：\n\n---\n标题：{title}\n内容：{content}\n来源：{source}\n---\n\n## 输出格式\n\n{output_format}",
-    
-    "categories": {
-        "大户动向": {
-            "description": "大户资金流动和态度变化",
-            "criteria": [
-                "巨鲸资金流入流出（单笔>1000 ETH或等值）",
-                "大户对crypto市场的态度变化（增持/减持/公开表态）",
-                "知名地址的链上操作"
-            ],
-            "examples": [
-                "某巨鲸地址转移10000 ETH到交易所",
-                "MicroStrategy宣布增持比特币"
-            ],
-            "priority": 1
-        },
-        "利率事件": {
-            "description": "美联储相关的利率政策事件",
-            "criteria": [
-                "美联储委员的发言表态",
-                "FOMC会议相关消息",
-                "利率政策预期变化"
-            ],
-            "examples": [
-                "鲍威尔发表鹰派言论",
-                "FOMC会议纪要显示加息预期"
-            ],
-            "priority": 1
-        },
-        "美国政府监管政策": {
-            "description": "美国政府对加密货币的监管政策变化",
-            "criteria": [
-                "SEC/CFTC/财政部重大政策调整",
-                "立法进展（国会法案）",
-                "监管执法行动"
-            ],
-            "examples": [
-                "SEC批准比特币ETF",
-                "国会通过加密货币监管法案"
-            ],
-            "priority": 1
-        },
-        "安全事件": {
-            "description": "影响较大的安全相关事件",
-            "criteria": [
-                "黑客攻击、漏洞披露（影响较大的）",
-                "资金被盗、协议被黑",
-                "重大安全预警"
-            ],
-            "examples": [
-                "某DeFi协议被黑客攻击损失1000万美元",
-                "发现智能合约重大漏洞"
-            ],
-            "priority": 1
-        },
-        "新产品": {
-            "description": "KOL提及的真正创新产品（非广告）",
-            "criteria": [
-                "KOL提及的新项目/协议",
-                "必须是真正的创新，不是项目方广告",
-                "特别注意：如果疑似广告软文则归类为'忽略'"
-            ],
-            "examples": [
-                "V神推荐的新Layer2解决方案",
-                "知名开发者发布的新DeFi协议"
-            ],
-            "priority": 2
-        },
-        "市场新现象": {
-            "description": "重要的市场新趋势和变化",
-            "criteria": [
-                "新趋势、新变化",
-                "链上数据异常",
-                "新的市场模式"
-            ],
-            "examples": [
-                "NFT市场出现新的交易模式",
-                "链上活跃度异常增长"
-            ],
-            "priority": 2
-        }
-    },
-    
-    "ignore_criteria": [
-        "广告和软文 - 明显的推广内容",
-        "重复信息 - 与已有信息重复的内容",
-        "情绪发泄 - 纯粹的情绪表达，无实质信息",
-        "空洞的道理和预测 - 没有具体依据的预测或泛泛而谈",
-        "立场争论和口水仗 - 争论性内容，无实质信息价值"
-    ],
-    
-    "output_format": "请严格按照以下JSON格式输出：\n\n{\n    \"category\": \"类别名称\",\n    \"confidence\": 0.85,\n    \"reasoning\": \"详细说明分类理由\",\n    \"should_ignore\": false,\n    \"key_points\": [\"关键信息点1\", \"关键信息点2\"]\n}",
-    
-    "llm_settings": {
-        "temperature": 0.1,
-        "max_tokens": 1000,
-        "model": "gpt-4"
-    }
-}
+```python
+class StructuredOutputManager:
+    def __init__(self, library: str = "instructor")  # 支持instructor等库
+    def setup_output_schema(self, schema: Dict[str, Any]) -> None
+    def force_structured_response(self, llm_client: Any, prompt: str) -> Dict[str, Any]
+    def validate_output_structure(self, response: Dict) -> ValidationResult
+    def handle_malformed_response(self, response: str) -> Dict[str, Any]
+    def get_supported_libraries(self) -> List[str]
+
+# 输出数据结构定义
+@dataclass
+class StructuredAnalysisResult:
+    time: str
+    category: str  # 动态分类，由大模型返回决定
+    weight_score: int  # 0-100
+    summary: str
+    source: str
 ```
 
 **动态分类系统**:
 
-系统的核心特性是支持完全可配置的分类标准，用户可以通过配置文件自定义分析标准和分类类别：
+系统的核心特性是支持完全动态的分类，不在代码中硬编码具体类别：
 
 ```python
-class DynamicCategoryManager:
-    def __init__(self, config_path: str = "./prompts/analysis_prompt.json")
-    def load_categories(self) -> Dict[str, CategoryConfig]
-    def add_category(self, name: str, config: CategoryConfig) -> None
-    def remove_category(self, name: str) -> None
-    def update_category(self, name: str, config: CategoryConfig) -> None
-    def get_category_list(self) -> List[str]
-    def validate_category_config(self, config: CategoryConfig) -> bool
-    def reload_categories(self) -> None
-    def export_categories_config(self) -> Dict[str, Any]
-    def import_categories_config(self, config: Dict[str, Any]) -> None
-
-# 动态分类配置
-def create_dynamic_categories(categories: Dict[str, CategoryConfig]) -> List[str]:
-    """根据配置文件动态创建分类列表"""
-    category_list = list(categories.keys())
-    category_list.extend(['未分类', '忽略'])  # 系统保留分类
-    return category_list
+class DynamicClassificationManager:
+    def __init__(self)
+    def extract_categories_from_response(self, response_data: List[Dict]) -> Set[str]
+    def update_category_registry(self, new_categories: Set[str]) -> None
+    def get_current_categories(self) -> List[str]
+    def validate_category_consistency(self, categories: Set[str]) -> bool
+    def handle_category_changes(self, old_categories: Set[str], new_categories: Set[str]) -> None
+    def get_category_statistics(self) -> Dict[str, int]
 ```
 
 **支持的LLM服务**: OpenAI GPT, Anthropic Claude, 其他兼容OpenAI API的服务
 
 ### 6. 内容分类器 (ContentClassifier)
 
-基于LLM分析结果和**可配置的分类标准**进行内容分类。
+基于LLM分析结果和动态分类系统进行内容分类，支持完全动态的分类管理。
 
 ```python
 class ContentClassifier:
-    def __init__(self, llm_analyzer: LLMAnalyzer, category_manager: DynamicCategoryManager)
-    def classify_item(self, item: ContentItem, analysis: AnalysisResult) -> str
-    def get_category_items(self, category: str) -> List[ContentItem]
-    def generate_category_summary(self, category: str) -> str
-    def get_available_categories(self) -> List[str]
-    def get_classification_stats(self) -> Dict[str, int]
-    def validate_category(self, category: str) -> bool
-    def update_category_config(self, new_config: Dict[str, CategoryConfig]) -> None
+    def __init__(self, llm_analyzer: LLMAnalyzer, dynamic_manager: DynamicClassificationManager)
+    def classify_batch(self, items: List[ContentItem], market_context: str) -> Dict[str, List[ContentItem]]
+    def extract_categories_from_results(self, results: List[AnalysisResult]) -> Set[str]
+    def organize_by_category(self, items: List[ContentItem], results: List[AnalysisResult]) -> Dict[str, List[ContentItem]]
+    def get_category_statistics(self) -> Dict[str, int]
+    def validate_classification_consistency(self, results: List[AnalysisResult]) -> bool
+    def handle_dynamic_categories(self, new_categories: Set[str]) -> None
+    def get_current_session_categories(self) -> List[str]
 ```
 
-**可配置分类特性**:
-- **动态分类列表**: 分类类别完全由配置文件定义，支持运行时更新
-- **自定义识别规则**: 每个分类都有独立的识别标准和优先级
-- **默认分类支持**: 系统提供默认的六大类别配置，用户可以修改或扩展
-- **分类验证**: 自动验证分类配置的有效性和完整性
-- **热重载**: 支持配置文件更新后自动重载，无需重启系统
+**动态分类特性**:
+- **运行时分类发现**: 根据大模型返回结果自动发现新分类
+- **分类一致性验证**: 确保同一批次内分类的一致性
+- **分类统计**: 实时统计各分类的内容数量和分布
+- **无硬编码限制**: 完全依赖大模型返回的分类结果
 
 ### 7. 报告生成器 (ReportGenerator)
 
-生成Markdown格式的结构化报告，**支持基于配置文件定义的分类标准**组织内容。
+生成适配Telegram格式的结构化报告，支持动态分类展示和市场快照集成。
 
 ```python
 class ReportGenerator:
-    def __init__(self, category_manager: DynamicCategoryManager, include_summary: bool = True)
-    def generate_report(self, data: AnalyzedData, status: CrawlStatus) -> str
-    def generate_header(self, time_window: int, start_time: datetime, end_time: datetime) -> str
-    def generate_status_table(self, status: CrawlStatus) -> str
-    def generate_category_sections(self, categorized_items: Dict[str, List[ContentItem]], analysis_results: Dict[str, AnalysisResult]) -> List[str]
-    def generate_category_section(self, category_name: str, emoji: str, items: List[ContentItem], analysis_results: Dict[str, AnalysisResult]) -> str
-    def generate_summary(self, categories: Dict[str, List[ContentItem]]) -> str
-    def update_category_display_config(self, config: Dict[str, Any]) -> None
-    def get_category_display_order(self) -> List[Tuple[str, str]]
+    def __init__(self, telegram_formatter: TelegramFormatter, include_market_snapshot: bool = True)
+    def generate_telegram_report(self, data: AnalyzedData, status: CrawlStatus, market_snapshot: str) -> str
+    def generate_report_header(self, time_window: int, start_time: datetime, end_time: datetime) -> str
+    def generate_data_source_status(self, status: CrawlStatus) -> str
+    def generate_dynamic_category_sections(self, categorized_items: Dict[str, List[ContentItem]], analysis_results: Dict[str, AnalysisResult]) -> List[str]
+    def generate_category_section(self, category_name: str, items: List[ContentItem], analysis_results: Dict[str, AnalysisResult]) -> str
+    def generate_market_snapshot_section(self, market_snapshot: str) -> str
+    def format_message_item(self, item: ContentItem, analysis: AnalysisResult) -> str
+    def create_telegram_hyperlink(self, text: str, url: str) -> str
+    def optimize_for_mobile_display(self, content: str) -> str
+    def handle_empty_categories(self, categories: Dict[str, List[ContentItem]]) -> Dict[str, List[ContentItem]]
 ```
 
-**可配置报告特性**:
-- **动态分类组织**: 报告按配置文件中定义的分类标准组织内容
-- **分类显示配置**: 支持自定义分类的显示顺序、图标和描述
-- **灵活模板系统**: 支持多种报告模板和自定义格式
-- **分类统计**: 自动统计各分类的内容数量和分布
-- **空分类处理**: 当某个分类没有内容时显示相应提示
+**Telegram格式适配**:
+
+```python
+class TelegramFormatter:
+    def __init__(self)
+    def format_header(self, title: str, level: int = 1) -> str
+    def format_bold(self, text: str) -> str
+    def format_italic(self, text: str) -> str
+    def format_code(self, text: str) -> str
+    def format_hyperlink(self, text: str, url: str) -> str
+    def format_list_item(self, text: str, level: int = 0) -> str
+    def escape_special_characters(self, text: str) -> str
+    def optimize_line_breaks(self, text: str) -> str
+    def validate_telegram_format(self, text: str) -> bool
+    def split_long_message(self, message: str, max_length: int = 4096) -> List[str]
+    def preserve_formatting_in_split(self, parts: List[str]) -> List[str]
+```
+
+**报告结构**:
+
+1. **报告信息部分**:
+   - 数据时间窗口
+   - 数据时间范围
+   - 生成时间戳
+
+2. **数据源爬取状态部分**:
+   - 各数据源的状态和获取数量
+   - 成功/失败统计
+   - 错误信息摘要
+
+3. **各消息大类部分**:
+   - 动态分类展示（根据大模型返回结果）
+   - 每条消息包含：time、category、weight_score、summary、source
+   - source字段格式化为Telegram超链接
+
+4. **市场现状快照部分**:
+   - 第一步获取的市场快照内容
+   - 格式化为易读的Telegram消息
+
+**动态分类展示**:
+- **自适应布局**: 根据实际分类数量调整报告结构
+- **分类排序**: 按weight_score或时间排序
+- **空分类处理**: 自动省略没有内容的分类
+- **分类统计**: 显示每个分类的消息数量
+
+**移动端优化**:
+- **行长度控制**: 适配手机屏幕宽度
+- **分段显示**: 合理的段落分割
+- **链接优化**: 确保链接在移动端可点击
+- **字体格式**: 使用Telegram支持的格式化语法
 
 ### 8. Telegram发送器 (TelegramSender)
 
@@ -823,6 +804,7 @@ class AuthConfig:
     x_ct0: str  # 从环境变量X_CT0读取
     x_auth_token: str  # 从环境变量X_AUTH_TOKEN读取
     llm_api_key: str  # 从环境变量LLM_API_KEY读取
+    grok_api_key: str  # 从环境变量GROK_API_KEY读取，用于市场快照
     telegram_bot_token: str  # 从环境变量TELEGRAM_BOT_TOKEN读取
     telegram_channel_id: str  # 从环境变量TELEGRAM_CHANNEL_ID读取
     
@@ -834,6 +816,7 @@ class AuthConfig:
             x_ct0=os.getenv('X_CT0', ''),
             x_auth_token=os.getenv('X_AUTH_TOKEN', ''),
             llm_api_key=os.getenv('LLM_API_KEY', ''),
+            grok_api_key=os.getenv('GROK_API_KEY', ''),
             telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN', ''),
             telegram_channel_id=os.getenv('TELEGRAM_CHANNEL_ID', '')
         )
@@ -868,11 +851,31 @@ class StorageConfig:
 @dataclass
 class AnalysisResult:
     content_id: str
-    category: str  # 动态分类，由配置文件定义
-    confidence: float
-    reasoning: str
-    should_ignore: bool
-    key_points: List[str]
+    category: str  # 动态分类，由大模型返回决定
+    weight_score: int  # 0-100重要性评分
+    summary: str  # 简短总结
+    source: str  # 原文链接
+    time: str  # 发布时间
+    confidence: float = 0.0  # 分析置信度（可选）
+    reasoning: str = ""  # 分类理由（可选）
+    should_ignore: bool = False  # 是否应该忽略
+
+@dataclass
+class MarketSnapshot:
+    content: str  # 市场快照内容
+    timestamp: datetime  # 获取时间
+    source: str  # 来源（grok, fallback, cached）
+    quality_score: float  # 质量评分
+    is_valid: bool  # 是否有效
+
+@dataclass
+class StructuredAnalysisResult:
+    """结构化输出工具返回的标准格式"""
+    time: str
+    category: str
+    weight_score: int  # 0-100
+    summary: str
+    source: str
 
 @dataclass
 class CrawlResult:
@@ -1030,39 +1033,59 @@ class ErrorHandler:
 *对于任何*配置文件中定义的分类标准，系统应该能够正确加载并应用于内容分析，分类结果应该符合配置的识别规则
 **验证: 需求 5.4, 5.6, 5.10, 5.11**
 
-### 属性 5: 内容解析完整性
+### 属性 5: 市场快照获取一致性
+*对于任何*市场快照请求，系统应该能够从联网AI服务获取当前市场现状，或在服务不可用时使用缓存或默认快照
+**验证: 需求 5.1, 5.2, 5.18**
+
+### 属性 6: 提示词合并正确性
+*对于任何*获取到的市场快照，系统应该能够正确合并市场快照和分析提示词，生成包含完整上下文的系统提示词
+**验证: 需求 5.4**
+
+### 属性 7: 结构化输出一致性
+*对于任何*大模型响应，结构化输出工具应该强制返回包含time、category、weight_score、summary、source字段的标准JSON格式
+**验证: 需求 5.5, 5.13**
+
+### 属性 8: 动态分类处理正确性
+*对于任何*大模型返回的分类结果，系统应该能够动态识别和处理新的分类类别，不依赖硬编码的分类列表
+**验证: 需求 5.8, 5.9**
+
+### 属性 9: 批量分析完整性
+*对于任何*新闻内容批次，系统应该通过大模型完成语义去重和筛选，返回去重后的结构化分析结果
+**验证: 需求 5.6, 5.7**
+
+### 属性 10: 内容解析完整性
 *对于任何*有效的RSS内容或通过bird工具获取的X内容，解析后的ContentItem应该包含标题、内容、发布时间和原文链接等所有必需字段
 **验证: 需求 3.4, 4.7**
 
-### 属性 6: Bird工具集成一致性
+### 属性 11: Bird工具集成一致性
 *对于任何*有效的X源配置，系统应该能够成功调用bird工具并解析其输出，或在bird工具不可用时返回明确的错误信息
 **验证: 需求 4.3, 4.6, 4.11**
 
-### 属性 7: 内容分类一致性
-*对于任何*输入内容，LLM分析器应该将其分类到配置文件中定义的分类类别之一，或标记为未分类/忽略
-**验证: 需求 5.3, 5.4, 5.6**
+### 属性 12: Telegram格式适配正确性
+*对于任何*生成的报告，应该正确适配Telegram格式，包含报告信息、数据源状态、动态分类内容和市场快照，source字段格式化为可点击超链接
+**验证: 需求 7.1, 7.3, 7.7, 7.9**
 
-### 属性 8: 报告格式完整性
-*对于任何*生成的报告，应该包含时间窗口信息的头部、数据源状态表格，以及按配置文件中定义的分类标准组织的内容，每条信息包含原文链接
-**验证: 需求 7.1, 7.3, 7.4**
+### 属性 13: 动态分类展示一致性
+*对于任何*大模型返回的分类结果，报告生成器应该根据实际分类数量动态调整报告结构，自动省略空分类
+**验证: 需求 7.4, 7.5, 7.11**
 
-### 属性 9: Telegram发送可靠性
+### 属性 14: Telegram发送可靠性
 *对于任何*生成的报告，如果Telegram配置有效，系统应该成功发送报告到指定频道
 **验证: 需求 8.1**
 
-### 属性 10: 执行协调一致性
+### 属性 15: 执行协调一致性
 *对于任何*一次性执行请求，执行协调器应该按照正确的顺序协调各组件执行完整的工作流（爬取→分析→报告→发送）
 **验证: 需求 9.7**
 
-### 属性 11: 时间窗口过滤正确性
+### 属性 16: 时间窗口过滤正确性
 *对于任何*内容项，只有发布时间在指定时间窗口内的内容应该被包含在最终分析中
 **验证: 需求 10.1**
 
-### 属性 12: 容错处理一致性
+### 属性 17: 容错处理一致性
 *对于任何*数据源失败（包括bird工具失败），系统应该记录错误信息并继续处理其他可用数据源，不应该导致整个流程中断
 **验证: 需求 11.1, 11.3**
 
-### 属性 13: 命令权限验证一致性
+### 属性 18: 命令权限验证一致性
 *对于任何*通过Telegram发送的命令，系统应该验证发送者的权限，只有授权用户才能触发执行，未授权用户应该收到权限拒绝消息
 **验证: 需求 16.5, 16.10, 16.11**
 

@@ -13,19 +13,27 @@
 - **Bird_Wrapper**: Python封装层，用于调用bird工具的命令行接口  
 - **Content_Analyzer**: 内容分析和分类组件
 - **Report_Generator**: 报告生成组件
+- **Market_Snapshot_Service**: 联网AI服务，用于获取当前市场现状快照
+- **Grok_API**: X平台的联网AI服务，用于获取实时市场信息
+- **Structured_Output_Tool**: 结构化输出工具（如instructor库），强制大模型返回结构化数据
+- **Dynamic_Classification**: 动态分类系统，根据大模型返回结果自动调整分类展示
 - **Time_Window**: 用户指定的时间窗口参数（小时数）
 - **Auth_Token**: X/Twitter认证令牌
 - **CT0**: X/Twitter认证参数
 - **LLM_API_Key**: 大模型服务的API密钥
+- **Grok_API_Key**: Grok联网AI服务的API密钥
 - **Telegram_Bot_Token**: Telegram机器人认证令牌
 - **Telegram_Channel_ID**: Telegram频道标识符
 - **Config_File**: 系统配置文件，存储信息源和认证参数
 - **RSS_Source**: RSS订阅源配置项
 - **X_Source**: X/Twitter信息源配置项
+- **Market_Summary_Prompt**: 市场快照获取提示词模板
+- **Analysis_Prompt**: 内容分析提示词模板
 - **Scheduler**: 定时任务调度器
 - **Execution_Interval**: 自动执行间隔时间
 - **Content_Item**: 单条新闻或社交媒体内容
-- **Category**: 六大信息分类类别之一
+- **Category**: 动态分类类别，由大模型返回决定
+- **Weight_Score**: 消息重要性评分（0-100）
 - **Retry_Budget**: 重试预算，用于管理API调用重试次数
 - **Circuit_Breaker**: 断路器模式，用于防止连续失败的服务调用
 - **Health_Check**: 健康检查机制，用于验证系统组件可用性
@@ -33,6 +41,8 @@
 - **Integration_Test**: 集成测试，验证组件间协作和外部API集成
 - **Exponential_Backoff**: 指数退避算法，用于智能重试延迟
 - **Message_Splitting**: 消息分割机制，处理超长Telegram消息
+- **Telegram_Formatting**: Telegram格式化，适配Telegram消息显示特点
+- **Hyperlink_Formatting**: 超链接格式化，将source字段转换为Telegram可点击链接
 - **Observability**: 可观测性，包括监控、日志和指标收集
 - **Telegram_Command**: Telegram命令，用户通过发送特定消息触发系统执行
 - **Command_Handler**: 命令处理器，解析和执行Telegram命令
@@ -121,26 +131,28 @@
 
 ### 需求 5: 内容智能分析和分类
 
-**用户故事:** 作为用户，我希望系统能够智能分析收集到的内容并按照可配置的类别进行分类，以便快速了解不同类型的市场信息。
+**用户故事:** 作为用户，我希望系统能够通过多步骤的智能分析流程对收集到的内容进行分类和过滤，以便获得准确的市场信息和动态分类结果。
 
 #### 验收标准
 
-1. WHEN 分析内容 THEN System SHALL 使用大模型进行内容理解和分类
-2. WHEN 大模型API调用 THEN System SHALL 使用提供的LLM API密钥进行认证
-3. THE Content_Analyzer SHALL 根据配置文件中定义的分类标准进行内容分类
-4. THE Config_File SHALL 包含可配置的内容分类类别和对应的识别规则
-5. THE System SHALL 支持默认的六大类别配置：大户动向、利率事件、美国政府监管政策、安全事件、新产品、市场新现象
-6. THE Content_Analyzer SHALL 支持用户自定义新的分类类别和识别规则
-7. THE Config_File SHALL 定义需要忽略的内容类型（如广告软文、重复信息、情绪发泄、空洞预测和立场争论）
-8. WHEN 内容属于忽略类别 THEN System SHALL 过滤掉该内容
-9. WHEN 内容无法分类 THEN System SHALL 标记为未分类但保留在报告中
-10. WHEN 配置文件中分类规则更新 THEN System SHALL 在下次运行时使用新的分类规则
-11. THE System SHALL 支持MiniMax LLM API作为主要分析引擎，确保100%成功率
-12. WHEN LLM API调用失败 THEN System SHALL 实施重试机制，最多重试3次
-13. THE Content_Analyzer SHALL 返回结构化的分析结果，包含分类、置信度、推理和关键点
+1. WHEN 开始内容分析 THEN System SHALL 首先使用联网AI获取当前市场现状快照
+2. THE System SHALL 使用prompts/market_summary_prompt.md中的提示词向联网AI请求市场快照
+3. THE System SHALL 支持Grok作为联网AI服务获取实时市场信息
+4. WHEN 获取市场快照 THEN System SHALL 合并市场快照和analysis_prompt.md提示词作为系统提示词
+5. THE System SHALL 使用结构化输出工具（如instructor库）强制大模型返回结构化数据
+6. WHEN 分析内容 THEN System SHALL 将所有新闻批量作为用户提示词发送给大模型
+7. THE System SHALL 通过提示词让大模型完成语义去重和筛选过滤工作
+8. THE System SHALL 支持动态分类，不在代码中硬编码具体类别
+9. WHEN 大模型返回分类结果 THEN System SHALL 根据返回数据中的类别数量动态展示分类
+10. THE System SHALL 支持分类标准的灵活变动，通过修改提示词实现分类调整
+11. THE System SHALL 支持多种大模型服务（Grok、MiniMax M2.1等）作为分析引擎
+12. WHEN 大模型API调用失败 THEN System SHALL 实施重试机制，最多重试3次
+13. THE Content_Analyzer SHALL 返回结构化的分析结果，包含time、category、weight_score、summary和source字段
 14. WHEN 批量分析内容 THEN System SHALL 保持每个内容项分析结果的一致性和完整性
-15. THE System SHALL 验证分析结果的格式正确性，确保所有必需字段都存在
-16. WHEN 分析结果置信度低于阈值 THEN System SHALL 标记为低置信度并记录原因
+15. THE System SHALL 验证分析结果的JSON格式正确性，确保所有必需字段都存在
+16. WHEN 某批次数据全被过滤 THEN System SHALL 接受空列表[]作为有效返回结果
+17. THE System SHALL 支持通过提示词配置需要忽略的内容类型和过滤规则
+18. WHEN 联网AI服务不可用 THEN System SHALL 记录错误并使用默认市场快照继续分析
 
 ### 需求 6: 爬取状态监控
 
@@ -157,20 +169,28 @@
 
 ### 需求 7: 结构化报告生成
 
-**用户故事:** 作为用户，我希望获得格式化的分析报告，以便快速浏览和理解收集到的信息。
+**用户故事:** 作为用户，我希望获得适配Telegram格式的结构化分析报告，以便在Telegram上快速浏览和理解收集到的信息。
 
 #### 验收标准
 
-1. THE Report_Generator SHALL 生成包含时间窗口信息的报告头部
-2. THE Report_Generator SHALL 生成网站爬取状态表格，显示每个数据源的状态和获取数量
-3. THE Report_Generator SHALL 按配置文件中定义的分类标准组织分析结果
-4. THE System SHALL 支持通过配置文件灵活调整分析规则和分类标准
-5. THE Config_File SHALL 包含可配置的内容分类类别定义
-6. WHEN 生成分类内容 THEN System SHALL 为每条信息包含原文链接
-7. THE Report_Generator SHALL 生成可选的总结部分，突出最重要的信息
-8. THE Report_Generator SHALL 使用Markdown格式输出报告
-9. WHEN 某个类别没有内容 THEN System SHALL 在报告中显示该类别为空
-10. WHEN 配置文件中分类标准更新 THEN System SHALL 在下次运行时使用新的分类标准
+1. THE Report_Generator SHALL 生成适配Telegram格式的报告，而非纯Markdown格式
+2. THE Report_Generator SHALL 在报告头部包含数据时间窗口和数据时间范围信息
+3. THE Report_Generator SHALL 生成数据源爬取状态部分，显示每个数据源的状态和获取数量
+4. THE Report_Generator SHALL 按大模型返回的分类动态组织各消息大类
+5. THE System SHALL 支持动态分类展示，根据大模型返回的类别数量自动调整报告结构
+6. WHEN 展示具体消息 THEN System SHALL 包含大模型返回的所有字段（time、category、weight_score、summary、source）
+7. THE Report_Generator SHALL 将source字段格式化为Telegram超链接形式
+8. THE Report_Generator SHALL 在报告末尾包含市场现状快照部分
+9. THE Report_Generator SHALL 使用第一步获取的市场快照作为报告的市场现状内容
+10. THE Report_Generator SHALL 优化Telegram消息格式，确保在移动端的可读性
+11. WHEN 某个类别没有内容 THEN System SHALL 在报告中显示该类别为空或完全省略该类别
+12. THE Report_Generator SHALL 支持Telegram的文本格式化语法（粗体、斜体、代码块等）
+13. WHEN 报告内容过长 THEN System SHALL 智能分割消息并保持内容完整性
+14. THE Report_Generator SHALL 为每个消息类别使用适当的Telegram格式化标记
+15. THE Report_Generator SHALL 确保超链接在Telegram中正确显示和可点击
+16. WHEN 市场快照获取失败 THEN System SHALL 在报告中标注市场快照不可用
+17. THE Report_Generator SHALL 支持Telegram的特殊字符转义，避免格式错误
+18. THE Report_Generator SHALL 优化报告布局，适应Telegram的消息显示特点
 
 ### 需求 8: Telegram报告发送
 
