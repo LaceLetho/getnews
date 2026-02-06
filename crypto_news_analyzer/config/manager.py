@@ -202,6 +202,7 @@ class ConfigManager:
             x_ct0=os.getenv("x_ct0", ""),
             x_auth_token=os.getenv("x_auth_token", ""),
             llm_api_key=os.getenv("llm_api_key", ""),
+            grok_api_key=os.getenv("grok_api_key", ""),
             telegram_bot_token=os.getenv("telegram_bot_token", ""),
             telegram_channel_id=os.getenv("telegram_channel_id", "")
         )

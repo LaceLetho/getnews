@@ -4,6 +4,9 @@ feedparser>=6.0.10
 beautifulsoup4>=4.12.0
 python-telegram-bot>=20.0
 
+# AI/LLM相关
+openai>=1.0.0  # 用于调用xAI API（兼容OpenAI SDK）
+
 # 数据处理
 pandas>=2.0.0
 # sqlite3 是Python内置模块，无需安装

@@ -227,6 +227,7 @@ class AuthConfig:
     x_ct0: str
     x_auth_token: str
     llm_api_key: str
+    grok_api_key: str  # Grok API密钥，用于市场快照
     telegram_bot_token: str
     telegram_channel_id: str
     
@@ -250,6 +251,23 @@ class AuthConfig:
             self.x_ct0 = ""
         if self.x_auth_token and not self.x_auth_token.strip():
             self.x_auth_token = ""
+        
+        # Grok API密钥可以为空（如果不使用市场快照功能）
+        if self.grok_api_key and not self.grok_api_key.strip():
+            self.grok_api_key = ""
+    
+    @classmethod
+    def from_env(cls) -> 'AuthConfig':
+        """从环境变量创建AuthConfig实例"""
+        import os
+        return cls(
+            x_ct0=os.getenv('X_CT0', ''),
+            x_auth_token=os.getenv('X_AUTH_TOKEN', ''),
+            llm_api_key=os.getenv('LLM_API_KEY', ''),
+            grok_api_key=os.getenv('GROK_API_KEY', ''),
+            telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN', ''),
+            telegram_channel_id=os.getenv('TELEGRAM_CHANNEL_ID', '')
+        )
     
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
@@ -530,6 +548,48 @@ class ContentCategory(Enum):
     MARKET_PHENOMENA = "市场新现象"
     UNCATEGORIZED = "未分类"
     IGNORED = "忽略"
+
+
+@dataclass
+class MarketSnapshot:
+    """市场快照数据模型"""
+    content: str  # 市场快照内容
+    timestamp: datetime  # 获取时间
+    source: str  # 来源（grok, fallback, cached）
+    quality_score: float  # 质量评分 (0.0-1.0)
+    is_valid: bool  # 是否有效
+    
+    def __post_init__(self):
+        """数据验证"""
+        if not isinstance(self.timestamp, datetime):
+            raise ValueError("时间戳必须是datetime对象")
+        if not 0.0 <= self.quality_score <= 1.0:
+            raise ValueError("质量评分必须在0.0到1.0之间")
+        if not isinstance(self.is_valid, bool):
+            raise ValueError("is_valid必须是布尔值")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典"""
+        data = asdict(self)
+        data['timestamp'] = self.timestamp.isoformat()
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'MarketSnapshot':
+        """从字典反序列化"""
+        if isinstance(data['timestamp'], str):
+            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+        return cls(**data)
+    
+    def to_json(self) -> str:
+        """序列化为JSON字符串"""
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
+    
+    @classmethod
+    def from_json(cls, json_str: str) -> 'MarketSnapshot':
+        """从JSON字符串反序列化"""
+        data = json.loads(json_str)
+        return cls.from_dict(data)
 
 
 @dataclass
