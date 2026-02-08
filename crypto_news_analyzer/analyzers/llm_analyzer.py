@@ -95,6 +95,12 @@ class LLMAnalyzer:
                         api_key=self.api_key,
                         base_url="https://api.minimax.chat/v1"
                     )
+                elif "grok" in self.model.lower():
+                    # xAI Grok API
+                    self.client = OpenAI(
+                        api_key=self.api_key,
+                        base_url="https://api.x.ai/v1"
+                    )
                 else:
                     # 标准 OpenAI API
                     self.client = OpenAI(api_key=self.api_key)

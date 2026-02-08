@@ -142,7 +142,7 @@ class XCrawlerAdapter(DataSourceInterface):
         
         try:
             # 确保有爬取器实例
-            crawler = self._get_or_create_crawler(config)
+            crawler = self._get_or_create_crawler()
             
             # 转换配置为XSource对象
             x_source = self._config_to_x_source(config)

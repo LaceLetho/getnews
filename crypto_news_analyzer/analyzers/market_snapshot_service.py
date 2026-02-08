@@ -9,6 +9,7 @@ import json
 import logging
 import time
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass, asdict
@@ -249,7 +250,9 @@ class MarketSnapshotService:
                         if hasattr(output_item, 'content') and output_item.content:
                             for content_item in output_item.content:
                                 if hasattr(content_item, 'type') and content_item.type == 'output_text':
-                                    content = content_item.text
+                                    # 获取文本并清理超链接
+                                    raw_content = content_item.text
+                                    content = self._remove_hyperlinks(raw_content)
                                     break
                         break
             
@@ -418,6 +421,34 @@ class MarketSnapshotService:
             
         except Exception as e:
             self.logger.error(f"缓存市场快照失败: {e}")
+    
+    def _remove_hyperlinks(self, text: str) -> str:
+        """
+        移除文本中的超链接格式
+        
+        移除以下格式：
+        - Markdown链接: [text](url)
+        - 纯URL: http://... 或 https://...
+        
+        Args:
+            text: 原始文本
+            
+        Returns:
+            清理后的文本
+        """
+        if not text:
+            return text
+        
+        # 移除Markdown格式的链接 [text](url)，保留text部分
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        
+        # 移除纯URL链接
+        text = re.sub(r'https?://[^\s\)]+', '', text)
+        
+        # 清理多余的空格
+        text = re.sub(r'\s+', ' ', text)
+        
+        return text.strip()
     
     def _is_cache_valid(self, cache_timestamp: datetime) -> bool:
         """
