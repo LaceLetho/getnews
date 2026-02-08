@@ -1,0 +1,68 @@
+[project]
+name = "crypto-news-analyzer"
+version = "0.1.0"
+description = "Cryptocurrency news analyzer with AI-powered insights"
+requires-python = ">=3.9"
+dependencies = [
+    # 核心依赖
+    "requests>=2.31.0",
+    "feedparser>=6.0.10",
+    "beautifulsoup4>=4.12.0",
+    "python-telegram-bot>=20.0",
+    
+    # AI/LLM相关
+    "openai>=1.0.0",  # 用于调用xAI API（兼容OpenAI SDK）
+    "instructor>=1.0.0",  # 结构化输出工具
+    "pydantic>=2.0.0",  # instructor依赖
+    
+    # 数据处理
+    "pandas>=2.0.0",
+    
+    # 日志和配置
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    
+    # HTTP客户端增强
+    "httpx>=0.24.0",
+    "aiohttp>=3.8.0",
+    
+    # 时间处理
+    "python-dateutil>=2.8.0",
+    
+    # JSON处理增强
+    "orjson>=3.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # 测试框架
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "hypothesis>=6.0.0",
+    
+    # 开发工具
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=crypto_news_analyzer --cov-report=term-missing"
