@@ -6,6 +6,8 @@ python-telegram-bot>=20.0
 
 # AI/LLM相关
 openai>=1.0.0  # 用于调用xAI API（兼容OpenAI SDK）
+instructor>=1.0.0  # 结构化输出工具
+pydantic>=2.0.0  # instructor依赖
 
 # 数据处理
 pandas>=2.0.0

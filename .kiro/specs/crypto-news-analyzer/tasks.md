@@ -93,7 +93,7 @@
     - 添加备用快照和错误处理机制
     - _需求: 5.1, 5.2, 5.3, 5.18_
   
-  - [ ] 6.2 实现结构化输出管理器
+  - [x] 6.2 实现结构化输出管理器
     - 创建StructuredOutputManager类，集成instructor等工具
     - 强制大模型返回标准JSON格式（time, category, weight_score, summary, source）
     - 实现输出格式验证和错误恢复机制
