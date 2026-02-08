@@ -1,7 +1,7 @@
 """
 分析器模块
 
-包含提示词管理器、市场快照服务、结构化输出管理器和LLM分析器。
+包含提示词管理器、市场快照服务、结构化输出管理器、动态分类管理器和LLM分析器。
 """
 
 from .prompt_manager import PromptManager, DynamicCategoryManager, CategoryConfig, create_content_category_enum
@@ -13,6 +13,7 @@ from .structured_output_manager import (
     ValidationResult,
     StructuredOutputLibrary
 )
+from .dynamic_classification_manager import DynamicClassificationManager
 from .llm_analyzer import LLMAnalyzer
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     'BatchAnalysisResult',
     'ValidationResult',
     'StructuredOutputLibrary',
+    'DynamicClassificationManager',
     'LLMAnalyzer'
 ]

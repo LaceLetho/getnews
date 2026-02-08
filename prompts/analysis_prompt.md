@@ -4,7 +4,7 @@
 # Goals
 1. **Filtering (过滤):** 严格识别并**完全忽略**以下类型的噪音：广告/软文 (Ad)、情绪宣泄 (Venting)、无意义争论 (Debate)、正确的废话 (Platitude)、事件发生时间已超过24小时（Outdated event）、价格行情信息（Price）、K线技术分析（candlestick technical analysis）。对于这些内容，**不要输出任何结果**。
 2. **Deduplication (去重):** 如果多条消息都在报道同一个事件（例如多条推文都在说微策略卖币），请将它们合并为一个事件处理，只输出一条总结，并保留一个最权威或信息最全的 `source`。
-3. **Extraction (提取):** 仅提取属于以下类别的有效信号。
+3. **Extraction (提取):** 仅提取属于以下类别的有效信号，并为他们的重要性打分。
 
 # Categories (仅关注以下分类)
 - **Whale:** 大户/机构资金流向、链上巨鲸异动、大户持仓态度变化。
