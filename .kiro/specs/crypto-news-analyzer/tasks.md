@@ -133,7 +133,7 @@
   - 确保所有测试通过，如有问题请询问用户。
 
 - [ ] 8. 实现Telegram适配的报告生成和发送系统
-  - [ ] 8.1 创建Telegram格式化器
+  - [x] 8.1 创建Telegram格式化器
     - 实现TelegramFormatter类，适配Telegram消息格式
     - 支持Telegram特殊字符转义和格式化语法
     - 实现超链接格式化和移动端优化
