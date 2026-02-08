@@ -428,6 +428,8 @@ class MarketSnapshotService:
         
         移除以下格式：
         - Markdown链接: [text](url)
+        - 引用标记: [[1]](url), [[2]]() 等
+        - Grok引用标签: <grok:render>...</grok:render>
         - 纯URL: http://... 或 https://...
         
         Args:
@@ -439,11 +441,17 @@ class MarketSnapshotService:
         if not text:
             return text
         
+        # 移除Grok引用标签 <grok:render>...</grok:render>
+        text = re.sub(r'<grok:render[^>]*>.*?</grok:render>', '', text, flags=re.DOTALL)
+        
+        # 移除引用标记 [[1]](url), [[2]]() 等（包括有URL和空括号的情况）
+        text = re.sub(r'\[\[\d+\]\]\([^\)]*\)', '', text)
+        
         # 移除Markdown格式的链接 [text](url)，保留text部分
         text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
         
-        # 移除纯URL链接
-        text = re.sub(r'https?://[^\s\)]+', '', text)
+        # 移除纯URL链接（匹配到空格、标点或字符串结尾）
+        text = re.sub(r'https?://[^\s\u4e00-\u9fff\)\]]+', '', text)
         
         # 清理多余的空格
         text = re.sub(r'\s+', ' ', text)
