@@ -39,8 +39,9 @@ def valid_structured_result(draw):
         "安全事件", "新产品", "市场新现象"
     ]))
     weight_score = draw(st.integers(min_value=0, max_value=100))
+    # 排除可能导致Telegram格式问题的字符：*_[]`()
     summary = draw(st.text(min_size=20, max_size=200, alphabet=st.characters(
-        blacklist_categories=('Cs', 'Cc'), blacklist_characters='*_[]`'
+        blacklist_categories=('Cs', 'Cc'), blacklist_characters='*_[]`()'
     )))
     source = draw(st.sampled_from([
         "https://example.com/news/1",

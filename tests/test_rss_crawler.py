@@ -70,8 +70,9 @@ class TestRSSCrawler:
         assert crawler.session is not None
         assert 'User-Agent' in crawler.session.headers
         
-        # 检查时间窗口计算
-        expected_cutoff = datetime.now() - timedelta(hours=12)
+        # 检查时间窗口计算 - RSS爬取器使用UTC时间
+        from datetime import timezone
+        expected_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=12)
         time_diff = abs((crawler.cutoff_time - expected_cutoff).total_seconds())
         assert time_diff < 5  # 允许5秒误差
     
@@ -265,16 +266,19 @@ class TestRSSCrawler:
     
     def test_is_within_time_window(self, crawler):
         """测试时间窗口过滤"""
+        # RSS爬取器使用UTC时间，所以测试也需要使用UTC
+        from datetime import timezone
+        
         # 当前时间（应该在窗口内）
-        current_time = datetime.now()
+        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
         assert crawler._is_within_time_window(current_time) is True
         
         # 1小时前（应该在窗口内）
-        one_hour_ago = datetime.now() - timedelta(hours=1)
+        one_hour_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
         assert crawler._is_within_time_window(one_hour_ago) is True
         
         # 25小时前（应该在窗口外，因为窗口是24小时）
-        old_time = datetime.now() - timedelta(hours=25)
+        old_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=25)
         assert crawler._is_within_time_window(old_time) is False
     
     def test_is_valid_url(self, crawler):

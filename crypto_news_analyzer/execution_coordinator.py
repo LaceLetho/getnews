@@ -31,7 +31,7 @@ import asyncio
 from .config.manager import ConfigManager
 from .storage.data_manager import DataManager
 from .crawlers.data_source_factory import get_data_source_factory, register_builtin_sources
-from .analyzers.llm_analyzer import LLMAnalyzer, ContentClassifier
+from .analyzers.llm_analyzer import LLMAnalyzer
 from .reporters.report_generator import ReportGenerator, create_analyzed_data
 from .reporters.telegram_sender import TelegramSenderSync, create_telegram_config
 from .models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult

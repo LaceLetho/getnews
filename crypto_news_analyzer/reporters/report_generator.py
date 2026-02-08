@@ -6,7 +6,7 @@
 
 import logging
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 from ..models import CrawlStatus, CrawlResult
@@ -555,3 +555,31 @@ def categorize_analysis_results(
         categorized[category].append(result)
     
     return categorized
+
+
+def create_analyzed_data(
+    categorized_items: Dict[str, List[StructuredAnalysisResult]],
+    analysis_results: List[StructuredAnalysisResult],
+    time_window_hours: int
+) -> AnalyzedData:
+    """
+    创建分析数据对象
+    
+    Args:
+        categorized_items: 按分类组织的分析结果
+        analysis_results: 所有分析结果列表
+        time_window_hours: 时间窗口（小时）
+        
+    Returns:
+        AnalyzedData对象
+    """
+    now = datetime.now()
+    start_time = now - timedelta(hours=time_window_hours)
+    
+    return AnalyzedData(
+        categorized_items=categorized_items,
+        time_window_hours=time_window_hours,
+        start_time=start_time,
+        end_time=now,
+        total_items=len(analysis_results)
+    )
