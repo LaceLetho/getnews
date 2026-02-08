@@ -34,7 +34,7 @@ from .crawlers.data_source_factory import get_data_source_factory, register_buil
 from .analyzers.llm_analyzer import LLMAnalyzer
 from .reporters.report_generator import ReportGenerator, create_analyzed_data
 from .reporters.telegram_sender import TelegramSenderSync, create_telegram_config
-from .models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult
+from .models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult, BirdConfig
 from .utils.logging import get_log_manager
 from .utils.errors import ErrorRecoveryManager
 
@@ -116,7 +116,6 @@ class MainController:
         self.config_manager: Optional[ConfigManager] = None
         self.data_manager: Optional[DataManager] = None
         self.llm_analyzer: Optional[LLMAnalyzer] = None
-        self.content_classifier: Optional[ContentClassifier] = None
         self.report_generator: Optional[ReportGenerator] = None
         self.telegram_sender: Optional[TelegramSenderSync] = None
         self.error_manager: Optional[ErrorRecoveryManager] = None
@@ -180,19 +179,21 @@ class MainController:
             
             self.llm_analyzer = LLMAnalyzer(
                 api_key=auth_config.llm_api_key,
-                model=llm_config.get("model", "MiniMax-M2.1"),
-                prompt_config_path=llm_config.get("prompt_config_path", "./prompts/analysis_prompt.json"),
+                grok_api_key=auth_config.grok_api_key,
+                model=llm_config.get("model", "gpt-4"),
+                summary_model=llm_config.get("summary_model", "grok-beta"),
+                market_prompt_path=llm_config.get("market_prompt_path", "./prompts/market_summary_prompt.md"),
+                analysis_prompt_path=llm_config.get("analysis_prompt_path", "./prompts/analysis_prompt.md"),
                 mock_mode=not auth_config.llm_api_key  # 如果没有API密钥则使用模拟模式
             )
             
             # 初始化内容分类器
-            self.content_classifier = ContentClassifier(self.llm_analyzer)
-            self.logger.info("LLM分析器和内容分类器初始化完成")
+            self.logger.info("LLM分析器初始化完成")
             
             # 初始化报告生成器
             self.report_generator = ReportGenerator(
-                include_summary=True,
-                prompt_config_path=llm_config.get("prompt_config_path", "./prompts/analysis_prompt.json")
+                include_market_snapshot=True,
+                omit_empty_categories=True
             )
             self.logger.info("报告生成器初始化完成")
             
@@ -523,11 +524,12 @@ class MainController:
             auth_config = self.config_manager.get_auth_config()
             
             if x_sources and auth_config.x_ct0 and auth_config.x_auth_token:
+                # 创建 BirdConfig（X爬取器使用bird工具，需要通过配置文件设置认证）
+                bird_config = BirdConfig()
+                
                 for x_source in x_sources:
                     try:
-                        crawler = factory.create_source("x", time_window_hours, 
-                                                      ct0=auth_config.x_ct0, 
-                                                      auth_token=auth_config.x_auth_token)
+                        crawler = factory.create_source("x", time_window_hours, bird_config=bird_config)
                         items = crawler.crawl(x_source.to_dict())
                         all_content_items.extend(items)
                         
@@ -589,7 +591,7 @@ class MainController:
                 return result
             
             # 批量分析内容
-            analysis_results = self.llm_analyzer.batch_analyze(content_items)
+            analysis_results = self.llm_analyzer.analyze_content_batch(content_items)
             
             # 分类内容
             categorized_items = {}
@@ -600,7 +602,7 @@ class MainController:
                 if analysis.should_ignore:
                     continue
                 
-                category = self.content_classifier.classify_item(item, analysis)
+                category = analysis.category
                 
                 if category not in categorized_items:
                     categorized_items[category] = []
@@ -637,7 +639,16 @@ class MainController:
             )
             
             # 生成报告
-            report_content = self.report_generator.generate_report(analyzed_data, crawl_status)
+            # 获取市场快照（如果LLM分析器有的话）
+            market_snapshot = None
+            if hasattr(self.llm_analyzer, '_cached_market_snapshot') and self.llm_analyzer._cached_market_snapshot:
+                market_snapshot = self.llm_analyzer._cached_market_snapshot.content
+            
+            report_content = self.report_generator.generate_telegram_report(
+                analyzed_data, 
+                crawl_status,
+                market_snapshot=market_snapshot
+            )
             
             result.update({
                 "success": True,
@@ -856,10 +867,6 @@ class MainController:
             # 清理数据管理器
             if self.data_manager:
                 self.data_manager.close()
-            
-            # 清理其他资源
-            if self.content_classifier:
-                self.content_classifier.clear_classifications()
             
             self.logger.info("资源清理完成")
             

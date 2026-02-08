@@ -88,7 +88,16 @@ class LLMAnalyzer:
         self.client = None
         if not mock_mode and self.api_key and OpenAI:
             try:
-                self.client = OpenAI(api_key=self.api_key)
+                # 根据模型判断使用哪个API endpoint
+                if "minimax" in self.model.lower():
+                    # MiniMax API
+                    self.client = OpenAI(
+                        api_key=self.api_key,
+                        base_url="https://api.minimax.chat/v1"
+                    )
+                else:
+                    # 标准 OpenAI API
+                    self.client = OpenAI(api_key=self.api_key)
             except Exception as e:
                 self.logger.error(f"初始化OpenAI客户端失败: {e}")
         
