@@ -21,9 +21,11 @@
     "model": "grok-4-1-fast-reasoning",
     "temperature": 0.1,
     "max_tokens": 2000000,
-    "prompt_config_path": "./prompts/analysis_prompt.json",
     "batch_size": 200,
-    "summary_model": "grok-4-1-fast-reasoning"
+    "summary_model": "grok-4-1-fast-reasoning",
+    "market_prompt_path": "./prompts/market_summary_prompt.md",
+    "analysis_prompt_path": "./prompts/analysis_prompt.md",
+    "min_weight_score": 50
   },
   "rss_sources": [
     {

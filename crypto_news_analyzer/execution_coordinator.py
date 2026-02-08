@@ -184,6 +184,9 @@ class MainController:
                 summary_model=llm_config.get("summary_model", "grok-beta"),
                 market_prompt_path=llm_config.get("market_prompt_path", "./prompts/market_summary_prompt.md"),
                 analysis_prompt_path=llm_config.get("analysis_prompt_path", "./prompts/analysis_prompt.md"),
+                temperature=llm_config.get("temperature", 0.1),
+                max_tokens=llm_config.get("max_tokens", 4000),
+                batch_size=llm_config.get("batch_size", 10),
                 mock_mode=not auth_config.llm_api_key  # 如果没有API密钥则使用模拟模式
             )
             
@@ -590,16 +593,20 @@ class MainController:
                 result["success"] = True
                 return result
             
+            # 获取最小权重阈值配置
+            llm_config = self.config_manager.config_data.get("llm_config", {})
+            min_weight_score = llm_config.get("min_weight_score", 50)
+            
             # 批量分析内容
             analysis_results = self.llm_analyzer.analyze_content_batch(content_items)
             
-            # 分类内容
+            # 分类内容 - 注意这里存储的是 StructuredAnalysisResult 而不是 ContentItem
             categorized_items = {}
             analysis_dict = {}
             
             for item, analysis in zip(content_items, analysis_results):
-                # 跳过被忽略的内容
-                if analysis.should_ignore:
+                # 跳过低权重的内容
+                if analysis.weight_score < min_weight_score:
                     continue
                 
                 category = analysis.category
@@ -607,7 +614,8 @@ class MainController:
                 if category not in categorized_items:
                     categorized_items[category] = []
                 
-                categorized_items[category].append(item)
+                # 存储 StructuredAnalysisResult 而不是 ContentItem
+                categorized_items[category].append(analysis)
                 analysis_dict[item.id] = analysis
             
             result.update({
