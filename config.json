@@ -25,7 +25,7 @@
     "summary_model": "grok-4-1-fast-reasoning",
     "market_prompt_path": "./prompts/market_summary_prompt.md",
     "analysis_prompt_path": "./prompts/analysis_prompt.md",
-    "min_weight_score": 50
+    "min_weight_score": 10
   },
   "rss_sources": [
     {
