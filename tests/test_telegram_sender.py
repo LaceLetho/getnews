@@ -7,6 +7,9 @@ import asyncio
 from unittest.mock import Mock, AsyncMock, patch
 import aiohttp
 
+# Configure pytest-asyncio
+pytest_plugins = ('pytest_asyncio',)
+
 from crypto_news_analyzer.reporters import (
     TelegramSender,
     TelegramSenderSync,
