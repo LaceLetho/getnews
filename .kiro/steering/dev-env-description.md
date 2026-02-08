@@ -4,32 +4,23 @@ inclusion: always
 
 # Development Environment
 
-## Python Configuration
+## Python Environment
 
-- **Python Version**: Python 3.9 (macOS default installation)
-- **Python Command**: Always use `python3` instead of `python` when executing Python scripts or commands
-- **Package Manager**: Use `pip3` for installing Python packages
+- System Python: 3.9 (macOS default)
+- Package Manager: Use `uv` for all Python operations
+- Rationale: `uv` prevents global environment pollution and handles Python version management automatically
 
-## Command Examples
+## Package Management Rules
 
-When working with Python in this environment:
+- ALWAYS use `uv` commands instead of direct `pip` or `python` commands
+- Install packages: `uv pip install <package>`
+- Run scripts: `uv run <script.py>`
+- Execute commands: `uvx <command>` for one-off tool execution
+- Create virtual environments: `uv venv` (if needed)
 
-```bash
-# Run Python scripts
-python3 script.py
+## Best Practices
 
-# Install packages
-pip3 install package-name
+- Never modify the system Python installation
+- Use `uv` to ensure consistent dependency resolution
+- Let `uv` handle Python version compatibility automatically
 
-# Run tests
-python3 -m pytest
-
-# Create virtual environments
-python3 -m venv venv
-```
-
-## Important Notes
-
-- Do not assume `python` command is available or points to Python 3
-- Always explicitly use `python3` to ensure compatibility with the environment
-- When suggesting commands or writing scripts, use `python3` as the interpreter
