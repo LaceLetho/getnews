@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from collections import defaultdict
 
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes, filters
 from telegram.error import TelegramError
 
@@ -223,6 +223,10 @@ class TelegramCommandHandler:
             # 启动应用
             await self.application.initialize()
             await self.application.start()
+            
+            # 设置Bot命令菜单
+            await self._setup_bot_commands()
+            
             await self.application.updater.start_polling()
             
             # 保存事件循环引用以便从其他线程访问
@@ -257,6 +261,25 @@ class TelegramCommandHandler:
             
         except Exception as e:
             self.logger.error(f"停止命令监听器失败: {str(e)}")
+    
+    async def _setup_bot_commands(self) -> None:
+        """
+        设置Bot命令菜单
+        
+        在Telegram对话框中显示可用命令列表
+        """
+        try:
+            commands = [
+                BotCommand("run", "立即执行数据收集和分析"),
+                BotCommand("status", "查询系统运行状态"),
+                BotCommand("help", "显示帮助信息")
+            ]
+            
+            await self.application.bot.set_my_commands(commands)
+            self.logger.info("Bot命令菜单设置成功")
+            
+        except Exception as e:
+            self.logger.error(f"设置Bot命令菜单失败: {str(e)}")
     
     async def _handle_run_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
