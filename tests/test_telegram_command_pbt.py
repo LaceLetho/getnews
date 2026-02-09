@@ -176,45 +176,12 @@ def test_property_18_command_permission_verification_consistency(
     assert actual_authorized == is_authorized, \
         f"权限验证不一致: 期望={is_authorized}, 实际={actual_authorized}"
     
-    # 属性4: 如果用户被授权，验证命令权限
+    # 属性4: 所有授权用户现在都有访问所有命令的权限
+    # validate_user_permissions() 方法已被移除，因为所有授权用户都有相同的权限
+    # 如果用户被授权，他们可以执行所有命令 (需求 7.1, 7.2, 7.3, 7.4)
     if is_authorized:
-        # 找到用户的权限配置（只检查通过ID授权的用户）
-        user_config = None
-        if is_authorized_by_id:
-            for user in config.authorized_users:
-                if str(user.get("user_id")) == test_user_id:
-                    user_config = user
-                    break
-        
-        if user_config:
-            user_permissions = user_config.get("permissions", [])
-            
-            # 测试各种命令的权限
-            for command in ["run", "status", "help"]:
-                has_permission = handler.validate_user_permissions(test_user_id, command)
-                
-                # 如果权限列表为空，应该允许所有命令
-                if not user_permissions:
-                    assert has_permission, \
-                        f"权限列表为空时，应该允许所有命令: {command}"
-                else:
-                    # 如果权限列表不为空，只允许列表中的命令
-                    expected_permission = command in user_permissions
-                    assert has_permission == expected_permission, \
-                        f"命令权限验证不一致: 命令={command}, 期望={expected_permission}, 实际={has_permission}"
-        elif is_authorized_by_username and not is_authorized_by_id:
-            # 如果只通过用户名授权（没有匹配的user_id），validate_user_permissions应该返回False
-            for command in ["run", "status", "help"]:
-                has_permission = handler.validate_user_permissions(test_user_id, command)
-                assert not has_permission, \
-                    f"只通过用户名授权的用户，validate_user_permissions应该返回False: {command}"
-    
-    # 属性5: 未授权用户不应该有任何命令权限
-    if not is_authorized:
-        for command in ["run", "status", "help"]:
-            has_permission = handler.validate_user_permissions(test_user_id, command)
-            assert not has_permission, \
-                f"未授权用户不应该有命令权限: {command}"
+        # 授权用户应该能够执行所有命令
+        pass  # 不再需要单独的命令权限检查
     
     # 属性6: 权限验证应该是幂等的（多次调用返回相同结果）
     result1 = handler.is_authorized_user(test_user_id, test_username)
