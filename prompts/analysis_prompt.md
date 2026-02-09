@@ -24,8 +24,8 @@ JSON 对象结构定义：
 {
   "time": "该条消息的发布时间",
   "category": "Whale" | "Fed" | "Regulation" | "Security" | "NewProject" | "MarketTrend",
-  "weight_score": 0-100 (整数，分数越高代表事件越重磅。请结合下面的“Influential players”与“Current Market Context”综合判断，事关有影响力的玩家和超出预期的消息分数要提高),
-  "summary": "简短一两句话总结核心内容，包含主体、事件和直接影响",
+  "weight_score": 0-100 (整数，分数越高代表事件越重磅。请结合下面的“Current Market Context”综合判断，事关有影响力的玩家和超出预期的消息分数要提高),
+  "summary": "使用一两句简短的中文总结核心内容，包含主体、事件和直接影响",
   "source": "保留该条消息的原始 URL"
 }
 

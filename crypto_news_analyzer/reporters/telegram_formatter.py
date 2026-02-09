@@ -414,16 +414,16 @@ class TelegramFormatter:
         # 格式化评分（使用星星表示重要性）
         stars = "⭐" * min(5, max(1, weight_score // 20))
         
-        # 构建消息项
-        item_parts = [
-            f"🕐 {self.escape_special_characters(time)}",
-            f"📂 {self.escape_special_characters(category)}",
-            f"⚖️ {stars} ({weight_score})",
-            f"📝 {self.escape_special_characters(summary)}",
-            f"🔗 {self.format_hyperlink('查看原文', source_url)}"
-        ]
+        # 简化时间格式（移除年份）
+        simplified_time = time
+        if len(time) > 5 and time[4] == '-':  # 格式如 "2024-01-15"
+            simplified_time = time[5:]  # 取 "01-15"
         
-        return "\n".join(item_parts)
+        # 构建消息项：摘要在前，时间、评分、链接在后面一行
+        message = f"� {self.escape_special_characters(summary)}\n"
+        message += f"� {self.escape_special_characters(simplified_time)} | {stars} ({weight_score}) | {self.format_hyperlink('查看原文', source_url)}"
+        
+        return message
     
     def format_data_source_status(self, source_name: str, status: str, 
                                   item_count: int, error_message: Optional[str] = None) -> str:
