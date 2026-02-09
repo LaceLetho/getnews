@@ -72,7 +72,7 @@
     "execution_timeout_minutes": 30,
     "max_concurrent_executions": 1,
     "command_rate_limit": {
-      "max_commands_per_hour": 60,
+      "max_commands_per_hour": 120,
       "cooldown_minutes": 5
     }
   }

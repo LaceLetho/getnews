@@ -21,7 +21,7 @@ import threading
 import time
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 
 from telegram import Update, BotCommand
@@ -36,13 +36,13 @@ class CommandRateLimitState:
     """命令速率限制状态"""
     command_count: int = 0
     last_reset_time: datetime = None
-    last_command_time: datetime = None
+    last_run_command_time: datetime = None
     
     def __post_init__(self):
         if self.last_reset_time is None:
             self.last_reset_time = datetime.now()
-        if self.last_command_time is None:
-            self.last_command_time = datetime.now()
+        if self.last_run_command_time is None:
+            self.last_run_command_time = datetime.now() - timedelta(minutes=10)
 
 
 class TelegramCommandHandler:
@@ -276,7 +276,7 @@ class TelegramCommandHandler:
     
     def check_rate_limit(self, user_id: str) -> tuple[bool, Optional[str]]:
         """
-        检查用户是否超过速率限制
+        检查用户是否超过速率限制（仅针对/run命令）
         
         Args:
             user_id: 用户ID
@@ -299,17 +299,18 @@ class TelegramCommandHandler:
         if state.command_count >= max_per_hour:
             return False, f"已达到每小时命令限制 ({max_per_hour} 次)，请稍后再试"
         
-        # 检查冷却时间
+        # 检查冷却时间（仅针对/run命令）
         cooldown_minutes = self.config.command_rate_limit.get("cooldown_minutes", 5)
-        minutes_since_last = (now - state.last_command_time).total_seconds() / 60
+        minutes_since_last = (now - state.last_run_command_time).total_seconds() / 60
         if minutes_since_last < cooldown_minutes:
             remaining = cooldown_minutes - minutes_since_last
             return False, f"命令冷却中，请等待 {remaining:.1f} 分钟"
         
-        # 更新状态
+        # 更新状态（仅更新/run命令的时间戳）
         state.command_count += 1
-        state.last_command_time = now
+        state.last_run_command_time = now
         
+        return True, None
         return True, None
     def _extract_chat_context(self, update: Update) -> ChatContext:
         """
