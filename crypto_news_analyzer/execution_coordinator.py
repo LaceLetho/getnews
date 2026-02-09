@@ -187,6 +187,7 @@ class MainController:
                 temperature=llm_config.get("temperature", 0.1),
                 max_tokens=llm_config.get("max_tokens", 4000),
                 batch_size=llm_config.get("batch_size", 10),
+                cache_ttl_minutes=llm_config.get("cache_ttl_minutes", 30),
                 mock_mode=not auth_config.LLM_API_KEY  # 如果没有API密钥则使用模拟模式
             )
             

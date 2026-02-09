@@ -55,6 +55,7 @@ class LLMAnalyzer:
         temperature: float = 0.1,
         max_tokens: int = 4000,
         batch_size: int = 10,
+        cache_ttl_minutes: int = 30,
         mock_mode: bool = False
     ):
         """
@@ -70,6 +71,7 @@ class LLMAnalyzer:
             temperature: 温度参数
             max_tokens: 最大token数
             batch_size: 批量分析的批次大小
+            cache_ttl_minutes: 缓存有效期（分钟）
             mock_mode: 是否使用模拟模式（用于测试）
         """
         self.api_key = api_key or os.getenv('LLM_API_KEY', '')
@@ -81,6 +83,7 @@ class LLMAnalyzer:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.batch_size = batch_size
+        self.cache_ttl_minutes = cache_ttl_minutes
         self.mock_mode = mock_mode
         self.logger = logging.getLogger(__name__)
         
@@ -111,6 +114,7 @@ class LLMAnalyzer:
         self.market_snapshot_service = MarketSnapshotService(
             GROK_API_KEY=self.GROK_API_KEY,
             summary_model=self.summary_model,
+            cache_ttl_minutes=self.cache_ttl_minutes,
             mock_mode=mock_mode
         )
         
