@@ -420,8 +420,8 @@ class TelegramFormatter:
             simplified_time = time[5:]  # 取 "01-15"
         
         # 构建消息项：摘要在前，时间、评分、链接在后面一行
-        message = f"� {self.escape_special_characters(summary)}\n"
-        message += f"� {self.escape_special_characters(simplified_time)} | {stars} ({weight_score}) | {self.format_hyperlink('查看原文', source_url)}"
+        message = f"📝 {self.escape_special_characters(summary)}\n"
+        message += f"🕐 {self.escape_special_characters(simplified_time)} | {stars} ({weight_score}) | {self.format_hyperlink('查看原文', source_url)}"
         
         return message
     
