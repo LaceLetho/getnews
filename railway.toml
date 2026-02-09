@@ -11,5 +11,15 @@ restartPolicyMaxRetries = 3
 # Railway会通过进程存活状态判断服务健康
 # 不需要healthcheckPath，因为这不是web服务
 
+# 持久化存储配置
+# 数据库和缓存文件将保存在volume中，容器重启后数据不会丢失
+[[deploy.volumes]]
+name = "data"
+mountPath = "/app/data"
+
+[[deploy.volumes]]
+name = "logs"
+mountPath = "/app/logs"
+
 # 如果需要定时任务，可以使用 cron
 # cronSchedule = "0 */6 * * *"  # 每6小时执行一次

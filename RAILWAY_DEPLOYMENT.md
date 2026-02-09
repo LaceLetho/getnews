@@ -90,6 +90,59 @@ railway run /app/docker-entrypoint.sh once
 2. **Telegram通知**：配置正确后会收到分析报告
 3. **重启策略**：已配置失败自动重启，最多重试3次
 
+## 持久化存储
+
+### Volume 配置
+
+应用使用 Railway Volumes 持久化以下数据：
+
+- `/app/data` - 数据库文件（`crypto_news.db`）和市场快照缓存
+- `/app/logs` - 应用日志文件
+
+### 存储说明
+
+1. **自动创建**：首次部署时 Railway 会自动创建 volumes
+2. **数据保留**：容器重启、重新部署时数据不会丢失
+3. **容量限制**：Railway 免费计划提供 1GB volume 空间
+4. **清理策略**：应用配置了自动清理（默认保留30天数据）
+
+### 查看存储使用情况
+
+在 Railway 控制台：
+1. 进入项目 → 选择服务
+2. 点击 "Volumes" 标签页
+3. 查看每个 volume 的使用情况
+
+### 手动清理数据
+
+如果需要清理旧数据：
+
+```bash
+# 使用 Railway CLI 连接到容器
+railway run bash
+
+# 查看数据库大小
+du -sh /app/data/crypto_news.db
+
+# 查看日志大小
+du -sh /app/logs/
+
+# 清理30天前的日志（如果需要）
+find /app/logs/ -name "*.log" -mtime +30 -delete
+```
+
+### 备份建议
+
+定期备份重要数据：
+
+```bash
+# 下载数据库文件
+railway run cat /app/data/crypto_news.db > backup_$(date +%Y%m%d).db
+
+# 或使用 Railway CLI
+railway volume download data ./backup/
+```
+
 ## 故障排查
 
 如果部署后仍有问题：
@@ -104,3 +157,11 @@ railway run /app/docker-entrypoint.sh once
 - Railway 按使用时间计费
 - Worker 服务比 web 服务成本更低
 - 可以调整 `EXECUTION_INTERVAL` 减少执行频率
+- Volume 存储：免费计划提供 1GB，超出部分按量计费
+
+## Volume 注意事项
+
+1. **首次部署**：Railway 会自动创建并挂载 volumes
+2. **数据迁移**：如果之前已部署但没有 volume，旧数据会丢失（新部署会创建空 volume）
+3. **删除服务**：删除 Railway 服务时，volumes 也会被删除（数据永久丢失）
+4. **容量监控**：定期检查 volume 使用情况，避免超出配额
