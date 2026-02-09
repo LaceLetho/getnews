@@ -1091,6 +1091,8 @@ class MainController:
     
     def get_system_status(self) -> Dict[str, Any]:
         """获取系统状态"""
+        from crypto_news_analyzer.utils.timezone_utils import format_datetime_utc8
+        
         status = {
             "initialized": self._initialized,
             "scheduler_running": bool(self._scheduler_thread and self._scheduler_thread.is_alive()),
@@ -1110,10 +1112,10 @@ class MainController:
                 "start_time": current_exec.start_time.isoformat()
             }
         
-        # 下次执行时间
+        # 下次执行时间 - 转换为UTC+8格式
         next_time = self.get_next_execution_time()
         if next_time:
-            status["next_execution_time"] = next_time.isoformat()
+            status["next_execution_time"] = format_datetime_utc8(next_time, '%Y-%m-%d %H:%M:%S')
         
         return status
     
