@@ -682,7 +682,7 @@ class TelegramCommandHandler:
             )
 
             # 获取帮助信息
-            response = self.handle_help_command()
+            response = self.handle_help_command(user_id)
             await update.message.reply_text(response, parse_mode="Markdown")
             self._log_command_execution("/help", user_id, username, None, True, "帮助信息已发送")
 
@@ -693,32 +693,6 @@ class TelegramCommandHandler:
                 f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
-    
-    def handle_help_command(self) -> str:
-            """
-            处理/help命令的业务逻辑
-
-            需求7.1, 7.2, 7.3: 所有授权用户都有相同的权限，可以访问所有命令
-
-            Returns:
-                响应消息
-            """
-            help_text = [
-                "🤖 *加密货币新闻分析机器人*\n",
-                "*可用命令:*\n",
-                "/run - 立即执行一次数据收集和分析\n",
-                "触发完整的工作流程，包括数据爬取、内容分析和报告生成。\n",
-                "/status - 查询系统运行状态\n",
-                "显示当前执行状态、系统信息和最近执行结果。\n",
-                "/help - 显示此帮助信息\n",
-                "查看所有可用命令和使用说明。\n",
-                "\n*注意事项:*\n",
-                "• 命令有速率限制，请勿频繁调用\n",
-                "• 执行过程可能需要几分钟时间\n",
-                "• 执行完成后会自动发送报告"
-            ]
-
-            return "\n".join(help_text)
     
     def handle_run_command(self, user_id: str, username: str, chat_id: str) -> str:
         """
