@@ -168,7 +168,7 @@ class TestRSSCrawler:
         assert item is None
     
     def test_parse_rss_entry_missing_content(self, crawler, sample_rss_source):
-        """测试缺少内容的RSS条目"""
+        """测试缺少内容的RSS条目 - 应该使用标题作为内容"""
         entry = Mock()
         entry.title = "测试标题"
         entry.summary = ""
@@ -184,7 +184,10 @@ class TestRSSCrawler:
         
         item = crawler._parse_rss_entry(entry, sample_rss_source)
         
-        assert item is None
+        # 当内容缺失时，应该使用标题作为内容（支持像CoinDesk这样只有标题的RSS源）
+        assert item is not None
+        assert item.title == "测试标题"
+        assert item.content == "测试标题"  # 内容应该等于标题
     
     def test_parse_rss_entry_missing_url(self, crawler, sample_rss_source):
         """测试缺少URL的RSS条目"""

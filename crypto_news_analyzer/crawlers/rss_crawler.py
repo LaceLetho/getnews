@@ -205,11 +205,11 @@ class RSSCrawler:
                 self.logger.debug("RSS条目缺少标题，跳过")
                 return None
             
-            # 提取内容
+            # 提取内容（如果没有内容，使用标题作为内容）
             content = self._extract_content(entry)
             if not content:
-                self.logger.debug("RSS条目缺少内容，跳过")
-                return None
+                self.logger.debug("RSS条目缺少内容，使用标题作为内容")
+                content = title
             
             # 提取URL
             url = self._extract_url(entry)
