@@ -127,7 +127,8 @@ class ConfigManager:
         "rate_limit_delay": 1.0,
         "config_file_path": "~/.bird/config.json",
         "enable_auto_retry": true,
-        "retry_delay_seconds": 60
+        "retry_delay_seconds": 60,
+        "max_pages_limit": 3
     },
     "llm_config": {
         "model": "gpt-4",
@@ -239,15 +240,17 @@ class XCrawler:
 
 class BirdWrapper:
     """Python封装层，用于调用bird工具"""
-    def __init__(self, bird_executable_path: str = "bird")
+    def __init__(self, bird_executable_path: str = "bird", data_manager: DataManager = None)
     def check_installation(self) -> bool
     def get_version(self) -> str
     def execute_command(self, args: List[str], timeout: int = 300) -> BirdResult
     def setup_authentication_from_env(self) -> None
     def setup_authentication(self, ct0: str, auth_token: str) -> None
-    def fetch_list_tweets(self, list_id: str, count: int = 100) -> BirdResult
-    def fetch_user_timeline(self, username: str, count: int = 100) -> BirdResult
+    def fetch_list_tweets(self, list_id: str, count: int = 100, max_pages: int = None) -> BirdResult
+    def fetch_user_timeline(self, username: str, count: int = 100, max_pages: int = None) -> BirdResult
     def parse_tweet_data(self, raw_data: str) -> List[Dict[str, Any]]
+    def calculate_max_pages_for_source(self, source_name: str, source_type: str = "x") -> int
+    def get_last_x_message_time(self, source_name: str) -> Optional[datetime]
 
 @dataclass
 class BirdResult:
@@ -279,6 +282,24 @@ class BirdResult:
    - 检测bird工具的各种错误状态
    - 处理认证失败、网络错误、限流等情况
    - 提供详细的错误诊断信息
+
+5. **智能速率限制策略**:
+   - **目的**: 避免X平台风控，减少被限流或封禁的风险
+   - **实现原理**: 根据本地数据库中最近一条X消息的时间动态调整爬取页数
+   - **计算公式**: `max_pages = min(ceil((当前时间 - 最近消息时间) / 6小时), max_pages_limit)`
+   - **配置限制**: max_pages不能超过配置文件中的max_pages_limit值（默认为3）
+   - **逻辑说明**: 
+     - 如果本地数据库中最近的X消息是2小时前的，则 max_pages = min(ceil(2/6), 3) = min(1, 3) = 1
+     - 如果本地数据库中最近的X消息是8小时前的，则 max_pages = min(ceil(8/6), 3) = min(2, 3) = 2
+     - 如果本地数据库中最近的X消息是20小时前的，则 max_pages = min(ceil(20/6), 3) = min(4, 3) = 3
+     - 如果本地数据库中没有该源的历史数据，使用max_pages_limit作为默认值
+   - **时区处理**: 确保所有时间计算使用UTC时区，避免时区差异导致的计算错误
+   - **优势**: 
+     - 避免频繁爬取导致的速率限制
+     - 根据实际数据新鲜度智能调整爬取量
+     - 通过max_pages_limit限制最大爬取页数，进一步降低风控风险
+     - 减少不必要的API调用，节省资源
+     - 降低账号被风控的风险
 
 **认证机制**: 
 - X/Twitter认证信息通过环境变量管理（X_CT0, X_AUTH_TOKEN）
@@ -350,6 +371,7 @@ class DataManager:
     def cleanup_old_data(self, retention_days: int = 30) -> None
     def get_storage_size(self) -> int
     def export_data(self, format: str = "json") -> str
+    def get_latest_message_time(self, source_name: str, source_type: str = "x") -> Optional[datetime]
 ```
 
 **数据存储策略**:
@@ -837,6 +859,7 @@ class BirdConfig:
     config_file_path: str = "~/.bird/config.json"
     enable_auto_retry: bool = True
     retry_delay_seconds: int = 60
+    max_pages_limit: int = 3
 
 @dataclass
 class BirdResult:
@@ -1066,6 +1089,10 @@ class ErrorHandler:
 ### 属性 11: Bird工具集成一致性
 *对于任何*有效的X源配置，系统应该能够成功调用bird工具并解析其输出，或在bird工具不可用时返回明确的错误信息
 **验证: 需求 4.3, 4.6, 4.11**
+
+### 属性 11.1: Bird智能速率限制正确性
+*对于任何*X信息源的爬取请求，系统应该根据本地数据库中该源最近消息的时间计算max_pages参数，计算结果应该等于min(ceil((当前UTC时间 - 最近消息UTC时间) / 6小时), max_pages_limit)，且当没有历史数据时使用max_pages_limit作为默认值
+**验证: 需求 4.13, 4.14, 4.15, 4.16, 4.17, 4.19**
 
 ### 属性 12: Telegram格式适配正确性
 *对于任何*生成的报告，应该正确适配Telegram格式，包含报告信息、数据源状态、动态分类内容和市场快照，source字段格式化为可点击超链接

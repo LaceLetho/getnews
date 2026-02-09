@@ -10,6 +10,8 @@ import json
 import os
 import time
 import tempfile
+import math
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 import logging
@@ -17,6 +19,7 @@ import logging
 from ..models import BirdConfig, BirdResult
 from ..utils.logging import get_logger
 from .bird_dependency_manager import BirdDependencyManager
+
 
 
 class BirdWrapper:
@@ -27,14 +30,16 @@ class BirdWrapper:
     支持认证管理、命令执行和输出解析。
     """
     
-    def __init__(self, config: Optional[BirdConfig] = None):
+    def __init__(self, config: Optional[BirdConfig] = None, data_manager: Optional[Any] = None):
         """
         初始化Bird封装器
         
         Args:
             config: Bird工具配置，如果为None则使用默认配置
+            data_manager: 数据管理器实例，用于智能速率限制
         """
         self.config = config or BirdConfig()
+        self.data_manager = data_manager
         self.logger = get_logger(__name__)
         self.dependency_manager = BirdDependencyManager(self.config)
         
@@ -266,24 +271,29 @@ class BirdWrapper:
             self.logger.error(f"设置bird认证信息失败: {str(e)}")
             raise
     
-    def fetch_list_tweets(self, list_id: str, max_pages: Optional[int] = None) -> BirdResult:
+    def fetch_list_tweets(self, list_id: str, max_pages: Optional[int] = None, source_name: Optional[str] = None) -> BirdResult:
         """
         获取X列表推文
         
         Args:
             list_id: 列表ID
-            max_pages: 最大页数（1-5），如果为None则使用配置中的默认值
+            max_pages: 最大页数（1-5），如果为None则使用智能计算或配置中的默认值
+            source_name: 数据源名称，用于智能速率限制计算
             
         Returns:
             BirdResult: 执行结果
         """
         try:
-            # 使用配置中的默认值
-            if max_pages is None:
+            # 如果没有指定max_pages且提供了source_name，使用智能速率限制
+            if max_pages is None and source_name:
+                max_pages = self.calculate_max_pages_for_source(source_name, source_type="x")
+                self.logger.info(f"智能速率限制: 数据源 {source_name} 使用 max_pages={max_pages}")
+            elif max_pages is None:
+                # 使用配置中的默认值
                 max_pages = self.config.bird_max_page
             
             # 确保max_pages在有效范围内
-            max_pages = max(1, min(5, max_pages))
+            max_pages = max(1, min(self.config.bird_max_page, max_pages))
             
             # 构建命令参数
             args = [
@@ -320,24 +330,29 @@ class BirdWrapper:
                 command=["bird", "list-timeline", list_id]
             )
     
-    def fetch_user_timeline(self, username: str, max_pages: Optional[int] = None) -> BirdResult:
+    def fetch_user_timeline(self, username: str, max_pages: Optional[int] = None, source_name: Optional[str] = None) -> BirdResult:
         """
         获取用户时间线
         
         Args:
             username: 用户名（不包含@符号）
-            max_pages: 最大页数（1-5），如果为None则使用配置中的默认值
+            max_pages: 最大页数（1-5），如果为None则使用智能计算或配置中的默认值
+            source_name: 数据源名称，用于智能速率限制计算
             
         Returns:
             BirdResult: 执行结果
         """
         try:
-            # 使用配置中的默认值
-            if max_pages is None:
+            # 如果没有指定max_pages且提供了source_name，使用智能速率限制
+            if max_pages is None and source_name:
+                max_pages = self.calculate_max_pages_for_source(source_name, source_type="x")
+                self.logger.info(f"智能速率限制: 数据源 {source_name} 使用 max_pages={max_pages}")
+            elif max_pages is None:
+                # 使用配置中的默认值
                 max_pages = self.config.bird_max_page
             
             # 确保max_pages在有效范围内
-            max_pages = max(1, min(5, max_pages))
+            max_pages = max(1, min(self.config.bird_max_page, max_pages))
             
             # 清理用户名
             if username.startswith('@'):
@@ -386,6 +401,69 @@ class BirdWrapper:
                 execution_time=0.0,
                 command=["bird", "user-tweets", username]
             )
+    
+    
+    def calculate_max_pages_for_source(self, source_name: str, source_type: str = "x") -> int:
+        """
+        计算指定数据源的智能max_pages值
+        
+        根据本地数据库中最近一条消息的时间动态调整爬取页数，
+        避免X平台风控，减少被限流或封禁的风险。
+        
+        计算公式: min(ceil((当前时间 - 最近消息时间) / 6小时), bird_max_page)
+        
+        Args:
+            source_name: 数据源名称
+            source_type: 数据源类型（默认为"x"）
+            
+        Returns:
+            计算出的max_pages值（1到bird_max_page之间）
+        """
+        try:
+            # 如果没有数据管理器，使用默认值
+            if not self.data_manager:
+                self.logger.warning("未提供数据管理器，使用默认bird_max_page")
+                return self.config.bird_max_page
+            
+            # 获取最近消息时间
+            latest_time = self.data_manager.get_latest_message_time(source_name, source_type)
+            
+            # 如果没有历史数据，使用bird_max_page作为默认值
+            if latest_time is None:
+                self.logger.info(f"数据源 {source_name} 没有历史数据，使用bird_max_page={self.config.bird_max_page}")
+                return self.config.bird_max_page
+            
+            # 将latest_time转换为UTC（如果它是naive datetime，假设它已经是UTC）
+            if latest_time.tzinfo is None:
+                latest_time = latest_time.replace(tzinfo=timezone.utc)
+            
+            # 获取当前UTC时间
+            current_time = datetime.now(timezone.utc)
+            
+            # 计算时间差（小时）
+            time_diff = current_time - latest_time
+            time_diff_hours = time_diff.total_seconds() / 3600
+            
+            # 计算max_pages: min(ceil(时间差/6小时), bird_max_page)
+            calculated_pages = math.ceil(time_diff_hours / 6)
+            max_pages = min(calculated_pages, self.config.bird_max_page)
+            
+            # 确保至少为1
+            max_pages = max(1, max_pages)
+            
+            self.logger.info(
+                f"智能速率限制计算: 数据源={source_name}, "
+                f"最近消息时间={latest_time.isoformat()}, "
+                f"时间差={time_diff_hours:.2f}小时, "
+                f"计算页数={calculated_pages}, "
+                f"最终max_pages={max_pages}"
+            )
+            
+            return max_pages
+            
+        except Exception as e:
+            self.logger.error(f"计算max_pages失败: {str(e)}，使用默认值")
+            return self.config.bird_max_page
     
     def parse_tweet_data(self, raw_data: str) -> List[Dict[str, Any]]:
         """

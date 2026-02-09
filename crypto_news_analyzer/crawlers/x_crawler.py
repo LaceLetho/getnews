@@ -27,20 +27,22 @@ class XCrawler:
     支持列表和时间线爬取，提供稳定的数据获取能力。
     """
     
-    def __init__(self, time_window_hours: int, bird_config: Optional[BirdConfig] = None):
+    def __init__(self, time_window_hours: int, bird_config: Optional[BirdConfig] = None, data_manager: Optional[Any] = None):
         """
         初始化X爬取器
         
         Args:
             time_window_hours: 时间窗口（小时）
             bird_config: Bird工具配置，如果为None则使用默认配置
+            data_manager: 数据管理器实例，用于智能速率限制
         """
         self.time_window_hours = time_window_hours
+        self.data_manager = data_manager
         self.logger = get_logger(__name__)
         
         # 初始化bird工具封装器
         try:
-            self.bird_wrapper = BirdWrapper(config=bird_config)
+            self.bird_wrapper = BirdWrapper(config=bird_config, data_manager=data_manager)
             self.logger.info("Bird工具初始化成功")
         except Exception as e:
             self.logger.error(f"Bird工具初始化失败: {str(e)}")
@@ -111,12 +113,13 @@ class XCrawler:
             self.logger.error(f"提取用户名时出错: {str(e)}")
             return None
     
-    def crawl_list(self, list_url: str) -> List[ContentItem]:
+    def crawl_list(self, list_url: str, source_name: Optional[str] = None) -> List[ContentItem]:
         """
         爬取X列表内容
         
         Args:
             list_url: 列表URL
+            source_name: 数据源名称，用于智能速率限制
             
         Returns:
             List[ContentItem]: 爬取到的内容项列表
@@ -132,8 +135,8 @@ class XCrawler:
             if not self.authenticated and not self.authenticate():
                 raise AuthenticationError("X认证失败，请检查认证配置")
             
-            # 使用bird工具获取列表推文
-            result = self.bird_wrapper.fetch_list_tweets(list_id)
+            # 使用bird工具获取列表推文，传递source_name用于智能速率限制
+            result = self.bird_wrapper.fetch_list_tweets(list_id, source_name=source_name)
             
             if not result.success:
                 error_msg = f"Bird工具获取列表推文失败: {result.error}"
@@ -151,7 +154,7 @@ class XCrawler:
             items = []
             for tweet_data in tweets_data:
                 try:
-                    item = self.parse_tweet(tweet_data)
+                    item = self.parse_tweet(tweet_data, source_name=source_name)
                     if self.is_within_time_window(item.publish_time):
                         items.append(item)
                     else:
@@ -167,12 +170,13 @@ class XCrawler:
             self.logger.error(f"爬取X列表失败: {str(e)}")
             raise CrawlerError(f"爬取X列表失败: {str(e)}")
     
-    def crawl_timeline(self, timeline_url: Optional[str] = None) -> List[ContentItem]:
+    def crawl_timeline(self, timeline_url: Optional[str] = None, source_name: Optional[str] = None) -> List[ContentItem]:
         """
         爬取X时间线内容
         
         Args:
             timeline_url: 时间线URL，如果为None则爬取主时间线
+            source_name: 数据源名称，用于智能速率限制
             
         Returns:
             List[ContentItem]: 爬取到的内容项列表
@@ -191,14 +195,14 @@ class XCrawler:
             if not self.authenticated and not self.authenticate():
                 raise AuthenticationError("X认证失败，请检查认证配置")
             
-            # 使用bird工具获取时间线推文
+            # 使用bird工具获取时间线推文，传递source_name用于智能速率限制
             if username:
-                result = self.bird_wrapper.fetch_user_timeline(username)
+                result = self.bird_wrapper.fetch_user_timeline(username, source_name=source_name)
             else:
                 # 对于主时间线，使用默认用户或当前认证用户
                 # 注意：bird工具可能需要特定的用户名参数
                 self.logger.warning("主时间线爬取需要指定用户名，使用默认行为")
-                result = self.bird_wrapper.fetch_user_timeline("home")
+                result = self.bird_wrapper.fetch_user_timeline("home", source_name=source_name)
             
             if not result.success:
                 error_msg = f"Bird工具获取时间线推文失败: {result.error}"
@@ -216,7 +220,7 @@ class XCrawler:
             items = []
             for tweet_data in tweets_data:
                 try:
-                    item = self.parse_tweet(tweet_data)
+                    item = self.parse_tweet(tweet_data, source_name=source_name)
                     if self.is_within_time_window(item.publish_time):
                         items.append(item)
                     else:
@@ -255,9 +259,9 @@ class XCrawler:
                 self.logger.info(f"爬取X源: {source.name} ({source.type})")
                 
                 if source.type == "list":
-                    items = self.crawl_list(source.url)
+                    items = self.crawl_list(source.url, source_name=source.name)
                 elif source.type == "timeline":
-                    items = self.crawl_timeline(source.url)
+                    items = self.crawl_timeline(source.url, source_name=source.name)
                 else:
                     raise CrawlerError(f"不支持的X源类型: {source.type}")
                 
@@ -294,12 +298,13 @@ class XCrawler:
         
         return results
     
-    def parse_tweet(self, tweet_data: Dict[str, Any]) -> ContentItem:
+    def parse_tweet(self, tweet_data: Dict[str, Any], source_name: Optional[str] = None) -> ContentItem:
         """
         解析推文数据为ContentItem
         
         Args:
             tweet_data: 推文原始数据
+            source_name: 数据源名称（可选）
             
         Returns:
             ContentItem: 解析后的内容项
@@ -321,13 +326,16 @@ class XCrawler:
             # 构建URL
             url = f"https://x.com/{username}/status/{tweet_id}"
             
+            # 使用source_name或默认值
+            final_source_name = source_name if source_name else "X/Twitter"
+            
             # 创建ContentItem
             return create_content_item_from_raw(
                 title=title,
                 content=text,
                 url=url,
                 publish_time=publish_time,
-                source_name="X/Twitter",
+                source_name=final_source_name,
                 source_type="x"
             )
             

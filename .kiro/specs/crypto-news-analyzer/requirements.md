@@ -128,6 +128,13 @@
 10. THE System SHALL 处理bird工具的各种输出格式和错误状态
 11. WHEN bird工具不可用或未正确安装 THEN System SHALL 返回明确的依赖错误信息
 12. THE System SHALL 通过bird工具的配置文件或环境变量管理X/Twitter认证信息
+13. WHEN 爬取X内容前 THEN System SHALL 查询本地数据库中该信息源最近一条消息的发布时间
+14. THE System SHALL 计算当前时间与最近消息时间的时间差（使用UTC时区）
+15. THE System SHALL 根据公式"min(时间差/6小时向上取整, max_pages_limit)"计算bird工具的--max-pages参数
+16. WHEN 本地数据库中没有该信息源的历史数据 THEN System SHALL 使用配置文件中的max_pages_limit作为默认值
+17. THE System SHALL 确保计算出的max_pages不超过配置文件中的max_pages_limit值
+18. THE System SHALL 使用计算出的max_pages参数调用bird工具，以避免X平台风控
+19. THE System SHALL 确保所有时间计算使用UTC时区，避免时区差异导致的错误
 
 ### 需求 5: 内容智能分析和分类
 

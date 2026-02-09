@@ -525,6 +525,40 @@ class DataManager:
         """上下文管理器入口"""
         return self
     
+    def get_latest_message_time(self, source_name: str, source_type: str = "x") -> Optional[datetime]:
+        """
+        获取指定源的最近消息时间
+        
+        Args:
+            source_name: 数据源名称
+            source_type: 数据源类型（默认为"x"）
+            
+        Returns:
+            最近消息的发布时间，如果没有历史数据则返回None
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT MAX(publish_time) as latest_time
+                FROM content_items
+                WHERE source_name = ? AND source_type = ?
+            ''', (source_name, source_type))
+            
+            row = cursor.fetchone()
+            
+            if row and row['latest_time']:
+                try:
+                    latest_time = datetime.fromisoformat(row['latest_time'])
+                    logger.info(f"数据源 {source_name} 的最近消息时间: {latest_time}")
+                    return latest_time
+                except Exception as e:
+                    logger.warning(f"解析最近消息时间失败: {e}")
+                    return None
+            else:
+                logger.info(f"数据源 {source_name} 没有历史数据")
+                return None
+    
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器出口"""
         self.close()
