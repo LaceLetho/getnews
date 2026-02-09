@@ -453,10 +453,22 @@ class MarketSnapshotService:
         # 移除纯URL链接（匹配到空格、标点或字符串结尾）
         text = re.sub(r'https?://[^\s\u4e00-\u9fff\)\]]+', '', text)
         
-        # 清理多余的空格
-        text = re.sub(r'\s+', ' ', text)
+        # 清理多余的空格，但保留段落结构
+        # 先将多个连续换行符（段落分隔）标准化为双换行
+        text = re.sub(r'\n\s*\n+', '\n\n', text)
         
-        return text.strip()
+        # 清理每行内的多余空格
+        lines = text.split('\n')
+        lines = [re.sub(r'\s+', ' ', line).strip() for line in lines]
+        text = '\n'.join(lines)
+        
+        # 清理开头和结尾的空白
+        text = text.strip()
+        
+        # 确保数字列表项之间有换行（如 "1. xxx 2. xxx" -> "1. xxx\n2. xxx"）
+        text = re.sub(r'(\d+\.\s+[^\d]+?)\s+(\d+\.)', r'\1\n\n\2', text)
+        
+        return text
     
     def _is_cache_valid(self, cache_timestamp: datetime) -> bool:
         """
