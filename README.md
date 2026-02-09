@@ -12,6 +12,7 @@
 - 🔧 **配置驱动**: 通过配置文件管理所有信息源
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
 - 🎯 **智能分类**: 支持大户动向、利率事件、监管政策、安全事件等多种分类
+- ☁️ **云端部署**: 支持部署到 Railway 平台
 
 ## 项目结构
 
@@ -47,12 +48,22 @@ crypto_news_analyzer/
 ### 1. 安装依赖
 
 ```bash
+# 使用 uv（推荐）
+uv pip install -r requirements.txt
+
+# 或使用 pip
 pip install -r requirements.txt
 ```
 
 ### 2. 配置系统
 
-创建 `.env` 文件并配置必要的 API 密钥：
+复制环境变量模板并配置必要的 API 密钥：
+
+```bash
+cp .env.template .env
+```
+
+编辑 `.env` 文件：
 
 ```bash
 # MiniMax API Key (从 https://platform.minimax.io 获取)
@@ -70,6 +81,10 @@ X_AUTH_TOKEN=your_X_AUTH_TOKEN
 ### 3. 运行系统
 
 ```bash
+# 使用 uv（推荐）
+uv run python -m crypto_news_analyzer.main
+
+# 或直接运行
 python -m crypto_news_analyzer.main
 ```
 
@@ -77,10 +92,10 @@ python -m crypto_news_analyzer.main
 
 ```bash
 # 运行所有测试
-python -m pytest tests/
+uv run pytest tests/
 
 # 运行 MiniMax 集成测试
-python -m pytest tests/test_minimax_llm_analyzer.py -v
+uv run pytest tests/test_minimax_llm_analyzer.py -v
 ```
 
 ## MiniMax M2.1 集成
@@ -116,6 +131,23 @@ python -m pytest tests/test_minimax_llm_analyzer.py -v
 - **rss_sources**: RSS订阅源列表
 - **x_sources**: X/Twitter信息源列表
 
+## 部署
+
+### 本地运行
+
+参考上面的"快速开始"部分。
+
+### Railway 部署
+
+详细的 Railway 部署指南请参考 [RAILWAY_DEPLOYMENT.md](./RAILWAY_DEPLOYMENT.md)
+
+快速部署步骤：
+
+1. 访问 [Railway](https://railway.app) 并登录
+2. 选择 "Deploy from GitHub repo"
+3. 在 Variables 中配置环境变量（LLM_API_KEY、TELEGRAM_BOT_TOKEN、TELEGRAM_CHANNEL_ID）
+4. Railway 会自动检测 Dockerfile 并部署
+
 ## 开发状态
 
 当前项目处于开发阶段，已完成：
@@ -129,6 +161,7 @@ python -m pytest tests/test_minimax_llm_analyzer.py -v
 ✅ MiniMax M2.1 LLM 分析器  
 ✅ 数据存储管理  
 ✅ 完整的测试套件  
+✅ Railway 部署支持  
 
 待开发功能请参考 `.kiro/specs/crypto-news-analyzer/tasks.md`
 
