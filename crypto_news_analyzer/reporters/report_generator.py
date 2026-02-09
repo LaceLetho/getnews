@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from ..models import CrawlStatus, CrawlResult
 from ..analyzers.structured_output_manager import StructuredAnalysisResult
 from .telegram_formatter import TelegramFormatter, FormattingConfig
+from ..utils.timezone_utils import format_datetime_utc8, now_utc8
 
 
 logger = logging.getLogger(__name__)
@@ -158,14 +159,14 @@ class ReportGenerator:
         # 格式化标题
         title = self.formatter.format_header("📰 加密货币新闻快讯", level=1)
         
-        # 格式化时间信息
-        start_str = start_time.strftime("%Y-%m-%d %H:%M")
-        end_str = end_time.strftime("%Y-%m-%d %H:%M")
+        # 格式化时间信息（使用东八区时间）
+        start_str = format_datetime_utc8(start_time, "%Y-%m-%d %H:%M")
+        end_str = format_datetime_utc8(end_time, "%Y-%m-%d %H:%M")
         
         time_info = self.formatter.format_time_range(start_str, end_str, time_window)
         
-        # 生成时间
-        generation_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 生成时间（使用东八区时间）
+        generation_time = format_datetime_utc8(None, "%Y-%m-%d %H:%M:%S")
         gen_time_text = f"🕐 *生成时间*: {self.formatter.escape_special_characters(generation_time)}\n"
         
         return f"{title}\n{time_info}{gen_time_text}"
@@ -573,7 +574,7 @@ def create_analyzed_data(
     Returns:
         AnalyzedData对象
     """
-    now = datetime.now()
+    now = now_utc8()
     start_time = now - timedelta(hours=time_window_hours)
     
     return AnalyzedData(

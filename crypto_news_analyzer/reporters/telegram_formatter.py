@@ -9,6 +9,8 @@ import logging
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
+from ..utils.timezone_utils import format_datetime_short_utc8
+
 
 @dataclass
 class FormattingConfig:
@@ -402,7 +404,7 @@ class TelegramFormatter:
         - 将source字段格式化为Telegram超链接形式
         
         Args:
-            time: 时间
+            time: 时间（字符串格式，如 "2024-01-15" 或 "01-15"）
             category: 分类
             weight_score: 重要性评分
             summary: 摘要
@@ -412,7 +414,7 @@ class TelegramFormatter:
             格式化后的消息项
         """
         
-        # 简化时间格式（移除年份）
+        # 简化时间格式（移除年份，如果存在）
         simplified_time = time
         if len(time) > 5 and time[4] == '-':  # 格式如 "2024-01-15"
             simplified_time = time[5:]  # 取 "01-15"

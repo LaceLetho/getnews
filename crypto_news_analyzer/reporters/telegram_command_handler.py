@@ -29,6 +29,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, filters
 from telegram.error import TelegramError
 
 from ..models import TelegramCommandConfig, CommandExecutionHistory, ExecutionResult, ChatContext
+from ..utils.timezone_utils import now_utc8, format_datetime_utc8
 
 
 @dataclass
@@ -40,9 +41,9 @@ class CommandRateLimitState:
     
     def __post_init__(self):
         if self.last_reset_time is None:
-            self.last_reset_time = datetime.now()
+            self.last_reset_time = now_utc8()
         if self.last_run_command_time is None:
-            self.last_run_command_time = datetime.now() - timedelta(minutes=10)
+            self.last_run_command_time = now_utc8() - timedelta(minutes=10)
 
 
 class TelegramCommandHandler:
@@ -286,7 +287,7 @@ class TelegramCommandHandler:
         """
         user_id_str = str(user_id)
         state = self._rate_limit_states[user_id_str]
-        now = datetime.now()
+        now = now_utc8()
         
         # 检查是否需要重置计数器（每小时重置）
         hours_since_reset = (now - state.last_reset_time).total_seconds() / 3600
@@ -795,7 +796,7 @@ class TelegramCommandHandler:
                 last_exec = history[-1]
                 response_parts.append(
                     f"\n\n*最近执行:*\n"
-                    f"时间: {last_exec.end_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"时间: {format_datetime_utc8(last_exec.end_time, '%Y-%m-%d %H:%M:%S')}\n"
                     f"结果: {'✅ 成功' if last_exec.success else '❌ 失败'}\n"
                     f"处理项目: {last_exec.items_processed}\n"
                     f"耗时: {last_exec.duration_seconds:.1f} 秒"
@@ -1004,7 +1005,7 @@ class TelegramCommandHandler:
             command=command,
             user_id=user_id,
             username=username,
-            timestamp=datetime.now(),
+            timestamp=now_utc8(),
             execution_id=execution_id,
             success=success,
             response_message=response_message
