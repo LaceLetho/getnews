@@ -56,15 +56,15 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # 复制应用代码
-COPY --chown=appuser:appuser . .
+COPY . .
 
 # 创建必要的目录并设置权限
-RUN mkdir -p /app/data /app/logs /app/prompts /home/appuser/.bird && \
-    chown -R appuser:appuser /app /home/appuser && \
+RUN mkdir -p /app/data /app/logs /app/prompts && \
     chmod -R 755 /app
 
-# 切换到非root用户
-USER appuser
+# 注意：Railway Volumes 以 root 用户挂载
+# 为了避免权限问题，容器以 root 用户运行
+# 如果需要非 root 用户，需要在 Railway 设置 RAILWAY_RUN_UID=0
 
 # 设置环境变量
 ENV PYTHONPATH=/app
@@ -77,7 +77,7 @@ ENV EXECUTION_INTERVAL=3600
 ENV CONFIG_PATH=/app/config.json
 
 # Bird工具相关环境变量
-ENV BIRD_CONFIG_PATH=/home/appuser/.bird/config.json
+ENV BIRD_CONFIG_PATH=/root/.bird/config.json
 
 # 健康检查（用于Docker环境，Railway使用进程存活状态）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -86,7 +86,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # 注意：这是一个后台worker服务，不暴露HTTP端口
 
 # 设置入口点脚本
-COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+COPY docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh
 
 # 默认命令

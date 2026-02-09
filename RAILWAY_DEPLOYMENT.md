@@ -147,6 +147,7 @@ Railway 的 volumes **不能通过配置文件创建**，必须在控制台手�
 - Volume 在**运行时**挂载，不在构建时挂载
 - 如果在构建时写入数据，不会持久化到 volume
 - Volume 不会在 pre-deploy 命令时挂载
+- **权限说明**：容器以 root 用户运行以匹配 Railway Volume 权限
 
 ### 查看存储使用情况
 
@@ -209,4 +210,4 @@ railway volume download data ./backup/
 4. **数据迁移**：如果之前已部署但没有 volume，旧数据会丢失（新 volume 是空的）
 5. **删除服务**：删除 Railway 服务时，volumes 也会被删除（数据永久丢失）
 6. **容量监控**：定期检查 volume 使用情况，避免超出配额
-7. **权限问题**：Volume 以 root 用户挂载，如果容器使用非 root 用户，需要设置 `RAILWAY_RUN_UID=0`
+7. **权限说明**：容器以 root 用户运行以匹配 Railway Volume 权限（Railway 推荐做法）
