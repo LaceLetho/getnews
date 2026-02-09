@@ -27,15 +27,15 @@
 
 ```bash
 # X/Twitter认证
-x_ct0=your_ct0_token_here
-x_auth_token=your_auth_token_here
+X_CT0=your_ct0_token_here
+X_AUTH_TOKEN=your_auth_token_here
 
 # LLM API配置
-llm_api_key=your_llm_api_key_here
+LLM_API_KEY=your_LLM_API_KEY_here
 
 # Telegram配置
-telegram_bot_token=your_telegram_bot_token_here
-telegram_channel_id=your_channel_id_here
+TELEGRAM_BOT_TOKEN=your_TELEGRAM_BOT_TOKEN_here
+TELEGRAM_CHANNEL_ID=your_channel_id_here
 ```
 
 ### 3. 运行容器
@@ -76,11 +76,11 @@ docker-compose --profile scheduler down
 |--------|------|--------|------|
 | `TIME_WINDOW_HOURS` | 时间窗口（小时） | 24 | 否 |
 | `EXECUTION_INTERVAL` | 执行间隔（秒） | 3600 | 否 |
-| `x_ct0` | X/Twitter CT0令牌 | - | 是 |
-| `x_auth_token` | X/Twitter认证令牌 | - | 是 |
-| `llm_api_key` | LLM API密钥 | - | 是 |
-| `telegram_bot_token` | Telegram Bot令牌 | - | 是 |
-| `telegram_channel_id` | Telegram频道ID | - | 是 |
+| `X_CT0` | X/Twitter CT0令牌 | - | 是 |
+| `X_AUTH_TOKEN` | X/Twitter认证令牌 | - | 是 |
+| `LLM_API_KEY` | LLM API密钥 | - | 是 |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot令牌 | - | 是 |
+| `TELEGRAM_CHANNEL_ID` | Telegram频道ID | - | 是 |
 
 ### Bird工具配置
 
@@ -171,7 +171,7 @@ docker-compose top
 **症状**: 日志显示"bird工具不可用"或认证错误
 
 **解决方案**:
-1. 检查环境变量 `x_ct0` 和 `x_auth_token` 是否正确设置
+1. 检查环境变量 `X_CT0` 和 `X_AUTH_TOKEN` 是否正确设置
 2. 验证X/Twitter账户状态
 3. 检查bird工具配置文件
 

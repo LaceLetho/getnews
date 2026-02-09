@@ -69,7 +69,7 @@ Content-Type: application/json
 将新的 API key 更新到 `.env` 文件：
 
 ```bash
-llm_api_key=sk-api-新的密钥
+LLM_API_KEY=sk-api-新的密钥
 ```
 
 ### 3. 验证 API Key 格式

@@ -67,7 +67,7 @@ class MarketSnapshotService:
     """市场快照获取服务"""
     
     def __init__(self, 
-                 grok_api_key: Optional[str] = None,
+                 GROK_API_KEY: Optional[str] = None,
                  summary_model: str = "grok-4-1-fast-reasoning",
                  fallback_providers: Optional[List[str]] = None,
                  cache_ttl_minutes: int = 30,
@@ -77,14 +77,14 @@ class MarketSnapshotService:
         初始化市场快照服务
         
         Args:
-            grok_api_key: Grok API密钥，如果为None则从环境变量读取
+            GROK_API_KEY: Grok API密钥，如果为None则从环境变量读取
             summary_model: 使用的模型名称
             fallback_providers: 备用服务提供商列表
             cache_ttl_minutes: 缓存有效期（分钟）
             cache_dir: 缓存目录
             mock_mode: 是否使用模拟模式（用于测试）
         """
-        self.grok_api_key = grok_api_key or os.getenv('grok_api_key', '')
+        self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
         self.summary_model = summary_model
         self.fallback_providers = fallback_providers or []
         self.cache_ttl_minutes = cache_ttl_minutes
@@ -96,10 +96,10 @@ class MarketSnapshotService:
         self.grok_api_base = "https://api.x.ai/v1"
         self.client = None
         
-        if not mock_mode and self.grok_api_key and OpenAI:
+        if not mock_mode and self.GROK_API_KEY and OpenAI:
             try:
                 self.client = OpenAI(
-                    api_key=self.grok_api_key,
+                    api_key=self.GROK_API_KEY,
                     base_url=self.grok_api_base
                 )
             except Exception as e:
@@ -126,7 +126,7 @@ class MarketSnapshotService:
         
         if mock_mode:
             self.logger.info("市场快照服务运行在模拟模式")
-        elif not self.grok_api_key:
+        elif not self.GROK_API_KEY:
             self.logger.warning("未提供Grok API密钥，将使用备用快照")
     
     def get_market_snapshot(self, prompt_template: str) -> MarketSnapshot:
@@ -152,7 +152,7 @@ class MarketSnapshotService:
                 return cached_snapshot
             
             # 尝试从Grok API获取
-            if self.grok_api_key and not self.mock_mode:
+            if self.GROK_API_KEY and not self.mock_mode:
                 try:
                     snapshot = self._get_snapshot_from_grok(prompt_template)
                     if snapshot and self.validate_snapshot_quality(snapshot.content):
@@ -600,7 +600,7 @@ class MarketSnapshotService:
             result["message"] = "运行在模拟模式"
             return result
         
-        if not self.grok_api_key:
+        if not self.GROK_API_KEY:
             result["grok_error"] = "未提供Grok API密钥"
             return result
         
@@ -658,9 +658,9 @@ class MarketSnapshotService:
         Args:
             **kwargs: 配置参数
         """
-        if "grok_api_key" in kwargs:
-            self.grok_api_key = kwargs["grok_api_key"]
-            self.headers["Authorization"] = f"Bearer {self.grok_api_key}"
+        if "GROK_API_KEY" in kwargs:
+            self.GROK_API_KEY = kwargs["GROK_API_KEY"]
+            self.headers["Authorization"] = f"Bearer {self.GROK_API_KEY}"
         
         if "cache_ttl_minutes" in kwargs:
             self.cache_ttl_minutes = kwargs["cache_ttl_minutes"]

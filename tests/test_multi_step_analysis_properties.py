@@ -147,7 +147,7 @@ class TestMarketSnapshotConsistency:
         """
         # 使用模拟模式，避免真实API调用
         service = MarketSnapshotService(
-            grok_api_key="test_key",
+            GROK_API_KEY="test_key",
             cache_dir=self.cache_dir,
             mock_mode=True
         )
@@ -176,7 +176,7 @@ class TestMarketSnapshotConsistency:
         """
         # 使用非模拟模式来测试缓存（模拟模式不使用缓存）
         service = MarketSnapshotService(
-            grok_api_key="",  # 空密钥，强制使用备用快照
+            GROK_API_KEY="",  # 空密钥，强制使用备用快照
             cache_dir=self.cache_dir,
             cache_ttl_minutes=30,
             mock_mode=False
@@ -206,7 +206,7 @@ class TestMarketSnapshotConsistency:
         """
         # 不提供API密钥，强制使用备用快照
         service = MarketSnapshotService(
-            grok_api_key="",
+            GROK_API_KEY="",
             cache_dir=self.cache_dir,
             mock_mode=False
         )

@@ -100,11 +100,11 @@ def valid_storage_config(draw):
 def valid_auth_config(draw):
     """生成有效的认证配置"""
     return {
-        "x_ct0": draw(st.text(max_size=100)),  # 可以为空
-        "x_auth_token": draw(st.text(max_size=200)),  # 可以为空
-        "llm_api_key": draw(st.text(min_size=1, max_size=100).filter(lambda x: x.strip())),
-        "telegram_bot_token": draw(st.text(min_size=1, max_size=100).filter(lambda x: x.strip())),
-        "telegram_channel_id": draw(st.text(min_size=1, max_size=50).filter(lambda x: x.strip()))
+        "X_CT0": draw(st.text(max_size=100)),  # 可以为空
+        "X_AUTH_TOKEN": draw(st.text(max_size=200)),  # 可以为空
+        "LLM_API_KEY": draw(st.text(min_size=1, max_size=100).filter(lambda x: x.strip())),
+        "TELEGRAM_BOT_TOKEN": draw(st.text(min_size=1, max_size=100).filter(lambda x: x.strip())),
+        "TELEGRAM_CHANNEL_ID": draw(st.text(min_size=1, max_size=50).filter(lambda x: x.strip()))
     }
 
 

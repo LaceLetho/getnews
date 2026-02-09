@@ -77,12 +77,12 @@ class TestLLMAnalyzer:
         """测试使用API密钥初始化"""
         analyzer = LLMAnalyzer(
             api_key="test_api_key",
-            grok_api_key="test_grok_key",
+            GROK_API_KEY="test_grok_key",
             mock_mode=False
         )
         
         assert analyzer.api_key == "test_api_key"
-        assert analyzer.grok_api_key == "test_grok_key"
+        assert analyzer.GROK_API_KEY == "test_grok_key"
     
     def test_get_market_snapshot_mock_mode(self):
         """测试获取市场快照（模拟模式）"""

@@ -79,7 +79,7 @@ crypto_news_analyzer/
 
 系统现在已经准备好用于生产环境：
 
-1. **配置 API Key**：在 `.env` 文件中设置 `llm_api_key`
+1. **配置 API Key**：在 `.env` 文件中设置 `LLM_API_KEY`
 2. **运行测试**：`python -m pytest tests/test_minimax_llm_analyzer.py -v`
 3. **开始分析**：使用 `LLMAnalyzer` 类进行内容分析
 

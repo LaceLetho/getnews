@@ -178,8 +178,8 @@ class MainController:
             llm_config = config_data.get("llm_config", {})
             
             self.llm_analyzer = LLMAnalyzer(
-                api_key=auth_config.llm_api_key,
-                grok_api_key=auth_config.grok_api_key,
+                api_key=auth_config.LLM_API_KEY,
+                GROK_API_KEY=auth_config.GROK_API_KEY,
                 model=llm_config.get("model", "gpt-4"),
                 summary_model=llm_config.get("summary_model", "grok-beta"),
                 market_prompt_path=llm_config.get("market_prompt_path", "./prompts/market_summary_prompt.md"),
@@ -187,7 +187,7 @@ class MainController:
                 temperature=llm_config.get("temperature", 0.1),
                 max_tokens=llm_config.get("max_tokens", 4000),
                 batch_size=llm_config.get("batch_size", 10),
-                mock_mode=not auth_config.llm_api_key  # 如果没有API密钥则使用模拟模式
+                mock_mode=not auth_config.LLM_API_KEY  # 如果没有API密钥则使用模拟模式
             )
             
             # 初始化内容分类器
@@ -201,10 +201,10 @@ class MainController:
             self.logger.info("报告生成器初始化完成")
             
             # 初始化Telegram发送器
-            if auth_config.telegram_bot_token and auth_config.telegram_channel_id:
+            if auth_config.TELEGRAM_BOT_TOKEN and auth_config.TELEGRAM_CHANNEL_ID:
                 telegram_config = create_telegram_config(
-                    bot_token=auth_config.telegram_bot_token,
-                    channel_id=auth_config.telegram_channel_id
+                    bot_token=auth_config.TELEGRAM_BOT_TOKEN,
+                    channel_id=auth_config.TELEGRAM_CHANNEL_ID
                 )
                 self.telegram_sender = TelegramSenderSync(telegram_config)
                 self.logger.info("Telegram发送器初始化完成")
@@ -255,10 +255,10 @@ class MainController:
             
             # 验证认证配置
             auth_config = self.config_manager.get_auth_config()
-            if not auth_config.llm_api_key:
+            if not auth_config.LLM_API_KEY:
                 validation_result["warnings"].append("LLM API密钥未配置，将使用模拟模式")
             
-            if not auth_config.telegram_bot_token or not auth_config.telegram_channel_id:
+            if not auth_config.TELEGRAM_BOT_TOKEN or not auth_config.TELEGRAM_CHANNEL_ID:
                 validation_result["warnings"].append("Telegram配置不完整，将跳过报告发送")
             
             # 验证数据源配置
@@ -526,7 +526,7 @@ class MainController:
             x_sources = self.config_manager.get_x_sources()
             auth_config = self.config_manager.get_auth_config()
             
-            if x_sources and auth_config.x_ct0 and auth_config.x_auth_token:
+            if x_sources and auth_config.X_CT0 and auth_config.X_AUTH_TOKEN:
                 # 创建 BirdConfig（X爬取器使用bird工具，需要通过配置文件设置认证）
                 bird_config = BirdConfig()
                 

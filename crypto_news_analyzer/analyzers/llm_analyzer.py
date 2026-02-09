@@ -47,7 +47,7 @@ class LLMAnalyzer:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        grok_api_key: Optional[str] = None,
+        GROK_API_KEY: Optional[str] = None,
         model: str = "gpt-4",
         summary_model: str = "grok-beta",
         market_prompt_path: str = "./prompts/market_summary_prompt.md",
@@ -62,7 +62,7 @@ class LLMAnalyzer:
         
         Args:
             api_key: LLM API密钥，如果为None则从环境变量读取
-            grok_api_key: Grok API密钥，用于市场快照
+            GROK_API_KEY: Grok API密钥，用于市场快照
             model: 分析使用的模型名称
             summary_model: 市场快照使用的模型名称
             market_prompt_path: 市场快照提示词路径
@@ -73,7 +73,7 @@ class LLMAnalyzer:
             mock_mode: 是否使用模拟模式（用于测试）
         """
         self.api_key = api_key or os.getenv('LLM_API_KEY', '')
-        self.grok_api_key = grok_api_key or os.getenv('GROK_API_KEY', '')
+        self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
         self.model = model
         self.summary_model = summary_model
         self.market_prompt_path = Path(market_prompt_path)
@@ -109,7 +109,7 @@ class LLMAnalyzer:
         
         # 初始化市场快照服务
         self.market_snapshot_service = MarketSnapshotService(
-            grok_api_key=self.grok_api_key,
+            GROK_API_KEY=self.GROK_API_KEY,
             summary_model=self.summary_model,
             mock_mode=mock_mode
         )

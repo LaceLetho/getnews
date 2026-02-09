@@ -116,7 +116,7 @@ def test_authentication(crawler):
             return True
         else:
             print("❌ X认证失败")
-            print("💡 请检查.env文件中的x_ct0和x_auth_token参数")
+            print("💡 请检查.env文件中的X_CT0和X_AUTH_TOKEN参数")
             return False
             
     except Exception as e:
@@ -254,12 +254,12 @@ def main():
         return False
     
     # 检查必需的环境变量
-    required_env_vars = ['x_ct0', 'x_auth_token']
+    required_env_vars = ['X_CT0', 'X_AUTH_TOKEN']
     missing_vars = [var for var in required_env_vars if not os.getenv(var)]
     
     if missing_vars:
         print(f"❌ 缺少必需的环境变量: {', '.join(missing_vars)}")
-        print("💡 请检查.env文件中的x_ct0和x_auth_token配置")
+        print("💡 请检查.env文件中的X_CT0和X_AUTH_TOKEN配置")
         return False
     
     print("✅ 环境变量检查通过")

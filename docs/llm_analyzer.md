@@ -68,7 +68,7 @@ from datetime import datetime
 # 创建分析器
 analyzer = LLMAnalyzer(
     api_key="your_api_key",
-    grok_api_key="your_grok_key",
+    GROK_API_KEY="your_grok_key",
     model="gpt-4",
     mock_mode=False
 )
@@ -148,7 +148,7 @@ analyzer.update_config(
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `api_key` | str | None | LLM API密钥，如果为None则从环境变量读取 |
-| `grok_api_key` | str | None | Grok API密钥，用于市场快照 |
+| `GROK_API_KEY` | str | None | Grok API密钥，用于市场快照 |
 | `model` | str | "gpt-4" | 分析使用的模型名称 |
 | `summary_model` | str | "grok-beta" | 市场快照使用的模型名称 |
 | `market_prompt_path` | str | "./prompts/market_summary_prompt.md" | 市场快照提示词路径 |

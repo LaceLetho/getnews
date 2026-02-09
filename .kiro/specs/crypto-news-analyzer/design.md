@@ -189,13 +189,13 @@ X_CT0=your_ct0_token_here
 X_AUTH_TOKEN=your_auth_token_here
 
 # LLM API配置
-LLM_API_KEY=your_llm_api_key_here
+LLM_API_KEY=your_LLM_API_KEY_here
 
 # Grok API配置（用于市场快照）
-GROK_API_KEY=your_grok_api_key_here
+GROK_API_KEY=your_GROK_API_KEY_here
 
 # Telegram配置
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_BOT_TOKEN=your_TELEGRAM_BOT_TOKEN_here
 TELEGRAM_CHANNEL_ID=your_channel_id_here
 
 # Bird工具配置（可选，覆盖配置文件设置）
@@ -308,8 +308,8 @@ class BirdDependencyManager:
         "config_file_path": "~/.bird/config.json"
     },
     "auth": {
-        "x_ct0": "...",
-        "x_auth_token": "...",
+        "X_CT0": "...",
+        "X_AUTH_TOKEN": "...",
         "bird_session_file": "~/.bird/session.json"
     }
 }
@@ -389,7 +389,7 @@ CREATE TABLE content_items (
 
 ```python
 class LLMAnalyzer:
-    def __init__(self, api_key: str, grok_api_key: str = None, model: str = "gpt-4", 
+    def __init__(self, api_key: str, GROK_API_KEY: str = None, model: str = "gpt-4", 
                  market_prompt_path: str = "./prompts/market_summary_prompt.md",
                  analysis_prompt_path: str = "./prompts/analysis_prompt.md")
     def get_market_snapshot(self) -> str
@@ -433,7 +433,7 @@ class LLMAnalyzer:
 
 ```python
 class MarketSnapshotService:
-    def __init__(self, grok_api_key: str, summary_model: str = "grok-beta", fallback_providers: List[str] = None)
+    def __init__(self, GROK_API_KEY: str, summary_model: str = "grok-beta", fallback_providers: List[str] = None)
     def get_market_snapshot(self, prompt_template: str) -> MarketSnapshot
     def call_grok_api(self, prompt: str) -> str
     def validate_snapshot_quality(self, snapshot: str) -> bool
@@ -801,24 +801,24 @@ class RESTAPISource:
 @dataclass
 class AuthConfig:
     """所有认证信息从环境变量读取"""
-    x_ct0: str  # 从环境变量X_CT0读取
-    x_auth_token: str  # 从环境变量X_AUTH_TOKEN读取
-    llm_api_key: str  # 从环境变量LLM_API_KEY读取
-    grok_api_key: str  # 从环境变量GROK_API_KEY读取，用于市场快照
-    telegram_bot_token: str  # 从环境变量TELEGRAM_BOT_TOKEN读取
-    telegram_channel_id: str  # 从环境变量TELEGRAM_CHANNEL_ID读取
+    X_CT0: str  # 从环境变量X_CT0读取
+    X_AUTH_TOKEN: str  # 从环境变量X_AUTH_TOKEN读取
+    LLM_API_KEY: str  # 从环境变量LLM_API_KEY读取
+    GROK_API_KEY: str  # 从环境变量GROK_API_KEY读取，用于市场快照
+    TELEGRAM_BOT_TOKEN: str  # 从环境变量TELEGRAM_BOT_TOKEN读取
+    TELEGRAM_CHANNEL_ID: str  # 从环境变量TELEGRAM_CHANNEL_ID读取
     
     @classmethod
     def from_env(cls) -> 'AuthConfig':
         """从环境变量创建AuthConfig实例"""
         import os
         return cls(
-            x_ct0=os.getenv('X_CT0', ''),
-            x_auth_token=os.getenv('X_AUTH_TOKEN', ''),
-            llm_api_key=os.getenv('LLM_API_KEY', ''),
-            grok_api_key=os.getenv('GROK_API_KEY', ''),
-            telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN', ''),
-            telegram_channel_id=os.getenv('TELEGRAM_CHANNEL_ID', '')
+            X_CT0=os.getenv('X_CT0', ''),
+            X_AUTH_TOKEN=os.getenv('X_AUTH_TOKEN', ''),
+            LLM_API_KEY=os.getenv('LLM_API_KEY', ''),
+            GROK_API_KEY=os.getenv('GROK_API_KEY', ''),
+            TELEGRAM_BOT_TOKEN=os.getenv('TELEGRAM_BOT_TOKEN', ''),
+            TELEGRAM_CHANNEL_ID=os.getenv('TELEGRAM_CHANNEL_ID', '')
         )
 
 @dataclass

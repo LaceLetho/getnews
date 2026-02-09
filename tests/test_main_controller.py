@@ -81,8 +81,8 @@ class TestMainController:
             controller.config_manager.get_rss_sources.return_value = []
             controller.config_manager.get_x_sources.return_value = []
             controller.config_manager.get_auth_config.return_value = Mock(
-                x_ct0="", x_auth_token="", llm_api_key="test_key",
-                telegram_bot_token="test_token", telegram_channel_id="test_channel"
+                X_CT0="", X_AUTH_TOKEN="", LLM_API_KEY="test_key",
+                TELEGRAM_BOT_TOKEN="test_token", TELEGRAM_CHANNEL_ID="test_channel"
             )
             controller.config_manager.get_storage_config.return_value = Mock(
                 database_path=":memory:", retention_days=30
@@ -247,7 +247,7 @@ class TestMainController:
         # 设置环境变量
         os.environ["TIME_WINDOW_HOURS"] = "48"
         os.environ["EXECUTION_INTERVAL"] = "7200"
-        os.environ["llm_api_key"] = "env_api_key"
+        os.environ["LLM_API_KEY"] = "env_api_key"
         
         try:
             # 为这个测试使用真实的配置管理器
@@ -268,11 +268,11 @@ class TestMainController:
             
             # 验证认证配置从环境变量读取
             auth_config = mock_controller.config_manager.get_auth_config()
-            assert auth_config.llm_api_key == "env_api_key"
+            assert auth_config.LLM_API_KEY == "env_api_key"
             
         finally:
             # 清理环境变量
-            for key in ["TIME_WINDOW_HOURS", "EXECUTION_INTERVAL", "llm_api_key"]:
+            for key in ["TIME_WINDOW_HOURS", "EXECUTION_INTERVAL", "LLM_API_KEY"]:
                 if key in os.environ:
                     del os.environ[key]
     
@@ -458,8 +458,8 @@ class TestMainControllerIntegration:
             controller.config_manager.get_rss_sources.return_value = []
             controller.config_manager.get_x_sources.return_value = []
             controller.config_manager.get_auth_config.return_value = Mock(
-                x_ct0="", x_auth_token="", llm_api_key="test_key",
-                telegram_bot_token="", telegram_channel_id=""
+                X_CT0="", X_AUTH_TOKEN="", LLM_API_KEY="test_key",
+                TELEGRAM_BOT_TOKEN="", TELEGRAM_CHANNEL_ID=""
             )
             controller.config_manager.get_storage_config.return_value = Mock(
                 database_path=":memory:", retention_days=30

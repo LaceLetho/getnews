@@ -119,8 +119,8 @@ class BirdWrapper:
         command = [self.config.executable_path]
         
         # 添加认证参数
-        ct0 = os.getenv('x_ct0')
-        auth_token = os.getenv('x_auth_token')
+        ct0 = os.getenv('X_CT0')
+        auth_token = os.getenv('X_AUTH_TOKEN')
         
         if ct0:
             command.extend(["--ct0", ct0])

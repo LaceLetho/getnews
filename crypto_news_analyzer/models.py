@@ -224,12 +224,12 @@ class RESTAPISource:
 @dataclass
 class AuthConfig:
     """认证配置"""
-    x_ct0: str
-    x_auth_token: str
-    llm_api_key: str
-    grok_api_key: str  # Grok API密钥，用于市场快照
-    telegram_bot_token: str
-    telegram_channel_id: str
+    X_CT0: str
+    X_AUTH_TOKEN: str
+    LLM_API_KEY: str
+    GROK_API_KEY: str  # Grok API密钥，用于市场快照
+    TELEGRAM_BOT_TOKEN: str
+    TELEGRAM_CHANNEL_ID: str
     
     def __post_init__(self):
         """数据验证"""
@@ -237,36 +237,36 @@ class AuthConfig:
     
     def validate(self) -> None:
         """验证认证配置"""
-        if not self.llm_api_key or not self.llm_api_key.strip():
+        if not self.LLM_API_KEY or not self.LLM_API_KEY.strip():
             raise ValueError("LLM API密钥不能为空")
         
-        if not self.telegram_bot_token or not self.telegram_bot_token.strip():
+        if not self.TELEGRAM_BOT_TOKEN or not self.TELEGRAM_BOT_TOKEN.strip():
             raise ValueError("Telegram Bot Token不能为空")
         
-        if not self.telegram_channel_id or not self.telegram_channel_id.strip():
+        if not self.TELEGRAM_CHANNEL_ID or not self.TELEGRAM_CHANNEL_ID.strip():
             raise ValueError("Telegram Channel ID不能为空")
         
         # X认证参数可以为空（如果不使用X源）
-        if self.x_ct0 and not self.x_ct0.strip():
-            self.x_ct0 = ""
-        if self.x_auth_token and not self.x_auth_token.strip():
-            self.x_auth_token = ""
+        if self.X_CT0 and not self.X_CT0.strip():
+            self.X_CT0 = ""
+        if self.X_AUTH_TOKEN and not self.X_AUTH_TOKEN.strip():
+            self.X_AUTH_TOKEN = ""
         
         # Grok API密钥可以为空（如果不使用市场快照功能）
-        if self.grok_api_key and not self.grok_api_key.strip():
-            self.grok_api_key = ""
+        if self.GROK_API_KEY and not self.GROK_API_KEY.strip():
+            self.GROK_API_KEY = ""
     
     @classmethod
     def from_env(cls) -> 'AuthConfig':
         """从环境变量创建AuthConfig实例"""
         import os
         return cls(
-            x_ct0=os.getenv('X_CT0', ''),
-            x_auth_token=os.getenv('X_AUTH_TOKEN', ''),
-            llm_api_key=os.getenv('LLM_API_KEY', ''),
-            grok_api_key=os.getenv('GROK_API_KEY', ''),
-            telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN', ''),
-            telegram_channel_id=os.getenv('TELEGRAM_CHANNEL_ID', '')
+            X_CT0=os.getenv('X_CT0', ''),
+            X_AUTH_TOKEN=os.getenv('X_AUTH_TOKEN', ''),
+            LLM_API_KEY=os.getenv('LLM_API_KEY', ''),
+            GROK_API_KEY=os.getenv('GROK_API_KEY', ''),
+            TELEGRAM_BOT_TOKEN=os.getenv('TELEGRAM_BOT_TOKEN', ''),
+            TELEGRAM_CHANNEL_ID=os.getenv('TELEGRAM_CHANNEL_ID', '')
         )
     
     def to_dict(self) -> Dict[str, Any]:

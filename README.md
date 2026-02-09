@@ -56,15 +56,15 @@ pip install -r requirements.txt
 
 ```bash
 # MiniMax API Key (从 https://platform.minimax.io 获取)
-llm_api_key=sk-api-your_minimax_api_key
+LLM_API_KEY=sk-api-your_minimax_api_key
 
 # Telegram Bot 配置
-telegram_bot_token=your_bot_token
-telegram_channel_id=your_channel_id
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHANNEL_ID=your_channel_id
 
 # X/Twitter 认证 (可选)
-x_ct0=your_x_ct0
-x_auth_token=your_x_auth_token
+X_CT0=your_X_CT0
+X_AUTH_TOKEN=your_X_AUTH_TOKEN
 ```
 
 ### 3. 运行系统

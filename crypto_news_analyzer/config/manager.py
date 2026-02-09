@@ -199,12 +199,12 @@ class ConfigManager:
         """获取认证配置，从环境变量读取"""
         # 所有认证参数都从环境变量获取
         return AuthConfig(
-            x_ct0=os.getenv("x_ct0", ""),
-            x_auth_token=os.getenv("x_auth_token", ""),
-            llm_api_key=os.getenv("llm_api_key", ""),
-            grok_api_key=os.getenv("grok_api_key", ""),
-            telegram_bot_token=os.getenv("telegram_bot_token", ""),
-            telegram_channel_id=os.getenv("telegram_channel_id", "")
+            X_CT0=os.getenv("X_CT0", ""),
+            X_AUTH_TOKEN=os.getenv("X_AUTH_TOKEN", ""),
+            LLM_API_KEY=os.getenv("LLM_API_KEY", ""),
+            GROK_API_KEY=os.getenv("GROK_API_KEY", ""),
+            TELEGRAM_BOT_TOKEN=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+            TELEGRAM_CHANNEL_ID=os.getenv("TELEGRAM_CHANNEL_ID", "")
         )
     
     def get_storage_config(self) -> StorageConfig:

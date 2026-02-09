@@ -30,8 +30,8 @@ class TestTelegramRealConfig:
         load_dotenv()
         
         # 获取真实的Telegram配置
-        cls.telegram_token = os.getenv('telegram_bot_token')
-        cls.telegram_channel = os.getenv('telegram_channel_id')
+        cls.telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        cls.telegram_channel = os.getenv('TELEGRAM_CHANNEL_ID')
         
         if not all([cls.telegram_token, cls.telegram_channel]):
             pytest.skip("缺少Telegram配置，跳过真实配置测试")

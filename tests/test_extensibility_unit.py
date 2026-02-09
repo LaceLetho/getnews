@@ -398,9 +398,9 @@ class TestDynamicConfigurationUpdates:
                 "database_path": "./test.db"
             },
             "auth": {
-                "llm_api_key": "test_key",
-                "telegram_bot_token": "test_token",
-                "telegram_channel_id": "test_channel"
+                "LLM_API_KEY": "test_key",
+                "TELEGRAM_BOT_TOKEN": "test_token",
+                "TELEGRAM_CHANNEL_ID": "test_channel"
             },
             "llm_config": {
                 "model": "gpt-4",
@@ -693,9 +693,9 @@ class TestExtensibilityIntegration:
                 "database_path": "./test.db"
             },
             "auth": {
-                "llm_api_key": "test_key",
-                "telegram_bot_token": "test_token",
-                "telegram_channel_id": "test_channel"
+                "LLM_API_KEY": "test_key",
+                "TELEGRAM_BOT_TOKEN": "test_token",
+                "TELEGRAM_CHANNEL_ID": "test_channel"
             },
             "llm_config": {"model": "gpt-4"},
             "rss_sources": [],
@@ -750,9 +750,9 @@ class TestExtensibilityIntegration:
             "time_window_hours": 24,
             "storage": {"retention_days": 30, "database_path": "./test.db"},
             "auth": {
-                "llm_api_key": "test_key",
-                "telegram_bot_token": "test_token",
-                "telegram_channel_id": "test_channel"
+                "LLM_API_KEY": "test_key",
+                "TELEGRAM_BOT_TOKEN": "test_token",
+                "TELEGRAM_CHANNEL_ID": "test_channel"
             },
             "llm_config": {"model": "gpt-4"},
             "rss_sources": [],

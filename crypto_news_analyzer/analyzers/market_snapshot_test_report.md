@@ -109,7 +109,7 @@
 
 ### 环境变量
 ```bash
-grok_api_key=xai-xxxxxxxxxx  # xAI API密钥
+GROK_API_KEY=xai-xxxxxxxxxx  # xAI API密钥
 ```
 
 ### Python依赖
