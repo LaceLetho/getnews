@@ -23,7 +23,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     
     # HTTP客户端增强
-    "httpx>=0.24.0",
+    "httpx[socks]>=0.24.0",  # 包含SOCKS代理支持
     "aiohttp>=3.8.0",
     
     # 时间处理
