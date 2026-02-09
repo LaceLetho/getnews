@@ -349,7 +349,7 @@ class ReportGenerator:
         )
         
         # 添加序号
-        formatted_with_index = f"\n{index}\\. {formatted}\n"
+        formatted_with_index = f"\n{index}\. {formatted}\n"
         
         return formatted_with_index
     
