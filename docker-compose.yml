@@ -10,7 +10,7 @@ services:
     
     # 环境变量配置
     env_file:
-      - .env.docker
+      - .env
     
     # 数据卷挂载
     volumes:

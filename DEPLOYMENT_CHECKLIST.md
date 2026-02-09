@@ -163,4 +163,4 @@ docker run --rm crypto-news-analyzer-test python -c "import crypto_news_analyzer
 
 - [RAILWAY_DEPLOYMENT.md](./RAILWAY_DEPLOYMENT.md) - 详细部署指南
 - [README.md](./README.md) - 项目说明
-- [.env.docker.template](./.env.docker.template) - 环境变量模板
+- [.env.template](./.env.template) - 环境变量模板
