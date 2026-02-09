@@ -42,7 +42,10 @@ ls -la config.json
 在部署前建议先本地测试：
 
 ```bash
-# 构建镜像
+# 本地直接运行（推荐）
+uv run python -m crypto_news_analyzer.main
+
+# 或使用 Docker 测试
 docker build -t crypto-news-analyzer .
 
 # 测试运行（一次性执行）

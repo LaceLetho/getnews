@@ -222,7 +222,7 @@
 
 ### 需求 9: Docker化部署和内部定时调度
 
-**用户故事:** 作为用户，我希望系统能够通过Docker容器化部署，支持一次性执行模式和内部定时调度，以便在服务器环境中高效运行和管理。
+**用户故事:** 作为用户，我希望系统能够通过Docker容器化部署，支持一次性执行模式和内部定时调度，以便在Railway等云平台环境中高效运行和管理。
 
 #### 验收标准
 
@@ -230,22 +230,20 @@
 2. THE System SHALL 提供内部定时调度器，支持程序内部的周期性任务执行
 3. THE System SHALL 支持通过配置文件或环境变量设置调度间隔（如每6小时执行一次）
 4. THE System SHALL 提供Dockerfile将项目完整打包成Docker容器
-5. THE System SHALL 提供docker-compose.yml文件支持容器启动和管理
-6. THE System SHALL 支持通过`docker-compose run --rm my-service`命令执行完成后自动退出
-7. THE System SHALL 支持通过`docker-compose up -d my-service`命令启动持续运行的定时调度模式
-8. THE Scheduler SHALL 在指定的时间间隔自动触发完整的数据收集和分析工作流
-9. WHEN 运行在定时调度模式 THEN System SHALL 持续运行直到接收到停止信号
-10. THE System SHALL 支持通过环境变量进行配置管理，覆盖配置文件设置
-11. THE System SHALL 实现容器健康检查机制，验证服务可用性
-12. THE System SHALL 支持数据卷挂载，包括配置文件、日志目录和数据存储
-13. WHEN 容器接收到停止信号 THEN System SHALL 优雅停止并清理资源
-14. THE System SHALL 在容器启动时验证所有必需的环境变量和挂载卷
-15. WHEN 容器环境配置无效 THEN System SHALL 快速失败并提供明确的错误信息
-16. THE System SHALL 提供轻量级的基础镜像，优化容器启动时间和资源占用
-17. THE System SHALL 支持容器日志的标准输出，便于日志收集和监控
-18. THE System SHALL 根据执行结果返回适当的退出状态码（0=成功，非0=失败）
-19. THE Scheduler SHALL 记录每次执行的开始时间、结束时间和执行状态
-20. WHEN 定时任务执行失败 THEN System SHALL 记录错误信息并在下个调度周期继续尝试
+5. THE System SHALL 支持通过Docker命令执行一次性任务和持续运行的定时调度模式
+6. THE Scheduler SHALL 在指定的时间间隔自动触发完整的数据收集和分析工作流
+7. WHEN 运行在定时调度模式 THEN System SHALL 持续运行直到接收到停止信号
+8. THE System SHALL 支持通过环境变量进行配置管理，覆盖配置文件设置
+9. THE System SHALL 实现容器健康检查机制，验证服务可用性
+10. THE System SHALL 支持数据卷挂载，包括配置文件、日志目录和数据存储
+11. WHEN 容器接收到停止信号 THEN System SHALL 优雅停止并清理资源
+12. THE System SHALL 在容器启动时验证所有必需的环境变量和挂载卷
+13. WHEN 容器环境配置无效 THEN System SHALL 快速失败并提供明确的错误信息
+14. THE System SHALL 提供轻量级的基础镜像，优化容器启动时间和资源占用
+15. THE System SHALL 支持容器日志的标准输出，便于日志收集和监控
+16. THE System SHALL 根据执行结果返回适当的退出状态码（0=成功，非0=失败）
+17. THE Scheduler SHALL 记录每次执行的开始时间、结束时间和执行状态
+18. WHEN 定时任务执行失败 THEN System SHALL 记录错误信息并在下个调度周期继续尝试
 
 ### 需求 10: 时间窗口过滤
 
