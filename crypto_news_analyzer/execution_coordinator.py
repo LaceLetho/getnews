@@ -584,12 +584,35 @@ class MainController:
         
         return result
     
-    def _execute_analysis_stage(self, content_items: List[ContentItem]) -> Dict[str, Any]:
-        """执行内容分析阶段"""
+    def _execute_analysis_stage(self, newly_crawled_items: List[ContentItem]) -> Dict[str, Any]:
+        """
+        执行内容分析阶段
+        
+        重要: 由于RSS数据源和bird爬取都有时间/页数限制，本方法从本地数据库中
+        获取时间窗口内的所有消息进行分析，而不仅仅使用刚爬取的消息。
+        
+        Args:
+            newly_crawled_items: 刚爬取的内容项（用于日志记录）
+            
+        Returns:
+            分析结果字典
+        """
         result = {"success": False, "categorized_items": {}, "analysis_results": {}, "errors": []}
         
         try:
-            if not content_items:
+            # 从数据库获取时间窗口内的所有消息
+            config_data = self.config_manager.config_data
+            time_window_hours = config_data["time_window_hours"]
+            
+            # 获取时间窗口内的所有内容项（包括之前爬取的和刚爬取的）
+            all_content_items = self.data_manager.get_content_items(
+                time_window_hours=time_window_hours
+            )
+            
+            self.logger.info(f"从数据库获取到时间窗口内的 {len(all_content_items)} 个内容项进行分析")
+            self.logger.info(f"其中本次新爬取 {len(newly_crawled_items)} 个，历史数据 {len(all_content_items) - len(newly_crawled_items)} 个")
+            
+            if not all_content_items:
                 self.logger.info("没有内容需要分析")
                 result["success"] = True
                 return result
@@ -599,13 +622,13 @@ class MainController:
             min_weight_score = llm_config.get("min_weight_score", 50)
             
             # 批量分析内容
-            analysis_results = self.llm_analyzer.analyze_content_batch(content_items)
+            analysis_results = self.llm_analyzer.analyze_content_batch(all_content_items)
             
             # 分类内容 - 注意这里存储的是 StructuredAnalysisResult 而不是 ContentItem
             categorized_items = {}
             analysis_dict = {}
             
-            for item, analysis in zip(content_items, analysis_results):
+            for item, analysis in zip(all_content_items, analysis_results):
                 # 跳过低权重的内容
                 if analysis.weight_score < min_weight_score:
                     continue
