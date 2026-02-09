@@ -133,7 +133,7 @@ class XCrawler:
                 raise AuthenticationError("X认证失败，请检查认证配置")
             
             # 使用bird工具获取列表推文
-            result = self.bird_wrapper.fetch_list_tweets(list_id, count=100)
+            result = self.bird_wrapper.fetch_list_tweets(list_id)
             
             if not result.success:
                 error_msg = f"Bird工具获取列表推文失败: {result.error}"
@@ -193,12 +193,12 @@ class XCrawler:
             
             # 使用bird工具获取时间线推文
             if username:
-                result = self.bird_wrapper.fetch_user_timeline(username, count=100)
+                result = self.bird_wrapper.fetch_user_timeline(username)
             else:
                 # 对于主时间线，使用默认用户或当前认证用户
                 # 注意：bird工具可能需要特定的用户名参数
                 self.logger.warning("主时间线爬取需要指定用户名，使用默认行为")
-                result = self.bird_wrapper.fetch_user_timeline("home", count=100)
+                result = self.bird_wrapper.fetch_user_timeline("home")
             
             if not result.success:
                 error_msg = f"Bird工具获取时间线推文失败: {result.error}"

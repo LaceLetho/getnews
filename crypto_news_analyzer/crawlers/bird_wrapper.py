@@ -266,24 +266,31 @@ class BirdWrapper:
             self.logger.error(f"设置bird认证信息失败: {str(e)}")
             raise
     
-    def fetch_list_tweets(self, list_id: str, count: int = 100) -> BirdResult:
+    def fetch_list_tweets(self, list_id: str, max_pages: Optional[int] = None) -> BirdResult:
         """
         获取X列表推文
         
         Args:
             list_id: 列表ID
-            count: 获取数量
+            max_pages: 最大页数（1-5），如果为None则使用配置中的默认值
             
         Returns:
             BirdResult: 执行结果
         """
         try:
+            # 使用配置中的默认值
+            if max_pages is None:
+                max_pages = self.config.bird_max_page
+            
+            # 确保max_pages在有效范围内
+            max_pages = max(1, min(5, max_pages))
+            
             # 构建命令参数
             args = [
                 "list-timeline",
                 list_id,
                 "--json",
-                "--count", str(count)
+                "--max-pages", str(max_pages)
             ]
             
             # 添加速率限制延迟
@@ -313,18 +320,25 @@ class BirdWrapper:
                 command=["bird", "list-timeline", list_id]
             )
     
-    def fetch_user_timeline(self, username: str, count: int = 100) -> BirdResult:
+    def fetch_user_timeline(self, username: str, max_pages: Optional[int] = None) -> BirdResult:
         """
         获取用户时间线
         
         Args:
             username: 用户名（不包含@符号）
-            count: 获取数量
+            max_pages: 最大页数（1-5），如果为None则使用配置中的默认值
             
         Returns:
             BirdResult: 执行结果
         """
         try:
+            # 使用配置中的默认值
+            if max_pages is None:
+                max_pages = self.config.bird_max_page
+            
+            # 确保max_pages在有效范围内
+            max_pages = max(1, min(5, max_pages))
+            
             # 清理用户名
             if username.startswith('@'):
                 username = username[1:]
@@ -335,7 +349,7 @@ class BirdWrapper:
                 args = [
                     "home",
                     "--json",
-                    "--count", str(count)
+                    "--max-pages", str(max_pages)
                 ]
             else:
                 # 用户时间线
@@ -343,7 +357,7 @@ class BirdWrapper:
                     "user-tweets",
                     username,
                     "--json",
-                    "--count", str(count)
+                    "--max-pages", str(max_pages)
                 ]
             
             # 添加速率限制延迟

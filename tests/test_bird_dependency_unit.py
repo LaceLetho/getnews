@@ -33,6 +33,7 @@ class TestBirdConfig(unittest.TestCase):
         self.assertEqual(config.config_file_path, "~/.bird/config.json")
         self.assertTrue(config.enable_auto_retry)
         self.assertEqual(config.retry_delay_seconds, 60)
+        self.assertEqual(config.bird_max_page, 5)
     
     def test_config_validation(self):
         """测试配置验证"""
@@ -41,7 +42,8 @@ class TestBirdConfig(unittest.TestCase):
             executable_path="/usr/bin/bird",
             timeout_seconds=120,
             max_retries=5,
-            output_format="text"
+            output_format="text",
+            bird_max_page=3
         )
         # 不应该抛出异常
         config.validate()
@@ -57,6 +59,14 @@ class TestBirdConfig(unittest.TestCase):
         # 无效配置 - 不支持的格式
         with self.assertRaises(ValueError):
             BirdConfig(output_format="xml")
+        
+        # 无效配置 - bird_max_page 小于1
+        with self.assertRaises(ValueError):
+            BirdConfig(bird_max_page=0)
+        
+        # 无效配置 - bird_max_page 大于5
+        with self.assertRaises(ValueError):
+            BirdConfig(bird_max_page=6)
     
     def test_config_serialization(self):
         """测试配置序列化"""
@@ -418,7 +428,7 @@ class TestBirdWrapperMocked(unittest.TestCase):
         
         with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
             wrapper = BirdWrapper(self.config)
-            result = wrapper.fetch_list_tweets("test_list_id", 50)
+            result = wrapper.fetch_list_tweets("test_list_id", max_pages=3)
             
             self.assertIsInstance(result, BirdResult)
             self.assertTrue(result.success)
@@ -444,7 +454,7 @@ class TestBirdWrapperMocked(unittest.TestCase):
         
         with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
             wrapper = BirdWrapper(self.config)
-            result = wrapper.fetch_user_timeline("testuser", 25)
+            result = wrapper.fetch_user_timeline("testuser", max_pages=2)
             
             self.assertIsInstance(result, BirdResult)
             self.assertTrue(result.success)

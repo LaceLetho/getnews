@@ -326,6 +326,7 @@ class BirdConfig:
     config_file_path: str = "~/.bird/config.json"
     enable_auto_retry: bool = True
     retry_delay_seconds: int = 60
+    bird_max_page: int = 3
     
     def __post_init__(self):
         """数据验证"""
@@ -350,6 +351,9 @@ class BirdConfig:
         
         if self.retry_delay_seconds < 0:
             raise ValueError("重试延迟不能为负数")
+        
+        if self.bird_max_page < 1 or self.bird_max_page > 5:
+            raise ValueError("bird_max_page必须在1到5之间")
     
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
