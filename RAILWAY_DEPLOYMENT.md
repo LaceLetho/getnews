@@ -92,26 +92,68 @@ railway run /app/docker-entrypoint.sh once
 
 ## 持久化存储
 
-### Volume 配置
+### 创建 Volume（必须手动操作）
 
-应用使用 Railway Volumes 持久化以下数据：
+Railway 的 volumes **不能通过配置文件创建**，必须在控制台手动创建：
 
-- `/app/data` - 数据库文件（`crypto_news.db`）和市场快照缓存
-- `/app/logs` - 应用日志文件
+#### 步骤 1：创建第一个 Volume（数据库）
+
+1. 打开 Railway 项目控制台
+2. 按 `⌘K`（Mac）或 `Ctrl+K`（Windows）打开命令面板
+3. 输入 "New Volume" 并选择
+4. 或者：右键点击项目画布 → 选择 "New Volume"
+5. 选择你的服务（crypto-news-analyzer）
+6. 配置 Volume：
+   - **Mount Path**: `/app/data`
+   - 点击 "Add" 创建
+
+#### 步骤 2：创建第二个 Volume（日志）
+
+**重要**：Railway 目前**每个服务只能挂载一个 Volume**。
+
+由于限制，你需要选择：
+- **推荐方案**：只创建 `/app/data` volume（数据库最重要）
+- 日志可以通过 Railway 控制台查看，不需要持久化
+
+如果未来 Railway 支持多个 volumes，可以按相同步骤创建：
+- **Mount Path**: `/app/logs`
+
+### Volume 配置说明
+
+创建 volume 后，Railway 会自动提供环境变量：
+- `RAILWAY_VOLUME_NAME` - Volume 名称
+- `RAILWAY_VOLUME_MOUNT_PATH` - 挂载路径（如 `/app/data`）
+
+### 存储内容
+
+#### `/app/data` Volume（推荐创建）
+- `crypto_news.db` - SQLite 数据库（新闻、分析结果）
+- `cache/market_snapshot.json` - 市场快照缓存（30分钟TTL）
+
+#### `/app/logs`（可选，通过 Railway 日志查看）
+- 应用日志可以在 Railway 控制台的 "Deployments" → "Logs" 查看
+- 不需要持久化存储
 
 ### 存储说明
 
-1. **自动创建**：首次部署时 Railway 会自动创建 volumes
-2. **数据保留**：容器重启、重新部署时数据不会丢失
-3. **容量限制**：Railway 免费计划提供 1GB volume 空间
-4. **清理策略**：应用配置了自动清理（默认保留30天数据）
+1. **手动创建**：Volumes 必须在 Railway 控制台手动创建（不能通过配置文件）
+2. **单 Volume 限制**：每个服务目前只能挂载一个 volume
+3. **数据保留**：容器重启、重新部署时数据不会丢失
+4. **容量限制**：Railway 免费计划提供 1GB volume 空间
+5. **清理策略**：应用配置了自动清理（默认保留30天数据）
+
+### 重要提示
+
+- Volume 在**运行时**挂载，不在构建时挂载
+- 如果在构建时写入数据，不会持久化到 volume
+- Volume 不会在 pre-deploy 命令时挂载
 
 ### 查看存储使用情况
 
 在 Railway 控制台：
-1. 进入项目 → 选择服务
-2. 点击 "Volumes" 标签页
-3. 查看每个 volume 的使用情况
+1. 点击项目画布上的 Volume 图标
+2. 查看 volume 的使用情况和容量
+3. Pro 用户可以实时调整 volume 大小（Live Resize）
 
 ### 手动清理数据
 
@@ -161,7 +203,10 @@ railway volume download data ./backup/
 
 ## Volume 注意事项
 
-1. **首次部署**：Railway 会自动创建并挂载 volumes
-2. **数据迁移**：如果之前已部署但没有 volume，旧数据会丢失（新部署会创建空 volume）
-3. **删除服务**：删除 Railway 服务时，volumes 也会被删除（数据永久丢失）
-4. **容量监控**：定期检查 volume 使用情况，避免超出配额
+1. **手动创建**：必须在 Railway 控制台手动创建，不能通过 `railway.toml` 配置
+2. **单 Volume 限制**：目前每个服务只能挂载一个 volume
+3. **优先级**：建议只创建 `/app/data` volume（数据库最重要）
+4. **数据迁移**：如果之前已部署但没有 volume，旧数据会丢失（新 volume 是空的）
+5. **删除服务**：删除 Railway 服务时，volumes 也会被删除（数据永久丢失）
+6. **容量监控**：定期检查 volume 使用情况，避免超出配额
+7. **权限问题**：Volume 以 root 用户挂载，如果容器使用非 root 用户，需要设置 `RAILWAY_RUN_UID=0`
