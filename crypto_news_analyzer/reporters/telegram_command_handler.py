@@ -549,8 +549,8 @@ class TelegramCommandHandler:
                     self._log_command_execution("/run", user_id, username, None, False, response)
                     return
 
-                # 触发执行
-                response = self.handle_run_command(user_id, username)
+                # 触发执行，传递chat_id用于报告发送
+                response = self.handle_run_command(user_id, username, chat_id)
                 await update.message.reply_text(response, parse_mode="Markdown")
 
             except Exception as e:
@@ -720,13 +720,14 @@ class TelegramCommandHandler:
 
             return "\n".join(help_text)
     
-    def handle_run_command(self, user_id: str, username: str) -> str:
+    def handle_run_command(self, user_id: str, username: str, chat_id: str) -> str:
         """
         处理/run命令的业务逻辑
         
         Args:
             user_id: 用户ID
             username: 用户名
+            chat_id: 聊天ID（用于发送报告）
             
         Returns:
             响应消息
@@ -749,14 +750,14 @@ class TelegramCommandHandler:
             response_initial = (
                 "🚀 开始执行\n\n"
                 "系统已开始执行数据收集和分析任务。\n"
-                "执行完成后将自动发送报告。"
+                "执行完成后将自动发送报告到此聊天窗口。"
             )
             
             # 在后台线程中执行
             def execute_in_background():
                 try:
-                    result = self.trigger_manual_execution(user_id)
-                    self._send_execution_notification(user_id, result)
+                    result = self.trigger_manual_execution(user_id, chat_id)
+                    self._send_execution_notification(chat_id, result)
                 except Exception as e:
                     self.logger.error(f"后台执行失败: {str(e)}")
             
@@ -884,23 +885,21 @@ class TelegramCommandHandler:
         
         return "\n".join(help_text)
     
-    def trigger_manual_execution(self, user_id: str) -> ExecutionResult:
+    def trigger_manual_execution(self, user_id: str, chat_id: str = None) -> ExecutionResult:
         """
         触发手动执行
         
         Args:
             user_id: 触发用户ID
+            chat_id: 触发命令的聊天ID（用于发送报告）
             
         Returns:
             执行结果
         """
-        self.logger.info(f"用户 {user_id} 触发手动执行")
+        self.logger.info(f"用户 {user_id} 在聊天 {chat_id} 触发手动执行")
         
-        # 调用执行协调器的run_once方法
-        result = self.execution_coordinator.run_once()
-        
-        # 更新触发用户信息
-        result.trigger_user = user_id
+        # 调用执行协调器的trigger_manual_execution方法，传递chat_id
+        result = self.execution_coordinator.trigger_manual_execution(user_id=user_id, chat_id=chat_id)
         
         # 记录命令执行历史
         self._log_command_execution(

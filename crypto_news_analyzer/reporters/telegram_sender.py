@@ -420,10 +420,47 @@ class TelegramSenderSync:
         """同步发送报告"""
         return asyncio.run(self._send_report_async(report))
     
+    def send_report_to_chat(self, report: str, chat_id: str) -> SendResult:
+        """
+        同步发送报告到指定聊天
+        
+        Args:
+            report: 报告内容
+            chat_id: 目标聊天ID
+            
+        Returns:
+            发送结果
+        """
+        return asyncio.run(self._send_report_to_chat_async(report, chat_id))
+    
     async def _send_report_async(self, report: str) -> SendResult:
         """异步发送报告的内部方法"""
         async with self.sender:
             return await self.sender.send_report(report)
+    
+    async def _send_report_to_chat_async(self, report: str, chat_id: str) -> SendResult:
+        """
+        异步发送报告到指定聊天的内部方法
+        
+        Args:
+            report: 报告内容
+            chat_id: 目标聊天ID
+            
+        Returns:
+            发送结果
+        """
+        # 临时保存原始channel_id
+        original_channel_id = self.sender.config.channel_id
+        
+        try:
+            # 临时修改channel_id为目标chat_id
+            self.sender.config.channel_id = chat_id
+            
+            async with self.sender:
+                return await self.sender.send_report(report)
+        finally:
+            # 恢复原始channel_id
+            self.sender.config.channel_id = original_channel_id
     
     def validate_configuration(self) -> SendResult:
         """同步验证配置"""

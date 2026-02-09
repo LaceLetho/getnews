@@ -682,7 +682,8 @@ class ExecutionResult:
     categories_found: Dict[str, int]
     errors: List[str]
     trigger_user: Optional[str]
-    report_sent: bool
+    trigger_chat_id: Optional[str] = None  # 触发命令的聊天ID，用于发送报告
+    report_sent: bool = False
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""

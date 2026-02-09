@@ -385,7 +385,7 @@ class MainController:
         
         return validation_result
     
-    def run_once(self, trigger_type: str = "manual", trigger_user: Optional[str] = None) -> ExecutionResult:
+    def run_once(self, trigger_type: str = "manual", trigger_user: Optional[str] = None, trigger_chat_id: Optional[str] = None) -> ExecutionResult:
         """
         执行一次完整的工作流
         
@@ -395,6 +395,7 @@ class MainController:
         Args:
             trigger_type: 触发类型 ("manual", "scheduled", "startup")
             trigger_user: 触发用户ID（手动触发时）
+            trigger_chat_id: 触发命令的聊天ID（用于发送报告）
         
         Returns:
             执行结果
@@ -432,7 +433,7 @@ class MainController:
                     raise Exception("系统初始化失败")
             
             # 执行完整工作流
-            result = self.coordinate_workflow()
+            result = self.coordinate_workflow(trigger_chat_id=trigger_chat_id)
             
             # 更新执行状态
             end_time = datetime.now()
@@ -448,6 +449,7 @@ class MainController:
                 categories_found=result.get("categories_found", {}),
                 errors=result.get("errors", []),
                 trigger_user=trigger_user,
+                trigger_chat_id=trigger_chat_id,
                 report_sent=result.get("report_sent", False)
             )
             
@@ -495,6 +497,7 @@ class MainController:
                 categories_found={},
                 errors=[error_msg],
                 trigger_user=trigger_user,
+                trigger_chat_id=trigger_chat_id,
                 report_sent=False
             )
             
@@ -511,9 +514,12 @@ class MainController:
             with self._execution_lock:
                 self.current_execution = None
     
-    def coordinate_workflow(self) -> Dict[str, Any]:
+    def coordinate_workflow(self, trigger_chat_id: Optional[str] = None) -> Dict[str, Any]:
         """
         协调完整的工作流程
+        
+        Args:
+            trigger_chat_id: 触发命令的聊天ID（用于发送报告）
         
         Returns:
             工作流执行结果
@@ -573,7 +579,7 @@ class MainController:
             self._update_execution_progress(0.9, "sending")
             self.logger.info("开始报告发送阶段")
             
-            send_result = self._execute_sending_stage(report_content)
+            send_result = self._execute_sending_stage(report_content, target_chat_id=trigger_chat_id)
             
             # 更新结果
             result.update({
@@ -801,8 +807,17 @@ class MainController:
         
         return result
     
-    def _execute_sending_stage(self, report_content: str) -> Dict[str, Any]:
-        """执行报告发送阶段"""
+    def _execute_sending_stage(self, report_content: str, target_chat_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        执行报告发送阶段
+        
+        Args:
+            report_content: 报告内容
+            target_chat_id: 目标聊天ID（如果提供，发送到该聊天；否则发送到TELEGRAM_CHANNEL_ID）
+        
+        Returns:
+            发送结果字典
+        """
         result = {"success": False, "errors": []}
         
         try:
@@ -814,8 +829,15 @@ class MainController:
                 result["success"] = True
                 return result
             
-            # 发送报告
-            send_result = self.telegram_sender.send_report(report_content)
+            # 确定发送目标
+            if target_chat_id:
+                # 用户触发的报告，发送到触发命令的聊天窗口
+                self.logger.info(f"发送报告到用户触发的聊天窗口: {target_chat_id}")
+                send_result = self.telegram_sender.send_report_to_chat(report_content, target_chat_id)
+            else:
+                # 定时任务报告，发送到配置的频道
+                self.logger.info(f"发送报告到配置的频道: {self.telegram_sender.config.channel_id}")
+                send_result = self.telegram_sender.send_report(report_content)
             
             if send_result.success:
                 self.logger.info(f"报告发送成功，消息ID: {send_result.message_id}")
@@ -1095,7 +1117,7 @@ class MainController:
         
         return status
     
-    def trigger_manual_execution(self, user_id: str = None) -> ExecutionResult:
+    def trigger_manual_execution(self, user_id: str = None, chat_id: str = None) -> ExecutionResult:
         """
         触发手动执行
         
@@ -1104,6 +1126,7 @@ class MainController:
         
         Args:
             user_id: 触发用户ID
+            chat_id: 触发命令的聊天ID（用于发送报告）
             
         Returns:
             执行结果
@@ -1122,11 +1145,12 @@ class MainController:
                     categories_found={},
                     errors=["系统正在执行任务，请稍后再试"],
                     trigger_user=user_id,
+                    trigger_chat_id=chat_id,
                     report_sent=False
                 )
         
         # 执行工作流
-        return self.run_once(trigger_type="manual", trigger_user=user_id)
+        return self.run_once(trigger_type="manual", trigger_user=user_id, trigger_chat_id=chat_id)
     
     def get_current_execution_info(self) -> Optional[ExecutionInfo]:
         """
