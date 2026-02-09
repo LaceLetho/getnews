@@ -597,6 +597,24 @@ class MarketSnapshot:
 
 
 @dataclass
+class ChatContext:
+    """
+    Chat context information extracted from Telegram update
+    """
+    user_id: str
+    username: str
+    chat_id: str
+    chat_type: str  # "private", "group", or "supergroup"
+    is_private: bool
+    is_group: bool
+    
+    @property
+    def context_description(self) -> str:
+        """Human-readable context description"""
+        return f"{self.chat_type} chat ({self.chat_id})"
+
+
+@dataclass
 class TelegramCommandConfig:
     """Telegram命令配置"""
     enabled: bool = True

@@ -16,6 +16,7 @@ Telegram命令处理器
 
 import asyncio
 import logging
+import os
 import threading
 import time
 from typing import Dict, Any, List, Optional, Callable
@@ -27,7 +28,7 @@ from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes, filters
 from telegram.error import TelegramError
 
-from ..models import TelegramCommandConfig, CommandExecutionHistory, ExecutionResult
+from ..models import TelegramCommandConfig, CommandExecutionHistory, ExecutionResult, ChatContext
 
 
 @dataclass
@@ -84,81 +85,194 @@ class TelegramCommandHandler:
         
         # 授权用户缓存
         self._authorized_users: Dict[str, Dict[str, Any]] = {}
+        
+        # 授权用户ID集合 (用于快速查找)
+        # 需求5.1, 5.7: 存储直接的用户ID
+        self._authorized_user_ids: set = set()
+        
+        # 待解析的用户名列表
+        # 需求5.8: 存储需要解析的@username条目
+        self._usernames_to_resolve: List[str] = []
+        
+        # 用户名缓存 (username -> user_id mapping)
+        # 需求6.3: 缓存用户名到user_id的映射以避免重复API调用
+        self._username_cache: Dict[str, str] = {}
+        
         self._load_authorized_users()
         
         self.logger.info("Telegram命令处理器初始化完成")
     
     def _load_authorized_users(self) -> None:
-        """加载授权用户列表"""
-        for user_config in self.config.authorized_users:
-            user_id = str(user_config.get("user_id", ""))
-            if user_id:
-                self._authorized_users[user_id] = user_config
+        """
+        加载授权用户列表
         
-        self.logger.info(f"已加载 {len(self._authorized_users)} 个授权用户")
+        需求5.1: 从TELEGRAM_AUTHORIZED_USERS环境变量读取授权用户
+        需求5.2: 解析逗号分隔的条目列表
+        需求5.3: 在Bot初始化时解析并加载所有条目到内存
+        需求5.6: 解析期间修剪每个条目的空白字符
+        需求5.7: 数字条目视为用户ID
+        需求5.8: 以"@"开头的条目视为用户名
+        需求5.9: 既不是数字也不以"@"开头的条目记录警告并跳过
+        """
+        # 读取环境变量
+        authorized_users_str = os.getenv('TELEGRAM_AUTHORIZED_USERS', '')
+        
+        if not authorized_users_str:
+            # 需求5.4: 环境变量为空或未设置时记录警告
+            self.logger.warning("No authorized users configured in TELEGRAM_AUTHORIZED_USERS")
+            self._authorized_user_ids = set()
+            self._usernames_to_resolve = []
+            return
+        
+        # 解析逗号分隔的条目
+        user_ids = set()
+        usernames_to_resolve = []
+        
+        for entry in authorized_users_str.split(','):
+            # 需求5.6: 修剪空白字符
+            entry = entry.strip()
+            
+            if not entry:
+                continue
+            
+            # 需求5.7: 数字条目视为直接用户ID
+            if entry.isdigit():
+                user_ids.add(entry)
+                self.logger.debug(f"Added user ID: {entry}")
+            # 需求5.8: 以"@"开头的条目视为用户名
+            elif entry.startswith('@'):
+                usernames_to_resolve.append(entry)
+                self.logger.debug(f"Added username for resolution: {entry}")
+            else:
+                # 需求5.9: 无效条目记录警告并跳过
+                self.logger.warning(f"Invalid entry in TELEGRAM_AUTHORIZED_USERS: {entry}")
+        
+        # 存储直接用户ID
+        self._authorized_user_ids = user_ids
+        
+        # 存储待解析的用户名列表（供任务2.2使用）
+        self._usernames_to_resolve = usernames_to_resolve
+        
+        self.logger.info(
+            f"Loaded {len(self._authorized_user_ids)} direct user IDs and "
+            f"{len(self._usernames_to_resolve)} usernames to resolve from TELEGRAM_AUTHORIZED_USERS"
+        )
+    async def _resolve_username(self, username: str) -> Optional[str]:
+        """
+        Resolve a Telegram username to user_id using Bot API
+
+        需求6.1: 使用Telegram Bot API将用户名解析为user_id
+
+        Args:
+            username: Telegram username (with or without @ prefix)
+
+        Returns:
+            User ID as string, or None if resolution fails
+        """
+        # Remove @ prefix if present
+        username_clean = username.lstrip('@')
+
+        self.logger.info(f"Attempting to resolve username: @{username_clean}")
+
+        try:
+            # Use getChat API to resolve username
+            # This requires the bot to have interacted with the user before
+            # or the user to have a public profile
+            chat = await self.application.bot.get_chat(f"@{username_clean}")
+
+            if chat and chat.id:
+                user_id = str(chat.id)
+                self.logger.info(f"Successfully resolved username @{username_clean} to user_id {user_id}")
+                return user_id
+            else:
+                self.logger.warning(f"Could not resolve username @{username_clean}: user not found")
+                return None
+
+        except Exception as e:
+            self.logger.error(f"Error resolving username @{username_clean}: {e}")
+            return None
+
+    async def _resolve_all_usernames(self) -> None:
+        """
+        Resolve all usernames to user IDs during initialization
+        
+        需求2.2: 遍历用户名条目并解析为user_id
+        需求6.1: 使用Telegram Bot API将用户名解析为user_id
+        需求6.2: 将解析的user_id添加到授权集合
+        需求6.3: 在_username_cache中存储映射
+        需求6.4: 记录解析成功
+        需求6.5: 记录解析失败
+        需求6.6: 出错时继续(不崩溃)
+        """
+        if not self._usernames_to_resolve:
+            self.logger.info("No usernames to resolve")
+            return
+        
+        self.logger.info(f"Resolving {len(self._usernames_to_resolve)} usernames...")
+        
+        resolved_count = 0
+        failed_count = 0
+        
+        # 需求2.2: 遍历用户名条目
+        for username in self._usernames_to_resolve:
+            try:
+                # 需求2.2: 为每个用户名调用_resolve_username()
+                user_id = await self._resolve_username(username)
+                
+                if user_id:
+                    # 需求6.2: 将解析的user_id添加到授权集合
+                    self._authorized_user_ids.add(user_id)
+                    
+                    # 需求6.3: 在_username_cache中存储映射
+                    self._username_cache[username] = user_id
+                    
+                    # 需求6.4: 记录解析成功
+                    self.logger.info(f"Successfully resolved {username} to user_id {user_id}")
+                    resolved_count += 1
+                else:
+                    # 需求6.5: 记录解析失败
+                    self.logger.warning(f"Failed to resolve username {username}: user not found")
+                    failed_count += 1
+                    
+            except Exception as e:
+                # 需求6.5: 记录解析失败
+                # 需求6.6: 出错时继续(不崩溃)
+                self.logger.error(f"Error resolving username {username}: {e}")
+                failed_count += 1
+                continue
+        
+        # 需求2.3: 更新初始化日志
+        # 计算直接ID和解析用户名的数量
+        direct_ids_count = len(self._authorized_user_ids) - resolved_count
+        
+        self.logger.info(
+            f"Username resolution complete: {resolved_count} succeeded, {failed_count} failed. "
+            f"Total authorized users: {len(self._authorized_user_ids)} "
+            f"({direct_ids_count} from direct IDs, {resolved_count} from resolved usernames)"
+        )
+
     
     def is_authorized_user(self, user_id: str, username: str = None) -> bool:
-        """
-        验证用户是否有权限执行命令
-        
-        需求16.5: 验证命令发送者的权限
-        需求16.11: 未授权用户发送命令时返回权限拒绝消息
-        
-        Args:
-            user_id: Telegram用户ID
-            username: Telegram用户名（可选）
-            
-        Returns:
-            是否授权
-        """
-        if not self.config.enabled:
-            return False
-        
-        user_id_str = str(user_id)
-        
-        # 检查用户ID是否在授权列表中
-        if user_id_str in self._authorized_users:
-            return True
-        
-        # 如果提供了用户名，检查所有授权用户的用户名
-        if username:
-            for user_config in self.config.authorized_users:
-                if user_config.get("username") == username:
-                    return True
-        
-        return False
+            """
+            验证用户是否有权限执行命令
+
+            需求1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 6.2: 验证命令发送者的权限
+
+            Args:
+                user_id: Telegram用户ID
+                username: Telegram用户名（可选，仅用于日志记录）
+
+            Returns:
+                是否授权
+            """
+            if not self.config.enabled:
+                return False
+
+            user_id_str = str(user_id)
+
+            # 检查用户ID是否在授权用户ID集合中
+            return user_id_str in self._authorized_user_ids
     
-    def validate_user_permissions(self, user_id: str, command: str) -> bool:
-        """
-        验证用户对特定命令的权限
-        
-        Args:
-            user_id: 用户ID
-            command: 命令名称
-            
-        Returns:
-            是否有权限
-        """
-        user_id_str = str(user_id)
-        
-        # 首先检查用户是否在授权列表中（通过ID）
-        user_config = None
-        if user_id_str in self._authorized_users:
-            user_config = self._authorized_users[user_id_str]
-        
-        # 如果通过ID没找到，不再检查其他方式
-        # 因为validate_user_permissions应该只用于已经通过is_authorized_user验证的用户
-        if not user_config:
-            return False
-        
-        permissions = user_config.get("permissions", [])
-        
-        # 如果没有指定权限，默认允许所有命令
-        if not permissions:
-            return True
-        
-        # 检查是否有该命令的权限
-        return command in permissions
     
     def check_rate_limit(self, user_id: str) -> tuple[bool, Optional[str]]:
         """
@@ -197,6 +311,94 @@ class TelegramCommandHandler:
         state.last_command_time = now
         
         return True, None
+    def _extract_chat_context(self, update: Update) -> ChatContext:
+        """
+        Extract chat context information from Telegram update
+
+        需求1.4, 2.4, 3.1, 3.2, 3.3: 从Telegram Update对象中提取聊天上下文信息
+
+        Args:
+            update: Telegram Update object
+
+        Returns:
+            ChatContext instance with all fields populated
+
+        Raises:
+            ValueError: If effective_user or effective_chat is missing
+        """
+        # Handle missing fields gracefully with error logging
+        if not update.effective_user:
+            self.logger.error("Cannot extract chat context: effective_user is None")
+            raise ValueError("Update object missing effective_user")
+
+        if not update.effective_chat:
+            self.logger.error("Cannot extract chat context: effective_chat is None")
+            raise ValueError("Update object missing effective_chat")
+
+        user = update.effective_user
+        chat = update.effective_chat
+
+        # Extract user info
+        user_id = str(user.id)
+        username = user.username or user.first_name or ""
+
+        # Extract chat info
+        chat_id = str(chat.id)
+        chat_type = chat.type
+
+        # Determine is_private and is_group based on chat_type
+        is_private = chat_type == "private"
+        is_group = chat_type in ["group", "supergroup"]
+
+        return ChatContext(
+            user_id=user_id,
+            username=username,
+            chat_id=chat_id,
+            chat_type=chat_type,
+            is_private=is_private,
+            is_group=is_group
+        )
+
+    def _log_authorization_attempt(
+        self,
+        command: str,
+        user_id: str,
+        username: str,
+        chat_type: str,
+        chat_id: str,
+        authorized: bool,
+        reason: str = None
+    ) -> None:
+        """
+        Log authorization attempt with full context
+
+        需求8.1, 8.2, 8.3, 8.4: 记录授权尝试的完整上下文信息
+
+        Args:
+            command: Command name (e.g., "/run", "/status", "/help")
+            user_id: User ID
+            username: Username
+            chat_type: Type of chat (private/group/supergroup)
+            chat_id: Chat ID
+            authorized: Whether authorization succeeded
+            reason: Reason for authorization failure (if applicable)
+        """
+        log_message = (
+            f"Authorization attempt: command={command}, "
+            f"user={username} ({user_id}), "
+            f"chat_type={chat_type}, chat_id={chat_id}, "
+            f"authorized={authorized}"
+        )
+
+        if reason:
+            log_message += f", reason={reason}"
+
+        if authorized:
+            self.logger.info(log_message)
+        else:
+            self.logger.warning(log_message)
+
+
     
     async def start_command_listener(self) -> None:
         """
@@ -223,6 +425,10 @@ class TelegramCommandHandler:
             # 启动应用
             await self.application.initialize()
             await self.application.start()
+            
+            # 需求6.6: 在接受命令之前尝试解析用户名
+            # 在应用初始化后解析用户名(需要bot实例来调用API)
+            await self._resolve_all_usernames()
             
             # 设置Bot命令菜单
             await self._setup_bot_commands()
@@ -282,68 +488,132 @@ class TelegramCommandHandler:
             self.logger.error(f"设置Bot命令菜单失败: {str(e)}")
     
     async def _handle_run_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """
-        处理/run命令
-        
-        需求16.2: 实现/run命令立即触发完整工作流
-        """
-        user = update.effective_user
-        user_id = str(user.id)
-        username = user.username or user.first_name
-        
-        self.logger.info(f"收到/run命令，用户: {username} ({user_id})")
-        
-        try:
-            # 验证权限
-            if not self.is_authorized_user(user_id, username):
-                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
-                await update.message.reply_text(response)
-                self._log_command_execution("/run", user_id, username, None, False, response)
+            """
+            处理/run命令
+
+            需求16.2: 实现/run命令立即触发完整工作流
+            需求1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 8.1, 8.2, 8.3, 8.4: 使用聊天上下文和授权日志
+            """
+            # Extract chat context at the start
+            try:
+                chat_context = self._extract_chat_context(update)
+            except ValueError as e:
+                self.logger.error(f"Failed to extract chat context: {e}")
+                await update.message.reply_text("❌ 处理命令时发生错误")
                 return
-            
-            # 验证命令权限
-            if not self.validate_user_permissions(user_id, "run"):
-                response = "❌ 权限不足\n\n您没有执行 /run 命令的权限。"
-                await update.message.reply_text(response)
-                self._log_command_execution("/run", user_id, username, None, False, response)
-                return
-            
-            # 检查速率限制
-            allowed, error_msg = self.check_rate_limit(user_id)
-            if not allowed:
-                response = f"⏱️ 速率限制\n\n{error_msg}"
-                await update.message.reply_text(response)
-                self._log_command_execution("/run", user_id, username, None, False, response)
-                return
-            
-            # 触发执行
-            response = self.handle_run_command(user_id, username)
-            await update.message.reply_text(response, parse_mode="Markdown")
-            
-        except Exception as e:
-            error_msg = f"处理/run命令时发生错误: {str(e)}"
-            self.logger.error(error_msg)
-            await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+            # Extract fields from context
+            user_id = chat_context.user_id
+            username = chat_context.username
+            chat_type = chat_context.chat_type
+            chat_id = chat_context.chat_id
+
+            self.logger.info(
+                f"收到/run命令，用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+
+            try:
+                # 验证权限
+                if not self.is_authorized_user(user_id, username):
+                    response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                    await update.message.reply_text(response)
+                    # Log authorization attempt
+                    self._log_authorization_attempt(
+                        command="/run",
+                        user_id=user_id,
+                        username=username,
+                        chat_type=chat_type,
+                        chat_id=chat_id,
+                        authorized=False,
+                        reason="user not in authorized list"
+                    )
+                    self._log_command_execution("/run", user_id, username, None, False, response)
+                    return
+
+                # Log successful authorization
+                self._log_authorization_attempt(
+                    command="/run",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=True
+                )
+
+                # 检查速率限制
+                allowed, error_msg = self.check_rate_limit(user_id)
+                if not allowed:
+                    response = f"⏱️ 速率限制\n\n{error_msg}"
+                    await update.message.reply_text(response)
+                    self._log_command_execution("/run", user_id, username, None, False, response)
+                    return
+
+                # 触发执行
+                response = self.handle_run_command(user_id, username)
+                await update.message.reply_text(response, parse_mode="Markdown")
+
+            except Exception as e:
+                error_msg = f"处理/run命令时发生错误: {str(e)}"
+                self.logger.error(
+                    f"{error_msg}, 用户: {username} ({user_id}), "
+                    f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+                )
+                await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
     
     async def _handle_status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
         处理/status命令
         
         需求16.3: 实现/status命令返回系统运行状态
+        需求1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 8.1, 8.2, 8.3, 8.4: 使用聊天上下文和授权日志
         """
-        user = update.effective_user
-        user_id = str(user.id)
-        username = user.username or user.first_name
-        
-        self.logger.info(f"收到/status命令，用户: {username} ({user_id})")
+        # Extract chat context at the start
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        # Extract fields from context
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+
+        self.logger.info(
+            f"收到/status命令，用户: {username} ({user_id}), "
+            f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+        )
         
         try:
             # 验证权限
             if not self.is_authorized_user(user_id, username):
                 response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
                 await update.message.reply_text(response)
+                # Log authorization attempt
+                self._log_authorization_attempt(
+                    command="/status",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list"
+                )
                 self._log_command_execution("/status", user_id, username, None, False, response)
                 return
+
+            # Log successful authorization
+            self._log_authorization_attempt(
+                command="/status",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True
+            )
             
             # 获取状态
             response = self.handle_status_command(user_id)
@@ -352,7 +622,10 @@ class TelegramCommandHandler:
             
         except Exception as e:
             error_msg = f"处理/status命令时发生错误: {str(e)}"
-            self.logger.error(error_msg)
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
     
     async def _handle_help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
