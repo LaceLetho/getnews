@@ -1,0 +1,15 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "/app/docker-entrypoint.sh schedule"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# 健康检查配置
+healthcheckPath = "/"
+healthcheckTimeout = 300
+
+# 如果需要定时任务，可以使用 cron
+# cronSchedule = "0 */6 * * *"  # 每6小时执行一次

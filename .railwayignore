@@ -1,0 +1,52 @@
+# Railway 部署时忽略的文件
+
+# Git 相关
+.git/
+.gitignore
+
+# 测试和开发
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# IDE
+.vscode/
+.idea/
+.kiro/
+
+# 文档
+docs/
+*.md
+!README.md
+
+# 本地环境文件
+.env
+.env.local
+.env.docker
+
+# Docker 相关（Railway 会使用自己的构建）
+docker-compose*.yml
+
+# 本地数据
+data/
+logs/
+*.log
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# 备份文件
+*.bak
+*.backup
+*.tmp
