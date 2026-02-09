@@ -247,12 +247,23 @@ class MainController:
             
             config_data = self.config_manager.load_config()
             
-            # 验证必需的配置项
-            required_configs = ["time_window_hours", "execution_interval", "storage", "llm_config"]
+            # 验证必需的配置项（execution_interval和time_window_hours现在从环境变量读取）
+            required_configs = ["storage", "llm_config"]
             for config_key in required_configs:
                 if config_key not in config_data:
                     validation_result["errors"].append(f"缺少必需配置项: {config_key}")
                     validation_result["valid"] = False
+            
+            # 验证execution_interval和time_window_hours可以获取（从环境变量或配置文件）
+            try:
+                execution_interval = self.config_manager.get_execution_interval()
+                time_window_hours = self.config_manager.get_time_window_hours()
+                if execution_interval <= 0 or time_window_hours <= 0:
+                    validation_result["errors"].append("execution_interval和time_window_hours必须为正整数")
+                    validation_result["valid"] = False
+            except Exception as e:
+                validation_result["errors"].append(f"无法获取execution_interval或time_window_hours: {e}")
+                validation_result["valid"] = False
             
             # 验证认证配置
             auth_config = self.config_manager.get_auth_config()
@@ -419,8 +430,8 @@ class MainController:
         }
         
         try:
-            config_data = self.config_manager.config_data
-            time_window_hours = config_data["time_window_hours"]
+            # 使用配置管理器的getter方法获取时间窗口
+            time_window_hours = self.config_manager.get_time_window_hours()
             
             # 阶段1: 数据爬取
             self._update_execution_progress(0.1, "crawling")
@@ -600,9 +611,8 @@ class MainController:
         result = {"success": False, "categorized_items": {}, "analysis_results": {}, "errors": []}
         
         try:
-            # 从数据库获取时间窗口内的所有消息
-            config_data = self.config_manager.config_data
-            time_window_hours = config_data["time_window_hours"]
+            # 从数据库获取时间窗口内的所有消息（使用配置管理器的getter方法）
+            time_window_hours = self.config_manager.get_time_window_hours()
             
             # 获取时间窗口内的所有内容项（包括之前爬取的和刚爬取的）
             all_content_items = self.data_manager.get_content_items(
@@ -775,9 +785,8 @@ class MainController:
         
         # 获取调度间隔
         if interval_seconds is None:
-            # 从配置文件或环境变量获取
-            interval_seconds = int(os.getenv("EXECUTION_INTERVAL", 
-                                           self.config_manager.config_data.get("execution_interval", 3600)))
+            # 使用配置管理器的getter方法（优先从环境变量读取）
+            interval_seconds = self.config_manager.get_execution_interval()
         
         self.logger.info(f"启动定时调度器，间隔: {interval_seconds} 秒")
         
@@ -863,9 +872,8 @@ class MainController:
         if not self._scheduler_thread or not self._scheduler_thread.is_alive():
             return None
         
-        # 从配置获取间隔
-        interval_seconds = int(os.getenv("EXECUTION_INTERVAL", 
-                                       self.config_manager.config_data.get("execution_interval", 3600)))
+        # 从配置获取间隔（使用配置管理器的getter方法）
+        interval_seconds = self.config_manager.get_execution_interval()
         
         # 获取最后一次执行时间
         if self.execution_history:
@@ -906,37 +914,16 @@ class MainController:
             self.logger.error(f"资源清理失败: {str(e)}")
     
     def setup_environment_config(self) -> None:
-        """设置环境变量配置"""
-        # 从环境变量覆盖配置
-        env_mappings = {
-            "TIME_WINDOW_HOURS": "time_window_hours",
-            "EXECUTION_INTERVAL": "execution_interval"
-        }
+        """
+        设置环境变量配置
         
-        config_updates = {}
-        for env_key, config_path in env_mappings.items():
-            env_value = os.getenv(env_key)
-            if env_value:
-                # 解析嵌套配置路径
-                keys = config_path.split('.')
-                current = config_updates
-                for key in keys[:-1]:
-                    if key not in current:
-                        current[key] = {}
-                    current = current[key]
-                
-                # 转换数值类型
-                if keys[-1] in ["time_window_hours", "execution_interval"]:
-                    current[keys[-1]] = int(env_value)
-                else:
-                    current[keys[-1]] = env_value
-        
-        # 更新配置
-        if config_updates and self.config_manager:
-            current_config = self.config_manager.config_data.copy()
-            self._deep_update(current_config, config_updates)
-            self.config_manager.config_data = current_config
-            self.logger.info("环境变量配置已应用")
+        注意: execution_interval 和 time_window_hours 现在通过 ConfigManager 的
+        get_execution_interval() 和 get_time_window_hours() 方法自动从环境变量读取，
+        无需在此处理。
+        """
+        # 环境变量配置现在由 ConfigManager 的 getter 方法处理
+        # 保留此方法以保持向后兼容性
+        pass
     
     def _deep_update(self, base_dict: Dict, update_dict: Dict) -> None:
         """深度更新字典"""

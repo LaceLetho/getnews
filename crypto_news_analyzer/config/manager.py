@@ -75,9 +75,8 @@ class ConfigManager:
             是否有效
         """
         try:
-            # 验证必需的顶级字段
+            # 验证必需的顶级字段（execution_interval和time_window_hours现在从环境变量读取，不再必需）
             required_fields = [
-                "execution_interval", "time_window_hours", 
                 "storage", "llm_config"
             ]
             
@@ -86,15 +85,17 @@ class ConfigManager:
                     self.logger.error(f"缺少必需配置字段: {field}")
                     return False
             
-            # 验证时间窗口参数
-            if not isinstance(config["time_window_hours"], int) or config["time_window_hours"] <= 0:
-                self.logger.error("时间窗口参数必须为正整数")
-                return False
+            # 验证时间窗口参数（如果存在于配置文件中）
+            if "time_window_hours" in config:
+                if not isinstance(config["time_window_hours"], int) or config["time_window_hours"] <= 0:
+                    self.logger.error("时间窗口参数必须为正整数")
+                    return False
             
-            # 验证执行间隔
-            if not isinstance(config["execution_interval"], int) or config["execution_interval"] <= 0:
-                self.logger.error("执行间隔必须为正整数")
-                return False
+            # 验证执行间隔（如果存在于配置文件中）
+            if "execution_interval" in config:
+                if not isinstance(config["execution_interval"], int) or config["execution_interval"] <= 0:
+                    self.logger.error("执行间隔必须为正整数")
+                    return False
             
             # 验证存储配置
             storage_config = config["storage"]
@@ -207,6 +208,52 @@ class ConfigManager:
             TELEGRAM_CHANNEL_ID=os.getenv("TELEGRAM_CHANNEL_ID", "")
         )
     
+    def get_execution_interval(self) -> int:
+        """
+        获取执行间隔（秒）
+        优先从环境变量读取，其次从配置文件，最后使用默认值
+        
+        Returns:
+            执行间隔（秒）
+        """
+        # 优先从环境变量读取
+        env_value = os.getenv("EXECUTION_INTERVAL")
+        if env_value:
+            try:
+                return int(env_value)
+            except ValueError:
+                self.logger.warning(f"环境变量EXECUTION_INTERVAL值无效: {env_value}，使用配置文件或默认值")
+        
+        # 其次从配置文件读取
+        if "execution_interval" in self.config_data:
+            return self.config_data["execution_interval"]
+        
+        # 最后使用默认值
+        return 3600
+    
+    def get_time_window_hours(self) -> int:
+        """
+        获取时间窗口（小时）
+        优先从环境变量读取，其次从配置文件，最后使用默认值
+        
+        Returns:
+            时间窗口（小时）
+        """
+        # 优先从环境变量读取
+        env_value = os.getenv("TIME_WINDOW_HOURS")
+        if env_value:
+            try:
+                return int(env_value)
+            except ValueError:
+                self.logger.warning(f"环境变量TIME_WINDOW_HOURS值无效: {env_value}，使用配置文件或默认值")
+        
+        # 其次从配置文件读取
+        if "time_window_hours" in self.config_data:
+            return self.config_data["time_window_hours"]
+        
+        # 最后使用默认值
+        return 24
+    
     def get_storage_config(self) -> StorageConfig:
         """获取存储配置"""
         storage_data = self.config_data["storage"]
@@ -298,8 +345,6 @@ class ConfigManager:
     def _create_default_config(self) -> None:
         """创建默认配置文件"""
         default_config = {
-            "execution_interval": 3600,
-            "time_window_hours": 24,
             "storage": {
                 "retention_days": 30,
                 "max_storage_mb": 1000,

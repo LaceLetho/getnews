@@ -1,6 +1,4 @@
 {
-  "execution_interval": 3600,
-  "time_window_hours": 4,
   "storage": {
     "retention_days": 30,
     "max_storage_mb": 1000,
@@ -10,7 +8,7 @@
   "bird_config": {
     "executable_path": "bird",
     "timeout_seconds": 300,
-    "max_retries": 3,
+    "max_retries": 1,
     "output_format": "json",
     "rate_limit_delay": 1.0,
     "config_file_path": "~/.bird/config.json",
