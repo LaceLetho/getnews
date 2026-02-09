@@ -34,7 +34,7 @@ from .crawlers.data_source_factory import get_data_source_factory, register_buil
 from .analyzers.llm_analyzer import LLMAnalyzer
 from .reporters.report_generator import ReportGenerator, create_analyzed_data
 from .reporters.telegram_sender import TelegramSenderSync, create_telegram_config
-from .models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult, BirdConfig
+from .models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult, BirdConfig, TelegramCommandConfig
 from .utils.logging import get_log_manager
 from .utils.errors import ErrorRecoveryManager
 
@@ -119,6 +119,7 @@ class MainController:
         self.report_generator: Optional[ReportGenerator] = None
         self.telegram_sender: Optional[TelegramSenderSync] = None
         self.error_manager: Optional[ErrorRecoveryManager] = None
+        self.command_handler: Optional[Any] = None  # TelegramCommandHandler实例
         
         # 执行状态管理
         self.current_execution: Optional[ExecutionInfo] = None
@@ -126,6 +127,10 @@ class MainController:
         self._execution_lock = threading.RLock()
         self._stop_event = threading.Event()
         self._scheduler_thread: Optional[threading.Thread] = None
+        
+        # 并发控制
+        self._max_concurrent_executions = 1
+        self._execution_timeout_minutes = 30
         
         # 信号处理
         self._setup_signal_handlers()
@@ -232,6 +237,20 @@ class MainController:
             else:
                 self.logger.warning("Telegram配置不完整，将跳过报告发送")
             
+            # 初始化Telegram命令处理器（如果配置启用）
+            telegram_command_config = self._get_telegram_command_config()
+            if telegram_command_config.enabled and auth_config.TELEGRAM_BOT_TOKEN:
+                try:
+                    from .reporters.telegram_command_handler import TelegramCommandHandlerSync
+                    self.command_handler = TelegramCommandHandlerSync(
+                        bot_token=auth_config.TELEGRAM_BOT_TOKEN,
+                        execution_coordinator=self,
+                        config=telegram_command_config
+                    )
+                    self.logger.info("Telegram命令处理器初始化完成")
+                except Exception as e:
+                    self.logger.warning(f"Telegram命令处理器初始化失败: {str(e)}")
+            
             self._initialized = True
             self.logger.info("系统组件初始化完成")
             return True
@@ -240,6 +259,27 @@ class MainController:
             self.logger.error(f"系统初始化失败: {str(e)}")
             self.logger.debug(traceback.format_exc())
             return False
+    
+    def _get_telegram_command_config(self) -> TelegramCommandConfig:
+        """
+        获取Telegram命令配置
+        
+        Returns:
+            TelegramCommandConfig对象
+        """
+        config_data = self.config_manager.config_data
+        telegram_commands = config_data.get("telegram_commands", {})
+        
+        return TelegramCommandConfig(
+            enabled=telegram_commands.get("enabled", False),
+            authorized_users=telegram_commands.get("authorized_users", []),
+            execution_timeout_minutes=telegram_commands.get("execution_timeout_minutes", 30),
+            max_concurrent_executions=telegram_commands.get("max_concurrent_executions", 1),
+            command_rate_limit=telegram_commands.get("command_rate_limit", {
+                "max_commands_per_hour": 10,
+                "cooldown_minutes": 5
+            })
+        )
     
     def validate_prerequisites(self) -> Dict[str, Any]:
         """
@@ -345,9 +385,16 @@ class MainController:
         
         return validation_result
     
-    def run_once(self) -> ExecutionResult:
+    def run_once(self, trigger_type: str = "manual", trigger_user: Optional[str] = None) -> ExecutionResult:
         """
         执行一次完整的工作流
+        
+        需求16.6: 支持手动触发执行
+        需求16.14: 为手动触发的执行设置超时限制
+        
+        Args:
+            trigger_type: 触发类型 ("manual", "scheduled", "startup")
+            trigger_user: 触发用户ID（手动触发时）
         
         Returns:
             执行结果
@@ -358,8 +405,8 @@ class MainController:
         # 创建执行信息
         execution_info = ExecutionInfo(
             execution_id=execution_id,
-            trigger_type="manual",
-            trigger_user=None,
+            trigger_type=trigger_type,
+            trigger_user=trigger_user,
             start_time=start_time,
             end_time=None,
             status=ExecutionStatus.RUNNING,
@@ -400,7 +447,7 @@ class MainController:
                 items_processed=result.get("items_processed", 0),
                 categories_found=result.get("categories_found", {}),
                 errors=result.get("errors", []),
-                trigger_user=None,
+                trigger_user=trigger_user,
                 report_sent=result.get("report_sent", False)
             )
             
@@ -447,7 +494,7 @@ class MainController:
                 items_processed=0,
                 categories_found={},
                 errors=[error_msg],
-                trigger_user=None,
+                trigger_user=trigger_user,
                 report_sent=False
             )
             
@@ -881,7 +928,7 @@ class MainController:
                 
                 # 执行工作流
                 self.logger.info("定时调度触发执行")
-                result = self.run_once()
+                result = self.run_once(trigger_type="scheduled", trigger_user=None)
                 
                 if result.success:
                     self.logger.info(f"定时执行成功，处理了 {result.items_processed} 个项目")
@@ -1047,6 +1094,101 @@ class MainController:
             status["next_execution_time"] = next_time.isoformat()
         
         return status
+    
+    def trigger_manual_execution(self, user_id: str = None) -> ExecutionResult:
+        """
+        触发手动执行
+        
+        需求16.6: 实现并发控制，防止多个执行同时进行
+        需求16.9: 添加执行超时管理和状态查询功能
+        
+        Args:
+            user_id: 触发用户ID
+            
+        Returns:
+            执行结果
+        """
+        # 检查并发限制
+        with self._execution_lock:
+            if self.current_execution and self.current_execution.status == ExecutionStatus.RUNNING:
+                # 返回一个表示拒绝的结果
+                return ExecutionResult(
+                    execution_id="rejected",
+                    success=False,
+                    start_time=datetime.now(),
+                    end_time=datetime.now(),
+                    duration_seconds=0.0,
+                    items_processed=0,
+                    categories_found={},
+                    errors=["系统正在执行任务，请稍后再试"],
+                    trigger_user=user_id,
+                    report_sent=False
+                )
+        
+        # 执行工作流
+        return self.run_once(trigger_type="manual", trigger_user=user_id)
+    
+    def get_current_execution_info(self) -> Optional[ExecutionInfo]:
+        """
+        获取当前执行信息
+        
+        需求16.9: 添加执行超时管理和状态查询功能
+        
+        Returns:
+            当前执行信息，如果没有则返回None
+        """
+        with self._execution_lock:
+            return self.current_execution
+    
+    def cancel_current_execution(self) -> bool:
+        """
+        取消当前执行
+        
+        Returns:
+            是否成功取消
+        """
+        with self._execution_lock:
+            if self.current_execution and self.current_execution.status == ExecutionStatus.RUNNING:
+                self.current_execution.status = ExecutionStatus.CANCELLED
+                self.logger.info(f"取消执行: {self.current_execution.execution_id}")
+                return True
+            return False
+    
+    def set_execution_timeout(self, timeout_minutes: int) -> None:
+        """
+        设置执行超时时间
+        
+        需求16.14: 为手动触发的执行设置超时限制
+        
+        Args:
+            timeout_minutes: 超时时间（分钟）
+        """
+        self._execution_timeout_minutes = timeout_minutes
+        self.logger.info(f"执行超时时间设置为: {timeout_minutes} 分钟")
+    
+    def start_command_listener(self) -> None:
+        """
+        启动Telegram命令监听器
+        
+        需求16.1: 支持通过Telegram Bot接收用户命令
+        """
+        if self.command_handler:
+            try:
+                self.logger.info("启动Telegram命令监听器")
+                self.command_handler.start_command_listener()
+            except Exception as e:
+                self.logger.error(f"启动命令监听器失败: {str(e)}")
+        else:
+            self.logger.warning("命令处理器未初始化，无法启动监听器")
+    
+    def stop_command_listener(self) -> None:
+        """停止Telegram命令监听器"""
+        if self.command_handler:
+            try:
+                self.logger.info("停止Telegram命令监听器")
+                self.command_handler.stop_command_listener()
+            except Exception as e:
+                self.logger.error(f"停止命令监听器失败: {str(e)}")
 
 
 # 工具函数
@@ -1131,9 +1273,14 @@ def run_one_time_execution(config_path: str = "./config.json") -> int:
 
 def run_scheduled_mode(config_path: str = "./config.json") -> int:
     """
-    执行定时调度模式
+    执行定时调度模式（同时支持Telegram命令触发）
     
     需求9.13: 实现退出状态码管理（0=成功，非0=失败）
+    需求16.1: 支持通过Telegram Bot接收用户命令
+    需求16.12: 支持在定时调度模式和命令触发模式之间切换
+    
+    注意：此模式同时启动定时调度器和Telegram命令监听器，
+    两者共享并发控制机制，不会发生冲突。
     
     Args:
         config_path: 配置文件路径
@@ -1168,13 +1315,23 @@ def run_scheduled_mode(config_path: str = "./config.json") -> int:
             print("[ERROR] 系统初始化失败", flush=True)
             return 1  # 配置错误
         
-        # 启动调度器
+        # 启动定时调度器
         print("[INFO] 启动定时调度器...", flush=True)
         controller.start_scheduler()
         
         # 获取调度间隔
         interval_seconds = controller.config_manager.get_execution_interval()
         print(f"[INFO] 定时调度器已启动，间隔: {interval_seconds} 秒", flush=True)
+        
+        # 如果配置了Telegram命令处理器，同时启动命令监听器
+        if controller.command_handler:
+            print("[INFO] 启动Telegram命令监听器...", flush=True)
+            controller.start_command_listener()
+            print("[INFO] Telegram命令监听器已启动", flush=True)
+            print("[INFO] 系统运行在混合模式：定时调度 + 命令触发", flush=True)
+        else:
+            print("[INFO] Telegram命令处理器未配置，仅运行定时调度模式", flush=True)
+        
         print("[INFO] 等待停止信号 (Ctrl+C 或 SIGTERM)...", flush=True)
         
         # 等待停止信号
@@ -1184,10 +1341,16 @@ def run_scheduled_mode(config_path: str = "./config.json") -> int:
         except KeyboardInterrupt:
             print("[INFO] 接收到中断信号", flush=True)
         
-        print("[INFO] 正在停止调度器...", flush=True)
+        print("[INFO] 正在停止系统...", flush=True)
+        
+        # 停止调度器
         controller.stop_scheduler()
         
-        print("[SUCCESS] 调度器已正常停止", flush=True)
+        # 停止命令监听器（如果已启动）
+        if controller.command_handler:
+            controller.stop_command_listener()
+        
+        print("[SUCCESS] 系统已正常停止", flush=True)
         return 0  # 正常退出
         
     except KeyboardInterrupt:
@@ -1196,6 +1359,89 @@ def run_scheduled_mode(config_path: str = "./config.json") -> int:
     
     except Exception as e:
         print(f"[ERROR] 调度模式异常: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return 3  # 异常错误
+    
+    finally:
+        try:
+            controller.cleanup_resources()
+            print("[INFO] 资源清理完成", flush=True)
+        except Exception as e:
+            print(f"[WARN] 资源清理失败: {str(e)}", flush=True)
+
+
+def run_command_listener_mode(config_path: str = "./config.json") -> int:
+    """
+    执行命令监听模式
+    
+    需求16.1: 支持通过Telegram Bot接收用户命令
+    需求16.12: 支持在定时调度模式和命令触发模式之间切换
+    
+    Args:
+        config_path: 配置文件路径
+        
+    Returns:
+        退出状态码 (0=正常退出, 1=配置错误, 3=异常错误)
+    """
+    controller = create_main_controller(config_path)
+    
+    try:
+        # 设置环境变量配置
+        controller.setup_environment_config()
+        
+        # 验证前提条件
+        print("[INFO] 验证系统配置...", flush=True)
+        validation_result = controller.validate_prerequisites()
+        
+        if not validation_result["valid"]:
+            print(f"[ERROR] 前提条件验证失败:", flush=True)
+            for error in validation_result["errors"]:
+                print(f"  - {error}", flush=True)
+            return 1  # 配置错误
+        
+        if validation_result["warnings"]:
+            print(f"[WARN] 配置警告:", flush=True)
+            for warning in validation_result["warnings"]:
+                print(f"  - {warning}", flush=True)
+        
+        # 初始化系统
+        print("[INFO] 初始化系统组件...", flush=True)
+        if not controller.initialize_system():
+            print("[ERROR] 系统初始化失败", flush=True)
+            return 1  # 配置错误
+        
+        # 检查命令处理器是否可用
+        if not controller.command_handler:
+            print("[ERROR] Telegram命令处理器未配置或初始化失败", flush=True)
+            return 1  # 配置错误
+        
+        # 启动命令监听器
+        print("[INFO] 启动Telegram命令监听器...", flush=True)
+        controller.start_command_listener()
+        
+        print("[INFO] Telegram命令监听器已启动", flush=True)
+        print("[INFO] 等待用户命令 (Ctrl+C 或 SIGTERM 停止)...", flush=True)
+        
+        # 等待停止信号
+        try:
+            while not controller._stop_event.is_set():
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("[INFO] 接收到中断信号", flush=True)
+        
+        print("[INFO] 正在停止命令监听器...", flush=True)
+        controller.stop_command_listener()
+        
+        print("[SUCCESS] 命令监听器已正常停止", flush=True)
+        return 0  # 正常退出
+        
+    except KeyboardInterrupt:
+        print("[INFO] 接收到中断信号，正在退出...", flush=True)
+        return 0  # 用户中断视为正常退出
+    
+    except Exception as e:
+        print(f"[ERROR] 命令监听模式异常: {str(e)}", flush=True)
         import traceback
         traceback.print_exc()
         return 3  # 异常错误

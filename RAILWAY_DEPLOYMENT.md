@@ -51,7 +51,54 @@ restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 ```
 
-### 4. 验证部署
+**运行模式说明**：
+
+- **schedule 模式（推荐）**：定时调度 + Telegram命令触发的混合模式
+  - 自动按配置的间隔执行任务
+  - 同时监听Telegram命令（如 `/run`）手动触发执行
+  - 两种触发方式共享并发控制，不会冲突
+  - 适合生产环境使用
+
+- **once 模式**：执行一次后退出
+  - 用于测试或手动触发单次执行
+  - 不启动定时调度器和命令监听器
+
+### 4. Telegram命令触发配置
+
+如果要启用Telegram命令触发功能，需要在 `config.json` 中配置：
+
+```json
+{
+  "telegram_commands": {
+    "enabled": true,
+    "authorized_users": [
+      {
+        "user_id": "your_telegram_user_id",
+        "username": "your_username",
+        "permissions": ["run", "status", "help"]
+      }
+    ],
+    "execution_timeout_minutes": 30,
+    "max_concurrent_executions": 1,
+    "command_rate_limit": {
+      "max_commands_per_hour": 10,
+      "cooldown_minutes": 5
+    }
+  }
+}
+```
+
+**获取你的Telegram User ID**：
+1. 在Telegram中搜索 `@userinfobot`
+2. 发送 `/start` 命令
+3. Bot会返回你的User ID
+
+**可用命令**：
+- `/run` - 立即触发一次执行（不影响定时调度）
+- `/status` - 查询系统运行状态
+- `/help` - 显示帮助信息
+
+### 5. 验证部署
 
 部署成功后，检查日志应该看到：
 
@@ -61,6 +108,17 @@ restartPolicyMaxRetries = 3
 [INFO] 验证环境变量配置...
 [INFO] 环境验证通过
 [INFO] 启动定时调度模式
+[INFO] 定时调度器已启动，间隔: 3600 秒
+[INFO] 启动Telegram命令监听器...
+[INFO] Telegram命令监听器已启动
+[INFO] 系统运行在混合模式：定时调度 + 命令触发
+[INFO] 等待停止信号 (Ctrl+C 或 SIGTERM)...
+```
+
+如果未配置Telegram命令功能，会看到：
+
+```
+[INFO] Telegram命令处理器未配置，仅运行定时调度模式
 ```
 
 ## 常见问题
@@ -79,10 +137,16 @@ A: 默认每小时执行一次（3600秒），可通过 `EXECUTION_INTERVAL` 环
 
 ### Q: 如何手动触发执行？
 
-A: 在 Railway 控制台重启服务，或使用 Railway CLI：
+A: 有两种方式：
+1. **通过Telegram命令**（推荐）：向Bot发送 `/run` 命令
+2. **通过Railway控制台**：重启服务，或使用 Railway CLI：
 ```bash
 railway run /app/docker-entrypoint.sh once
 ```
+
+### Q: 定时执行和命令触发会冲突吗？
+
+A: 不会。系统使用并发控制机制，确保同一时间只有一个执行在进行。如果定时任务正在执行，命令触发会被拒绝并返回提示信息。
 
 ## 监控建议
 

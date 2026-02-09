@@ -1,7 +1,7 @@
 """
 报告生成模块
 
-包含Telegram发送器、Telegram格式化器、报告生成器和相关工具类。
+包含Telegram发送器、Telegram格式化器、报告生成器、Telegram命令处理器和相关工具类。
 """
 
 from .telegram_sender import (
@@ -26,6 +26,12 @@ from .report_generator import (
     create_report_generator,
     categorize_analysis_results
 )
+from .telegram_command_handler import (
+    TelegramCommandHandler,
+    TelegramCommandHandlerSync,
+    create_telegram_command_handler,
+    create_default_command_config
+)
 
 __all__ = [
     'TelegramSender',
@@ -43,5 +49,9 @@ __all__ = [
     'ReportGenerator',
     'AnalyzedData',
     'create_report_generator',
-    'categorize_analysis_results'
+    'categorize_analysis_results',
+    'TelegramCommandHandler',
+    'TelegramCommandHandlerSync',
+    'create_telegram_command_handler',
+    'create_default_command_config'
 ]
