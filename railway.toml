@@ -7,9 +7,9 @@ startCommand = "/app/docker-entrypoint.sh schedule"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
-# 健康检查配置
-healthcheckPath = "/"
-healthcheckTimeout = 300
+# 注意：此应用是后台任务调度器（worker），不提供HTTP服务
+# Railway会通过进程存活状态判断服务健康
+# 不需要healthcheckPath，因为这不是web服务
 
 # 如果需要定时任务，可以使用 cron
 # cronSchedule = "0 */6 * * *"  # 每6小时执行一次
