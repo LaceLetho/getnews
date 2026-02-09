@@ -627,36 +627,98 @@ class TelegramCommandHandler:
                 f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
-    
     async def _handle_help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
         处理/help命令
-        
+
         需求16.4: 实现/help命令返回可用命令列表
+        需求1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 8.1, 8.2, 8.3, 8.4: 使用聊天上下文和授权日志
         """
-        user = update.effective_user
-        user_id = str(user.id)
-        username = user.username or user.first_name
-        
-        self.logger.info(f"收到/help命令，用户: {username} ({user_id})")
-        
+        # Extract chat context at the start
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        # Extract fields from context
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+
+        self.logger.info(
+            f"收到/help命令，用户: {username} ({user_id}), "
+            f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+        )
+
         try:
             # 验证权限
             if not self.is_authorized_user(user_id, username):
                 response = "❌ 权限拒绝\n\n您没有权限使用此机器人。"
                 await update.message.reply_text(response)
+                # Log authorization attempt
+                self._log_authorization_attempt(
+                    command="/help",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list"
+                )
                 self._log_command_execution("/help", user_id, username, None, False, response)
                 return
-            
+
+            # Log successful authorization
+            self._log_authorization_attempt(
+                command="/help",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True
+            )
+
             # 获取帮助信息
-            response = self.handle_help_command(user_id)
+            response = self.handle_help_command()
             await update.message.reply_text(response, parse_mode="Markdown")
             self._log_command_execution("/help", user_id, username, None, True, "帮助信息已发送")
-            
+
         except Exception as e:
             error_msg = f"处理/help命令时发生错误: {str(e)}"
-            self.logger.error(error_msg)
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+    
+    def handle_help_command(self) -> str:
+            """
+            处理/help命令的业务逻辑
+
+            需求7.1, 7.2, 7.3: 所有授权用户都有相同的权限，可以访问所有命令
+
+            Returns:
+                响应消息
+            """
+            help_text = [
+                "🤖 *加密货币新闻分析机器人*\n",
+                "*可用命令:*\n",
+                "/run - 立即执行一次数据收集和分析\n",
+                "触发完整的工作流程，包括数据爬取、内容分析和报告生成。\n",
+                "/status - 查询系统运行状态\n",
+                "显示当前执行状态、系统信息和最近执行结果。\n",
+                "/help - 显示此帮助信息\n",
+                "查看所有可用命令和使用说明。\n",
+                "\n*注意事项:*\n",
+                "• 命令有速率限制，请勿频繁调用\n",
+                "• 执行过程可能需要几分钟时间\n",
+                "• 执行完成后会自动发送报告"
+            ]
+
+            return "\n".join(help_text)
     
     def handle_run_command(self, user_id: str, username: str) -> str:
         """

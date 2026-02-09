@@ -189,7 +189,7 @@ The changes include:
     - Update error messages to be consistent
     - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 8.1, 8.2, 8.3, 8.4_
 
-  - [ ] 8.2 Update _handle_status_command() method
+  - [x] 8.2 Update _handle_status_command() method
     - Call `_extract_chat_context()` at the start of the method
     - Extract user_id, username, chat_type, chat_id from context
     - Update existing log statements to include chat_type and chat_id
@@ -197,7 +197,7 @@ The changes include:
     - Remove `validate_user_permissions()` call
     - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 8.1, 8.2, 8.3, 8.4_
 
-  - [ ] 8.3 Update _handle_help_command() method
+  - [x] 8.3 Update _handle_help_command() method
     - Call `_extract_chat_context()` at the start of the method
     - Extract user_id, username, chat_type, chat_id from context
     - Update existing log statements to include chat_type and chat_id
@@ -215,19 +215,19 @@ The changes include:
     - **Validates: Requirements 1.3, 2.3**
 
 - [ ] 9. Update configuration files
-  - [ ] 9.1 Remove authorized_users from config.json
+  - [x] 9.1 Remove authorized_users from config.json
     - Remove the `authorized_users` field from telegram_commands section
     - Keep other telegram_commands configuration intact
     - _Requirements: 5.1_
 
-  - [ ] 9.2 Update .env.template
+  - [x] 9.2 Update .env.template
     - Add TELEGRAM_AUTHORIZED_USERS with example showing mixed format
     - Add comments explaining the format (IDs and usernames)
     - Provide example: "123456789,@user1,987654321,@user2"
     - Add note about username resolution requirements
     - _Requirements: 5.1, 5.2, 6.7_
 
-  - [ ] 9.3 Update documentation
+  - [x] 9.3 Update documentation
     - Update README or deployment docs with new environment variable
     - Explain how to get Telegram user IDs
     - Explain username format and resolution process

@@ -73,10 +73,47 @@ LLM_API_KEY=sk-api-your_minimax_api_key
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHANNEL_ID=your_channel_id
 
+# Telegram 授权用户（支持用户ID和用户名）
+# 多个用户用逗号分隔，可以混合使用用户ID和@username格式
+# 示例: 123456789,@user1,987654321,@user2
+TELEGRAM_AUTHORIZED_USERS=your_user_id_here
+
 # X/Twitter 认证 (可选)
 X_CT0=your_X_CT0
 X_AUTH_TOKEN=your_X_AUTH_TOKEN
 ```
+
+#### 如何获取 Telegram 用户 ID
+
+1. 在 Telegram 中搜索 `@userinfobot`
+2. 发送 `/start` 命令
+3. Bot 会返回你的用户 ID
+
+#### Telegram 授权用户配置说明
+
+系统支持两种格式配置授权用户：
+
+1. **用户 ID（数字）**: 直接使用 Telegram 用户 ID，例如 `123456789`
+2. **用户名（@开头）**: 使用 Telegram 用户名，例如 `@username`
+
+可以混合使用两种格式，用逗号分隔：
+
+```bash
+# 仅用户ID
+TELEGRAM_AUTHORIZED_USERS=123456789,987654321
+
+# 仅用户名
+TELEGRAM_AUTHORIZED_USERS=@user1,@user2,@user3
+
+# 混合格式（推荐）
+TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
+```
+
+**注意事项：**
+- 使用用户名时，bot 必须先与该用户互动过，或者用户有公开的 profile
+- 如果用户名解析失败，系统会记录警告并跳过该用户名
+- 建议对关键用户使用用户 ID 作为备份
+- 所有授权用户都有相同的权限，可以执行所有命令（/run, /status, /help）
 
 ### 3. 运行系统
 
@@ -118,6 +155,46 @@ uv run pytest tests/test_minimax_llm_analyzer.py -v
 3. 将 API Key 添加到 `.env` 文件中
 
 详细的集成文档请参考 `docs/integration/minimax_integration_summary.md`
+
+## Telegram 命令功能
+
+系统支持通过 Telegram Bot 命令进行交互式控制：
+
+### 可用命令
+
+- `/run` - 立即执行一次数据收集和分析任务
+- `/status` - 查询系统运行状态
+- `/help` - 显示帮助信息
+
+### 授权机制
+
+系统使用基于用户的授权机制：
+
+1. **私聊授权**: 授权用户可以在与 bot 的私聊中执行命令
+2. **群组授权**: 授权用户可以在群组中执行命令（基于用户 ID，而非群组 ID）
+3. **统一权限**: 所有授权用户拥有相同的权限，可以执行所有命令
+
+### 报告发送规则
+
+- **定时任务报告**: 自动发送到 `TELEGRAM_CHANNEL_ID` 指定的频道
+- **手动触发报告**: 发送到用户触发命令的聊天窗口（私聊或群组）
+
+### 配置授权用户
+
+在 `.env` 文件中配置 `TELEGRAM_AUTHORIZED_USERS`：
+
+```bash
+# 支持用户ID和用户名混合格式
+TELEGRAM_AUTHORIZED_USERS=123456789,@user1,987654321,@user2
+```
+
+### 速率限制
+
+为防止滥用，系统实施了速率限制：
+- 每小时最多执行命令次数（默认：60次）
+- 命令冷却时间（默认：5分钟）
+
+可在 `config.json` 的 `telegram_commands.command_rate_limit` 中调整。
 
 ## 配置说明
 
