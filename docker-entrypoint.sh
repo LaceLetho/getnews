@@ -32,13 +32,33 @@ log_debug() {
 
 # 信号处理函数
 cleanup() {
+    local exit_code=$?
     log_info "接收到停止信号，正在清理资源..."
+    
     if [[ -n "$MAIN_PID" ]]; then
+        # 发送SIGTERM信号给主进程
+        log_info "向主进程 $MAIN_PID 发送SIGTERM信号"
         kill -TERM "$MAIN_PID" 2>/dev/null || true
-        wait "$MAIN_PID" 2>/dev/null || true
+        
+        # 等待主进程退出（最多30秒）
+        local wait_count=0
+        while kill -0 "$MAIN_PID" 2>/dev/null && [[ $wait_count -lt 30 ]]; do
+            sleep 1
+            ((wait_count++))
+        done
+        
+        # 如果主进程仍在运行，强制终止
+        if kill -0 "$MAIN_PID" 2>/dev/null; then
+            log_warn "主进程未在超时时间内退出，发送SIGKILL信号"
+            kill -KILL "$MAIN_PID" 2>/dev/null || true
+        fi
+        
+        # 获取主进程的退出状态码
+        wait "$MAIN_PID" 2>/dev/null || exit_code=$?
     fi
-    log_info "清理完成，退出"
-    exit 0
+    
+    log_info "清理完成，退出状态码: $exit_code"
+    exit $exit_code
 }
 
 # 设置信号处理
@@ -104,7 +124,35 @@ show_configuration() {
     log_info "Python路径: ${PYTHONPATH:-/app}"
     log_info "用户: $(whoami) (UID: $(id -u))"
     log_info "工作目录: $(pwd)"
+    log_info "启动时间: $(date '+%Y-%m-%d %H:%M:%S')"
     log_info "========================"
+}
+
+# 记录执行状态
+log_execution_state() {
+    local state=$1
+    local message=$2
+    local timestamp=$(date -u '+%Y-%m-%dT%H:%M:%S.%3NZ')
+    
+    echo "{\"timestamp\":\"$timestamp\",\"state\":\"$state\",\"message\":\"$message\"}" >> /app/logs/execution_state.log
+    
+    case "$state" in
+        "starting")
+            log_info "执行状态: 启动中 - $message"
+            ;;
+        "running")
+            log_info "执行状态: 运行中 - $message"
+            ;;
+        "completed")
+            log_info "执行状态: 已完成 - $message"
+            ;;
+        "failed")
+            log_error "执行状态: 失败 - $message"
+            ;;
+        "stopped")
+            log_info "执行状态: 已停止 - $message"
+            ;;
+    esac
 }
 
 # 检查系统健康状态
@@ -153,6 +201,9 @@ main() {
     log_info "启动加密货币新闻分析工具容器"
     log_info "容器版本: 1.0.0"
     
+    # 记录启动状态
+    log_execution_state "starting" "容器启动，模式: $mode"
+    
     # 验证环境
     validate_environment
     
@@ -162,6 +213,7 @@ main() {
     # 健康检查
     if ! health_check; then
         log_error "健康检查失败，退出"
+        log_execution_state "failed" "健康检查失败"
         exit 1
     fi
     
@@ -170,6 +222,9 @@ main() {
     if [[ -n "$CONFIG_PATH" ]] && [[ -f "$CONFIG_PATH" ]]; then
         config_arg="--config $CONFIG_PATH"
     fi
+    
+    # 记录运行状态
+    log_execution_state "running" "主进程启动，模式: $mode"
     
     # 根据模式执行
     case "$mode" in
@@ -193,16 +248,54 @@ main() {
         *)
             log_error "未知的运行模式: $mode"
             log_info "支持的模式: once, schedule, command"
+            log_execution_state "failed" "未知的运行模式: $mode"
             exit 1
             ;;
     esac
     
     # 等待主进程
     log_info "主进程 PID: $MAIN_PID"
+    log_info "等待主进程完成..."
+    
+    # 等待主进程并捕获退出状态码
     wait "$MAIN_PID"
     local exit_code=$?
     
-    log_info "主进程退出，状态码: $exit_code"
+    # 根据退出状态码输出不同的日志
+    case $exit_code in
+        0)
+            log_info "主进程正常退出，状态码: $exit_code"
+            log_execution_state "completed" "执行成功，状态码: $exit_code"
+            ;;
+        1)
+            log_error "主进程退出，配置错误，状态码: $exit_code"
+            log_execution_state "failed" "配置错误，状态码: $exit_code"
+            ;;
+        2)
+            log_error "主进程退出，执行失败，状态码: $exit_code"
+            log_execution_state "failed" "执行失败，状态码: $exit_code"
+            ;;
+        3)
+            log_error "主进程退出，异常错误，状态码: $exit_code"
+            log_execution_state "failed" "异常错误，状态码: $exit_code"
+            ;;
+        130)
+            log_info "主进程被中断信号终止 (SIGINT)"
+            log_execution_state "stopped" "用户中断 (SIGINT)"
+            exit_code=0  # 用户中断视为正常退出
+            ;;
+        143)
+            log_info "主进程被终止信号终止 (SIGTERM)"
+            log_execution_state "stopped" "优雅关闭 (SIGTERM)"
+            exit_code=0  # 优雅关闭视为正常退出
+            ;;
+        *)
+            log_error "主进程异常退出，状态码: $exit_code"
+            log_execution_state "failed" "异常退出，状态码: $exit_code"
+            ;;
+    esac
+    
+    log_info "容器退出，最终状态码: $exit_code"
     exit $exit_code
 }
 

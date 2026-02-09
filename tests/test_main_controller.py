@@ -88,8 +88,12 @@ class TestMainController:
                 database_path=":memory:", retention_days=30
             )
             controller.config_manager.validate_storage_path.return_value = True
+            # Add getters for execution_interval and time_window_hours
+            controller.config_manager.get_execution_interval.return_value = 10
+            controller.config_manager.get_time_window_hours.return_value = 24
             
             controller.data_manager = Mock()
+            controller.data_manager.get_content_items.return_value = []
             controller.llm_analyzer = Mock()
             controller.content_classifier = Mock()
             controller.report_generator = Mock()
@@ -262,9 +266,9 @@ class TestMainController:
             
             mock_controller.setup_environment_config()
             
-            config = mock_controller.config_manager.config_data
-            assert config["time_window_hours"] == 48
-            assert config["execution_interval"] == 7200
+            # 验证getter方法返回环境变量的值
+            assert mock_controller.config_manager.get_time_window_hours() == 48
+            assert mock_controller.config_manager.get_execution_interval() == 7200
             
             # 验证认证配置从环境变量读取
             auth_config = mock_controller.config_manager.get_auth_config()
@@ -347,16 +351,23 @@ class TestMainController:
         for i, item in enumerate(content_items):
             item.id = f"item_{i}"
         
+        # 模拟数据管理器返回内容项
+        mock_controller.data_manager.get_content_items.return_value = content_items
+        
         # 模拟分析结果
+        from crypto_news_analyzer.analyzers.structured_output_manager import StructuredAnalysisResult
         mock_analysis_results = []
         for i, item in enumerate(content_items):
-            analysis = Mock(spec=AnalysisResult)
-            analysis.should_ignore = False
-            analysis.category = "大户动向" if i % 2 == 0 else "利率事件"
+            analysis = StructuredAnalysisResult(
+                time="2024-01-01 12:00:00",
+                category="大户动向" if i % 2 == 0 else "利率事件",
+                weight_score=80,
+                summary=f"Test summary {i}",
+                source=f"https://example.com/{i}"
+            )
             mock_analysis_results.append(analysis)
         
-        mock_controller.llm_analyzer.batch_analyze.return_value = mock_analysis_results
-        mock_controller.content_classifier.classify_item.side_effect = lambda item, analysis: analysis.category
+        mock_controller.llm_analyzer.analyze_content_batch.return_value = mock_analysis_results
         
         result = mock_controller._execute_analysis_stage(content_items)
         
@@ -369,7 +380,7 @@ class TestMainController:
         categorized_items = {"大户动向": [Mock()]}
         analysis_results = {"item1": Mock()}
         
-        mock_controller.report_generator.generate_report.return_value = "Test report content"
+        mock_controller.report_generator.generate_telegram_report.return_value = "Test report content"
         
         result = mock_controller._execute_reporting_stage(
             categorized_items, analysis_results, Mock(), 24
@@ -465,17 +476,23 @@ class TestMainControllerIntegration:
                 database_path=":memory:", retention_days=30
             )
             controller.config_manager.validate_storage_path.return_value = True
+            # Add getters for execution_interval and time_window_hours
+            controller.config_manager.get_execution_interval.return_value = 10
+            controller.config_manager.get_time_window_hours.return_value = 24
             
             controller.data_manager = Mock()
             controller.data_manager.add_content_items.return_value = 0
             controller.data_manager.save_crawl_status = Mock()
+            controller.data_manager.get_content_items.return_value = []
             
             controller.llm_analyzer = Mock()
             controller.llm_analyzer.batch_analyze.return_value = []
+            controller.llm_analyzer.analyze_content_batch.return_value = []
             
             controller.content_classifier = Mock()
             controller.report_generator = Mock()
             controller.report_generator.generate_report.return_value = "Test report"
+            controller.report_generator.generate_telegram_report.return_value = "Test report"
             
             controller.telegram_sender = None  # 模拟无Telegram配置
             

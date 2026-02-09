@@ -136,11 +136,31 @@ class MainController:
         self.logger.info("主控制器初始化完成")
     
     def _setup_signal_handlers(self) -> None:
-        """设置信号处理器"""
+        """
+        设置信号处理器
+        
+        需求9.11: 实现优雅停止机制，处理SIGTERM和SIGINT信号
+        """
         def signal_handler(signum, frame):
-            self.logger.info(f"接收到信号 {signum}，开始优雅关闭")
-            self.stop_scheduler()
+            signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT" if signum == signal.SIGINT else f"Signal {signum}"
+            self.logger.info(f"接收到信号 {signal_name}，开始优雅关闭")
+            
+            # 设置停止标志
             self._stop_event.set()
+            
+            # 如果有正在执行的任务，标记为取消状态
+            with self._execution_lock:
+                if self.current_execution and self.current_execution.status == ExecutionStatus.RUNNING:
+                    self.logger.info(f"正在取消执行: {self.current_execution.execution_id}")
+                    self.current_execution.status = ExecutionStatus.CANCELLED
+            
+            # 停止调度器
+            self.stop_scheduler()
+            
+            # 清理资源
+            self.cleanup_resources()
+            
+            self.logger.info("优雅关闭完成")
         
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
@@ -225,6 +245,9 @@ class MainController:
         """
         验证系统运行前提条件
         
+        需求9.12: 添加容器启动时的配置验证和快速失败机制
+        需求9.15: 容器环境配置无效时快速失败并提供明确的错误信息
+        
         Returns:
             验证结果字典
         """
@@ -286,12 +309,39 @@ class MainController:
                 validation_result["errors"].append(f"存储路径无效: {storage_config.database_path}")
                 validation_result["valid"] = False
             
+            # 验证必要目录的写权限
+            required_dirs = ["./data", "./logs"]
+            for dir_path in required_dirs:
+                if not os.path.exists(dir_path):
+                    try:
+                        os.makedirs(dir_path, exist_ok=True)
+                        self.logger.info(f"创建目录: {dir_path}")
+                    except Exception as e:
+                        validation_result["errors"].append(f"无法创建目录 {dir_path}: {str(e)}")
+                        validation_result["valid"] = False
+                elif not os.access(dir_path, os.W_OK):
+                    validation_result["errors"].append(f"目录不可写: {dir_path}")
+                    validation_result["valid"] = False
+            
             self.logger.info(f"前提条件验证完成: {'通过' if validation_result['valid'] else '失败'}")
+            
+            # 如果验证失败，记录详细错误信息
+            if not validation_result["valid"]:
+                self.logger.error("配置验证失败，详细错误:")
+                for error in validation_result["errors"]:
+                    self.logger.error(f"  - {error}")
+            
+            # 记录警告信息
+            if validation_result["warnings"]:
+                self.logger.warning("配置验证警告:")
+                for warning in validation_result["warnings"]:
+                    self.logger.warning(f"  - {warning}")
             
         except Exception as e:
             validation_result["errors"].append(f"验证过程中发生异常: {str(e)}")
             validation_result["valid"] = False
             self.logger.error(f"前提条件验证异常: {str(e)}")
+            self.logger.debug(traceback.format_exc())
         
         return validation_result
     
@@ -802,8 +852,16 @@ class MainController:
         self._scheduler_thread.start()
     
     def _scheduler_loop(self, interval_seconds: int) -> None:
-        """调度器循环"""
+        """
+        调度器循环
+        
+        需求9.18: 定时任务执行失败时的错误处理和重试机制
+        需求9.20: 定时任务执行失败时记录错误信息并在下个调度周期继续尝试
+        """
         self.logger.info("调度器循环开始")
+        
+        consecutive_failures = 0
+        max_consecutive_failures = 3
         
         while not self._stop_event.is_set():
             try:
@@ -827,18 +885,33 @@ class MainController:
                 
                 if result.success:
                     self.logger.info(f"定时执行成功，处理了 {result.items_processed} 个项目")
+                    consecutive_failures = 0  # 重置连续失败计数
                 else:
-                    self.logger.error(f"定时执行失败: {'; '.join(result.errors)}")
+                    consecutive_failures += 1
+                    self.logger.error(f"定时执行失败 (连续失败: {consecutive_failures}/{max_consecutive_failures}): {'; '.join(result.errors)}")
+                    
+                    # 如果连续失败次数过多，增加等待时间
+                    if consecutive_failures >= max_consecutive_failures:
+                        backoff_time = min(300, 60 * consecutive_failures)  # 最多等待5分钟
+                        self.logger.warning(f"连续失败{consecutive_failures}次，等待{backoff_time}秒后继续")
+                        if self._stop_event.wait(backoff_time):
+                            break
                 
             except Exception as e:
-                self.logger.error(f"调度器循环异常: {str(e)}")
+                consecutive_failures += 1
+                self.logger.error(f"调度器循环异常 (连续失败: {consecutive_failures}/{max_consecutive_failures}): {str(e)}")
                 self.logger.debug(traceback.format_exc())
                 
-                # 等待一段时间后继续
-                if not self._stop_event.wait(60):  # 等待1分钟
-                    continue
+                # 如果连续失败次数过多，增加等待时间
+                if consecutive_failures >= max_consecutive_failures:
+                    backoff_time = min(300, 60 * consecutive_failures)
+                    self.logger.warning(f"连续异常{consecutive_failures}次，等待{backoff_time}秒后继续")
+                    if self._stop_event.wait(backoff_time):
+                        break
                 else:
-                    break
+                    # 等待一段时间后继续
+                    if self._stop_event.wait(60):  # 等待1分钟
+                        break
         
         self.logger.info("调度器循环结束")
     
@@ -883,7 +956,12 @@ class MainController:
         return datetime.now() + timedelta(seconds=interval_seconds)
     
     def log_execution_cycle(self, start_time: datetime, end_time: datetime, status: str) -> None:
-        """记录执行周期日志"""
+        """
+        记录执行周期日志
+        
+        需求9.17: 记录每次执行的开始时间、结束时间和执行状态
+        需求9.16: 配置容器日志标准输出
+        """
         duration = (end_time - start_time).total_seconds()
         
         log_entry = {
@@ -894,7 +972,11 @@ class MainController:
             "timestamp": datetime.now().isoformat()
         }
         
+        # 输出到标准输出（容器日志）
         self.logger.info(f"执行周期记录: {json.dumps(log_entry, ensure_ascii=False)}")
+        
+        # 同时输出到标准输出以确保容器日志可见
+        print(f"[EXECUTION_CYCLE] {json.dumps(log_entry, ensure_ascii=False)}", flush=True)
     
     def cleanup_resources(self) -> None:
         """清理资源"""
@@ -985,11 +1067,13 @@ def run_one_time_execution(config_path: str = "./config.json") -> int:
     """
     执行一次性运行模式
     
+    需求9.13: 实现退出状态码管理（0=成功，非0=失败）
+    
     Args:
         config_path: 配置文件路径
         
     Returns:
-        退出状态码 (0=成功, 非0=失败)
+        退出状态码 (0=成功, 1=配置错误, 2=执行失败, 3=异常错误)
     """
     controller = create_main_controller(config_path)
     
@@ -998,38 +1082,64 @@ def run_one_time_execution(config_path: str = "./config.json") -> int:
         controller.setup_environment_config()
         
         # 验证前提条件
+        print("[INFO] 验证系统配置...", flush=True)
         validation_result = controller.validate_prerequisites()
+        
         if not validation_result["valid"]:
-            print(f"前提条件验证失败: {validation_result['errors']}")
-            return 1
+            print(f"[ERROR] 前提条件验证失败:", flush=True)
+            for error in validation_result["errors"]:
+                print(f"  - {error}", flush=True)
+            return 1  # 配置错误
+        
+        if validation_result["warnings"]:
+            print(f"[WARN] 配置警告:", flush=True)
+            for warning in validation_result["warnings"]:
+                print(f"  - {warning}", flush=True)
         
         # 执行一次工作流
+        print("[INFO] 开始执行工作流...", flush=True)
         result = controller.run_once()
         
         if result.success:
-            print(f"执行成功，处理了 {result.items_processed} 个项目")
-            return 0
+            print(f"[SUCCESS] 执行成功，处理了 {result.items_processed} 个项目", flush=True)
+            print(f"[INFO] 执行时长: {result.duration_seconds:.2f} 秒", flush=True)
+            print(f"[INFO] 报告发送: {'成功' if result.report_sent else '失败'}", flush=True)
+            return 0  # 成功
         else:
-            print(f"执行失败: {'; '.join(result.errors)}")
-            return 1
+            print(f"[ERROR] 执行失败:", flush=True)
+            for error in result.errors:
+                print(f"  - {error}", flush=True)
+            return 2  # 执行失败
             
+    except KeyboardInterrupt:
+        print("[INFO] 接收到中断信号，正在退出...", flush=True)
+        return 0  # 用户中断视为正常退出
+    
     except Exception as e:
-        print(f"执行异常: {str(e)}")
-        return 1
+        print(f"[ERROR] 执行异常: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return 3  # 异常错误
     
     finally:
-        controller.cleanup_resources()
+        try:
+            controller.cleanup_resources()
+            print("[INFO] 资源清理完成", flush=True)
+        except Exception as e:
+            print(f"[WARN] 资源清理失败: {str(e)}", flush=True)
 
 
 def run_scheduled_mode(config_path: str = "./config.json") -> int:
     """
     执行定时调度模式
     
+    需求9.13: 实现退出状态码管理（0=成功，非0=失败）
+    
     Args:
         config_path: 配置文件路径
         
     Returns:
-        退出状态码 (0=成功, 非0=失败)
+        退出状态码 (0=正常退出, 1=配置错误, 3=异常错误)
     """
     controller = create_main_controller(config_path)
     
@@ -1038,36 +1148,61 @@ def run_scheduled_mode(config_path: str = "./config.json") -> int:
         controller.setup_environment_config()
         
         # 验证前提条件
+        print("[INFO] 验证系统配置...", flush=True)
         validation_result = controller.validate_prerequisites()
+        
         if not validation_result["valid"]:
-            print(f"前提条件验证失败: {validation_result['errors']}")
-            return 1
+            print(f"[ERROR] 前提条件验证失败:", flush=True)
+            for error in validation_result["errors"]:
+                print(f"  - {error}", flush=True)
+            return 1  # 配置错误
+        
+        if validation_result["warnings"]:
+            print(f"[WARN] 配置警告:", flush=True)
+            for warning in validation_result["warnings"]:
+                print(f"  - {warning}", flush=True)
         
         # 初始化系统
+        print("[INFO] 初始化系统组件...", flush=True)
         if not controller.initialize_system():
-            print("系统初始化失败")
-            return 1
+            print("[ERROR] 系统初始化失败", flush=True)
+            return 1  # 配置错误
         
         # 启动调度器
+        print("[INFO] 启动定时调度器...", flush=True)
         controller.start_scheduler()
         
-        print("定时调度器已启动，等待停止信号...")
+        # 获取调度间隔
+        interval_seconds = controller.config_manager.get_execution_interval()
+        print(f"[INFO] 定时调度器已启动，间隔: {interval_seconds} 秒", flush=True)
+        print("[INFO] 等待停止信号 (Ctrl+C 或 SIGTERM)...", flush=True)
         
         # 等待停止信号
         try:
             while not controller._stop_event.is_set():
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("接收到中断信号")
+            print("[INFO] 接收到中断信号", flush=True)
         
-        print("正在停止调度器...")
+        print("[INFO] 正在停止调度器...", flush=True)
         controller.stop_scheduler()
         
-        return 0
+        print("[SUCCESS] 调度器已正常停止", flush=True)
+        return 0  # 正常退出
         
+    except KeyboardInterrupt:
+        print("[INFO] 接收到中断信号，正在退出...", flush=True)
+        return 0  # 用户中断视为正常退出
+    
     except Exception as e:
-        print(f"调度模式异常: {str(e)}")
-        return 1
+        print(f"[ERROR] 调度模式异常: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return 3  # 异常错误
     
     finally:
-        controller.cleanup_resources()
+        try:
+            controller.cleanup_resources()
+            print("[INFO] 资源清理完成", flush=True)
+        except Exception as e:
+            print(f"[WARN] 资源清理失败: {str(e)}", flush=True)
