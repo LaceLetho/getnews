@@ -1,17 +1,15 @@
 # Railway 部署时忽略的文件
 
-# Git 相关
+# 版本控制
 .git/
-.gitignore
 
-# 测试和开发
+# 开发和测试
 tests/
 .pytest_cache/
-.coverage
-htmlcov/
 .hypothesis/
+.coverage
 
-# IDE
+# IDE 和工具
 .vscode/
 .idea/
 .kiro/
@@ -21,32 +19,15 @@ docs/
 *.md
 !README.md
 
-# 本地环境文件
+# 本地环境和数据
 .env
 .env.local
-.env.docker
-
-# Docker 相关（Railway 会使用自己的构建）
-docker-compose*.yml
-
-# 本地数据
 data/
 logs/
-*.log
 
 # Python 缓存
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
 
-# 备份文件
-*.bak
-*.backup
-*.tmp
+# Docker 相关
+docker-compose*.yml
