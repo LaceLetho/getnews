@@ -14,7 +14,7 @@
     "config_file_path": "~/.bird/config.json",
     "enable_auto_retry": true,
     "retry_delay_seconds": 60,
-    "bird_max_page": 3
+    "bird_max_page": 1
   },
   "llm_config": {
     "model": "grok-4-1-fast-reasoning",
