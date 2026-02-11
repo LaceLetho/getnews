@@ -127,6 +127,7 @@ class MainController:
         self._execution_lock = threading.RLock()
         self._stop_event = threading.Event()
         self._scheduler_thread: Optional[threading.Thread] = None
+        self._last_scheduled_time: Optional[datetime] = None  # 上次调度任务开始的时间
         
         # 并发控制
         self._max_concurrent_executions = 1
@@ -934,8 +935,12 @@ class MainController:
         
         while not self._stop_event.is_set():
             try:
+                # 记录本次调度开始时间
+                scheduled_time = datetime.now()
+                self._last_scheduled_time = scheduled_time
+                
                 # 记录下次执行时间
-                next_execution = datetime.now() + timedelta(seconds=interval_seconds)
+                next_execution = scheduled_time + timedelta(seconds=interval_seconds)
                 self.logger.info(f"下次执行时间: {next_execution.strftime('%Y-%m-%d %H:%M:%S')}")
                 
                 # 等待调度间隔或停止信号
@@ -1017,11 +1022,11 @@ class MainController:
         # 从配置获取间隔（使用配置管理器的getter方法）
         interval_seconds = self.config_manager.get_execution_interval()
         
-        # 获取最后一次执行时间
-        if self.execution_history:
-            last_execution = self.execution_history[-1]
-            return last_execution.end_time + timedelta(seconds=interval_seconds)
+        # 如果有上次调度时间，使用它来计算下次执行时间
+        if self._last_scheduled_time:
+            return self._last_scheduled_time + timedelta(seconds=interval_seconds)
         
+        # 如果没有上次调度时间，使用当前时间估算
         return datetime.now() + timedelta(seconds=interval_seconds)
     
     def log_execution_cycle(self, start_time: datetime, end_time: datetime, status: str) -> None:
