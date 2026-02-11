@@ -7,6 +7,7 @@
 import logging
 import logging.handlers
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -42,8 +43,8 @@ class LogManager:
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         
-        # 控制台处理器
-        console_handler = logging.StreamHandler()
+        # 控制台处理器 - 明确输出到 stdout 以避免 Railway 将日志识别为 error
+        console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
