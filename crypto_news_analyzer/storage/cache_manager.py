@@ -220,6 +220,40 @@ class SentMessageCacheManager:
                 logger.info(f"清理过期缓存完成，删除了 {deleted_count} 条记录")
                 return deleted_count
     
+    def format_cached_messages_for_prompt(self, hours: int = 24) -> str:
+        """
+        格式化缓存消息为提示词文本
+        
+        格式: - [时间] [分类] 摘要
+        
+        Args:
+            hours: 时间范围（小时），默认24小时
+            
+        Returns:
+            格式化后的文本，如果没有缓存则返回"无"
+        """
+        messages = self.get_cached_messages(hours=hours)
+        
+        if not messages:
+            return "无"
+        
+        formatted_lines = []
+        for message in messages:
+            try:
+                # 格式: - [时间] [分类] 摘要
+                line = f"- [{message['time']}] [{message['category']}] {message['summary']}"
+                formatted_lines.append(line)
+            except Exception as e:
+                logger.warning(f"格式化缓存消息失败: {e}, 消息: {message}")
+                continue
+        
+        if not formatted_lines:
+            return "无"
+        
+        result = "\n".join(formatted_lines)
+        logger.info(f"格式化了 {len(formatted_lines)} 条缓存消息用于提示词")
+        return result
+    
     def get_cache_statistics(self) -> Dict[str, Any]:
         """
         获取缓存统计信息

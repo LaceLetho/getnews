@@ -411,6 +411,82 @@ class TestSentMessageCacheManager:
         assert '第一批消息1' in summaries
         assert '第二批消息1' in summaries
         assert '第二批消息2' in summaries
+    
+    def test_format_cached_messages_for_prompt(self):
+        """测试格式化缓存消息为提示词文本"""
+        messages = [
+            {
+                'summary': '比特币价格突破50000美元',
+                'category': 'MarketTrend',
+                'time': '2024-01-15 10:30'
+            },
+            {
+                'summary': 'SEC批准比特币ETF',
+                'category': 'Regulation',
+                'time': '2024-01-15 11:00'
+            },
+            {
+                'summary': '某交易所遭受黑客攻击',
+                'category': 'Security',
+                'time': '2024-01-15 12:00'
+            }
+        ]
+        
+        self.cache_manager.cache_sent_messages(messages)
+        
+        formatted = self.cache_manager.format_cached_messages_for_prompt(hours=24)
+        
+        # 验证格式
+        assert formatted != "无"
+        lines = formatted.split('\n')
+        assert len(lines) == 3
+        
+        # 验证每行格式: - [时间] [分类] 摘要
+        for line in lines:
+            assert line.startswith('- [')
+            assert '] [' in line
+            assert line.count('[') == 2
+            assert line.count(']') == 2
+        
+        # 验证内容存在
+        assert '比特币价格突破50000美元' in formatted
+        assert 'SEC批准比特币ETF' in formatted
+        assert '某交易所遭受黑客攻击' in formatted
+        assert 'MarketTrend' in formatted
+        assert 'Regulation' in formatted
+        assert 'Security' in formatted
+    
+    def test_format_cached_messages_empty_cache(self):
+        """测试格式化空缓存"""
+        formatted = self.cache_manager.format_cached_messages_for_prompt(hours=24)
+        assert formatted == "无"
+    
+    def test_format_cached_messages_custom_time_range(self):
+        """测试格式化自定义时间范围的缓存消息"""
+        messages = [
+            {
+                'summary': '消息1',
+                'category': 'MarketTrend',
+                'time': '2024-01-15 10:30'
+            },
+            {
+                'summary': '消息2',
+                'category': 'Whale',
+                'time': '2024-01-15 11:00'
+            }
+        ]
+        
+        self.cache_manager.cache_sent_messages(messages)
+        
+        # 测试不同时间范围
+        formatted_1h = self.cache_manager.format_cached_messages_for_prompt(hours=1)
+        formatted_24h = self.cache_manager.format_cached_messages_for_prompt(hours=24)
+        
+        # 所有时间范围都应该包含消息
+        assert formatted_1h != "无"
+        assert formatted_24h != "无"
+        assert '消息1' in formatted_24h
+        assert '消息2' in formatted_24h
 
 
 if __name__ == "__main__":

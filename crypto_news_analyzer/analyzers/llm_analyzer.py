@@ -17,13 +17,14 @@ from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from pathlib import Path
 
-from ..models import ContentItem, AnalysisResult
+from ..models import ContentItem, AnalysisResult, StorageConfig
 from .market_snapshot_service import MarketSnapshotService, MarketSnapshot
 from .structured_output_manager import (
     StructuredOutputManager,
     StructuredAnalysisResult,
     BatchAnalysisResult
 )
+from ..storage.cache_manager import SentMessageCacheManager
 
 try:
     from openai import OpenAI
@@ -56,7 +57,9 @@ class LLMAnalyzer:
         max_tokens: int = 4000,
         batch_size: int = 10,
         cache_ttl_minutes: int = 30,
-        mock_mode: bool = False
+        mock_mode: bool = False,
+        cache_manager: Optional[SentMessageCacheManager] = None,
+        storage_config: Optional[StorageConfig] = None
     ):
         """
         初始化LLM分析器
@@ -73,6 +76,8 @@ class LLMAnalyzer:
             batch_size: 批量分析的批次大小
             cache_ttl_minutes: 缓存有效期（分钟）
             mock_mode: 是否使用模拟模式（用于测试）
+            cache_manager: 已发送消息缓存管理器（可选）
+            storage_config: 存储配置（用于创建缓存管理器，可选）
         """
         self.api_key = api_key or os.getenv('LLM_API_KEY', '')
         self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
@@ -86,6 +91,15 @@ class LLMAnalyzer:
         self.cache_ttl_minutes = cache_ttl_minutes
         self.mock_mode = mock_mode
         self.logger = logging.getLogger(__name__)
+        
+        # 初始化缓存管理器
+        self.cache_manager = cache_manager
+        if not self.cache_manager and storage_config:
+            try:
+                self.cache_manager = SentMessageCacheManager(storage_config)
+                self.logger.info("已创建缓存管理器实例")
+            except Exception as e:
+                self.logger.warning(f"创建缓存管理器失败: {e}")
         
         # 初始化OpenAI客户端
         self.client = None
@@ -223,10 +237,36 @@ class LLMAnalyzer:
             market_snapshot.content
         )
         
+        # 替换 ${outdated_news} 占位符
+        outdated_news = self._get_formatted_cached_messages()
+        system_prompt = system_prompt.replace(
+            "${outdated_news}",
+            outdated_news
+        )
+        
         # 缓存系统提示词
         self._cached_system_prompt = system_prompt
         
         return system_prompt
+    
+    def _get_formatted_cached_messages(self) -> str:
+        """
+        获取格式化的缓存消息
+        
+        Returns:
+            格式化后的缓存消息文本，如果没有缓存管理器或缓存为空则返回"无"
+        """
+        if not self.cache_manager:
+            self.logger.debug("未配置缓存管理器，返回'无'")
+            return "无"
+        
+        try:
+            formatted_messages = self.cache_manager.format_cached_messages_for_prompt(hours=24)
+            self.logger.info(f"已获取格式化的缓存消息")
+            return formatted_messages
+        except Exception as e:
+            self.logger.warning(f"获取缓存消息失败: {e}，返回'无'")
+            return "无"
     
     def _analyze_batch_with_structured_output(
         self,
@@ -442,6 +482,8 @@ class LLMAnalyzer:
     def build_system_prompt(self, market_snapshot: MarketSnapshot) -> str:
         """
         构建系统提示词（便捷方法）
+        
+        此方法会自动替换 ${Grok_Summary_Here} 和 ${outdated_news} 占位符
         
         Args:
             market_snapshot: 市场快照
