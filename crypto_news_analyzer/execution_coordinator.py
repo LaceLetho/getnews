@@ -236,7 +236,6 @@ class MainController:
             
             # 初始化报告生成器
             self.report_generator = ReportGenerator(
-                include_market_snapshot=True,
                 omit_empty_categories=True
             )
             self.logger.info("报告生成器初始化完成")
