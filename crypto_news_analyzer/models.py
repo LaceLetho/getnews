@@ -541,17 +541,9 @@ class CrawlStatus:
         return cls(**data)
 
 
-# 基础内容分类枚举（可通过配置文件动态扩展）
-class ContentCategory(Enum):
-    """内容分类类别"""
-    WHALE_MOVEMENTS = "大户动向"
-    INTEREST_RATE_EVENTS = "利率事件"
-    US_REGULATORY_POLICY = "美国政府监管政策"
-    NEW_PRODUCTS = "新产品"
-    MARKET_PHENOMENA = "市场新现象"
-    TRUTH = "真相"
-    UNCATEGORIZED = "未分类"
-    IGNORED = "忽略"
+# 注意：ContentCategory 枚举已被废弃
+# 请使用 crypto_news_analyzer.analyzers.category_parser.CategoryParser
+# 来动态获取分类定义
 
 
 @dataclass
