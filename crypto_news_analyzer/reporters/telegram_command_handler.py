@@ -261,10 +261,12 @@ class TelegramCommandHandler:
             验证用户是否有权限执行命令
 
             需求1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 6.2: 验证命令发送者的权限
+            
+            增强功能：如果用户名在待解析列表中，自动学习 username → user_id 映射
 
             Args:
                 user_id: Telegram用户ID
-                username: Telegram用户名（可选，仅用于日志记录）
+                username: Telegram用户名（可选，用于自动学习映射）
 
             Returns:
                 是否授权
@@ -275,7 +277,28 @@ class TelegramCommandHandler:
             user_id_str = str(user_id)
 
             # 检查用户ID是否在授权用户ID集合中
-            return user_id_str in self._authorized_user_ids
+            if user_id_str in self._authorized_user_ids:
+                return True
+            
+            # 如果提供了 username，检查是否在待解析列表中
+            if username:
+                username_with_at = f"@{username}" if not username.startswith("@") else username
+                
+                # 如果这个 username 在待解析列表中，自动学习映射
+                if username_with_at in self._usernames_to_resolve:
+                    self.logger.info(
+                        f"Auto-learning username mapping: {username_with_at} → {user_id_str}"
+                    )
+                    # 添加到授权用户集合
+                    self._authorized_user_ids.add(user_id_str)
+                    # 缓存映射关系
+                    self._username_cache[username_with_at] = user_id_str
+                    # 从待解析列表中移除
+                    self._usernames_to_resolve.remove(username_with_at)
+                    
+                    return True
+            
+            return False
     
     
     def check_rate_limit(self, user_id: str) -> tuple[bool, Optional[str]]:
@@ -426,7 +449,7 @@ class TelegramCommandHandler:
             self.application.add_handler(CommandHandler("market", self._handle_market_command))
             self.application.add_handler(CommandHandler("status", self._handle_status_command))
             self.application.add_handler(CommandHandler("help", self._handle_help_command))
-            self.application.add_handler(CommandHandler("start", self._handle_help_command))
+            self.application.add_handler(CommandHandler("start", self._handle_start_command))
             
             # 启动应用
             await self.application.initialize()
@@ -482,6 +505,7 @@ class TelegramCommandHandler:
         """
         try:
             commands = [
+                BotCommand("start", "获取您的用户ID和授权状态"),
                 BotCommand("run", "立即执行数据收集和分析"),
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
@@ -766,6 +790,42 @@ class TelegramCommandHandler:
                 f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+    async def _handle_start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """
+        处理/start命令 - 显示用户ID和基本信息
+        """
+        try:
+            chat_context = self._extract_chat_context(update)
+            user_id = chat_context.user_id
+            username = chat_context.username
+
+            is_authorized = self.is_authorized_user(user_id, username)
+
+            response = [
+                "👋 *欢迎使用加密货币新闻分析机器人*\n",
+                f"📋 *您的用户信息:*",
+                f"• User ID: `{user_id}`",
+                f"• Username: @{username}" if username else "• Username: (未设置)",
+                f"• 授权状态: {'✅ 已授权' if is_authorized else '❌ 未授权'}\n",
+            ]
+
+            if not is_authorized:
+                response.append(
+                    "⚠️ 您当前没有使用权限。\n"
+                    "请将您的 User ID 发送给管理员以获取访问权限。"
+                )
+            else:
+                response.append(
+                    "✅ 您已获得授权，可以使用所有命令。\n"
+                    "输入 /help 查看可用命令列表。"
+                )
+
+            await update.message.reply_text("\n".join(response), parse_mode="Markdown")
+
+        except Exception as e:
+            self.logger.error(f"处理/start命令时发生错误: {str(e)}")
+            await update.message.reply_text("❌ 命令执行失败")
+
     
     def handle_run_command(self, user_id: str, username: str, chat_id: str) -> str:
         """
