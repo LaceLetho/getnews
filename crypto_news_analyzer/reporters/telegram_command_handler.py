@@ -57,7 +57,8 @@ class TelegramCommandHandler:
         self,
         bot_token: str,
         execution_coordinator: Any,  # MainController实例
-        config: TelegramCommandConfig
+        config: TelegramCommandConfig,
+        market_snapshot_service: Optional[Any] = None  # MarketSnapshotService实例
     ):
         """
         初始化Telegram命令处理器
@@ -66,10 +67,12 @@ class TelegramCommandHandler:
             bot_token: Telegram Bot Token
             execution_coordinator: 执行协调器实例
             config: Telegram命令配置
+            market_snapshot_service: 市场快照服务实例（可选）
         """
         self.bot_token = bot_token
         self.execution_coordinator = execution_coordinator
         self.config = config
+        self.market_snapshot_service = market_snapshot_service
         self.logger = logging.getLogger(__name__)
         
         # Telegram应用
@@ -420,6 +423,7 @@ class TelegramCommandHandler:
             
             # 注册命令处理器
             self.application.add_handler(CommandHandler("run", self._handle_run_command))
+            self.application.add_handler(CommandHandler("market", self._handle_market_command))
             self.application.add_handler(CommandHandler("status", self._handle_status_command))
             self.application.add_handler(CommandHandler("help", self._handle_help_command))
             self.application.add_handler(CommandHandler("start", self._handle_help_command))
@@ -479,6 +483,7 @@ class TelegramCommandHandler:
         try:
             commands = [
                 BotCommand("run", "立即执行数据收集和分析"),
+                BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
                 BotCommand("help", "显示帮助信息")
             ]
@@ -629,6 +634,72 @@ class TelegramCommandHandler:
                 f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+    
+    async def _handle_market_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """
+        处理/market命令
+        
+        需求16.3: 实现/market命令获取并返回市场快照
+        需求16.17: 使用联网AI服务获取实时市场快照
+        需求16.18: 将市场快照以Telegram格式发送给用户
+        需求16.19: 在失败时返回错误信息并说明失败原因
+        """
+        try:
+            # 提取聊天上下文
+            chat_context = self._extract_chat_context(update)
+            user_id = chat_context.user_id
+            username = chat_context.username
+            chat_type = chat_context.chat_type
+            chat_id = chat_context.chat_id
+            
+            # 权限验证
+            if not self.is_authorized_user(user_id, username):
+                self._log_authorization_attempt(
+                    user_id=user_id,
+                    username=username,
+                    command="/market",
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False
+                )
+                await update.message.reply_text("❌ 您没有权限执行此命令")
+                self._log_command_execution("/market", user_id, username, None, False, "权限拒绝")
+                return
+            
+            # 速率限制检查
+            allowed, wait_message = self.check_rate_limit(user_id)
+            if not allowed:
+                await update.message.reply_text(f"⏱️ {wait_message}")
+                self._log_command_execution("/market", user_id, username, None, False, "速率限制")
+                return
+            
+            # 记录授权日志
+            self._log_authorization_attempt(
+                user_id=user_id,
+                username=username,
+                command="/market",
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True
+            )
+            
+            # 发送处理中消息
+            await update.message.reply_text("🔄 正在获取市场快照...")
+            
+            # 获取市场快照
+            response = self.handle_market_command(user_id, username)
+            await update.message.reply_text(response, parse_mode="Markdown")
+            self._log_command_execution("/market", user_id, username, None, True, "市场快照获取成功")
+            
+        except Exception as e:
+            error_msg = f"处理/market命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+            self._log_command_execution("/market", user_id, username, None, False, f"错误: {str(e)}")
+    
     async def _handle_help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
         处理/help命令
@@ -852,6 +923,12 @@ class TelegramCommandHandler:
             "查看所有可用命令和使用说明。\n"
         )
         
+        if "market" in user_permissions:
+            help_text.append(
+                "/market - 获取当前市场现状快照\n"
+                "使用联网AI服务获取实时市场信息和分析。\n"
+            )
+        
         help_text.append(
             "\n*注意事项:*\n"
             "• 命令有速率限制，请勿频繁调用\n"
@@ -860,6 +937,60 @@ class TelegramCommandHandler:
         )
         
         return "\n".join(help_text)
+    
+    def handle_market_command(self, user_id: str, username: str) -> str:
+        """
+        处理/market命令的业务逻辑
+        
+        需求16.3: 获取并返回当前市场现状快照
+        需求16.17: 使用联网AI服务获取实时市场快照
+        需求16.18: 将市场快照以Telegram格式发送给用户
+        需求16.19: 在失败时返回错误信息并说明失败原因
+        
+        Args:
+            user_id: 用户ID
+            username: 用户名
+            
+        Returns:
+            响应消息（市场快照或错误信息）
+        """
+        try:
+            self.logger.info(f"用户 {username} ({user_id}) 请求市场快照")
+            
+            # 检查市场快照服务是否可用
+            if self.market_snapshot_service is None:
+                error_msg = "市场快照服务未配置"
+                self.logger.error(error_msg)
+                return f"❌ {error_msg}\n\n请确保已正确配置GROK_API_KEY环境变量。"
+            
+            # 获取市场快照
+            snapshot_result = self.market_snapshot_service.get_market_snapshot()
+            
+            if not snapshot_result.success or not snapshot_result.snapshot:
+                error_msg = snapshot_result.error_message or "未知错误"
+                self.logger.error(f"获取市场快照失败: {error_msg}")
+                return f"❌ 获取市场快照失败\n\n原因: {error_msg}"
+            
+            # 格式化市场快照为Telegram消息
+            snapshot = snapshot_result.snapshot
+            response_parts = [
+                "🌐 *市场现状快照*\n",
+                f"📅 获取时间: {format_datetime_utc8(snapshot.timestamp, '%Y-%m-%d %H:%M:%S')}\n",
+                f"📊 数据来源: {snapshot.source}\n",
+                f"⭐ 质量评分: {snapshot.quality_score:.2f}\n",
+                "\n---\n",
+                snapshot.content
+            ]
+            
+            response = "\n".join(response_parts)
+            
+            self.logger.info(f"市场快照获取成功，长度: {len(response)} 字符")
+            return response
+            
+        except Exception as e:
+            error_msg = f"处理/market命令时发生错误: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            return f"❌ 命令执行失败\n\n{str(e)}"
     
     def trigger_manual_execution(self, user_id: str, chat_id: str = None) -> ExecutionResult:
         """
@@ -1057,9 +1188,10 @@ class TelegramCommandHandlerSync:
         self,
         bot_token: str,
         execution_coordinator: Any,
-        config: TelegramCommandConfig
+        config: TelegramCommandConfig,
+        market_snapshot_service: Optional[Any] = None
     ):
-        self.handler = TelegramCommandHandler(bot_token, execution_coordinator, config)
+        self.handler = TelegramCommandHandler(bot_token, execution_coordinator, config, market_snapshot_service)
         self._listener_thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
     
@@ -1088,7 +1220,8 @@ class TelegramCommandHandlerSync:
 def create_telegram_command_handler(
     bot_token: str,
     execution_coordinator: Any,
-    config: TelegramCommandConfig
+    config: TelegramCommandConfig,
+    market_snapshot_service: Optional[Any] = None
 ) -> TelegramCommandHandler:
     """
     创建Telegram命令处理器
@@ -1097,11 +1230,12 @@ def create_telegram_command_handler(
         bot_token: Bot Token
         execution_coordinator: 执行协调器
         config: 命令配置
+        market_snapshot_service: 市场快照服务（可选）
         
     Returns:
         TelegramCommandHandler实例
     """
-    return TelegramCommandHandler(bot_token, execution_coordinator, config)
+    return TelegramCommandHandler(bot_token, execution_coordinator, config, market_snapshot_service)
 
 
 def create_default_command_config() -> TelegramCommandConfig:

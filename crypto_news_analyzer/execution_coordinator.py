@@ -246,7 +246,8 @@ class MainController:
                     self.command_handler = TelegramCommandHandlerSync(
                         bot_token=auth_config.TELEGRAM_BOT_TOKEN,
                         execution_coordinator=self,
-                        config=telegram_command_config
+                        config=telegram_command_config,
+                        market_snapshot_service=self.market_snapshot_service
                     )
                     self.logger.info("Telegram命令处理器初始化完成")
                 except Exception as e:
@@ -785,15 +786,9 @@ class MainController:
             )
             
             # 生成报告
-            # 获取市场快照（如果LLM分析器有的话）
-            market_snapshot = None
-            if hasattr(self.llm_analyzer, '_cached_market_snapshot') and self.llm_analyzer._cached_market_snapshot:
-                market_snapshot = self.llm_analyzer._cached_market_snapshot.content
-            
             report_content = self.report_generator.generate_telegram_report(
                 analyzed_data, 
-                crawl_status,
-                market_snapshot=market_snapshot
+                crawl_status
             )
             
             result.update({

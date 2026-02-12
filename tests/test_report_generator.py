@@ -109,7 +109,6 @@ class TestReportGenerator:
         
         assert generator.formatter is not None
         assert isinstance(generator.formatter, TelegramFormatter)
-        assert generator.include_market_snapshot is True
         assert generator.omit_empty_categories is True
     
     def test_initialization_with_custom_formatter(self):
@@ -208,27 +207,7 @@ class TestReportGenerator:
         assert "[" in formatted and "](" in formatted
         assert "https://example.com/news/1" in formatted
     
-    def test_generate_market_snapshot_section(self, report_generator):
-        """测试生成市场快照章节"""
-        snapshot = "当前BTC价格: $45,000\n市场情绪: 乐观\n24h交易量: $30B"
-        
-        section = report_generator.generate_market_snapshot_section(snapshot)
-        
-        # 验证包含标题
-        assert "市场现状快照" in section
-        assert "🌐" in section
-        
-        # 验证包含快照内容
-        assert "BTC" in section
-        assert "45,000" in section
     
-    def test_generate_market_snapshot_section_empty(self, report_generator):
-        """测试生成空市场快照章节"""
-        section = report_generator.generate_market_snapshot_section("")
-        
-        # 验证包含不可用提示
-        assert "市场现状快照" in section
-        assert "不可用" in section or "暂时不可用" in section
     
     def test_generate_telegram_report_complete(
         self,
@@ -237,12 +216,10 @@ class TestReportGenerator:
         sample_crawl_status
     ):
         """测试生成完整的Telegram报告"""
-        market_snapshot = "当前市场状况良好"
         
         report = report_generator.generate_telegram_report(
             sample_analyzed_data,
-            sample_crawl_status,
-            market_snapshot
+            sample_crawl_status
         )
         
         # 验证报告包含所有主要部分
@@ -250,27 +227,10 @@ class TestReportGenerator:
         assert "数据源状态" in report
         assert "大户动向" in report
         assert "安全事件" in report
-        assert "市场现状快照" in report
         
         # 验证报告不为空
         assert len(report) > 0
     
-    def test_generate_telegram_report_without_snapshot(
-        self,
-        sample_analyzed_data,
-        sample_crawl_status
-    ):
-        """测试生成不包含市场快照的报告"""
-        generator = ReportGenerator(include_market_snapshot=False)
-        
-        report = generator.generate_telegram_report(
-            sample_analyzed_data,
-            sample_crawl_status,
-            None
-        )
-        
-        # 验证不包含市场快照部分
-        assert "市场现状快照" not in report
     
     def test_handle_empty_categories(self, report_generator):
         """测试处理空分类"""
@@ -378,7 +338,6 @@ class TestReportGenerator:
             max_message_length=2000
         )
         
-        assert generator.include_market_snapshot is False
         assert generator.omit_empty_categories is False
         assert generator.formatter.config.max_message_length == 2000
     
@@ -397,8 +356,7 @@ class TestReportGenerator:
         
         report = report_generator.generate_telegram_report(
             empty_data,
-            sample_crawl_status,
-            None
+            sample_crawl_status
         )
         
         # 验证报告包含"暂无内容"提示

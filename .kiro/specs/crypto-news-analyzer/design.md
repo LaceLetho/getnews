@@ -534,17 +534,16 @@ class ContentClassifier:
 
 ### 7. 报告生成器 (ReportGenerator)
 
-生成适配Telegram格式的结构化报告，支持动态分类展示和市场快照集成。
+生成适配Telegram格式的结构化报告，支持动态分类展示。
 
 ```python
 class ReportGenerator:
-    def __init__(self, telegram_formatter: TelegramFormatter, include_market_snapshot: bool = True)
-    def generate_telegram_report(self, data: AnalyzedData, status: CrawlStatus, market_snapshot: str) -> str
+    def __init__(self, telegram_formatter: TelegramFormatter)
+    def generate_telegram_report(self, data: AnalyzedData, status: CrawlStatus) -> str
     def generate_report_header(self, time_window: int, start_time: datetime, end_time: datetime) -> str
     def generate_data_source_status(self, status: CrawlStatus) -> str
     def generate_dynamic_category_sections(self, categorized_items: Dict[str, List[ContentItem]], analysis_results: Dict[str, AnalysisResult]) -> List[str]
     def generate_category_section(self, category_name: str, items: List[ContentItem], analysis_results: Dict[str, AnalysisResult]) -> str
-    def generate_market_snapshot_section(self, market_snapshot: str) -> str
     def format_message_item(self, item: ContentItem, analysis: AnalysisResult) -> str
     def create_telegram_hyperlink(self, text: str, url: str) -> str
     def optimize_for_mobile_display(self, content: str) -> str
@@ -586,10 +585,6 @@ class TelegramFormatter:
    - 每条消息包含：time、category、weight_score、summary、source
    - source字段格式化为Telegram超链接
 
-4. **市场现状快照部分**:
-   - 第一步获取的市场快照内容
-   - 格式化为易读的Telegram消息
-
 **动态分类展示**:
 - **自适应布局**: 根据实际分类数量调整报告结构
 - **分类排序**: 按weight_score或时间排序
@@ -625,23 +620,27 @@ class TelegramSender:
 
 ```python
 class TelegramCommandHandler:
-    def __init__(self, bot_token: str, execution_coordinator: ExecutionCoordinator, config_manager: ConfigManager)
+    def __init__(self, bot_token: str, execution_coordinator: ExecutionCoordinator, config_manager: ConfigManager, market_snapshot_service: MarketSnapshotService)
     def start_command_listener(self) -> None
     def stop_command_listener(self) -> None
     def handle_command(self, update: Update, context: CallbackContext) -> None
     def handle_run_command(self, user_id: str, username: str) -> str
+    def handle_market_command(self, user_id: str, username: str) -> str
     def handle_status_command(self, user_id: str) -> str
     def handle_help_command(self, user_id: str) -> str
     def is_authorized_user(self, user_id: str, username: str) -> bool
     def get_execution_status(self) -> ExecutionStatus
     def trigger_manual_execution(self, user_id: str) -> ExecutionResult
+    def get_market_snapshot(self, user_id: str) -> MarketSnapshotResult
     def log_command_execution(self, command: str, user_id: str, result: str) -> None
     def validate_user_permissions(self, user_id: str) -> bool
     def send_execution_notification(self, user_id: str, result: ExecutionResult) -> None
+    def send_market_snapshot(self, user_id: str, snapshot: MarketSnapshot) -> None
 ```
 
 **支持的命令**:
 - **/run**: 触发一次完整的数据收集和分析工作流
+- **/market**: 获取并返回当前市场现状快照
 - **/status**: 查询当前系统运行状态和上次执行信息
 - **/help**: 显示可用命令列表和使用说明
 
@@ -664,7 +663,7 @@ class TelegramCommandHandler:
             {
                 "user_id": "123456789",
                 "username": "admin_user",
-                "permissions": ["run", "status", "help"]
+                "permissions": ["run", "market", "status", "help"]
             }
         ],
         "execution_timeout_minutes": 30,
@@ -984,6 +983,13 @@ class CommandExecutionHistory:
     execution_id: Optional[str]
     success: bool
     response_message: str
+
+@dataclass
+class MarketSnapshotResult:
+    success: bool
+    snapshot: Optional[MarketSnapshot]
+    error_message: Optional[str]
+    timestamp: datetime
 ```
 
 ## 错误处理
@@ -1095,8 +1101,8 @@ class ErrorHandler:
 **验证: 需求 4.13, 4.14, 4.15, 4.16, 4.17, 4.19**
 
 ### 属性 12: Telegram格式适配正确性
-*对于任何*生成的报告，应该正确适配Telegram格式，包含报告信息、数据源状态、动态分类内容和市场快照，source字段格式化为可点击超链接
-**验证: 需求 7.1, 7.3, 7.7, 7.9**
+*对于任何*生成的报告，应该正确适配Telegram格式，包含报告信息、数据源状态和动态分类内容，source字段格式化为可点击超链接
+**验证: 需求 7.1, 7.3, 7.7**
 
 ### 属性 13: 动态分类展示一致性
 *对于任何*大模型返回的分类结果，报告生成器应该根据实际分类数量动态调整报告结构，自动省略空分类
@@ -1121,6 +1127,10 @@ class ErrorHandler:
 ### 属性 18: 命令权限验证一致性
 *对于任何*通过Telegram发送的命令，系统应该验证发送者的权限，只有授权用户才能触发执行，未授权用户应该收到权限拒绝消息
 **验证: 需求 16.5, 16.10, 16.11**
+
+### 属性 19: 市场快照命令正确性
+*对于任何*授权用户发送的/market命令，系统应该使用联网AI服务获取实时市场快照并以Telegram格式返回，或在失败时返回明确的错误信息
+**验证: 需求 16.3, 16.17, 16.18, 16.19**
 
 ## 系统扩展性
 

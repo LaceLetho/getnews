@@ -38,8 +38,6 @@ class ReportGenerator:
     - 需求7.4: 按大模型返回的分类动态组织各消息大类
     - 需求7.5: 支持动态分类展示，根据大模型返回的类别数量自动调整报告结构
     - 需求7.7: 将source字段格式化为Telegram超链接形式
-    - 需求7.8: 在报告末尾包含市场现状快照部分
-    - 需求7.9: 使用第一步获取的市场快照作为报告的市场现状内容
     - 需求7.11: 某个类别没有内容时在报告中显示该类别为空或完全省略该类别
     - 需求7.14: 为每个消息类别使用适当的Telegram格式化标记
     """
@@ -47,7 +45,6 @@ class ReportGenerator:
     def __init__(
         self,
         telegram_formatter: Optional[TelegramFormatter] = None,
-        include_market_snapshot: bool = True,
         omit_empty_categories: bool = True,
         prompt_file_path: str = "./prompts/analysis_prompt.md"
     ):
@@ -56,12 +53,10 @@ class ReportGenerator:
         
         Args:
             telegram_formatter: Telegram格式化器，如果为None则创建默认实例
-            include_market_snapshot: 是否包含市场快照部分
             omit_empty_categories: 是否省略空分类
             prompt_file_path: 提示词文件路径，用于解析分类定义
         """
         self.formatter = telegram_formatter or TelegramFormatter()
-        self.include_market_snapshot = include_market_snapshot
         self.omit_empty_categories = omit_empty_categories
         self.logger = logging.getLogger(__name__)
         
@@ -86,18 +81,16 @@ class ReportGenerator:
     def generate_telegram_report(
         self,
         data: AnalyzedData,
-        status: CrawlStatus,
-        market_snapshot: Optional[str] = None
+        status: CrawlStatus
     ) -> str:
         """
         生成适配Telegram格式的完整报告
         
-        根据需求7.1-7.18实现完整的报告生成功能。
+        根据需求7.1-7.15实现完整的报告生成功能。
         
         Args:
             data: 分析后的数据
             status: 爬取状态信息
-            market_snapshot: 市场快照内容（可选）
             
         Returns:
             格式化后的Telegram报告文本
@@ -123,11 +116,6 @@ class ReportGenerator:
             data.categorized_items
         )
         report_sections.extend(category_sections)
-        
-        # 4. 市场快照部分（如果启用且有内容）
-        if self.include_market_snapshot and market_snapshot:
-            snapshot_section = self.generate_market_snapshot_section(market_snapshot)
-            report_sections.append(snapshot_section)
         
         # 合并所有部分
         full_report = "\n\n".join(report_sections)
@@ -363,50 +351,7 @@ class ReportGenerator:
         
         return formatted_with_index
     
-    def generate_market_snapshot_section(self, market_snapshot: str) -> str:
-        """
-        生成市场快照部分
-        
-        根据需求7.8、7.9、7.16实现市场快照展示：
-        - 在报告末尾包含市场现状快照部分
-        - 使用第一步获取的市场快照作为内容
-        - 标注市场快照不可用（如果获取失败）
-        
-        Args:
-            market_snapshot: 市场快照内容
-            
-        Returns:
-            格式化后的市场快照章节
-        """
-        section_header = self.formatter.format_section_header("市场现状快照", "🌐")
-        
-        if not market_snapshot or market_snapshot.strip() == "":
-            # 市场快照不可用
-            content = section_header + "\n⚠️ 市场快照暂时不可用。\n"
-            self.logger.warning("市场快照内容为空")
-            return content
-        
-        # 转义市场快照内容
-        # 注意：市场快照可能包含超链接，需要保留
-        escaped_snapshot = self._escape_snapshot_preserving_links(market_snapshot)
-        
-        content = section_header + f"\n{escaped_snapshot}\n"
-        
-        return content
     
-    def _escape_snapshot_preserving_links(self, snapshot: str) -> str:
-        """
-        转义市场快照内容，但保留超链接格式
-        
-        Args:
-            snapshot: 原始市场快照
-            
-        Returns:
-            转义后的内容
-        """
-        # 简单实现：直接返回，因为市场快照通常已经是格式化的文本
-        # 如果需要更复杂的处理，可以在这里实现
-        return snapshot
     
     def handle_empty_categories(
         self,
@@ -522,7 +467,7 @@ def create_report_generator(
     创建报告生成器实例
     
     Args:
-        include_market_snapshot: 是否包含市场快照
+        include_market_snapshot: 是否包含市场快照（已弃用，保留用于向后兼容）
         omit_empty_categories: 是否省略空分类
         max_message_length: 最大消息长度
         
@@ -539,7 +484,6 @@ def create_report_generator(
     
     return ReportGenerator(
         telegram_formatter=formatter,
-        include_market_snapshot=include_market_snapshot,
         omit_empty_categories=omit_empty_categories
     )
 

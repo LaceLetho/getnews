@@ -187,17 +187,14 @@
 5. THE System SHALL 支持动态分类展示，根据大模型返回的类别数量自动调整报告结构
 6. WHEN 展示具体消息 THEN System SHALL 包含大模型返回的所有字段（time、category、weight_score、summary、source）
 7. THE Report_Generator SHALL 将source字段格式化为Telegram超链接形式
-8. THE Report_Generator SHALL 在报告末尾包含市场现状快照部分
-9. THE Report_Generator SHALL 使用第一步获取的市场快照作为报告的市场现状内容
-10. THE Report_Generator SHALL 优化Telegram消息格式，确保在移动端的可读性
-11. WHEN 某个类别没有内容 THEN System SHALL 在报告中显示该类别为空或完全省略该类别
-12. THE Report_Generator SHALL 支持Telegram的文本格式化语法（粗体、斜体、代码块等）
-13. WHEN 报告内容过长 THEN System SHALL 智能分割消息并保持内容完整性
-14. THE Report_Generator SHALL 为每个消息类别使用适当的Telegram格式化标记
-15. THE Report_Generator SHALL 确保超链接在Telegram中正确显示和可点击
-16. WHEN 市场快照获取失败 THEN System SHALL 在报告中标注市场快照不可用
-17. THE Report_Generator SHALL 支持Telegram的特殊字符转义，避免格式错误
-18. THE Report_Generator SHALL 优化报告布局，适应Telegram的消息显示特点
+8. THE Report_Generator SHALL 优化Telegram消息格式，确保在移动端的可读性
+9. WHEN 某个类别没有内容 THEN System SHALL 在报告中显示该类别为空或完全省略该类别
+10. THE Report_Generator SHALL 支持Telegram的文本格式化语法（粗体、斜体、代码块等）
+11. WHEN 报告内容过长 THEN System SHALL 智能分割消息并保持内容完整性
+12. THE Report_Generator SHALL 为每个消息类别使用适当的Telegram格式化标记
+13. THE Report_Generator SHALL 确保超链接在Telegram中正确显示和可点击
+14. THE Report_Generator SHALL 支持Telegram的特殊字符转义，避免格式错误
+15. THE Report_Generator SHALL 优化报告布局，适应Telegram的消息显示特点
 
 ### 需求 8: Telegram报告发送
 
@@ -355,22 +352,26 @@
 
 ### 需求 16: Telegram命令触发
 
-**用户故事:** 作为用户，我希望能够通过向Telegram Bot发送命令来手动触发一次程序运行，以便在需要时立即获取最新的分析报告。
+**用户故事:** 作为用户，我希望能够通过向Telegram Bot发送命令来手动触发一次程序运行或查询市场快照，以便在需要时立即获取最新的分析报告或市场信息。
 
 #### 验收标准
 
 1. THE System SHALL 支持通过Telegram Bot接收用户命令
 2. WHEN 用户发送"/run"命令 THEN System SHALL 立即触发一次完整的数据收集和分析工作流
-3. WHEN 用户发送"/status"命令 THEN System SHALL 返回当前系统运行状态和上次执行信息
-4. WHEN 用户发送"/help"命令 THEN System SHALL 返回可用命令列表和使用说明
-5. THE System SHALL 验证命令发送者的权限，只允许授权用户触发执行
-6. WHEN 系统正在执行任务 THEN System SHALL 拒绝新的执行命令并返回当前执行状态
-7. WHEN 手动触发执行完成 THEN System SHALL 发送执行结果通知给触发用户
-8. THE System SHALL 记录所有手动触发的执行历史和触发用户信息
-9. WHEN 手动触发执行失败 THEN System SHALL 发送详细的错误信息给触发用户
-10. THE System SHALL 支持配置授权用户列表，限制命令执行权限
-11. WHEN 未授权用户发送命令 THEN System SHALL 返回权限拒绝消息
-12. THE System SHALL 支持在定时调度模式和命令触发模式之间切换
-13. WHEN 收到无效命令 THEN System SHALL 返回友好的错误提示和帮助信息
-14. THE System SHALL 为手动触发的执行设置超时限制，避免长时间占用资源
-15. WHEN 手动触发执行超时 THEN System SHALL 终止执行并通知用户
+3. WHEN 用户发送"/market"命令 THEN System SHALL 获取并返回当前市场现状快照
+4. WHEN 用户发送"/status"命令 THEN System SHALL 返回当前系统运行状态和上次执行信息
+5. WHEN 用户发送"/help"命令 THEN System SHALL 返回可用命令列表和使用说明
+6. THE System SHALL 验证命令发送者的权限，只允许授权用户触发执行
+7. WHEN 系统正在执行任务 THEN System SHALL 拒绝新的执行命令并返回当前执行状态
+8. WHEN 手动触发执行完成 THEN System SHALL 发送执行结果通知给触发用户
+9. THE System SHALL 记录所有手动触发的执行历史和触发用户信息
+10. WHEN 手动触发执行失败 THEN System SHALL 发送详细的错误信息给触发用户
+11. THE System SHALL 支持配置授权用户列表，限制命令执行权限
+12. WHEN 未授权用户发送命令 THEN System SHALL 返回权限拒绝消息
+13. THE System SHALL 支持在定时调度模式和命令触发模式之间切换
+14. WHEN 收到无效命令 THEN System SHALL 返回友好的错误提示和帮助信息
+15. THE System SHALL 为手动触发的执行设置超时限制，避免长时间占用资源
+16. WHEN 手动触发执行超时 THEN System SHALL 终止执行并通知用户
+17. WHEN 用户发送"/market"命令 THEN System SHALL 使用联网AI服务获取实时市场快照
+18. WHEN 市场快照获取成功 THEN System SHALL 将市场快照以Telegram格式发送给用户
+19. WHEN 市场快照获取失败 THEN System SHALL 返回错误信息并说明失败原因
