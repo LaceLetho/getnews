@@ -13,6 +13,7 @@ from ..models import CrawlStatus, CrawlResult
 from ..analyzers.structured_output_manager import StructuredAnalysisResult
 from .telegram_formatter import TelegramFormatter, FormattingConfig
 from ..utils.timezone_utils import format_datetime_utc8, now_utc8
+from ..analyzers.category_parser import get_category_emoji_map
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,8 @@ class ReportGenerator:
         self,
         telegram_formatter: Optional[TelegramFormatter] = None,
         include_market_snapshot: bool = True,
-        omit_empty_categories: bool = True
+        omit_empty_categories: bool = True,
+        prompt_file_path: str = "./prompts/analysis_prompt.md"
     ):
         """
         初始化报告生成器
@@ -56,23 +58,30 @@ class ReportGenerator:
             telegram_formatter: Telegram格式化器，如果为None则创建默认实例
             include_market_snapshot: 是否包含市场快照部分
             omit_empty_categories: 是否省略空分类
+            prompt_file_path: 提示词文件路径，用于解析分类定义
         """
         self.formatter = telegram_formatter or TelegramFormatter()
         self.include_market_snapshot = include_market_snapshot
         self.omit_empty_categories = omit_empty_categories
         self.logger = logging.getLogger(__name__)
         
-        # 分类图标映射（可扩展）
-        self.category_emojis = {
-            "大户动向": "🐋",
-            "利率事件": "📊",
-            "美国政府监管政策": "🏛️",
-            "安全事件": "🔒",
-            "新产品": "🚀",
-            "市场新现象": "✨",
-            "未分类": "📄",
-            "忽略": "🚫"
-        }
+        # 从提示词文件动态加载分类图标映射
+        try:
+            self.category_emojis = get_category_emoji_map(prompt_file_path)
+            self.logger.info(f"从提示词文件加载了 {len(self.category_emojis)} 个分类图标")
+        except Exception as e:
+            self.logger.warning(f"无法从提示词文件加载分类图标，使用默认映射: {e}")
+            # 后备默认映射
+            self.category_emojis = {
+                "大户动向": "🐋",
+                "利率事件": "📊",
+                "美国政府监管政策": "🏛️",
+                "真相": "💡",
+                "新产品": "🚀",
+                "市场新现象": "✨",
+                "未分类": "📄",
+                "忽略": "🚫"
+            }
     
     def generate_telegram_report(
         self,
