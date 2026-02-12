@@ -89,6 +89,7 @@ class ExecutionResult:
     errors: List[str]
     trigger_user: Optional[str]
     report_sent: bool
+    trigger_chat_id: Optional[str] = None  # 触发命令的聊天ID
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -120,6 +121,7 @@ class MainController:
         self.telegram_sender: Optional[TelegramSenderSync] = None
         self.error_manager: Optional[ErrorRecoveryManager] = None
         self.command_handler: Optional[Any] = None  # TelegramCommandHandler实例
+        self.cache_manager: Optional[Any] = None  # SentMessageCacheManager实例
         
         # 执行状态管理
         self.current_execution: Optional[ExecutionInfo] = None
@@ -190,6 +192,18 @@ class MainController:
             storage_config = self.config_manager.get_storage_config()
             self.data_manager = DataManager(storage_config)
             self.logger.info("数据管理器初始化完成")
+            
+            # 初始化缓存管理器
+            from .storage.cache_manager import SentMessageCacheManager
+            self.cache_manager = SentMessageCacheManager(storage_config)
+            self.logger.info("缓存管理器初始化完成")
+            
+            # 清理过期缓存（需求17.12: 系统启动时调用cleanup_expired_cache）
+            try:
+                expired_count = self.cache_manager.cleanup_expired_cache(hours=24)
+                self.logger.info(f"清理了 {expired_count} 条过期缓存记录")
+            except Exception as e:
+                self.logger.warning(f"清理过期缓存失败: {str(e)}")
             
             # 初始化错误恢复管理器
             self.error_manager = ErrorRecoveryManager()
@@ -581,7 +595,11 @@ class MainController:
             self._update_execution_progress(0.9, "sending")
             self.logger.info("开始报告发送阶段")
             
-            send_result = self._execute_sending_stage(report_content, target_chat_id=trigger_chat_id)
+            send_result = self._execute_sending_stage(
+                report_content, 
+                target_chat_id=trigger_chat_id,
+                categorized_items=categorized_items
+            )
             
             # 更新结果
             result.update({
@@ -803,13 +821,17 @@ class MainController:
         
         return result
     
-    def _execute_sending_stage(self, report_content: str, target_chat_id: Optional[str] = None) -> Dict[str, Any]:
+    def _execute_sending_stage(self, report_content: str, target_chat_id: Optional[str] = None, 
+                              categorized_items: Optional[Dict[str, List[Any]]] = None) -> Dict[str, Any]:
         """
         执行报告发送阶段
+        
+        需求17.9: 报告发送成功后调用cache_sent_messages
         
         Args:
             report_content: 报告内容
             target_chat_id: 目标聊天ID（如果提供，发送到该聊天；否则发送到TELEGRAM_CHANNEL_ID）
+            categorized_items: 分类后的内容项（用于缓存）
         
         Returns:
             发送结果字典
@@ -838,6 +860,31 @@ class MainController:
             if send_result.success:
                 self.logger.info(f"报告发送成功，消息ID: {send_result.message_id}")
                 result["success"] = True
+                
+                # 需求17.9: 报告发送成功后缓存已发送的消息
+                if self.cache_manager and categorized_items:
+                    try:
+                        messages_to_cache = []
+                        for category, items in categorized_items.items():
+                            for item in items:
+                                # item 是 StructuredAnalysisResult 对象
+                                messages_to_cache.append({
+                                    "summary": item.summary,
+                                    "category": item.category,
+                                    "time": item.time,
+                                    "sent_at": datetime.now().isoformat()
+                                })
+                        
+                        if messages_to_cache:
+                            cached_count = self.cache_manager.cache_sent_messages(messages_to_cache)
+                            self.logger.info(f"成功缓存 {cached_count} 条已发送消息")
+                            
+                            # 需求17.14: 实现缓存统计和监控
+                            cache_stats = self.cache_manager.get_cache_statistics()
+                            self.logger.info(f"缓存统计: {cache_stats}")
+                    except Exception as cache_error:
+                        # 需求17.15: 缓存失败不影响主流程
+                        self.logger.warning(f"缓存已发送消息失败: {str(cache_error)}")
             else:
                 error_msg = f"报告发送失败: {send_result.error_message}"
                 self.logger.error(error_msg)
@@ -1058,6 +1105,10 @@ class MainController:
             # 清理数据管理器
             if self.data_manager:
                 self.data_manager.close()
+            
+            # 清理缓存管理器
+            if self.cache_manager:
+                self.cache_manager.close()
             
             self.logger.info("资源清理完成")
             
