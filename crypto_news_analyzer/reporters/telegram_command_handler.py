@@ -690,12 +690,7 @@ class TelegramCommandHandler:
                 self._log_command_execution("/market", user_id, username, None, False, "权限拒绝")
                 return
             
-            # 速率限制检查
-            allowed, wait_message = self.check_rate_limit(user_id)
-            if not allowed:
-                await update.message.reply_text(f"⏱️ {wait_message}")
-                self._log_command_execution("/market", user_id, username, None, False, "速率限制")
-                return
+            # /market命令不需要速率限制检查，因为它只是读取缓存的市场快照
             
             # 记录授权日志
             self._log_authorization_attempt(
@@ -1002,10 +997,13 @@ class TelegramCommandHandler:
         """
         处理/market命令的业务逻辑
         
-        需求16.3: 获取并返回当前市场现状快照
-        需求16.17: 使用联网AI服务获取实时市场快照
+        需求16.3: 获取并返回当前市场现状快照（从缓存）
+        需求16.17: 使用MarketSnapshotService获取市场快照（优先使用缓存）
         需求16.18: 将市场快照以Telegram格式发送给用户
         需求16.19: 在失败时返回错误信息并说明失败原因
+        
+        注意：此命令从缓存中读取市场快照，不会触发新的API调用。
+        市场快照由系统定时任务更新。
         
         Args:
             user_id: 用户ID

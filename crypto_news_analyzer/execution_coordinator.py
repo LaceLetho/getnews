@@ -232,6 +232,9 @@ class MainController:
                 mock_mode=not auth_config.LLM_API_KEY  # 如果没有API密钥则使用模拟模式
             )
             
+            # 获取LLMAnalyzer内部的market_snapshot_service实例供命令处理器使用
+            self.market_snapshot_service = self.llm_analyzer.market_snapshot_service
+            
             # 初始化内容分类器
             self.logger.info("LLM分析器初始化完成")
             
