@@ -375,3 +375,25 @@
 17. WHEN 用户发送"/market"命令 THEN System SHALL 使用联网AI服务获取实时市场快照
 18. WHEN 市场快照获取成功 THEN System SHALL 将市场快照以Telegram格式发送给用户
 19. WHEN 市场快照获取失败 THEN System SHALL 返回错误信息并说明失败原因
+
+### 需求 17: 已发送消息缓存和去重
+
+**用户故事:** 作为用户，我希望系统能够记住已经发送过的新闻消息，避免在下次scheduled任务执行时重复发送相同的内容，以便获得更高质量的信息流。
+
+#### 验收标准
+
+1. WHEN 报告发送成功 THEN System SHALL 将已发送的新闻消息缓存到本地存储
+2. THE System SHALL 为每条缓存的消息记录发送时间戳
+3. THE System SHALL 设置缓存有效期为24小时
+4. WHEN 缓存消息超过24小时 THEN System SHALL 自动清理过期的缓存记录
+5. WHEN 下次scheduled任务执行时 THEN System SHALL 从缓存中读取24小时内已发送的消息
+6. THE System SHALL 将缓存的消息格式化为简洁的文本摘要
+7. THE System SHALL 将缓存的消息摘要合并到analysis_prompt.md的${outdated_news}占位符中
+8. WHEN 大模型分析新内容时 THEN System SHALL 使用包含outdated_news的完整提示词
+9. THE System SHALL 确保大模型能够识别并过滤掉与缓存消息重复的内容
+10. WHEN 缓存为空时 THEN System SHALL 在${outdated_news}位置填充"无"或空字符串
+11. THE System SHALL 支持配置缓存有效期（默认24小时）
+12. THE System SHALL 在系统启动时自动清理过期的缓存记录
+13. WHEN 手动触发的/run命令执行时 THEN System SHALL 同样使用缓存机制避免重复
+14. THE System SHALL 记录缓存命中统计信息，用于监控去重效果
+15. WHEN 缓存存储失败 THEN System SHALL 记录错误但不影响报告发送流程

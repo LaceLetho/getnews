@@ -5,5 +5,6 @@
 """
 
 from .data_manager import DataManager
+from .cache_manager import SentMessageCacheManager
 
-__all__ = ['DataManager']
+__all__ = ['DataManager', 'SentMessageCacheManager']
