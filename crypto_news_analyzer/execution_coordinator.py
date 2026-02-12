@@ -122,6 +122,7 @@ class MainController:
         self.error_manager: Optional[ErrorRecoveryManager] = None
         self.command_handler: Optional[Any] = None  # TelegramCommandHandler实例
         self.cache_manager: Optional[Any] = None  # SentMessageCacheManager实例
+        self.market_snapshot_service: Optional[Any] = None  # MarketSnapshotService实例（可选）
         
         # 执行状态管理
         self.current_execution: Optional[ExecutionInfo] = None
@@ -264,7 +265,14 @@ class MainController:
                     )
                     self.logger.info("Telegram命令处理器初始化完成")
                 except Exception as e:
-                    self.logger.warning(f"Telegram命令处理器初始化失败: {str(e)}")
+                    self.logger.error(f"Telegram命令处理器初始化失败: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
+                    # 不设置command_handler，让它保持为None
+            else:
+                if not telegram_command_config.enabled:
+                    self.logger.info("Telegram命令功能未启用（telegram_commands.enabled=false）")
+                elif not auth_config.TELEGRAM_BOT_TOKEN:
+                    self.logger.warning("Telegram Bot Token未配置，无法启用命令功能")
             
             self._initialized = True
             self.logger.info("系统组件初始化完成")
