@@ -220,26 +220,29 @@ class TelegramFormatter:
                 return False
             
             # 检查格式标记匹配
+            # 需要排除URL中的特殊字符（URL在圆括号内，跟在方括号后面）
+            # 先移除所有 [text](url) 格式的链接，然后再检查格式标记
+            text_without_links = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'\1', text)
+            
             # 统计未转义的*和_（需要排除已经被转义的情况）
-            # 使用更精确的正则：查找不在\之后的*和_
-            unescaped_asterisks = len(re.findall(r'(?<!\\)\*', text))
-            unescaped_underscores = len(re.findall(r'(?<!\\)_', text))
+            unescaped_asterisks = len(re.findall(r'(?<!\\)\*', text_without_links))
+            unescaped_underscores = len(re.findall(r'(?<!\\)_', text_without_links))
             
             if unescaped_asterisks % 2 != 0:
                 self.logger.warning(f"粗体标记不匹配: 发现{unescaped_asterisks}个未转义的*")
                 # 输出未转义的*位置用于调试
-                positions = [m.start() for m in re.finditer(r'(?<!\\)\*', text)]
+                positions = [m.start() for m in re.finditer(r'(?<!\\)\*', text_without_links)]
                 self.logger.debug(f"未转义*的位置: {positions[:10]}")  # 只显示前10个
                 return False
             
             if unescaped_underscores % 2 != 0:
                 self.logger.warning(f"斜体标记不匹配: 发现{unescaped_underscores}个未转义的_")
                 # 输出未转义的_位置和上下文用于调试
-                matches = list(re.finditer(r'(?<!\\)_', text))
+                matches = list(re.finditer(r'(?<!\\)_', text_without_links))
                 for i, m in enumerate(matches[:5]):  # 只显示前5个
                     start = max(0, m.start() - 20)
-                    end = min(len(text), m.end() + 20)
-                    context = text[start:end]
+                    end = min(len(text_without_links), m.end() + 20)
+                    context = text_without_links[start:end]
                     self.logger.debug(f"未转义_位置{i+1}: ...{context}...")
                 return False
             
