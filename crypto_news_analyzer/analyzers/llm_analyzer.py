@@ -341,6 +341,9 @@ class LLMAnalyzer:
         Returns:
             用户提示词字符串
         """
+        from email.utils import format_datetime
+        from ..utils.timezone_utils import convert_to_utc8
+        
         prompt_parts = ["请分析以下新闻和社交媒体内容：\n"]
         
         for i, item in enumerate(items, 1):
@@ -348,7 +351,12 @@ class LLMAnalyzer:
             prompt_parts.append(f"标题: {item.title}")
             prompt_parts.append(f"内容: {item.content}")
             prompt_parts.append(f"来源: {item.url}")
-            prompt_parts.append(f"发布时间: {format_datetime_utc8(item.publish_time, '%Y-%m-%d %H:%M')}")
+            
+            # 将 datetime 转换为 RFC 2822 格式（带时区信息）
+            # 如果 publish_time 没有时区信息，假设为本地时间（UTC+8）
+            dt_with_tz = convert_to_utc8(item.publish_time)
+            rfc2822_time = format_datetime(dt_with_tz)
+            prompt_parts.append(f"发布时间: {rfc2822_time}")
         
         prompt_parts.append("\n\n请按照要求输出JSON格式的分析结果。")
         
