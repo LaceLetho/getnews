@@ -87,13 +87,53 @@ railway run tail -f /app/logs/crypto_news_analyzer.log
 ```
 
 ### 下载备份
-```bash
-# 备份数据库
-railway run cat /app/data/crypto_news.db > backup.db
 
-# 或使用 Railway CLI（如果支持）
-railway volume download data ./local-backup/
+#### 方法 1: 使用 Python HTTP 服务器（最简单）
+
+1. SSH 登录到 Railway 服务器：
+
+2. 在服务器上启动 HTTP 服务器：
+```bash
+cd /app/data
+python3 -m http.server 8080
 ```
+
+3. 在 Railway 控制台中：
+   - 进入服务设置 → Networking
+   - 添加公共域名（Generate Domain）
+   - 记下生成的 URL（例如：https://your-service.railway.app）
+
+4. 使用 curl 下载（使用 HTTPS，不要加端口号）：
+```bash
+curl -O https://your-service.railway.app/crypto_news.db
+```
+
+   或在浏览器访问（使用 HTTPS）：https://your-service.railway.app/
+
+   会显示文件列表，点击文件即可下载
+
+5. 下载完成后，在 Railway shell 中按 Ctrl+C 停止服务器
+
+#### 方法 2: 使用 uploadserver（支持上传和下载）
+
+1. SSH 登录并安装：
+```bash
+pip install uploadserver
+```
+
+2. 启动服务器：
+```bash
+cd /app/data
+python3 -m uploadserver 8080
+```
+
+3. 通过公共 URL 访问下载页面
+
+#### 方法 3: 使用 Railway Volume Dump Template
+
+如果上述方法不可行，使用官方模板：
+- 模板地址：https://railway.com/template/EBwdAh
+- 需要临时断开 volume 并重新挂载到 dump 服务
 
 ### 清理空间
 ```bash
