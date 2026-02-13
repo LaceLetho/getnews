@@ -153,10 +153,12 @@ class TelegramFormatter:
         
         # 使用MarkdownV1的简化转义规则（更稳定）
         # 只转义真正会影响格式的字符
+        # 改进：使用正则避免重复转义
         for char in self.markdown_v1_special_chars:
-            # 避免重复转义
-            if f"\\{char}" not in text:
-                text = text.replace(char, f"\\{char}")
+            # 只转义未被转义的字符
+            pattern = f'(?<!\\\\){re.escape(char)}'
+            replacement = f'\\{char}'
+            text = re.sub(pattern, replacement, text)
         
         return text
     
@@ -214,16 +216,17 @@ class TelegramFormatter:
                 return False
             
             # 检查格式标记匹配
-            # 统计未转义的*和_
+            # 统计未转义的*和_（需要排除已经被转义的情况）
+            # 使用更精确的正则：查找不在\之后的*和_
             unescaped_asterisks = len(re.findall(r'(?<!\\)\*', text))
             unescaped_underscores = len(re.findall(r'(?<!\\)_', text))
             
             if unescaped_asterisks % 2 != 0:
-                self.logger.warning("粗体标记不匹配")
+                self.logger.warning(f"粗体标记不匹配: 发现{unescaped_asterisks}个未转义的*")
                 return False
             
             if unescaped_underscores % 2 != 0:
-                self.logger.warning("斜体标记不匹配")
+                self.logger.warning(f"斜体标记不匹配: 发现{unescaped_underscores}个未转义的_")
                 return False
             
             return True

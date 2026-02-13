@@ -209,7 +209,8 @@ class DataManager:
             params = []
             
             if time_window_hours is not None:
-                cutoff_time = datetime.now() - timedelta(hours=time_window_hours)
+                from datetime import timezone
+                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
                 conditions.append("publish_time >= ?")
                 params.append(cutoff_time.isoformat())
             
@@ -236,12 +237,19 @@ class DataManager:
             items = []
             for row in rows:
                 try:
+                    # 解析时间并确保有时区信息
+                    publish_time = datetime.fromisoformat(row['publish_time'])
+                    if publish_time.tzinfo is None:
+                        # 如果没有时区信息，假设为UTC
+                        from datetime import timezone
+                        publish_time = publish_time.replace(tzinfo=timezone.utc)
+                    
                     item = ContentItem(
                         id=row['id'],
                         title=row['title'],
                         content=row['content'],
                         url=row['url'],
-                        publish_time=datetime.fromisoformat(row['publish_time']),
+                        publish_time=publish_time,
                         source_name=row['source_name'],
                         source_type=row['source_type']
                     )

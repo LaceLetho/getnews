@@ -696,7 +696,7 @@ class MainController:
                 
                 for x_source in x_sources:
                     try:
-                        crawler = factory.create_source("x", time_window_hours, bird_config=bird_config)
+                        crawler = factory.create_source("x", time_window_hours, bird_config=bird_config, data_manager=self.data_manager)
                         items = crawler.crawl(x_source.to_dict())
                         all_content_items.extend(items)
                         

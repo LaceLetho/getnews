@@ -22,22 +22,24 @@ class XCrawlerAdapter(DataSourceInterface):
     提供统一的接口同时保持原有功能。
     """
     
-    def __init__(self, time_window_hours: int, bird_config: Optional[BirdConfig] = None):
+    def __init__(self, time_window_hours: int, bird_config: Optional[BirdConfig] = None, data_manager: Optional[Any] = None):
         """
         初始化X爬取器适配器
         
         Args:
             time_window_hours: 时间窗口（小时）
             bird_config: Bird工具配置，如果为None则使用默认配置
+            data_manager: 数据管理器实例，用于智能速率限制
         """
         self.time_window_hours = time_window_hours
         self.bird_config = bird_config
+        self.data_manager = data_manager
         self.logger = get_logger(__name__)
         
         # 创建底层X爬取器实例
         self.x_crawler = None
         try:
-            self.x_crawler = XCrawler(time_window_hours=time_window_hours, bird_config=bird_config)
+            self.x_crawler = XCrawler(time_window_hours=time_window_hours, bird_config=bird_config, data_manager=data_manager)
         except Exception as e:
             self.logger.warning(f"X爬取器初始化失败: {str(e)}")
         
@@ -111,7 +113,7 @@ class XCrawlerAdapter(DataSourceInterface):
         try:
             # 如果没有爬取器实例，尝试创建
             if not self.x_crawler:
-                temp_crawler = XCrawler(time_window_hours=self.time_window_hours, bird_config=self.bird_config)
+                temp_crawler = XCrawler(time_window_hours=self.time_window_hours, bird_config=self.bird_config, data_manager=self.data_manager)
                 result = temp_crawler.authenticate()
                 temp_crawler.cleanup()
                 return result
@@ -288,7 +290,7 @@ class XCrawlerAdapter(DataSourceInterface):
             return self.x_crawler
         
         try:
-            crawler = XCrawler(time_window_hours=self.time_window_hours, bird_config=self.bird_config)
+            crawler = XCrawler(time_window_hours=self.time_window_hours, bird_config=self.bird_config, data_manager=self.data_manager)
             return crawler
         except Exception as e:
             raise CrawlError(
