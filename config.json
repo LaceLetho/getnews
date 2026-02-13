@@ -78,11 +78,6 @@
       "url": "https://thedailygwei.substack.com/feed",
       "description": "Anthony Sassano 的日报，极度硬核的以太坊 Layer2 动态。"
     },
-    // {
-    //   "name": "Vitalik Buterin",
-    //   "url": "https://vitalik.eth.limo/feed.xml",
-    //   "description": "V神的博客。一旦更新，往往意味着下一个技术叙事（如 ENS, Plasma）的爆发。"
-    // },
     {
       "name": "SEC Press",
       "url": "https://www.sec.gov/news/pressreleases.rss",
