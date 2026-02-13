@@ -139,10 +139,11 @@ A: 默认每小时执行一次（3600秒），可通过 `EXECUTION_INTERVAL` 环
 
 A: 有两种方式：
 1. **通过Telegram命令**（推荐）：向Bot发送 `/run` 命令
-2. **通过Railway控制台**：重启服务，或使用 Railway CLI：
-```bash
-railway run /app/docker-entrypoint.sh once
-```
+2. **通过Railway控制台**：
+   - 访问 Railway Dashboard
+   - 进入项目 → 服务 → Deployments
+   - 点击 "Restart" 重启服务
+   - 或使用 Web Terminal 执行：`python -m crypto_news_analyzer.main --mode once`
 
 ### Q: 定时执行和命令触发会冲突吗？
 
@@ -222,12 +223,9 @@ Railway 的 volumes **不能通过配置文件创建**，必须在控制台手�
 
 ### 手动清理数据
 
-如果需要清理旧数据：
+如果需要清理旧数据，通过 Railway Dashboard 的 Web Terminal：
 
 ```bash
-# 使用 Railway CLI 连接到容器
-railway run bash
-
 # 查看数据库大小
 du -sh /app/data/crypto_news.db
 
@@ -240,15 +238,14 @@ find /app/logs/ -name "*.log" -mtime +30 -delete
 
 ### 备份建议
 
-定期备份重要数据：
+定期备份重要数据。通过 Railway Dashboard 的 Web Terminal：
 
 ```bash
-# 下载数据库文件
-railway run cat /app/data/crypto_news.db > backup_$(date +%Y%m%d).db
-
-# 或使用 Railway CLI
-railway volume download data ./backup/
+# 查看数据库文件
+ls -lh /app/data/crypto_news.db
 ```
+
+然后使用 Railway Dashboard 的文件浏览器或 Web Terminal 下载文件。
 
 ## 故障排查
 

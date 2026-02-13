@@ -58,8 +58,10 @@ Mount Path: /app/data
    - 点击查看详情和使用情况
 
 2. **检查环境变量**
+   
+   在本地运行：
    ```bash
-   railway run env | grep RAILWAY_VOLUME
+   railway variables | grep RAILWAY_VOLUME
    ```
    
    应该看到：
@@ -69,21 +71,51 @@ Mount Path: /app/data
    ```
 
 3. **测试写入**
+   
+   通过 Railway Dashboard 的 Web Terminal：
+   - 访问 https://railway.app
+   - 进入项目 → 服务 → Deployments
+   - 打开 Web Terminal 执行：
    ```bash
-   railway run touch /app/data/test.txt
-   railway run ls -la /app/data/
+   touch /app/data/test.txt
+   ls -la /app/data/
    ```
 
 ## 常用操作
 
 ### 查看数据库内容
+
+**查看本地开发环境的数据库：**
 ```bash
-railway run sqlite3 /app/data/crypto_news.db "SELECT COUNT(*) FROM news;"
+sqlite3 ./data/crypto_news.db "SELECT COUNT(*) FROM news;"
 ```
 
+**查看远程 Railway 环境的数据库：**
+
+Railway CLI 的 `railway run` 命令在本地环境执行，无法直接访问远程容器。要查看远程数据库，使用以下方法：
+
+1. **通过 Railway Dashboard**（推荐）
+   - 访问 https://railway.app
+   - 进入项目 → 服务 → Deployments
+   - 使用 Web Terminal 执行：
+     ```bash
+     sqlite3 /app/data/crypto_news.db "SELECT COUNT(*) FROM news;"
+     ```
+
+2. **通过应用日志**
+   - 在本地运行：`railway logs`
+   - 查看应用执行时的数据库操作日志
+
 ### 查看日志
+
+**查看远程日志：**
 ```bash
-railway run tail -f /app/logs/crypto_news_analyzer.log
+railway logs
+```
+
+**查看本地日志：**
+```bash
+tail -f ./logs/crypto_news_analyzer.log
 ```
 
 ### 下载备份
@@ -136,10 +168,10 @@ python3 -m uploadserver 8080
 - 需要临时断开 volume 并重新挂载到 dump 服务
 
 ### 清理空间
-```bash
-# 连接到容器
-railway run bash
 
+通过 Railway Dashboard 的 Web Terminal：
+
+```bash
 # 查看空间使用
 du -sh /app/data/*
 du -sh /app/logs/*
