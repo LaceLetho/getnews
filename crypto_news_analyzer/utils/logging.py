@@ -37,41 +37,70 @@ class LogManager:
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
         
-        # 创建格式器
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
+        # 检测是否在 Railway 环境中
+        is_railway = os.environ.get('RAILWAY_ENVIRONMENT_NAME') is not None
         
-        # 控制台处理器 - 明确输出到 stdout 以避免 Railway 将日志识别为 error
+        if is_railway:
+            # Railway 环境：使用 JSON 格式以便正确解析日志级别
+            import json
+            
+            class RailwayJsonFormatter(logging.Formatter):
+                """Railway JSON 格式化器"""
+                def format(self, record):
+                    log_data = {
+                        'timestamp': self.formatTime(record, '%Y-%m-%dT%H:%M:%S.%fZ'),
+                        'level': record.levelname,
+                        'logger': record.name,
+                        'message': record.getMessage()
+                    }
+                    if record.exc_info:
+                        log_data['exception'] = self.formatException(record.exc_info)
+                    return json.dumps(log_data, ensure_ascii=False)
+            
+            formatter = RailwayJsonFormatter()
+        else:
+            # 本地环境：使用可读的文本格式
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+        
+        # 控制台处理器 - 明确输出到 stdout
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
         
-        # 文件处理器 - 应用日志
-        app_log_file = self.log_dir / "crypto_news_analyzer.log"
-        file_handler = logging.handlers.RotatingFileHandler(
-            app_log_file,
-            maxBytes=10*1024*1024,  # 10MB
-            backupCount=5,
-            encoding='utf-8'
-        )
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(formatter)
-        root_logger.addHandler(file_handler)
+        # 文件处理器 - 应用日志（仅在非 Railway 环境）
+        if not is_railway:
+            # 使用文本格式用于本地文件日志
+            text_formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            
+            app_log_file = self.log_dir / "crypto_news_analyzer.log"
+            file_handler = logging.handlers.RotatingFileHandler(
+                app_log_file,
+                maxBytes=10*1024*1024,  # 10MB
+                backupCount=5,
+                encoding='utf-8'
+            )
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(text_formatter)
+            root_logger.addHandler(file_handler)
         
-        # 错误日志文件处理器
-        error_log_file = self.log_dir / "errors.log"
-        error_handler = logging.handlers.RotatingFileHandler(
-            error_log_file,
-            maxBytes=5*1024*1024,  # 5MB
-            backupCount=3,
-            encoding='utf-8'
-        )
-        error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(formatter)
-        root_logger.addHandler(error_handler)
+            # 错误日志文件处理器（仅在非 Railway 环境）
+            error_log_file = self.log_dir / "errors.log"
+            error_handler = logging.handlers.RotatingFileHandler(
+                error_log_file,
+                maxBytes=5*1024*1024,  # 5MB
+                backupCount=3,
+                encoding='utf-8'
+            )
+            error_handler.setLevel(logging.ERROR)
+            error_handler.setFormatter(text_formatter)
+            root_logger.addHandler(error_handler)
     
     def setup_logging(self, log_level: str = "INFO") -> None:
         """
@@ -149,16 +178,20 @@ class LogManager:
         logger_name = f"execution.{execution_id}"
         logger = logging.getLogger(logger_name)
         
-        # 创建专用文件处理器
-        log_file = self.log_dir / f"execution_{execution_id}.log"
-        handler = logging.FileHandler(log_file, encoding='utf-8')
+        # 仅在非 Railway 环境创建文件日志
+        is_railway = os.environ.get('RAILWAY_ENVIRONMENT_NAME') is not None
+        if not is_railway:
+            # 创建专用文件处理器
+            log_file = self.log_dir / f"execution_{execution_id}.log"
+            handler = logging.FileHandler(log_file, encoding='utf-8')
+            
+            formatter = logging.Formatter(
+                '%(asctime)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
         
-        formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
         logger.setLevel(logging.DEBUG)
         
         return logger
