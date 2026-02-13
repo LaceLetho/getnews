@@ -335,25 +335,40 @@ class TestProperty12TelegramFormatCorrectness:
         """
         **功能: crypto-news-analyzer, 属性 12: Telegram格式适配正确性**
         
-        验证数据源状态被正确格式化，包含成功/失败标记和统计信息
+        验证报告不再包含数据源状态部分（已移除此功能）
         """
         generator = ReportGenerator()
         
-        status_section = generator.generate_data_source_status(crawl_status)
+        # 创建简单的分析数据用于测试
+        from crypto_news_analyzer.reporters.report_generator import create_analyzed_data
+        from crypto_news_analyzer.analyzers.structured_output_manager import StructuredAnalysisResult
         
-        # 验证包含状态标记
-        if any(r.status == "success" for r in crawl_status.rss_results + crawl_status.x_results):
-            assert "✅" in status_section, \
-                "应包含成功标记"
+        categorized_items = {
+            "TestCategory": [
+                StructuredAnalysisResult(
+                    time="2024-01-01 10:00",
+                    category="TestCategory",
+                    weight_score=80,
+                    summary="Test summary",
+                    source="https://example.com"
+                )
+            ]
+        }
         
-        if any(r.status == "error" for r in crawl_status.rss_results + crawl_status.x_results):
-            assert "❌" in status_section, \
-                "应包含失败标记"
+        analyzed_data = create_analyzed_data(
+            categorized_items=categorized_items,
+            analysis_results=list(categorized_items["TestCategory"]),
+            time_window_hours=24
+        )
         
-        # 验证包含统计信息
-        if crawl_status.rss_results or crawl_status.x_results:
-            assert "总计" in status_section or "成功" in status_section, \
-                "应包含统计信息"
+        # 生成报告
+        report = generator.generate_telegram_report(analyzed_data, crawl_status)
+        
+        # 验证报告不包含数据源状态相关内容
+        assert "数据源状态" not in report, "报告不应包含数据源状态标题"
+        assert "📡" not in report, "报告不应包含数据源状态图标"
+        assert "RSS订阅源" not in report, "报告不应包含RSS源状态"
+        assert "X/Twitter源" not in report, "报告不应包含X源状态"
 
 
 # ============================================================================

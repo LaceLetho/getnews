@@ -92,7 +92,7 @@ class ReportGenerator:
         
         Args:
             data: 分析后的数据
-            status: 爬取状态信息
+            status: 爬取状态信息（保留参数以保持向后兼容，但不再使用）
             
         Returns:
             格式化后的Telegram报告文本
@@ -109,9 +109,7 @@ class ReportGenerator:
         )
         report_sections.append(header)
         
-        # 2. 数据源爬取状态
-        source_status = self.generate_data_source_status(status)
-        report_sections.append(source_status)
+        # 2. 数据源爬取状态 - 已移除，不再生成此部分
         
         # 3. 动态分类内容部分
         category_sections = self.generate_dynamic_category_sections(

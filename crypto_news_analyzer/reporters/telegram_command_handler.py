@@ -879,6 +879,8 @@ class TelegramCommandHandler:
         """
         处理/status命令的业务逻辑
         
+        显示系统状态和最近24小时内各个信息源获取到的消息数量
+        
         Args:
             user_id: 用户ID
             
@@ -928,6 +930,29 @@ class TelegramCommandHandler:
                     f"处理项目: {last_exec.items_processed}\n"
                     f"耗时: {last_exec.duration_seconds:.1f} 秒"
                 )
+            
+            # 最近24小时各数据源消息数量
+            try:
+                data_manager = self.execution_coordinator.data_manager
+                if data_manager:
+                    source_counts = data_manager.get_source_message_counts(time_window_hours=24)
+                    
+                    if source_counts:
+                        response_parts.append("\n\n*最近24小时数据源统计:*")
+                        
+                        # 按消息数量降序排列
+                        sorted_sources = sorted(source_counts.items(), key=lambda x: x[1], reverse=True)
+                        
+                        for source_name, count in sorted_sources:
+                            response_parts.append(f"• {source_name}: {count} 条")
+                        
+                        total_messages = sum(source_counts.values())
+                        response_parts.append(f"\n*总计*: {total_messages} 条消息")
+                    else:
+                        response_parts.append("\n\n*最近24小时数据源统计:* 暂无数据")
+            except Exception as e:
+                self.logger.warning(f"获取数据源统计失败: {str(e)}")
+                response_parts.append("\n\n*最近24小时数据源统计:* 获取失败")
             
             return "\n".join(response_parts)
             

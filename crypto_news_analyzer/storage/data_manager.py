@@ -559,6 +559,38 @@ class DataManager:
                 logger.info(f"数据源 {source_name} 没有历史数据")
                 return None
     
+    def get_source_message_counts(self, time_window_hours: int = 24) -> Dict[str, int]:
+        """
+        获取各个数据源在指定时间窗口内的消息数量
+        
+        Args:
+            time_window_hours: 时间窗口（小时），默认24小时
+            
+        Returns:
+            字典，key为数据源名称，value为消息数量
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            cutoff_time = datetime.now() - timedelta(hours=time_window_hours)
+            
+            cursor.execute('''
+                SELECT source_name, COUNT(*) as count
+                FROM content_items
+                WHERE publish_time >= ?
+                GROUP BY source_name
+                ORDER BY count DESC
+            ''', (cutoff_time.isoformat(),))
+            
+            rows = cursor.fetchall()
+            
+            result = {}
+            for row in rows:
+                result[row['source_name']] = row['count']
+            
+            logger.info(f"获取到 {len(result)} 个数据源的消息统计（时间窗口: {time_window_hours}小时）")
+            return result
+    
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器出口"""
         self.close()
