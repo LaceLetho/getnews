@@ -45,15 +45,36 @@ crypto_news_analyzer/
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 环境准备
+
+本项目使用 `uv` 作为包管理器，推荐使用 Python 3.9+。
+
+#### 安装 uv
 
 ```bash
-# 使用 uv（推荐）
-uv pip install -r requirements.txt
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 或使用 pip
-pip install -r requirements.txt
+pip install uv
+
+# 或使用 Homebrew (macOS)
+brew install uv
 ```
+
+更多安装方式请参考 [uv 官方文档](https://docs.astral.sh/uv/getting-started/installation/)
+
+### 2. 安装依赖
+
+```bash
+# 使用 uv 安装项目依赖（推荐）
+uv pip install -e .
+
+# 安装开发依赖（包含测试工具）
+uv pip install -e ".[dev]"
+```
+
+**注意**: 项目已迁移到 `pyproject.toml` 管理依赖，不再使用 `requirements.txt`
 
 ### 2. 配置系统
 

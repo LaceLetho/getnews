@@ -89,7 +89,7 @@ class RSSCrawler:
             items = []
             for entry in feed.entries:
                 try:
-                    item = self._parse_rss_entry(entry, source)
+                    item = self._parse_rss_entry(entry, source, rss_content)
                     if item and self._is_within_time_window(item.publish_time):
                         items.append(item)
                 except Exception as e:
@@ -188,12 +188,13 @@ class RSSCrawler:
                 wait_time = (2 ** attempt) + random.uniform(0, 1)
                 time.sleep(wait_time)
     
-    def _parse_rss_entry(self, entry: Any, source: RSSSource) -> Optional[ContentItem]:
+    def _parse_rss_entry(self, entry: Any, source: RSSSource, xml_content: str = None) -> Optional[ContentItem]:
         """解析RSS条目
         
         Args:
             entry: feedparser解析的条目
             source: RSS源配置
+            xml_content: 原始XML内容（可选，用于提取feedparser无法正确解析的字段）
             
         Returns:
             ContentItem对象，解析失败返回None
@@ -205,8 +206,16 @@ class RSSCrawler:
                 self.logger.debug("RSS条目缺少标题，跳过")
                 return None
             
-            # 提取内容（如果没有内容，使用标题作为内容）
+            # 提取内容
             content = self._extract_content(entry)
+            
+            # 如果feedparser没有提取到内容，尝试从原始XML中提取
+            if not content and xml_content:
+                entry_id = getattr(entry, 'id', None) or getattr(entry, 'guid', None)
+                if entry_id:
+                    content = self._extract_description_from_xml(xml_content, entry_id)
+            
+            # 如果还是没有内容，使用标题
             if not content:
                 self.logger.debug("RSS条目缺少内容，使用标题作为内容")
                 content = title
@@ -250,14 +259,6 @@ class RSSCrawler:
     
     def _extract_content(self, entry: Any) -> Optional[str]:
         """提取内容"""
-        # 尝试多个可能的内容字段
-        content_fields = [
-            'content',
-            'summary',
-            'description',
-            'subtitle'
-        ]
-        
         content = ""
         
         # 优先使用content字段
@@ -272,13 +273,29 @@ class RSSCrawler:
                 else:
                     content = str(content_value)
         
-        # 如果content为空，尝试其他字段
-        if not content:
-            for field in content_fields[1:]:  # 跳过content，已经尝试过了
-                field_value = getattr(entry, field, '')
-                if field_value and not str(field_value).startswith('<Mock'):  # 排除Mock对象
-                    content = str(field_value)
-                    break
+        # 如果content为空，尝试summary_detail（可能包含实际内容）
+        if not content and hasattr(entry, 'summary_detail'):
+            summary_detail = entry.summary_detail
+            if isinstance(summary_detail, dict):
+                content = summary_detail.get('value', '')
+        
+        # 如果还是空，尝试summary字段
+        if not content and hasattr(entry, 'summary'):
+            summary = entry.summary
+            if summary and not str(summary).startswith('<Mock'):
+                content = str(summary)
+        
+        # 最后尝试description字段
+        if not content and hasattr(entry, 'description'):
+            description = entry.description
+            if description and not str(description).startswith('<Mock'):
+                content = str(description)
+        
+        # 如果还有subtitle字段也尝试
+        if not content and hasattr(entry, 'subtitle'):
+            subtitle = entry.subtitle
+            if subtitle and not str(subtitle).startswith('<Mock'):
+                content = str(subtitle)
         
         if not content:
             return None
@@ -432,3 +449,30 @@ class RSSCrawler:
         except Exception as e:
             self.logger.error(f"获取RSS源信息失败 {source.name}: {e}")
             return {}
+    def _extract_description_from_xml(self, xml_content: str, entry_id: str) -> Optional[str]:
+        """从原始XML中提取description，避免feedparser的解析问题
+
+        Args:
+            xml_content: RSS的原始XML内容
+            entry_id: 条目的guid/id
+
+        Returns:
+            description文本，如果找不到返回None
+        """
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(xml_content, 'xml')
+
+            # 查找匹配的item
+            for item in soup.find_all('item'):
+                guid = item.find('guid')
+                if guid and guid.get_text(strip=True) == entry_id:
+                    # 找到第一个非空的description
+                    for desc in item.find_all('description'):
+                        text = desc.get_text(strip=True)
+                        if text:
+                            return text
+            return None
+        except Exception as e:
+            self.logger.debug(f"从XML提取description失败: {e}")
+            return None
