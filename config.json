@@ -36,7 +36,7 @@
     {
       "name": "CoinDesk",
       "url": "https://www.coindesk.com/arc/outboundfeeds/rss",
-      "description": "CoinDesk 快讯"
+      "description": "行业标杆，覆盖面最广，但每日条数较多，需 LLM 过滤。"
     },
     {
       "name": "BlockBeats",
@@ -46,12 +46,52 @@
     {
       "name": "Cointelegraph",
       "url": "https://cointelegraph.com/rss",
-      "description": "Cointelegraph 快讯"
+      "description": "更新频率最高（量大管饱），适合捕捉 MarketTrend，但噪音（Ad）较多。"
     },
     {
       "name": "TechFlow",
       "url": "https://www.techflowpost.com/api/client/common/rss.xml",
       "description": "TechFlow 快讯"
+    },
+    {
+      "name": "The Block",
+      "url": "https://www.theblock.co/rss.xml",
+      "description": "机构视角，废话少，Regulation 和 Whale 信息极其准确。"
+    },
+    {
+      "name": "Decrypt",
+      "url": "https://decrypt.co/feed",
+      "description": "偏向 Web3 原生文化，NewProject 和 NFT/GameFi 资讯较多。"
+    },
+    {
+      "name": "Bankless",
+      "url": "https://www.bankless.com/rss/feed",
+      "description": "以太坊生态风向标"
+    },
+    {
+      "name": "The Defiant",
+      "url": "https://thedefiant.io/api/feed",
+      "description": "DeFi 领域的权威，找新协议（Yield Farming）必看"
+    },
+    {
+      "name": "The Daily Gwei",
+      "url": "https://thedailygwei.substack.com/feed",
+      "description": "Anthony Sassano 的日报，极度硬核的以太坊 Layer2 动态。"
+    },
+    {
+      "name": "Vitalik Buterin",
+      "url": "https://vitalik.eth.limo/feed.xml",
+      "description": "V神的博客。一旦更新，往往意味着下一个技术叙事（如 ENS, Plasma）的爆发。"
+    },
+    {
+      "name": "SEC Press",
+      "url": "https://www.sec.gov/news/pressreleases.rss",
+      "description": "美国证监会官方。一旦有 Crypto 关键词，那就是大新闻。"
+    },
+    {
+      "name": "CFTC General Press",
+      "url": "https://www.cftc.gov/RSS/RSSGP/rssgp.xml",
+      "description": "CFTC news"
     }
   ],
   "x_sources": [
