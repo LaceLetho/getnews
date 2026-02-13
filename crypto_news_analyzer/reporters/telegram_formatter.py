@@ -435,13 +435,24 @@ class TelegramFormatter:
             格式化后的消息项
         """
         from ..utils.timezone_utils import format_rfc2822_to_utc8_string
+        from urllib.parse import urlparse
         
         # 将RFC 2822格式时间转换为东八区短格式（MM-DD HH:MM）
         simplified_time = format_rfc2822_to_utc8_string(time, "%m-%d %H:%M")
         
+        # 从URL中提取域名作为链接文本
+        try:
+            parsed_url = urlparse(source_url)
+            source_name = parsed_url.netloc or '来源'
+            # 移除 www. 前缀使其更简洁
+            if source_name.startswith('www.'):
+                source_name = source_name[4:]
+        except Exception:
+            source_name = '来源'
+        
         # 构建消息项：摘要在前，时间、评分、链接在后面一行
         message = f"{self.escape_special_characters(summary)}\n"
-        message += f"{self.escape_special_characters(simplified_time)} | {weight_score} | {self.format_hyperlink('查看原文', source_url)}"
+        message += f"{self.escape_special_characters(simplified_time)} | {weight_score} | {self.format_hyperlink(source_name, source_url)}"
         
         return message
     
