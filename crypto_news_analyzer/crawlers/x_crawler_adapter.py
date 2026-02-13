@@ -149,9 +149,9 @@ class XCrawlerAdapter(DataSourceInterface):
             
             # 根据类型进行爬取
             if x_source.type == "list":
-                items = crawler.crawl_list(x_source.url)
+                items = crawler.crawl_list(x_source.url, source_name=source_name)
             elif x_source.type == "timeline":
-                items = crawler.crawl_timeline(x_source.url)
+                items = crawler.crawl_timeline(x_source.url, source_name=source_name)
             else:
                 raise CrawlError(
                     f"不支持的X源类型: {x_source.type}",
