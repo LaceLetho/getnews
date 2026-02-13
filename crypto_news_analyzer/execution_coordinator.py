@@ -90,10 +90,23 @@ class ExecutionResult:
     trigger_user: Optional[str]
     report_sent: bool
     trigger_chat_id: Optional[str] = None  # 触发命令的聊天ID
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
-        return asdict(self)
+        data = asdict(self)
+        data['start_time'] = self.start_time.isoformat()
+        data['end_time'] = self.end_time.isoformat()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ExecutionResult':
+        """从字典反序列化"""
+        if isinstance(data['start_time'], str):
+            data['start_time'] = datetime.fromisoformat(data['start_time'])
+        if isinstance(data['end_time'], str):
+            data['end_time'] = datetime.fromisoformat(data['end_time'])
+        return cls(**data)
+
 
 
 class MainController:
@@ -131,6 +144,7 @@ class MainController:
         self._stop_event = threading.Event()
         self._scheduler_thread: Optional[threading.Thread] = None
         self._last_scheduled_time: Optional[datetime] = None  # 上次调度任务开始的时间
+        self._history_file = "./data/execution_history.json"  # 执行历史持久化文件
         
         # 并发控制
         self._max_concurrent_executions = 1
@@ -141,6 +155,9 @@ class MainController:
         
         # 初始化标志
         self._initialized = False
+        
+        # 加载执行历史
+        self._load_execution_history()
         
         self.logger.info("主控制器初始化完成")
     
@@ -491,6 +508,7 @@ class MainController:
             
             # 记录执行历史
             self.execution_history.append(execution_result)
+            self._save_execution_history()
             
             # 记录执行日志
             self.log_execution_cycle(start_time, end_time, "success" if result["success"] else "failed")
@@ -529,6 +547,7 @@ class MainController:
             
             # 记录执行历史
             self.execution_history.append(execution_result)
+            self._save_execution_history()
             
             # 记录执行日志
             self.log_execution_cycle(start_time, end_time, "failed")
@@ -1059,6 +1078,38 @@ class MainController:
     def get_execution_history(self, limit: int = 10) -> List[ExecutionResult]:
         """获取执行历史"""
         return self.execution_history[-limit:] if limit > 0 else self.execution_history
+    def _load_execution_history(self) -> None:
+        """从文件加载执行历史"""
+        try:
+            import os
+            if os.path.exists(self._history_file):
+                with open(self._history_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.execution_history = [ExecutionResult.from_dict(item) for item in data]
+                    self.logger.info(f"已加载 {len(self.execution_history)} 条执行历史记录")
+            else:
+                self.logger.info("执行历史文件不存在，从空历史开始")
+        except Exception as e:
+            self.logger.error(f"加载执行历史失败: {e}")
+            self.execution_history = []
+
+    def _save_execution_history(self) -> None:
+        """保存执行历史到文件（保留最近100条）"""
+        try:
+            import os
+            os.makedirs(os.path.dirname(self._history_file), exist_ok=True)
+
+            # 只保留最近100条记录
+            history_to_save = self.execution_history[-100:]
+            data = [item.to_dict() for item in history_to_save]
+
+            with open(self._history_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+
+            self.logger.debug(f"已保存 {len(history_to_save)} 条执行历史记录")
+        except Exception as e:
+            self.logger.error(f"保存执行历史失败: {e}")
+
     
     def is_execution_running(self) -> bool:
         """检查是否有执行正在进行"""

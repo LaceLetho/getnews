@@ -63,6 +63,12 @@ class TestMainController:
     @pytest.fixture
     def mock_controller(self, temp_config_file):
         """创建模拟的主控制器"""
+        # Clean up any existing history file
+        import os
+        history_file = "./data/execution_history.json"
+        if os.path.exists(history_file):
+            os.remove(history_file)
+        
         controller = MainController(temp_config_file)
         
         # 模拟组件初始化
