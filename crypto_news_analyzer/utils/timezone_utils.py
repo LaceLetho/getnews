@@ -79,7 +79,7 @@ def format_datetime_utc8(
     if dt is None:
         dt = now_utc8()
     elif dt.tzinfo is None:
-        # 如果没有时区信息，假设为本地时间并转换为UTC+8
+        # 如果没有时区信息，假设为UTC时间并转换为UTC+8
         dt = dt.replace(tzinfo=timezone.utc).astimezone(UTC_PLUS_8)
     else:
         # 转换为UTC+8
@@ -125,10 +125,8 @@ def convert_to_utc8(dt: datetime) -> datetime:
         转换后的东八区时间（带时区信息）
     """
     if dt.tzinfo is None:
-        # 如果没有时区信息，假设为本地时间（已经是UTC+8）
-        dt = dt.replace(tzinfo=UTC_PLUS_8)
-    else:
-        # 转换为UTC+8
-        dt = dt.astimezone(UTC_PLUS_8)
+        # 如果没有时区信息，假设为UTC时间（RSS parsed时间通常是UTC）
+        dt = dt.replace(tzinfo=timezone.utc)
     
-    return dt
+    # 转换为UTC+8
+    return dt.astimezone(UTC_PLUS_8)

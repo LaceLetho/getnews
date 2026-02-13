@@ -363,16 +363,15 @@ class XCrawler:
                 try:
                     dt = datetime.strptime(time_str, fmt)
                     
-                    # 如果解析出的时间有时区信息，需要转换为本地时间
+                    # 如果解析出的时间有时区信息，保持时区信息
                     if dt.tzinfo is not None:
-                        # 转换为UTC时间戳，然后转换为本地时间
-                        import time
-                        utc_timestamp = dt.timestamp()
-                        local_dt = datetime.fromtimestamp(utc_timestamp)
-                        self.logger.debug(f"时区转换: UTC {dt} -> 本地 {local_dt}")
-                        return local_dt
+                        self.logger.debug(f"解析Twitter时间（带时区）: {dt}")
+                        return dt
                     else:
-                        # 没有时区信息，直接返回
+                        # 没有时区信息，假设为UTC时间
+                        from datetime import timezone
+                        dt = dt.replace(tzinfo=timezone.utc)
+                        self.logger.debug(f"解析Twitter时间（添加UTC时区）: {dt}")
                         return dt
                         
                 except ValueError:
@@ -381,16 +380,17 @@ class XCrawler:
             # 如果所有格式都失败，尝试使用dateutil
             try:
                 from dateutil import parser
+                from datetime import timezone
                 dt = parser.parse(time_str)
                 
-                # 如果有时区信息，转换为本地时间
+                # 如果有时区信息，保持时区信息
                 if dt.tzinfo is not None:
-                    import time
-                    utc_timestamp = dt.timestamp()
-                    local_dt = datetime.fromtimestamp(utc_timestamp)
-                    self.logger.debug(f"dateutil时区转换: UTC {dt} -> 本地 {local_dt}")
-                    return local_dt
+                    self.logger.debug(f"dateutil解析Twitter时间（带时区）: {dt}")
+                    return dt
                 else:
+                    # 没有时区信息，假设为UTC时间
+                    dt = dt.replace(tzinfo=timezone.utc)
+                    self.logger.debug(f"dateutil解析Twitter时间（添加UTC时区）: {dt}")
                     return dt
                     
             except Exception:

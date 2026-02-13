@@ -300,6 +300,8 @@ class RSSCrawler:
     
     def _extract_publish_time(self, entry: Any) -> Optional[datetime]:
         """提取发布时间"""
+        from datetime import timezone
+        
         # 尝试多个可能的时间字段
         time_fields = [
             'published_parsed',
@@ -311,7 +313,9 @@ class RSSCrawler:
             time_struct = getattr(entry, field, None)
             if time_struct:
                 try:
-                    return datetime(*time_struct[:6])
+                    # RSS的parsed时间是UTC时间，需要添加时区信息
+                    dt = datetime(*time_struct[:6], tzinfo=timezone.utc)
+                    return dt
                 except (ValueError, TypeError):
                     continue
         
@@ -327,6 +331,7 @@ class RSSCrawler:
             if time_str:
                 try:
                     from dateutil import parser
+                    # dateutil.parser会自动处理时区信息
                     return parser.parse(time_str)
                 except (ValueError, TypeError):
                     continue
