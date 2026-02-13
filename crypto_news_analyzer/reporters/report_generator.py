@@ -60,23 +60,25 @@ class ReportGenerator:
         self.omit_empty_categories = omit_empty_categories
         self.logger = logging.getLogger(__name__)
         
-        # 从提示词文件动态加载分类图标映射
+        # 从提示词文件动态加载分类定义
         try:
-            self.category_emojis = get_category_emoji_map(prompt_file_path)
-            self.logger.info(f"从提示词文件加载了 {len(self.category_emojis)} 个分类图标")
+            from crypto_news_analyzer.analyzers.category_parser import get_category_parser
+            parser = get_category_parser(prompt_file_path)
+            self.category_definitions = parser.parse_categories()
+            self.logger.info(f"从提示词文件加载了 {len(self.category_definitions)} 个分类定义")
         except Exception as e:
-            self.logger.warning(f"无法从提示词文件加载分类图标，使用默认映射: {e}")
-            # 后备默认映射
-            self.category_emojis = {
-                "大户动向": "🐋",
-                "利率事件": "📊",
-                "美国政府监管政策": "🏛️",
-                "真相": "💡",
-                "新产品": "🚀",
-                "市场新现象": "✨",
-                "未分类": "📄",
-                "忽略": "🚫"
-            }
+            self.logger.warning(f"无法从提示词文件加载分类定义，使用默认映射: {e}")
+            # 后备默认映射（使用英文key）
+            self.category_definitions = {}
+        
+        # 构建英文key到emoji的映射（用于快速查找）
+        self.category_emojis = {
+            cat.key: cat.emoji for cat in self.category_definitions.values()
+        }
+        # 同时支持中文名称查找
+        self.category_emojis.update({
+            cat.name: cat.emoji for cat in self.category_definitions.values()
+        })
     
     def generate_telegram_report(
         self,
@@ -287,18 +289,23 @@ class ReportGenerator:
         - 使用适当的Telegram格式化标记
         
         Args:
-            category_name: 分类名称
+            category_name: 分类名称（可能是英文key或中文名称）
             items: 该分类下的分析结果列表
             
         Returns:
             格式化后的分类章节
         """
-        # 获取分类图标（如果有）
+        # 获取分类图标和中文名称
         emoji = self.category_emojis.get(category_name, "📄")
+        
+        # 尝试将英文key转换为中文名称
+        display_name = category_name
+        if category_name in self.category_definitions:
+            display_name = self.category_definitions[category_name].name
         
         # 分类标题
         section_header = self.formatter.format_category_section(
-            category_name,
+            display_name,
             len(items),
             emoji
         )
