@@ -402,9 +402,10 @@ class TelegramFormatter:
         根据需求7.6和7.7实现消息格式化：
         - 包含大模型返回的所有字段（time、category、weight_score、summary、source）
         - 将source字段格式化为Telegram超链接形式
+        - 将RFC 2822格式时间转换为东八区显示
         
         Args:
-            time: 时间（字符串格式，如 "2024-01-15" 或 "01-15"）
+            time: 时间（RFC 2822格式字符串，如 "Mon, 15 Jan 2024 14:30:00 +0000"）
             category: 分类
             weight_score: 重要性评分
             summary: 摘要
@@ -413,11 +414,10 @@ class TelegramFormatter:
         Returns:
             格式化后的消息项
         """
+        from ..utils.timezone_utils import format_rfc2822_to_utc8_string
         
-        # 简化时间格式（移除年份，如果存在）
-        simplified_time = time
-        if len(time) > 5 and time[4] == '-':  # 格式如 "2024-01-15"
-            simplified_time = time[5:]  # 取 "01-15"
+        # 将RFC 2822格式时间转换为东八区短格式（MM-DD HH:MM）
+        simplified_time = format_rfc2822_to_utc8_string(time, "%m-%d %H:%M")
         
         # 构建消息项：摘要在前，时间、评分、链接在后面一行
         message = f"{self.escape_special_characters(summary)}\n"

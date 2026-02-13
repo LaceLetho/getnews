@@ -44,7 +44,7 @@
 
 JSON 对象结构定义：
 {
-  "time": "该条消息的发布时间",
+  "time": "该条消息的发布时间，按照RFC 2822的时间格式返回",
   "category": "Whale" | "Fed" | "Regulation" | "NewProject" | "Arbitrage" | "MarketTrend" | "Truth",
   "weight_score": 0-100 (整数，分数越高代表事件越重磅),
   "summary": "使用中文总结核心内容，要包括：主体，动作/事件，核心数据/细节，直接影响/隐含意义。如果核心在于其隐含意图可追加背景补充，如果逻辑复杂可追加逻辑补充。",

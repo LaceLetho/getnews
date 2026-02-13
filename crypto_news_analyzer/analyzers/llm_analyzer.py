@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..models import ContentItem, AnalysisResult, StorageConfig
+from ..utils.timezone_utils import format_datetime_utc8
 from .market_snapshot_service import MarketSnapshotService, MarketSnapshot
 from .structured_output_manager import (
     StructuredOutputManager,
@@ -347,7 +348,7 @@ class LLMAnalyzer:
             prompt_parts.append(f"标题: {item.title}")
             prompt_parts.append(f"内容: {item.content}")
             prompt_parts.append(f"来源: {item.url}")
-            prompt_parts.append(f"发布时间: {item.publish_time.strftime('%Y-%m-%d %H:%M')}")
+            prompt_parts.append(f"发布时间: {format_datetime_utc8(item.publish_time, '%Y-%m-%d %H:%M')}")
         
         prompt_parts.append("\n\n请按照要求输出JSON格式的分析结果。")
         

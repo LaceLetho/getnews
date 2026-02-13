@@ -50,7 +50,7 @@ class StructuredAnalysisResult(BaseModel):
         }
     }}
     
-    time: str = Field(..., description="发布时间，格式如 '2024-01-01 12:00'")
+    time: str = Field(..., description="发布时间，保持原始RFC 2822格式（如 'Mon, 15 Jan 2024 14:30:00 +0000'）")
     category: str = Field(..., description="动态分类类别，由大模型返回决定")
     weight_score: int = Field(..., ge=0, le=100, description="重要性评分，0-100之间")
     summary: str = Field(..., min_length=1, description="内容摘要，不能为空")
@@ -328,7 +328,7 @@ class StructuredOutputManager:
 {
     "results": [
         {
-            "time": "发布时间",
+            "time": "发布时间(保持原始RFC 2822格式)",
             "category": "分类类别",
             "weight_score": 0-100的整数,
             "summary": "内容摘要",
@@ -340,6 +340,7 @@ class StructuredOutputManager:
 注意：
 - results可以是空列表[]，表示所有内容被过滤
 - 每个结果对象必须包含所有5个字段
+- time保持原始RFC 2822格式（如 'Mon, 15 Jan 2024 14:30:00 +0000'）
 - weight_score必须是0-100之间的整数
 - source必须是有效的URL（以http://或https://开头）
 """
@@ -347,7 +348,7 @@ class StructuredOutputManager:
             return """
 你必须返回一个JSON对象，格式如下：
 {
-    "time": "发布时间",
+    "time": "发布时间(保持原始RFC 2822格式)",
     "category": "分类类别",
     "weight_score": 0-100的整数,
     "summary": "内容摘要",
@@ -356,6 +357,7 @@ class StructuredOutputManager:
 
 注意：
 - 必须包含所有5个字段
+- time保持原始RFC 2822格式（如 'Mon, 15 Jan 2024 14:30:00 +0000'）
 - weight_score必须是0-100之间的整数
 - source必须是有效的URL（以http://或https://开头）
 """

@@ -6,6 +6,7 @@
 
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from email.utils import parsedate_to_datetime
 
 
 # 东八区时区对象
@@ -20,6 +21,45 @@ def now_utc8() -> datetime:
         当前东八区时间（带时区信息）
     """
     return datetime.now(UTC_PLUS_8)
+
+
+def parse_rfc2822_to_utc8(time_str: str) -> Optional[datetime]:
+    """
+    解析RFC 2822格式的时间字符串并转换为东八区时间
+    
+    Args:
+        time_str: RFC 2822格式的时间字符串（如 'Mon, 15 Jan 2024 14:30:00 +0000'）
+        
+    Returns:
+        转换后的东八区datetime对象，解析失败返回None
+    """
+    try:
+        # 使用email.utils.parsedate_to_datetime解析RFC 2822格式
+        dt = parsedate_to_datetime(time_str)
+        # 转换为东八区
+        return dt.astimezone(UTC_PLUS_8)
+    except Exception:
+        return None
+
+
+def format_rfc2822_to_utc8_string(
+    time_str: str,
+    format_str: str = "%m-%d %H:%M"
+) -> str:
+    """
+    解析RFC 2822格式时间并格式化为东八区时间字符串
+    
+    Args:
+        time_str: RFC 2822格式的时间字符串
+        format_str: 输出格式字符串
+        
+    Returns:
+        格式化后的东八区时间字符串，解析失败返回原字符串
+    """
+    dt = parse_rfc2822_to_utc8(time_str)
+    if dt:
+        return dt.strftime(format_str)
+    return time_str
 
 
 def format_datetime_utc8(
