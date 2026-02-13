@@ -173,9 +173,9 @@ class CategoryParser:
         从内容中解析分类定义
         
         格式：
-        # Categories (仅关注以下分类)
-        - **Whale:** 大户/机构资金流向、链上巨鲸异动、大户持仓态度变化。
-        - **Fed:** 美联储利率政策调整...
+        # Category Definitions (严格分类)
+        - **Whale:** - 必须涉及**大额**资金流向...
+        - **Fed:** - 仅限美联储（Fed）官员发言...
         
         Args:
             content: 提示词文件内容
@@ -185,14 +185,26 @@ class CategoryParser:
         """
         categories = {}
         
-        # 直接在整个内容中查找分类定义行
-        # 格式: - **Key:** 描述
-        line_pattern = r'- \*\*(\w+):\*\* (.+?)(?=\n|$)'
-        matches = re.finditer(line_pattern, content, re.MULTILINE)
+        # 查找 "# Category Definitions" 部分
+        category_section_pattern = r'# Category Definitions[^\n]*\n(.*?)(?=\n#|\Z)'
+        section_match = re.search(category_section_pattern, content, re.DOTALL)
+        
+        if not section_match:
+            logger.warning("未找到 '# Category Definitions' 部分")
+            return categories
+        
+        section_content = section_match.group(1)
+        
+        # 在该部分中查找分类定义行
+        # 格式: - **Key:** - 描述 或 - **Key:** 描述
+        line_pattern = r'- \*\*(\w+):\*\*\s*-?\s*(.+?)(?=\n-|\Z)'
+        matches = re.finditer(line_pattern, section_content, re.DOTALL)
         
         for match in matches:
             key = match.group(1)
             description = match.group(2).strip()
+            # 移除多余的换行和空格
+            description = ' '.join(description.split())
             
             # 推断中文名称
             chinese_name = self._extract_chinese_name(key, description)
