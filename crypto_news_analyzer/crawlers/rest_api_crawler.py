@@ -65,7 +65,8 @@ class RESTAPICrawler(DataSourceInterface):
         self.session.headers.update(self.DEFAULT_HEADERS)
         
         # 计算时间窗口
-        self.cutoff_time = datetime.now() - timedelta(hours=time_window_hours)
+        from datetime import timezone
+        self.cutoff_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
         
         self.logger.info(f"REST API爬取器初始化完成，时间窗口: {time_window_hours}小时")
     
@@ -405,7 +406,8 @@ class RESTAPICrawler(DataSourceInterface):
             publish_time = self._parse_time_string(time_str)
             if not publish_time:
                 self.logger.debug("无法解析时间，使用当前时间")
-                publish_time = datetime.now()
+                from datetime import timezone
+                publish_time = datetime.now(timezone.utc)
             
             # 创建ContentItem
             return create_content_item_from_raw(

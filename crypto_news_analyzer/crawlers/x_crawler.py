@@ -348,7 +348,8 @@ class XCrawler:
         try:
             if not time_str:
                 self.logger.warning("时间字符串为空，使用当前时间")
-                return datetime.now()
+                from datetime import timezone
+                return datetime.now(timezone.utc)
             
             # 尝试多种时间格式
             time_formats = [
@@ -397,11 +398,13 @@ class XCrawler:
                 pass
             
             self.logger.warning(f"无法解析时间格式: {time_str}，使用当前时间")
-            return datetime.now()
+            from datetime import timezone
+            return datetime.now(timezone.utc)
             
         except Exception as e:
             self.logger.warning(f"解析Twitter时间失败: {time_str}, 错误: {str(e)}")
-            return datetime.now()
+            from datetime import timezone
+            return datetime.now(timezone.utc)
     
     def is_within_time_window(self, publish_time: datetime) -> bool:
         """
@@ -413,7 +416,8 @@ class XCrawler:
         Returns:
             bool: 是否在时间窗口内
         """
-        cutoff_time = datetime.now() - timedelta(hours=self.time_window_hours)
+        from datetime import timezone
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=self.time_window_hours)
         return publish_time >= cutoff_time
     
     def get_diagnostic_info(self) -> Dict[str, Any]:

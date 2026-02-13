@@ -221,7 +221,8 @@ class RSSCrawler:
             publish_time = self._extract_publish_time(entry)
             if not publish_time:
                 self.logger.debug("RSS条目缺少发布时间，使用当前时间")
-                publish_time = datetime.now()
+                from datetime import timezone
+                publish_time = datetime.now(timezone.utc)
             
             # 创建ContentItem
             return create_content_item_from_raw(
