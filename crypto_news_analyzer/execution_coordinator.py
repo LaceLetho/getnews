@@ -30,7 +30,7 @@ import asyncio
 
 from .config.manager import ConfigManager
 from .storage.data_manager import DataManager
-from .crawlers.data_source_factory import get_data_source_factory, register_builtin_sources
+from .crawlers.data_source_factory import get_data_source_factory
 from .analyzers.llm_analyzer import LLMAnalyzer
 from .reporters.report_generator import ReportGenerator, create_analyzed_data
 from .reporters.telegram_sender import TelegramSenderSync, create_telegram_config
@@ -227,9 +227,7 @@ class MainController:
             self.error_manager = ErrorRecoveryManager()
             self.logger.info("错误恢复管理器初始化完成")
             
-            # 注册内置数据源
-            register_builtin_sources()
-            self.logger.info("内置数据源注册完成")
+            # 内置数据源已在模块导入时自动注册（见 crawlers/__init__.py）
             
             # 初始化LLM分析器
             auth_config = self.config_manager.get_auth_config()
