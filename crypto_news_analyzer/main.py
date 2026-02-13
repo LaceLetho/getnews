@@ -18,7 +18,8 @@ from .utils.logging import setup_logging
 def main():
     """主函数"""
     # 设置日志系统
-    setup_logging()
+    log_level = os.environ.get('LOG_LEVEL', 'INFO')
+    setup_logging(log_level=log_level)
     logger = logging.getLogger(__name__)
     
     # 解析命令行参数

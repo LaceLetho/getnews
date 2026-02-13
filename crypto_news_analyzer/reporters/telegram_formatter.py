@@ -151,13 +151,17 @@ class TelegramFormatter:
         if not self.config.escape_special_chars:
             return text
         
+        if not isinstance(text, str):
+            text = str(text)
+        
         # 使用MarkdownV1的简化转义规则（更稳定）
         # 只转义真正会影响格式的字符
-        # 改进：使用正则避免重复转义
+        # 改进：使用正则避免重复转义，使用原始字符串避免转义问题
         for char in self.markdown_v1_special_chars:
-            # 只转义未被转义的字符
-            pattern = f'(?<!\\\\){re.escape(char)}'
-            replacement = f'\\{char}'
+            # 只转义未被转义的字符（使用负向后查找）
+            # 注意：需要使用4个反斜杠来匹配一个反斜杠
+            pattern = r'(?<!\\)' + re.escape(char)
+            replacement = '\\' + char
             text = re.sub(pattern, replacement, text)
         
         return text
@@ -223,10 +227,20 @@ class TelegramFormatter:
             
             if unescaped_asterisks % 2 != 0:
                 self.logger.warning(f"粗体标记不匹配: 发现{unescaped_asterisks}个未转义的*")
+                # 输出未转义的*位置用于调试
+                positions = [m.start() for m in re.finditer(r'(?<!\\)\*', text)]
+                self.logger.debug(f"未转义*的位置: {positions[:10]}")  # 只显示前10个
                 return False
             
             if unescaped_underscores % 2 != 0:
                 self.logger.warning(f"斜体标记不匹配: 发现{unescaped_underscores}个未转义的_")
+                # 输出未转义的_位置和上下文用于调试
+                matches = list(re.finditer(r'(?<!\\)_', text))
+                for i, m in enumerate(matches[:5]):  # 只显示前5个
+                    start = max(0, m.start() - 20)
+                    end = min(len(text), m.end() + 20)
+                    context = text[start:end]
+                    self.logger.debug(f"未转义_位置{i+1}: ...{context}...")
                 return False
             
             return True

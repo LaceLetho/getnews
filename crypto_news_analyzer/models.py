@@ -79,7 +79,12 @@ class ContentItem:
     def from_dict(cls, data: Dict[str, Any]) -> 'ContentItem':
         """从字典反序列化"""
         if isinstance(data['publish_time'], str):
-            data['publish_time'] = datetime.fromisoformat(data['publish_time'])
+            publish_time = datetime.fromisoformat(data['publish_time'])
+            # 确保时间有时区信息
+            if publish_time.tzinfo is None:
+                from datetime import timezone
+                publish_time = publish_time.replace(tzinfo=timezone.utc)
+            data['publish_time'] = publish_time
         return cls(**data)
     
     def to_json(self) -> str:
@@ -750,6 +755,11 @@ def create_content_item_from_raw(
             # 尝试其他常见格式
             from dateutil import parser
             publish_time = parser.parse(publish_time)
+    
+    # 确保时间有时区信息
+    if publish_time.tzinfo is None:
+        from datetime import timezone
+        publish_time = publish_time.replace(tzinfo=timezone.utc)
     
     # 生成ID
     item_id = ContentItem.generate_id(title, url, publish_time)

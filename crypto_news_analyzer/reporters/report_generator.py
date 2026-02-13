@@ -123,9 +123,9 @@ class ReportGenerator:
         # 优化移动端显示
         full_report = self.formatter.optimize_for_mobile_display(full_report)
         
-        # 验证格式
+        # 验证格式（仅警告，不阻止报告生成）
         if not self.formatter.validate_telegram_format(full_report):
-            self.logger.warning("生成的报告格式可能存在问题")
+            self.logger.warning("生成的报告格式可能存在问题，但仍将继续发送")
         
         self.logger.info(f"报告生成完成，总长度: {len(full_report)} 字符")
         

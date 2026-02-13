@@ -56,7 +56,7 @@ class RSSCrawler:
         
         # 计算时间窗口 - 使用UTC时间
         from datetime import timezone
-        self.cutoff_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=time_window_hours)
+        self.cutoff_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
         
         self.logger.info(f"RSS爬取器初始化完成，时间窗口: {time_window_hours}小时，截止时间: {self.cutoff_time}")
     
