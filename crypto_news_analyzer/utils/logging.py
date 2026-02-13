@@ -31,7 +31,11 @@ class LogManager:
         """设置日志配置"""
         # 创建根日志器
         root_logger = logging.getLogger()
-        root_logger.setLevel(logging.INFO)
+        
+        # 从环境变量读取日志级别，默认为INFO
+        log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+        level = getattr(logging, log_level, logging.INFO)
+        root_logger.setLevel(level)
         
         # 清除现有处理器
         for handler in root_logger.handlers[:]:
@@ -67,7 +71,7 @@ class LogManager:
         
         # 控制台处理器 - 明确输出到 stdout
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.DEBUG)  # 允许DEBUG级别通过
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
         
