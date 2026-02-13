@@ -707,7 +707,8 @@ class TelegramCommandHandler:
             
             # 获取市场快照
             response = self.handle_market_command(user_id, username)
-            await update.message.reply_text(response, parse_mode="Markdown")
+            # 不使用 Markdown 解析，避免特殊字符导致的解析错误
+            await update.message.reply_text(response)
             self._log_command_execution("/market", user_id, username, None, True, "市场快照获取成功")
             
         except Exception as e:
@@ -1021,22 +1022,23 @@ class TelegramCommandHandler:
                 self.logger.error(error_msg)
                 return f"❌ {error_msg}\n\n请确保已正确配置GROK_API_KEY环境变量。"
             
-            # 获取市场快照
-            snapshot_result = self.market_snapshot_service.get_market_snapshot()
+            # 获取市场快照（从缓存）
+            # 注意：MarketSnapshotService.get_market_snapshot() 需要 prompt_template 参数
+            # 但我们只需要从缓存获取，所以传递一个空字符串即可
+            snapshot = self.market_snapshot_service.get_market_snapshot("")
             
-            if not snapshot_result.success or not snapshot_result.snapshot:
-                error_msg = snapshot_result.error_message or "未知错误"
-                self.logger.error(f"获取市场快照失败: {error_msg}")
-                return f"❌ 获取市场快照失败\n\n原因: {error_msg}"
+            if not snapshot or not snapshot.is_valid:
+                error_msg = "无法获取市场快照"
+                self.logger.error(error_msg)
+                return f"❌ {error_msg}\n\n请稍后再试或联系管理员。"
             
-            # 格式化市场快照为Telegram消息
-            snapshot = snapshot_result.snapshot
+            # 格式化市场快照为Telegram消息（纯文本格式）
             response_parts = [
-                "🌐 *市场现状快照*\n",
+                "🌐 市场现状快照\n",
                 f"📅 获取时间: {format_datetime_utc8(snapshot.timestamp, '%Y-%m-%d %H:%M:%S')}\n",
                 f"📊 数据来源: {snapshot.source}\n",
                 f"⭐ 质量评分: {snapshot.quality_score:.2f}\n",
-                "\n---\n",
+                "\n" + "="*40 + "\n",
                 snapshot.content
             ]
             
