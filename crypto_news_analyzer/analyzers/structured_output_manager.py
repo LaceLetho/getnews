@@ -266,8 +266,11 @@ class StructuredOutputManager:
             
             # 如果启用web_search工具（仅Grok支持）
             if enable_web_search:
-                call_params["tools"] = [{"type": "web_search"}]
-                logger.info("已启用web_search工具，Grok将自动搜索重要信息")
+                call_params["tools"] = [
+                    {"type": "web_search"},
+                    {"type": "x_search"}
+                ]
+                logger.info("已启用web_search和x_search工具，Grok将自动搜索重要信息")
             
             # 调用instructor
             result = self.instructor_client.chat.completions.create(**call_params)
@@ -310,8 +313,11 @@ class StructuredOutputManager:
             
             # 如果启用web_search工具（仅Grok支持）
             if enable_web_search:
-                call_params["tools"] = [{"type": "web_search"}]
-                logger.info("已启用web_search工具，Grok将自动搜索重要信息")
+                call_params["tools"] = [
+                    {"type": "web_search"},
+                    {"type": "x_search"}
+                ]
+                logger.info("已启用web_search和x_search工具，Grok将自动搜索重要信息")
             
             # 调用LLM
             response = llm_client.chat.completions.create(**call_params)
