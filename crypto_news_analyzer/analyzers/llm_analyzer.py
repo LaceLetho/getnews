@@ -391,11 +391,7 @@ class LLMAnalyzer:
         # 打印系统提示词
         self.logger.info("🤖 系统提示词 (System Prompt):")
         self.logger.info(f"{'-' * 80}")
-        # 截断过长的系统提示词，只显示前500字符和后200字符
-        if len(system_prompt) > 700:
-            self.logger.info(f"{system_prompt[:500]}\n\n... [中间省略 {len(system_prompt) - 700} 字符] ...\n\n{system_prompt[-200:]}")
-        else:
-            self.logger.info(system_prompt)
+        self.logger.info(system_prompt)
         self.logger.info(f"{'-' * 80}\n")
 
         # 打印用户提示词
