@@ -70,17 +70,6 @@ Mount Path: /app/data
    RAILWAY_VOLUME_MOUNT_PATH=/app/data
    ```
 
-3. **测试写入**
-   
-   通过 Railway Dashboard 的 Web Terminal：
-   - 访问 https://railway.app
-   - 进入项目 → 服务 → Deployments
-   - 打开 Web Terminal 执行：
-   ```bash
-   touch /app/data/test.txt
-   ls -la /app/data/
-   ```
-
 ## 常用操作
 
 ### 查看数据库内容
