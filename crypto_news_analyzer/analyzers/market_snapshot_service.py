@@ -113,12 +113,21 @@ class MarketSnapshotService:
         # 质量验证配置
         self.min_content_length = 50
         self.quality_keywords = [
+            # 中文关键词
             "市场", "价格", "趋势", "政策", "监管", "利率", "行情", "预期",
             "比特币", "以太坊", "加密货币", "区块链", "DeFi", "NFT", "Layer2",
             "美联储", "通胀", "经济", "投资", "交易", "波动", "上涨", "下跌",
             "牛市", "熊市", "震荡", "突破", "支撑", "阻力", "成交量", "资金",
             "机构", "散户", "FOMO", "恐慌", "贪婪", "情绪", "信心", "风险",
-            "合规", "ETF", "期货", "现货", "杠杆", "做多", "做空", "套利"
+            "合规", "ETF", "期货", "现货", "杠杆", "做多", "做空", "套利",
+            # 英文关键词
+            "market", "price", "trend", "policy", "regulation", "rate", "trading", "expectation",
+            "bitcoin", "btc", "ethereum", "eth", "crypto", "blockchain", "defi", "nft", "layer2",
+            "fed", "inflation", "economy", "investment", "trade", "volatility", "rally", "decline",
+            "bull", "bear", "consolidation", "breakout", "support", "resistance", "volume", "fund",
+            "institutional", "retail", "fomo", "fear", "greed", "sentiment", "confidence", "risk",
+            "compliance", "etf", "futures", "spot", "leverage", "long", "short", "arbitrage",
+            "inflow", "outflow", "accumulation", "distribution", "liquidity", "treasury", "yield"
         ]
         
         # 创建缓存目录
