@@ -34,7 +34,7 @@ class ReportGenerator:
     报告生成器
     
     根据需求7实现Telegram适配的报告生成功能：
-    - 需求7.2: 在报告头部包含数据时间窗口和数据时间范围信息
+    - 需求7.2: 在报告头部包含数据时间窗口信息
     - 需求7.4: 按大模型返回的分类动态组织各消息大类
     - 需求7.5: 支持动态分类展示，根据大模型返回的类别数量自动调整报告结构
     - 需求7.7: 将source字段格式化为Telegram超链接形式
@@ -142,8 +142,6 @@ class ReportGenerator:
         
         根据需求7.2实现报告头部信息：
         - 数据时间窗口
-        - 数据时间范围
-        - 生成时间戳
         
         Args:
             time_window: 时间窗口（小时）
@@ -154,19 +152,9 @@ class ReportGenerator:
             格式化后的报告头部
         """
         # 格式化标题
-        title = self.formatter.format_header("📰 加密货币新闻快讯", level=1)
+        title = self.formatter.format_header(f"📰 {time_window}小时加密货币新闻快讯", level=1)
         
-        # 格式化时间信息（使用东八区时间）
-        start_str = format_datetime_utc8(start_time, "%Y-%m-%d %H:%M")
-        end_str = format_datetime_utc8(end_time, "%Y-%m-%d %H:%M")
-        
-        time_info = self.formatter.format_time_range(start_str, end_str, time_window)
-        
-        # 生成时间（使用东八区时间）
-        generation_time = format_datetime_utc8(None, "%Y-%m-%d %H:%M:%S")
-        gen_time_text = f"🕐 *生成时间*: {self.formatter.escape_special_characters(generation_time)}\n"
-        
-        return f"{title}\n{time_info}{gen_time_text}"
+        return title
     
     def generate_data_source_status(self, status: CrawlStatus) -> str:
         """

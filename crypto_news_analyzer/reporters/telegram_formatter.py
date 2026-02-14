@@ -513,23 +513,6 @@ class TelegramFormatter:
             格式化后的分类标题
         """
         return f"\n{emoji} *{self.escape_special_characters(category_name)}* ({item_count}条)\n"
-    
-    def format_time_range(self, start_time: str, end_time: str, window_hours: int) -> str:
-        """格式化时间范围
-        
-        Args:
-            start_time: 开始时间
-            end_time: 结束时间
-            window_hours: 时间窗口（小时）
-            
-        Returns:
-            格式化后的时间范围
-        """
-        return (
-            f"⏰ *数据时间窗口*: {window_hours}小时\n"
-            f"📅 *数据时间范围*: {self.escape_special_characters(start_time)} 至 "
-            f"{self.escape_special_characters(end_time)}\n"
-        )
 
 
 # 工具函数

@@ -413,18 +413,6 @@ class TestComplexFormatting:
         assert "大户动向" in result
         assert "5条" in result
     
-    def test_format_time_range(self):
-        """测试格式化时间范围"""
-        formatter = TelegramFormatter()
-        result = formatter.format_time_range(
-            start_time="2024-01-01 00:00",
-            end_time="2024-01-01 23:59",
-            window_hours=24
-        )
-        assert "24小时" in result
-        assert "2024-01-01 00:00" in result
-        assert "2024-01-01 23:59" in result
-    
     def test_format_section_header(self):
         """测试格式化章节标题"""
         formatter = TelegramFormatter()

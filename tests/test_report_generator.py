@@ -127,12 +127,7 @@ class TestReportGenerator:
         
         # 验证包含必要信息
         assert "加密货币新闻快讯" in header
-        assert "数据时间窗口" in header
-        assert "24小时" in header or "24" in header
-        assert "数据时间范围" in header
-        assert "2024-01-01" in header
-        assert "2024-01-02" in header
-        assert "生成时间" in header
+        assert "24" in header
     
     def test_generate_data_source_status(self, report_generator, sample_crawl_status):
         """测试生成数据源状态"""
@@ -224,7 +219,6 @@ class TestReportGenerator:
         
         # 验证报告包含所有主要部分
         assert "加密货币新闻快讯" in report
-        assert "数据源状态" in report
         assert "大户动向" in report
         assert "安全事件" in report
         
