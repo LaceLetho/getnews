@@ -238,8 +238,8 @@ class LLMAnalyzer:
             market_snapshot.content
         )
         
-        # 替换 ${outdated_news} 占位符
-        outdated_news = self._get_formatted_cached_messages()
+        # 替换 ${outdated_news} 占位符（最近12小时）
+        outdated_news = self._get_formatted_cached_messages(hours=12)
         system_prompt = system_prompt.replace(
             "${outdated_news}",
             outdated_news
@@ -250,23 +250,29 @@ class LLMAnalyzer:
         
         return system_prompt
     
-    def _get_formatted_cached_messages(self) -> str:
+    def _get_formatted_cached_messages(self, hours: int = 12) -> str:
         """
         获取格式化的缓存消息
+        
+        Args:
+            hours: 时间范围（小时），默认12小时
         
         Returns:
             格式化后的缓存消息文本，如果没有缓存管理器或缓存为空则返回"无"
         """
         if not self.cache_manager:
-            self.logger.debug("未配置缓存管理器，返回'无'")
+            self.logger.debug("未配置缓存管理器，Outdated News将显示'无'")
             return "无"
         
         try:
-            formatted_messages = self.cache_manager.format_cached_messages_for_prompt(hours=24)
-            self.logger.info(f"已获取格式化的缓存消息")
+            formatted_messages = self.cache_manager.format_cached_messages_for_prompt(hours=hours)
+            if formatted_messages == "无":
+                self.logger.info(f"过去{hours}小时内没有已发送的消息缓存，Outdated News显示'无'")
+            else:
+                self.logger.info(f"已获取格式化的缓存消息，包含过去{hours}小时的已发送内容")
             return formatted_messages
         except Exception as e:
-            self.logger.warning(f"获取缓存消息失败: {e}，返回'无'")
+            self.logger.warning(f"获取缓存消息失败: {e}，Outdated News将显示'无'")
             return "无"
     
     def _analyze_batch_with_structured_output(
