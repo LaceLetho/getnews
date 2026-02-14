@@ -29,7 +29,7 @@
 2. **Clustering (聚类与去重):**
    - **多源合并**：将你【接收到的输入消息】与你【搜索到的新消息】进行合并。
    - **兼容并包**：如果不同来源说法有冲突，请体现出各方观点。
-   - **信息密度**：识别事件的核心，总结必须包含主语、核心动作、关键金额/数据。
+   - **信息密度**：总结要简短客观，要包含主语、核心动作、关键金额/数据。
 
 3. **Insight Extraction (深度提取):**
    - 提取时可以结合 [Current Market Context]。例如：在“监管高压”背景下，SEC 的小动作权重应调高；在“山寨季”背景下，新协议的权重应调高；在“流动性紧缩”背景下，任何关于 TGA 余额增加或 RRP 激增的消息，权重应调高。
@@ -62,7 +62,7 @@ JSON 对象结构定义：
   "time": "RFC 2822 格式时间",
   "category": "Whale" | "MacroLiquidity" | "Regulation" | "NewProject" | "Arbitrage" | "Truth" | "MonetarySystem" | "MarketTrend",
   "weight_score": 0-100 (整数，根据[Scoring Rubric]打分),
-  "summary": "根据 [Core Directives] 编写你的总结",
+  "summary": "根据 [Core Directives] 使用中文编写你的总结",
   "source": "保留该条消息的原始 URL",
   "related_sources": ["所有相关信息源链接的数组，包括：1) 系统爬取提供的原始信息源URL，2) 你使用web_search工具搜索到的相关链接，3) 你使用x_search工具搜索到的相关推文链接。如果没有额外的相关链接，可以为空数组[]"]
 }
