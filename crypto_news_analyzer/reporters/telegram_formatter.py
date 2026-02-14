@@ -470,7 +470,7 @@ class TelegramFormatter:
                     continue
             
             if related_links:
-                message += f"\n📎 相关: {' | '.join(related_links)}"
+                message += f" | {' | '.join(related_links)}"
         
         return message
     
