@@ -25,7 +25,7 @@
     "market_prompt_path": "./prompts/market_summary_prompt.md",
     "analysis_prompt_path": "./prompts/analysis_prompt.md",
     "min_weight_score": 40,
-    "cache_ttl_minutes": 30
+    "cache_ttl_minutes": 240
   },
   "rss_sources": [
     {

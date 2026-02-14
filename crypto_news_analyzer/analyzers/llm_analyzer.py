@@ -353,7 +353,6 @@ class LLMAnalyzer:
             prompt_parts.append(f"来源: {item.url}")
             
             # 将 datetime 转换为 RFC 2822 格式（带时区信息）
-            # 如果 publish_time 没有时区信息，假设为本地时间（UTC+8）
             dt_with_tz = convert_to_utc8(item.publish_time)
             rfc2822_time = format_datetime(dt_with_tz)
             prompt_parts.append(f"发布时间: {rfc2822_time}")
