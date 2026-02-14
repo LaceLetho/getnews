@@ -37,25 +37,29 @@ class CategoryParser:
     # 默认emoji映射（作为后备）
     DEFAULT_EMOJI_MAP = {
         "Whale": "🐋",
-        "Fed": "📊",
+        "MacroLiquidity": "📊",
         "Regulation": "🏛️",
         "NewProject": "🚀",
         "Arbitrage": "💰",
         "Truth": "💡",
+        "MonetarySystem": "💵",
         "MarketTrend": "✨",
         "Security": "🔒",  # 保留以防旧配置
+        "Fed": "📊",  # 保留以防旧配置
     }
     
     # 英文key到中文名称的映射（从描述推断）
     KEY_TO_CHINESE_NAME = {
         "Whale": "大户动向",
-        "Fed": "利率事件",
-        "Regulation": "美国政府监管政策",
+        "MacroLiquidity": "宏观流动性",
+        "Regulation": "监管政策",
         "NewProject": "新产品",
         "Arbitrage": "套利机会",
         "Truth": "真相",
+        "MonetarySystem": "货币体系",
         "MarketTrend": "市场新现象",
         "Security": "安全事件",  # 保留以防旧配置
+        "Fed": "利率事件",  # 保留以防旧配置
     }
     
     def __init__(self, prompt_file_path: str = "./prompts/analysis_prompt.md"):

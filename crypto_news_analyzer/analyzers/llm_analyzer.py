@@ -391,7 +391,7 @@ class LLMAnalyzer:
         """生成模拟分析结果（用于测试）"""
         mock_results = []
         
-        categories = ["Whale", "Fed", "Regulation", "Security", "NewProject", "MarketTrend"]
+        categories = ["Whale", "MacroLiquidity", "Regulation", "NewProject", "Arbitrage", "Truth", "MonetarySystem", "MarketTrend"]
         
         for i, item in enumerate(items):
             # 模拟：只保留部分内容，其他被过滤
