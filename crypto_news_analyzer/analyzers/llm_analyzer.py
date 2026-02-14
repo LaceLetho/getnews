@@ -307,6 +307,9 @@ class LLMAnalyzer:
                     {"role": "user", "content": user_prompt}
                 ]
                 
+                # 以用户友好的方式打印最终发送给LLM的完整提示词
+                self._log_final_prompt(system_prompt, user_prompt, i // self.batch_size + 1)
+                
                 # 使用结构化输出管理器强制返回结构化数据（启用web_search工具）
                 batch_result = self.structured_output_manager.force_structured_response(
                     llm_client=self.client,
@@ -317,6 +320,9 @@ class LLMAnalyzer:
                     batch_mode=True,
                     enable_web_search=True  # 启用web_search工具
                 )
+                
+                # 打印LLM返回的原始数据
+                self._log_llm_response(batch_result, i // self.batch_size + 1)
                 
                 # 提取结果
                 if isinstance(batch_result, BatchAnalysisResult):
@@ -361,6 +367,106 @@ class LLMAnalyzer:
         prompt_parts.append("\n\n请按照要求输出JSON格式的分析结果。")
         
         return "\n".join(prompt_parts)
+    def _log_final_prompt(self, system_prompt: str, user_prompt: str, batch_number: int) -> None:
+        """
+        以用户友好的方式打印最终发送给LLM的完整提示词
+
+        Args:
+            system_prompt: 系统提示词
+            user_prompt: 用户提示词
+            batch_number: 批次编号
+        """
+        separator = "=" * 80
+
+        self.logger.info(f"\n{separator}")
+        self.logger.info(f"📤 发送给LLM的完整提示词 (批次 {batch_number})")
+        self.logger.info(f"{separator}\n")
+
+        # 打印系统提示词
+        self.logger.info("🤖 系统提示词 (System Prompt):")
+        self.logger.info(f"{'-' * 80}")
+        # 截断过长的系统提示词，只显示前500字符和后200字符
+        if len(system_prompt) > 700:
+            self.logger.info(f"{system_prompt[:500]}\n\n... [中间省略 {len(system_prompt) - 700} 字符] ...\n\n{system_prompt[-200:]}")
+        else:
+            self.logger.info(system_prompt)
+        self.logger.info(f"{'-' * 80}\n")
+
+        # 打印用户提示词
+        self.logger.info("👤 用户提示词 (User Prompt):")
+        self.logger.info(f"{'-' * 80}")
+        # 截断过长的用户提示词，只显示前1000字符和后300字符
+        if len(user_prompt) > 1300:
+            self.logger.info(f"{user_prompt[:1000]}\n\n... [中间省略 {len(user_prompt) - 1300} 字符] ...\n\n{user_prompt[-300:]}")
+        else:
+            self.logger.info(user_prompt)
+        self.logger.info(f"{'-' * 80}\n")
+
+        # 打印统计信息
+        self.logger.info("📊 提示词统计:")
+        self.logger.info(f"  • 系统提示词长度: {len(system_prompt)} 字符")
+        self.logger.info(f"  • 用户提示词长度: {len(user_prompt)} 字符")
+        self.logger.info(f"  • 总长度: {len(system_prompt) + len(user_prompt)} 字符")
+        self.logger.info(f"  • 模型: {self.model}")
+        self.logger.info(f"  • 温度: {self.temperature}")
+        self.logger.info(f"{separator}\n")
+    def _log_llm_response(self, response: Any, batch_number: int) -> None:
+        """
+        以用户友好的方式打印LLM返回的原始数据
+
+        Args:
+            response: LLM返回的响应对象
+            batch_number: 批次编号
+        """
+        import json
+        from pydantic import BaseModel
+
+        separator = "=" * 80
+
+        self.logger.info(f"\n{separator}")
+        self.logger.info(f"📥 LLM返回的原始数据 (批次 {batch_number})")
+        self.logger.info(f"{separator}\n")
+
+        try:
+            # 如果是Pydantic模型，转换为字典
+            if isinstance(response, BaseModel):
+                response_dict = response.model_dump()
+                response_json = json.dumps(response_dict, ensure_ascii=False, indent=2)
+            # 如果已经是字典
+            elif isinstance(response, dict):
+                response_json = json.dumps(response, ensure_ascii=False, indent=2)
+            # 其他类型，尝试转换为字符串
+            else:
+                response_json = str(response)
+
+            # 打印响应数据
+            self.logger.info("🔍 响应内容:")
+            self.logger.info(f"{'-' * 80}")
+
+            # 如果响应太长，进行智能截断
+            if len(response_json) > 3000:
+                self.logger.info(f"{response_json[:2000]}\n\n... [中间省略 {len(response_json) - 3000} 字符] ...\n\n{response_json[-1000:]}")
+            else:
+                self.logger.info(response_json)
+
+            self.logger.info(f"{'-' * 80}\n")
+
+            # 打印统计信息
+            self.logger.info("📊 响应统计:")
+            self.logger.info(f"  • 响应类型: {type(response).__name__}")
+            self.logger.info(f"  • 响应长度: {len(response_json)} 字符")
+
+            # 如果是BatchAnalysisResult，显示结果数量
+            if hasattr(response, 'results'):
+                self.logger.info(f"  • 分析结果数量: {len(response.results)}")
+
+        except Exception as e:
+            self.logger.error(f"打印LLM响应失败: {e}")
+            self.logger.info(f"原始响应对象: {response}")
+
+        self.logger.info(f"{separator}\n")
+
+
     
     def _load_market_prompt_template(self) -> str:
         """加载市场快照提示词模板"""
