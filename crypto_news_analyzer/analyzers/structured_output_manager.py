@@ -299,8 +299,24 @@ class StructuredOutputManager:
                 ]
                 logger.info("已启用web_search和x_search工具，Grok将自动搜索重要信息")
             
-            # 调用instructor
-            result = self.instructor_client.chat.completions.create(**call_params)
+            # 打印instructor处理前的参数
+            self._log_instructor_request(call_params, batch_mode)
+            
+            # 拦截HTTP请求
+            captured_request = self._capture_http_request(
+                lambda: self.instructor_client.chat.completions.create(**call_params)
+            )
+            
+            # 打印捕获的完整HTTP请求
+            if captured_request:
+                self._log_captured_http_request(captured_request)
+            
+            # 实际调用（已经在capture中执行了，这里获取结果）
+            result = captured_request.get('result') if captured_request else None
+            
+            if result is None:
+                # 如果拦截失败，直接调用
+                result = self.instructor_client.chat.completions.create(**call_params)
             
             logger.info(f"成功获取结构化响应 (batch_mode={batch_mode}, web_search={enable_web_search})")
             return result
@@ -694,3 +710,136 @@ class StructuredOutputManager:
             }
         else:
             return single_example
+
+    def _capture_http_request(self, api_call_func):
+        """
+        拦截HTTP请求，捕获实际发送的内容
+        
+        Args:
+            api_call_func: 要执行的API调用函数
+            
+        Returns:
+            包含请求详情和结果的字典
+        """
+        captured = {'request': None, 'result': None}
+        
+        try:
+            # 尝试通过httpx拦截
+            import httpx
+            
+            # 保存原始的request方法
+            original_request = httpx.Client.request
+            
+            def intercepted_request(self, method, url, **kwargs):
+                # 捕获请求
+                captured['request'] = {
+                    'method': method,
+                    'url': str(url),
+                    'headers': dict(kwargs.get('headers', {})),
+                    'json': kwargs.get('json'),
+                    'content': kwargs.get('content')
+                }
+                # 调用原始方法
+                return original_request(self, method, url, **kwargs)
+            
+            # 替换方法
+            httpx.Client.request = intercepted_request
+            
+            # 执行API调用
+            captured['result'] = api_call_func()
+            
+            # 恢复原始方法
+            httpx.Client.request = original_request
+            
+        except Exception as e:
+            logger.warning(f"HTTP请求拦截失败: {e}")
+            # 如果拦截失败，直接执行
+            try:
+                captured['result'] = api_call_func()
+            except Exception as call_error:
+                logger.error(f"API调用失败: {call_error}")
+                raise
+        
+        return captured
+    
+    def _log_captured_http_request(self, captured: Dict[str, Any]) -> None:
+        """
+        打印捕获的完整HTTP请求
+        
+        Args:
+            captured: 捕获的请求信息
+        """
+        import json
+        separator = "=" * 80
+        
+        request = captured.get('request')
+        if not request:
+            logger.warning("未能捕获HTTP请求详情")
+            return
+        
+        logger.info(f"\n{separator}")
+        logger.info("🌐 实际发送的完整HTTP请求")
+        logger.info(f"{separator}\n")
+        
+        # 1. 请求行和头部
+        logger.info(f"📡 HTTP请求:")
+        logger.info(f"   {request.get('method', 'POST')} {request.get('url', 'N/A')}")
+        logger.info(f"   Content-Type: application/json")
+        
+        # 打印关键headers（隐藏敏感信息）
+        headers = request.get('headers', {})
+        if headers:
+            logger.info(f"\n   Headers:")
+            for key, value in headers.items():
+                if key.lower() in ['authorization', 'api-key']:
+                    logger.info(f"      {key}: {value[:20]}...***")
+                elif key.lower() in ['content-type', 'user-agent']:
+                    logger.info(f"      {key}: {value}")
+        
+        # 2. 请求体
+        request_body = request.get('json')
+        if request_body:
+            logger.info(f"\n📦 请求体 (JSON):")
+            logger.info(f"{'-' * 80}")
+            
+            # 简化messages显示
+            display_body = request_body.copy()
+            if 'messages' in display_body:
+                simplified_messages = []
+                for msg in display_body['messages']:
+                    content = msg.get('content', '')
+                    if len(content) > 300:
+                        simplified_msg = {
+                            'role': msg['role'],
+                            'content': f"{content[:150]}...[省略{len(content)-300}字符]...{content[-150:]}"
+                        }
+                    else:
+                        simplified_msg = msg
+                    simplified_messages.append(simplified_msg)
+                display_body['messages'] = simplified_messages
+            
+            # 打印JSON
+            try:
+                json_str = json.dumps(display_body, indent=2, ensure_ascii=False)
+                logger.info(json_str)
+            except Exception as e:
+                logger.warning(f"无法序列化请求体: {e}")
+                logger.info(str(display_body))
+            
+            logger.info(f"{'-' * 80}")
+        
+        # 3. 统计信息
+        logger.info(f"\n📊 请求统计:")
+        if request_body:
+            logger.info(f"   • messages数量: {len(request_body.get('messages', []))}")
+            logger.info(f"   • tools数量: {len(request_body.get('tools', []))}")
+            logger.info(f"   • 是否有tool_choice: {'是' if 'tool_choice' in request_body else '否'}")
+            
+            # 计算大致的请求大小
+            try:
+                request_size = len(json.dumps(request_body, ensure_ascii=False).encode('utf-8'))
+                logger.info(f"   • 请求体大小: ~{request_size:,} bytes")
+            except:
+                pass
+        
+        logger.info(f"\n{separator}\n")
