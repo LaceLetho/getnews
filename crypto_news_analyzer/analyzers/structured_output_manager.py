@@ -8,6 +8,7 @@ import json
 import logging
 from typing import Dict, Any, List, Optional, Type, Union
 from dataclasses import dataclass
+from pathlib import Path
 from pydantic import BaseModel, Field, field_validator, ValidationError
 from enum import Enum
 
@@ -39,11 +40,12 @@ class StructuredAnalysisResult(BaseModel):
     结构化分析结果模型
     
     这是大模型必须返回的标准格式，包含所有必需字段。
+    字段定义和描述来自 prompts/analysis_prompt.md 中的 Output Format 部分。
     """
     model_config = {"json_schema_extra": {
         "example": {
-            "time": "2024-01-01 12:00",
-            "category": "大户动向",
+            "time": "Mon, 15 Jan 2024 14:30:00 +0000",
+            "category": "Whale",
             "weight_score": 85,
             "summary": "某巨鲸地址转移10000 ETH到交易所",
             "source": "https://example.com/news/123",
@@ -54,14 +56,15 @@ class StructuredAnalysisResult(BaseModel):
         }
     }}
     
-    time: str = Field(..., description="发布时间，保持原始RFC 2822格式（如 'Mon, 15 Jan 2024 14:30:00 +0000'）")
-    category: str = Field(..., description="动态分类类别，由大模型返回决定")
-    weight_score: int = Field(..., ge=0, le=100, description="重要性评分，0-100之间")
-    summary: str = Field(..., min_length=1, description="内容摘要，不能为空")
-    source: str = Field(..., description="原文链接URL")
+    # 字段定义参考 prompts/analysis_prompt.md 的 Output Format 部分
+    time: str = Field(..., description="RFC 2822 格式时间")
+    category: str = Field(..., description="Whale | MacroLiquidity | Regulation | NewProject | Arbitrage | Truth | MonetarySystem | MarketTrend")
+    weight_score: int = Field(..., ge=0, le=100, description="0-100 (整数，根据[Scoring Rubric]打分)")
+    summary: str = Field(..., min_length=1, description="根据 [Core Directives] 使用中文编写你的总结")
+    source: str = Field(..., description="保留该条消息的原始 URL")
     related_sources: List[str] = Field(
         default_factory=list,
-        description="相关信息源链接列表，包括系统爬取的信息源和AI使用web_search、x_search引用到的所有相关链接"
+        description="所有相关信息源链接的数组，包括：1) 系统爬取提供的原始信息源URL，2) 你使用web_search工具搜索到的相关链接，3) 你使用x_search工具搜索到的相关推文链接。如果没有额外的相关链接，可以为空数组[]"
     )
     
     @field_validator('time')
@@ -371,49 +374,76 @@ class StructuredOutputManager:
             raise
     
     def _build_json_instruction(self, batch_mode: bool) -> str:
-        """构建JSON格式指令"""
+        """
+        构建JSON格式指令
+        
+        注意：此方法从 prompts/analysis_prompt.md 动态读取 Output Format 部分
+        """
+        # 读取 analysis_prompt.md 中的 Output Format 部分
+        try:
+            prompt_path = Path("prompts/analysis_prompt.md")
+            if prompt_path.exists():
+                with open(prompt_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                # 提取 Output Format 部分
+                import re
+                match = re.search(r'# Output Format\s+(.*?)(?=\n#|\Z)', content, re.DOTALL)
+                if match:
+                    output_format_section = match.group(1).strip()
+                    
+                    if batch_mode:
+                        return f"""
+你必须返回一个JSON对象，格式如下：
+{{
+    "results": [
+        // 这里是分析结果数组，每个元素的格式见下方定义
+    ]
+}}
+
+注意：
+- results可以是空列表[]，表示所有内容被过滤
+- 每个结果对象的格式定义如下：
+
+{output_format_section}
+"""
+                    else:
+                        return f"""
+{output_format_section}
+"""
+        except Exception as e:
+            logger.warning(f"无法从 analysis_prompt.md 读取 Output Format: {e}，使用默认格式")
+        
+        # 如果读取失败，使用默认格式
         if batch_mode:
             return """
 你必须返回一个JSON对象，格式如下：
 {
     "results": [
         {
-            "time": "发布时间(保持原始RFC 2822格式)",
-            "category": "分类类别",
-            "weight_score": 0-100的整数,
-            "summary": "内容摘要",
-            "source": "原文链接URL",
-            "related_sources": ["相关信息源URL1", "相关信息源URL2"]
+            "time": "RFC 2822 格式时间",
+            "category": "Whale | MacroLiquidity | Regulation | NewProject | Arbitrage | Truth | MonetarySystem | MarketTrend",
+            "weight_score": 0-100 (整数),
+            "summary": "中文总结",
+            "source": "原始 URL",
+            "related_sources": ["相关链接数组"]
         }
     ]
 }
 
-注意：
-- results可以是空列表[]，表示所有内容被过滤
-- 每个结果对象必须包含time、category、weight_score、summary、source这5个必需字段
-- related_sources是可选字段，应包含所有相关信息源链接（包括系统爬取的信息源和你使用web_search、x_search引用到的所有相关链接）
-- time保持原始RFC 2822格式（如 'Mon, 15 Jan 2024 14:30:00 +0000'）
-- weight_score必须是0-100之间的整数
-- source和related_sources中的URL必须是有效的（以http://或https://开头）
+注意：results可以是空列表[]
 """
         else:
             return """
 你必须返回一个JSON对象，格式如下：
 {
-    "time": "发布时间(保持原始RFC 2822格式)",
-    "category": "分类类别",
-    "weight_score": 0-100的整数,
-    "summary": "内容摘要",
-    "source": "原文链接URL",
-    "related_sources": ["相关信息源URL1", "相关信息源URL2"]
+    "time": "RFC 2822 格式时间",
+    "category": "Whale | MacroLiquidity | Regulation | NewProject | Arbitrage | Truth | MonetarySystem | MarketTrend",
+    "weight_score": 0-100 (整数),
+    "summary": "中文总结",
+    "source": "原始 URL",
+    "related_sources": ["相关链接数组"]
 }
-
-注意：
-- 必须包含time、category、weight_score、summary、source这5个必需字段
-- related_sources是可选字段，应包含所有相关信息源链接（包括系统爬取的信息源和你使用web_search、x_search引用到的所有相关链接）
-- time保持原始RFC 2822格式（如 'Mon, 15 Jan 2024 14:30:00 +0000'）
-- weight_score必须是0-100之间的整数
-- source和related_sources中的URL必须是有效的（以http://或https://开头）
 """
     
     def _add_json_instruction_to_messages(
@@ -625,6 +655,8 @@ class StructuredOutputManager:
         """
         创建示例响应，用于测试和文档
         
+        注意：示例格式参考 prompts/analysis_prompt.md 的 Output Format 部分
+        
         Args:
             batch_mode: 是否批量模式
             
@@ -632,8 +664,8 @@ class StructuredOutputManager:
             示例响应字典
         """
         single_example = {
-            "time": "2024-01-01 12:00",
-            "category": "大户动向",
+            "time": "Mon, 15 Jan 2024 14:30:00 +0000",
+            "category": "Whale",
             "weight_score": 85,
             "summary": "某巨鲸地址转移10000 ETH到交易所",
             "source": "https://example.com/news/123",
@@ -648,14 +680,14 @@ class StructuredOutputManager:
                 "results": [
                     single_example,
                     {
-                        "time": "2024-01-01 13:30",
-                        "category": "安全事件",
+                        "time": "Mon, 15 Jan 2024 15:45:00 +0000",
+                        "category": "Regulation",
                         "weight_score": 95,
-                        "summary": "某DeFi协议发现严重漏洞",
+                        "summary": "SEC批准现货比特币ETF",
                         "source": "https://example.com/news/456",
                         "related_sources": [
-                            "https://github.com/protocol/security-advisory",
-                            "https://twitter.com/protocol/status/456"
+                            "https://sec.gov/announcement/456",
+                            "https://twitter.com/sec/status/456"
                         ]
                     }
                 ]
