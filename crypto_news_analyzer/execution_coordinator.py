@@ -208,6 +208,7 @@ class MainController:
             
             # 初始化数据管理器
             storage_config = self.config_manager.get_storage_config()
+            self.storage_config = storage_config  # 保存为实例变量供后续使用
             self.data_manager = DataManager(storage_config)
             self.logger.info("数据管理器初始化完成")
             
