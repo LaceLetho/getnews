@@ -299,9 +299,6 @@ class StructuredOutputManager:
                 ]
                 logger.info("已启用web_search和x_search工具，Grok将自动搜索重要信息")
             
-            # 打印instructor处理前的参数
-            self._log_instructor_request(call_params, batch_mode)
-            
             # 拦截HTTP请求
             captured_request = self._capture_http_request(
                 lambda: self.instructor_client.chat.completions.create(**call_params)
