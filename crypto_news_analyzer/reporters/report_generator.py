@@ -334,6 +334,7 @@ class ReportGenerator:
         根据需求7.6和7.7实现消息格式化：
         - 包含所有必需字段
         - source字段转换为Telegram超链接
+        - 显示所有相关信息源链接
         
         Args:
             item: 结构化分析结果
@@ -348,7 +349,8 @@ class ReportGenerator:
             category=item.category,
             weight_score=item.weight_score,
             summary=item.summary,
-            source_url=item.source
+            source_url=item.source,
+            related_sources=item.related_sources
         )
         
         # 添加序号

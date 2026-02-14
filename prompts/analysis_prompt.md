@@ -61,7 +61,8 @@ JSON 对象结构定义：
   "category": "Whale" | "Fed" | "Regulation" | "NewProject" | "Arbitrage" | "MarketTrend" | "Truth",
   "weight_score": 0-100 (整数，分数越高代表事件越重磅),
   "summary": "使用中文总结核心内容，要包括：主体，动作/事件，核心数据/细节，直接影响/隐含意义。如果核心在于其隐含意图可追加背景补充，如果逻辑复杂可追加逻辑补充。",
-  "source": "保留该条消息的原始 URL"
+  "source": "保留该条消息的原始 URL",
+  "related_sources": ["所有相关信息源链接的数组，包括：1) 系统爬取提供的原始信息源URL，2) 你使用web_search工具搜索到的相关链接，3) 你使用x_search工具搜索到的相关推文链接。如果没有额外的相关链接，可以为空数组[]"]
 }
 
 # Current Market Context

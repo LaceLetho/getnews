@@ -416,13 +416,14 @@ class TelegramFormatter:
             return f"\n*{self.escape_special_characters(title)}*\n"
     
     def format_message_item(self, time: str, category: str, weight_score: int, 
-                           summary: str, source_url: str) -> str:
+                           summary: str, source_url: str, related_sources: Optional[List[str]] = None) -> str:
         """格式化单条消息项
         
         根据需求7.6和7.7实现消息格式化：
-        - 包含大模型返回的所有字段（time、category、weight_score、summary、source）
+        - 包含大模型返回的所有字段（time、category、weight_score、summary、source、related_sources）
         - 将source字段格式化为Telegram超链接形式
         - 将RFC 2822格式时间转换为东八区显示
+        - 显示所有相关信息源链接
         
         Args:
             time: 时间（RFC 2822格式字符串，如 "Mon, 15 Jan 2024 14:30:00 +0000"）
@@ -430,6 +431,7 @@ class TelegramFormatter:
             weight_score: 重要性评分
             summary: 摘要
             source_url: 来源URL
+            related_sources: 相关信息源链接列表（可选）
             
         Returns:
             格式化后的消息项
@@ -453,6 +455,22 @@ class TelegramFormatter:
         # 构建消息项：摘要在前，时间、评分、链接在后面一行
         message = f"{self.escape_special_characters(summary)}\n"
         message += f"{self.escape_special_characters(simplified_time)} | {weight_score} | {self.format_hyperlink(source_name, source_url)}"
+        
+        # 如果有相关信息源，添加到消息中
+        if related_sources and len(related_sources) > 0:
+            related_links = []
+            for url in related_sources:
+                try:
+                    parsed = urlparse(url)
+                    domain = parsed.netloc or '链接'
+                    if domain.startswith('www.'):
+                        domain = domain[4:]
+                    related_links.append(self.format_hyperlink(domain, url))
+                except Exception:
+                    continue
+            
+            if related_links:
+                message += f"\n📎 相关: {' | '.join(related_links)}"
         
         return message
     

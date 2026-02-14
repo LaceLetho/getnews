@@ -401,7 +401,11 @@ class LLMAnalyzer:
                     category=categories[i % len(categories)],
                     weight_score=50 + (i * 10) % 50,
                     summary=f"模拟分析: {item.title[:50]}...",
-                    source=item.url
+                    source=item.url,
+                    related_sources=[
+                        f"https://example.com/related/{i}/1",
+                        f"https://example.com/related/{i}/2"
+                    ]
                 ))
         
         return mock_results
@@ -444,7 +448,8 @@ class LLMAnalyzer:
                 category="MarketTrend",
                 weight_score=75,
                 summary=f"模拟分析: {content[:50]}...",
-                source="https://example.com/mock"
+                source="https://example.com/mock",
+                related_sources=[]
             )
         
         if not self.client:

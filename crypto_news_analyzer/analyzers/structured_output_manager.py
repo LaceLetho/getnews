@@ -46,7 +46,11 @@ class StructuredAnalysisResult(BaseModel):
             "category": "大户动向",
             "weight_score": 85,
             "summary": "某巨鲸地址转移10000 ETH到交易所",
-            "source": "https://example.com/news/123"
+            "source": "https://example.com/news/123",
+            "related_sources": [
+                "https://example.com/related1",
+                "https://example.com/related2"
+            ]
         }
     }}
     
@@ -55,6 +59,10 @@ class StructuredAnalysisResult(BaseModel):
     weight_score: int = Field(..., ge=0, le=100, description="重要性评分，0-100之间")
     summary: str = Field(..., min_length=1, description="内容摘要，不能为空")
     source: str = Field(..., description="原文链接URL")
+    related_sources: List[str] = Field(
+        default_factory=list,
+        description="相关信息源链接列表，包括系统爬取的信息源和AI使用web_search、x_search引用到的所有相关链接"
+    )
     
     @field_validator('time')
     @classmethod
@@ -91,6 +99,22 @@ class StructuredAnalysisResult(BaseModel):
         if not (v.startswith('http://') or v.startswith('https://')):
             raise ValueError(f"来源必须是有效的URL: {v}")
         return v
+    
+    @field_validator('related_sources')
+    @classmethod
+    def validate_related_sources(cls, v: List[str]) -> List[str]:
+        """验证相关信息源列表"""
+        if v is None:
+            return []
+        
+        validated = []
+        for url in v:
+            if url and url.strip():
+                url = url.strip()
+                if url.startswith('http://') or url.startswith('https://'):
+                    validated.append(url)
+        
+        return validated
 
 
 class BatchAnalysisResult(BaseModel):
@@ -358,17 +382,19 @@ class StructuredOutputManager:
             "category": "分类类别",
             "weight_score": 0-100的整数,
             "summary": "内容摘要",
-            "source": "原文链接URL"
+            "source": "原文链接URL",
+            "related_sources": ["相关信息源URL1", "相关信息源URL2"]
         }
     ]
 }
 
 注意：
 - results可以是空列表[]，表示所有内容被过滤
-- 每个结果对象必须包含所有5个字段
+- 每个结果对象必须包含time、category、weight_score、summary、source这5个必需字段
+- related_sources是可选字段，应包含所有相关信息源链接（包括系统爬取的信息源和你使用web_search、x_search引用到的所有相关链接）
 - time保持原始RFC 2822格式（如 'Mon, 15 Jan 2024 14:30:00 +0000'）
 - weight_score必须是0-100之间的整数
-- source必须是有效的URL（以http://或https://开头）
+- source和related_sources中的URL必须是有效的（以http://或https://开头）
 """
         else:
             return """
@@ -378,14 +404,16 @@ class StructuredOutputManager:
     "category": "分类类别",
     "weight_score": 0-100的整数,
     "summary": "内容摘要",
-    "source": "原文链接URL"
+    "source": "原文链接URL",
+    "related_sources": ["相关信息源URL1", "相关信息源URL2"]
 }
 
 注意：
-- 必须包含所有5个字段
+- 必须包含time、category、weight_score、summary、source这5个必需字段
+- related_sources是可选字段，应包含所有相关信息源链接（包括系统爬取的信息源和你使用web_search、x_search引用到的所有相关链接）
 - time保持原始RFC 2822格式（如 'Mon, 15 Jan 2024 14:30:00 +0000'）
 - weight_score必须是0-100之间的整数
-- source必须是有效的URL（以http://或https://开头）
+- source和related_sources中的URL必须是有效的（以http://或https://开头）
 """
     
     def _add_json_instruction_to_messages(
@@ -494,6 +522,17 @@ class StructuredOutputManager:
             elif not (result['source'].startswith('http://') or result['source'].startswith('https://')):
                 errors.append("source必须是有效的URL")
         
+        # 验证可选的related_sources字段
+        if 'related_sources' in result:
+            if not isinstance(result['related_sources'], list):
+                errors.append("related_sources字段必须是列表")
+            else:
+                for i, url in enumerate(result['related_sources']):
+                    if not isinstance(url, str):
+                        errors.append(f"related_sources[{i}]必须是字符串")
+                    elif not (url.startswith('http://') or url.startswith('https://')):
+                        errors.append(f"related_sources[{i}]必须是有效的URL")
+        
         return errors
     
     def handle_malformed_response(
@@ -597,7 +636,11 @@ class StructuredOutputManager:
             "category": "大户动向",
             "weight_score": 85,
             "summary": "某巨鲸地址转移10000 ETH到交易所",
-            "source": "https://example.com/news/123"
+            "source": "https://example.com/news/123",
+            "related_sources": [
+                "https://etherscan.io/tx/0x123",
+                "https://twitter.com/whale_alert/status/123"
+            ]
         }
         
         if batch_mode:
@@ -609,7 +652,11 @@ class StructuredOutputManager:
                         "category": "安全事件",
                         "weight_score": 95,
                         "summary": "某DeFi协议发现严重漏洞",
-                        "source": "https://example.com/news/456"
+                        "source": "https://example.com/news/456",
+                        "related_sources": [
+                            "https://github.com/protocol/security-advisory",
+                            "https://twitter.com/protocol/status/456"
+                        ]
                     }
                 ]
             }
