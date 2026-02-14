@@ -238,8 +238,8 @@ class LLMAnalyzer:
             market_snapshot.content
         )
         
-        # 替换 ${outdated_news} 占位符（最近12小时）
-        outdated_news = self._get_formatted_cached_messages(hours=12)
+        # 替换 ${outdated_news} 占位符（最近6小时）
+        outdated_news = self._get_formatted_cached_messages(hours=6)
         system_prompt = system_prompt.replace(
             "${outdated_news}",
             outdated_news
@@ -250,12 +250,12 @@ class LLMAnalyzer:
         
         return system_prompt
     
-    def _get_formatted_cached_messages(self, hours: int = 12) -> str:
+    def _get_formatted_cached_messages(self, hours: int = 6) -> str:
         """
         获取格式化的缓存消息
         
         Args:
-            hours: 时间范围（小时），默认12小时
+            hours: 时间范围（小时），默认6小时
         
         Returns:
             格式化后的缓存消息文本，如果没有缓存管理器或缓存为空则返回"无"
