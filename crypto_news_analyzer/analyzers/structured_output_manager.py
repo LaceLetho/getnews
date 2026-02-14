@@ -203,7 +203,8 @@ class StructuredOutputManager:
         model: str = "gpt-4",
         max_retries: int = 3,
         temperature: float = 0.1,
-        batch_mode: bool = False
+        batch_mode: bool = False,
+        enable_web_search: bool = False
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """
         强制大模型返回结构化响应
@@ -215,6 +216,7 @@ class StructuredOutputManager:
             max_retries: 最大重试次数
             temperature: 温度参数
             batch_mode: 是否批量模式（返回列表）
+            enable_web_search: 是否启用web_search工具（仅Grok支持）
             
         Returns:
             结构化的分析结果
@@ -225,11 +227,11 @@ class StructuredOutputManager:
         """
         if self.library == StructuredOutputLibrary.INSTRUCTOR:
             return self._force_with_instructor(
-                llm_client, messages, model, max_retries, temperature, batch_mode
+                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search
             )
         else:
             return self._force_with_native_json(
-                llm_client, messages, model, max_retries, temperature, batch_mode
+                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search
             )
     
     def _force_with_instructor(
@@ -239,7 +241,8 @@ class StructuredOutputManager:
         model: str,
         max_retries: int,
         temperature: float,
-        batch_mode: bool
+        batch_mode: bool,
+        enable_web_search: bool = False
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """使用instructor库强制结构化输出"""
         try:
@@ -252,16 +255,24 @@ class StructuredOutputManager:
             # 选择响应模型
             response_model = BatchAnalysisResult if batch_mode else StructuredAnalysisResult
             
-            # 调用instructor
-            result = self.instructor_client.chat.completions.create(
-                model=model,
-                messages=messages,
-                response_model=response_model,
-                max_retries=max_retries,
-                temperature=temperature
-            )
+            # 构建调用参数
+            call_params = {
+                "model": model,
+                "messages": messages,
+                "response_model": response_model,
+                "max_retries": max_retries,
+                "temperature": temperature
+            }
             
-            logger.info(f"成功获取结构化响应 (batch_mode={batch_mode})")
+            # 如果启用web_search工具（仅Grok支持）
+            if enable_web_search:
+                call_params["tools"] = [{"type": "web_search"}]
+                logger.info("已启用web_search工具，Grok将自动搜索重要信息")
+            
+            # 调用instructor
+            result = self.instructor_client.chat.completions.create(**call_params)
+            
+            logger.info(f"成功获取结构化响应 (batch_mode={batch_mode}, web_search={enable_web_search})")
             return result
             
         except ValidationError as e:
@@ -278,7 +289,8 @@ class StructuredOutputManager:
         model: str,
         max_retries: int,
         temperature: float,
-        batch_mode: bool
+        batch_mode: bool,
+        enable_web_search: bool = False
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """使用原生JSON模式强制结构化输出"""
         try:
@@ -288,13 +300,21 @@ class StructuredOutputManager:
             # 修改消息以包含JSON格式要求
             modified_messages = self._add_json_instruction_to_messages(messages, json_instruction)
             
+            # 构建调用参数
+            call_params = {
+                "model": model,
+                "messages": modified_messages,
+                "temperature": temperature,
+                "response_format": {"type": "json_object"}  # OpenAI JSON模式
+            }
+            
+            # 如果启用web_search工具（仅Grok支持）
+            if enable_web_search:
+                call_params["tools"] = [{"type": "web_search"}]
+                logger.info("已启用web_search工具，Grok将自动搜索重要信息")
+            
             # 调用LLM
-            response = llm_client.chat.completions.create(
-                model=model,
-                messages=modified_messages,
-                temperature=temperature,
-                response_format={"type": "json_object"}  # OpenAI JSON模式
-            )
+            response = llm_client.chat.completions.create(**call_params)
             
             # 解析响应
             content = response.choices[0].message.content
@@ -306,7 +326,7 @@ class StructuredOutputManager:
             else:
                 result = StructuredAnalysisResult(**parsed_data)
             
-            logger.info(f"成功获取原生JSON结构化响应 (batch_mode={batch_mode})")
+            logger.info(f"成功获取原生JSON结构化响应 (batch_mode={batch_mode}, web_search={enable_web_search})")
             return result
             
         except json.JSONDecodeError as e:

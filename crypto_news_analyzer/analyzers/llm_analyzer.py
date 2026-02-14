@@ -307,14 +307,15 @@ class LLMAnalyzer:
                     {"role": "user", "content": user_prompt}
                 ]
                 
-                # 使用结构化输出管理器强制返回结构化数据
+                # 使用结构化输出管理器强制返回结构化数据（启用web_search工具）
                 batch_result = self.structured_output_manager.force_structured_response(
                     llm_client=self.client,
                     messages=messages,
                     model=self.model,
                     max_retries=3,
                     temperature=self.temperature,
-                    batch_mode=True
+                    batch_mode=True,
+                    enable_web_search=True  # 启用web_search工具
                 )
                 
                 # 提取结果
