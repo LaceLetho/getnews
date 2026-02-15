@@ -1019,15 +1019,15 @@ class MainController:
         
         while not self._stop_event.is_set():
             try:
-                # 记录本次调度开始时间（在等待之前记录，确保下次执行时间计算正确）
-                scheduled_time = datetime.now()
-                
                 # 等待调度间隔或停止信号
                 if self._stop_event.wait(interval_seconds):
                     break  # 收到停止信号
                 
-                # 记录下次执行时间（用于日志）
-                next_execution = scheduled_time + timedelta(seconds=interval_seconds)
+                # 记录本次调度开始时间（等待结束后，这是真正的执行时间）
+                scheduled_time = datetime.now()
+                
+                # 计算下次执行时间（基于上次调度时间 + 间隔）
+                next_execution = self._last_scheduled_time + timedelta(seconds=interval_seconds)
                 self.logger.info(f"下次执行时间: {next_execution.strftime('%Y-%m-%d %H:%M:%S')}")
                 
                 # 检查是否有其他执行正在进行
@@ -1040,8 +1040,9 @@ class MainController:
                 self.logger.info("定时调度触发执行")
                 result = self.run_once(trigger_type="scheduled", trigger_user=None)
                 
-                # 更新上次调度时间（只有在实际执行后才更新）
-                self._last_scheduled_time = scheduled_time
+                # 更新上次调度时间为本次调度的理论时间（而不是实际执行时间）
+                # 这样可以避免执行耗时影响下次调度时间
+                self._last_scheduled_time = next_execution
                 
                 if result.success:
                     self.logger.info(f"定时执行成功，处理了 {result.items_processed} 个项目")
