@@ -252,15 +252,94 @@ class StructuredOutputManager:
             ValidationError: 验证失败
             Exception: 其他错误
         """
+        # 如果启用web_search，必须使用原生模式（instructor和response_format都会冲突）
+        if enable_web_search:
+            return self._force_with_web_search(
+                llm_client, messages, model, temperature, batch_mode
+            )
+        
+        # 正常的结构化输出流程
         if self.library == StructuredOutputLibrary.INSTRUCTOR:
             return self._force_with_instructor(
-                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search
+                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False
             )
         else:
             return self._force_with_native_json(
-                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search
+                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False
             )
     
+    def _force_with_web_search(
+            self,
+            llm_client: Any,
+            messages: List[Dict[str, str]],
+            model: str,
+            temperature: float,
+            batch_mode: bool
+        ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
+            """
+            使用web_search工具时的特殊处理
+
+            使用OpenAI client.responses.parse() API
+            参考：https://docs.x.ai/developers/model-capabilities/text/structured-outputs
+            """
+            import json
+
+            try:
+                logger.info("启用web_search和x_search工具，使用responses.parse() API")
+
+                # 选择响应模型
+                response_model = BatchAnalysisResult if batch_mode else StructuredAnalysisResult
+
+                # 将messages转换为单个input字符串
+                # responses.parse API使用input参数而不是messages
+                input_text = "\n\n".join([
+                    f"{msg['role']}: {msg['content']}" 
+                    for msg in messages
+                ])
+
+                # 启用DEBUG日志
+                import logging as stdlib_logging
+                openai_logger = stdlib_logging.getLogger("openai")
+                httpx_logger = stdlib_logging.getLogger("httpx")
+                original_openai_level = openai_logger.level
+                original_httpx_level = httpx_logger.level
+                openai_logger.setLevel(stdlib_logging.DEBUG)
+                httpx_logger.setLevel(stdlib_logging.DEBUG)
+
+                logger.info(f"调用responses.parse API，model={model}, tools=[web_search, x_search]")
+
+                # 使用responses.parse API
+                response = llm_client.responses.parse(
+                    model=model,
+                    input=input_text,
+                    tools=[
+                        {"type": "web_search"},
+                        {"type": "x_search"}
+                    ],
+                    text_format=response_model,
+                    temperature=temperature
+                )
+
+                # 恢复日志级别
+                openai_logger.setLevel(original_openai_level)
+                httpx_logger.setLevel(original_httpx_level)
+
+                # 获取解析后的结果
+                result = response.output_parsed
+
+                logger.info(f"成功获取web_search结构化响应 (batch_mode={batch_mode})")
+                logger.info(f"响应类型: {type(result)}")
+
+                return result
+
+            except AttributeError as e:
+                logger.error(f"OpenAI客户端不支持responses.parse API: {e}")
+                logger.error("请确保使用的是支持xAI扩展的OpenAI客户端版本")
+                raise
+            except Exception as e:
+                logger.error(f"使用web_search失败: {e}")
+                raise
+
     def _force_with_instructor(
         self,
         llm_client: Any,
@@ -291,27 +370,10 @@ class StructuredOutputManager:
                 "temperature": temperature
             }
             
-            # 如果启用web_search工具（仅Grok支持）
-            if enable_web_search:
-                call_params["tools"] = [
-                    {"type": "web_search"},
-                    {"type": "x_search"}
-                ]
-                logger.info("已启用web_search和x_search工具，Grok将自动搜索重要信息")
-            
-            # 启用openai客户端的DEBUG日志来查看完整请求
-            import logging as stdlib_logging
-            openai_logger = stdlib_logging.getLogger("openai")
-            original_level = openai_logger.level
-            openai_logger.setLevel(stdlib_logging.DEBUG)
-            
             # 调用instructor
             result = self.instructor_client.chat.completions.create(**call_params)
             
-            # 恢复日志级别
-            openai_logger.setLevel(original_level)
-            
-            logger.info(f"成功获取结构化响应 (batch_mode={batch_mode}, web_search={enable_web_search})")
+            logger.info(f"成功获取结构化响应 (batch_mode={batch_mode})")
             return result
             
         except ValidationError as e:
@@ -347,14 +409,6 @@ class StructuredOutputManager:
                 "response_format": {"type": "json_object"}  # OpenAI JSON模式
             }
             
-            # 如果启用web_search工具（仅Grok支持）
-            if enable_web_search:
-                call_params["tools"] = [
-                    {"type": "web_search"},
-                    {"type": "x_search"}
-                ]
-                logger.info("已启用web_search和x_search工具，Grok将自动搜索重要信息")
-            
             # 调用LLM
             response = llm_client.chat.completions.create(**call_params)
             
@@ -368,7 +422,7 @@ class StructuredOutputManager:
             else:
                 result = StructuredAnalysisResult(**parsed_data)
             
-            logger.info(f"成功获取原生JSON结构化响应 (batch_mode={batch_mode}, web_search={enable_web_search})")
+            logger.info(f"成功获取原生JSON结构化响应 (batch_mode={batch_mode})")
             return result
             
         except json.JSONDecodeError as e:
