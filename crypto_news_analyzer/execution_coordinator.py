@@ -89,6 +89,7 @@ class ExecutionResult:
     errors: List[str]
     trigger_user: Optional[str]
     report_sent: bool
+    trigger_type: str = "manual"  # "scheduled", "manual", "startup"
     trigger_chat_id: Optional[str] = None  # 触发命令的聊天ID
 
     def to_dict(self) -> Dict[str, Any]:
@@ -492,6 +493,7 @@ class MainController:
                 categories_found=result.get("categories_found", {}),
                 errors=result.get("errors", []),
                 trigger_user=trigger_user,
+                trigger_type=trigger_type,
                 trigger_chat_id=trigger_chat_id,
                 report_sent=result.get("report_sent", False)
             )
@@ -541,6 +543,7 @@ class MainController:
                 categories_found={},
                 errors=[error_msg],
                 trigger_user=trigger_user,
+                trigger_type=trigger_type,
                 trigger_chat_id=trigger_chat_id,
                 report_sent=False
             )

@@ -919,12 +919,13 @@ class TelegramCommandHandler:
             if status.get("next_execution_time"):
                 response_parts.append(f"\n下次执行: {status['next_execution_time']}")
             
-            # 最近执行结果
-            history = self.execution_coordinator.get_execution_history(limit=1)
-            if history:
-                last_exec = history[-1]
+            # 最近 scheduled 执行结果
+            history = self.execution_coordinator.get_execution_history(limit=50)
+            scheduled_history = [h for h in history if h.trigger_type == "scheduled"]
+            if scheduled_history:
+                last_exec = scheduled_history[-1]
                 response_parts.append(
-                    f"\n\n*最近执行:*\n"
+                    f"\n\n*最近scheduled执行:*\n"
                     f"时间: {format_datetime_utc8(last_exec.end_time, '%Y-%m-%d %H:%M:%S')}\n"
                     f"结果: {'✅ 成功' if last_exec.success else '❌ 失败'}\n"
                     f"处理项目: {last_exec.items_processed}\n"
