@@ -24,7 +24,7 @@
 1. **Aggressive Filtering (无情过滤):**
    - **完全忽略**：纯粹的价格行情（如 "BTC突破6万"）、K线技术分析（支撑/阻力位）、毫无逻辑的情绪宣泄、无意义的口水战、正确的废话。
    - **软文识别**：对于 `NewProject` 和 `Arbitrage` 类信息，如果包含邀请码、只有单一信源吹捧、或者像是项目方通稿，直接视为噪音丢弃。
-   - **旧闻查杀**：严格比对 [Outdated News]。如果输入信息只是旧闻的“回声”或“换个说法”，直接丢弃。
+   - **旧闻查杀**：严格比对下文 [Outdated News]。如果输入信息只是旧闻的“回声”或“换个说法”，直接丢弃。
    
 2. **Clustering (聚类与去重):**
    - **多源合并**：将你【接收到的输入消息】与你【搜索到的新消息】进行合并。
@@ -32,9 +32,9 @@
    - **信息密度**：总结要简短客观，要包含主语、核心动作、关键金额/数据。
 
 3. **Insight Extraction (深度提取):**
-   - 提取时可以结合 [Current Market Context]。例如：在“监管高压”背景下，SEC 的小动作权重应调高；在“山寨季”背景下，新协议的权重应调高；在“流动性紧缩”背景下，任何关于 TGA 余额增加或 RRP 激增的消息，权重应调高。
+   - 提取时可以结合下文 [Current Market Context]。例如：在“监管高压”背景下，SEC 的小动作权重应调高；在“山寨季”背景下，新协议的权重应调高；在“流动性紧缩”背景下，任何关于 TGA 余额增加或 RRP 激增的消息，权重应调高。
 
-# Category Definitions (严格分类)
+# Category Definitions
 - **Whale:** - 必须涉及**大额**资金流向（如 >$10M 或 500 BTC+）或知名机构（如 BlackRock, Jump Trading）的操作。
   - 忽略不知名的小额转账监控。
 - **MacroLiquidity:** - 流动性阀门，关注“钱的多少”，如：美联储/央行利率决议、TGA/RRP 账户变动、M2 数据、CPI/PCE 数据、日元套利交易（Carry Trade）变动。
@@ -48,7 +48,7 @@
 - **MonetarySystem:** - 货币体系，关注“钱的某种属性/地缘政治”，如：美元霸权挑战（去美元化）、Swift 制裁、黄金储备激增、主权国家购买 BTC、战争导致的法币崩溃、美债信用评级调整。
 - **MarketTrend:** - 真正改变市场叙事（Narrative）的新趋势，或不可抗力的突发大事件（如交易所宕机，重大黑客事件）。
 
-# Scoring Rubric (评分标准)
+# Scoring Rubric
 - **85-100 (Critical):** 货币体系动荡（战争/制裁）、ETF 通过、头部交易所倒闭、美联储政策转向。
 - **70-84 (High):** 宏观流动性重大变化、知名机构建仓、主流赛道爆发。
 - **50-69 (Medium):** 有价值但影响有限的信号。
@@ -60,9 +60,9 @@
 JSON 对象结构定义：
 {
   "time": "RFC 2822 格式时间",
-  "category": "Whale" | "MacroLiquidity" | "Regulation" | "NewProject" | "Arbitrage" | "Truth" | "MonetarySystem" | "MarketTrend",
-  "weight_score": 0-100 (整数，根据[Scoring Rubric]打分),
-  "summary": "根据 [Core Directives] 使用中文编写你的总结",
+  "category": "根据上文[Category Definitions]分类，如：Whale、MacroLiquidity、Truth、MonetarySystem",
+  "weight_score": 根据上文[Scoring Rubric]打分,
+  "summary": "根据上文[Core Directives]使用中文编写你的总结",
   "source": "保留该条消息的原始 URL",
   "related_sources": ["所有相关信息源链接的数组，包括：1) 系统爬取提供的原始信息源URL，2) 你使用web_search工具搜索到的相关链接，3) 你使用x_search工具搜索到的相关推文链接。如果没有额外的相关链接，可以为空数组[]"]
 }
