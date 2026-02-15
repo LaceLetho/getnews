@@ -1004,6 +1004,9 @@ class MainController:
         """
         self.logger.info("调度器循环开始")
         
+        # 初始化上次调度时间为当前时间
+        self._last_scheduled_time = datetime.now()
+        
         consecutive_failures = 0
         max_consecutive_failures = 3
         
@@ -1013,11 +1016,10 @@ class MainController:
                 if self._stop_event.wait(interval_seconds):
                     break  # 收到停止信号
                 
-                # 记录本次调度开始时间（在等待后）
+                # 记录本次调度开始时间
                 scheduled_time = datetime.now()
-                self._last_scheduled_time = scheduled_time
                 
-                # 记录下次执行时间
+                # 记录下次执行时间（用于日志）
                 next_execution = scheduled_time + timedelta(seconds=interval_seconds)
                 self.logger.info(f"下次执行时间: {next_execution.strftime('%Y-%m-%d %H:%M:%S')}")
                 
@@ -1030,6 +1032,9 @@ class MainController:
                 # 执行工作流
                 self.logger.info("定时调度触发执行")
                 result = self.run_once(trigger_type="scheduled", trigger_user=None)
+                
+                # 更新上次调度时间（只有在实际执行后才更新）
+                self._last_scheduled_time = scheduled_time
                 
                 if result.success:
                     self.logger.info(f"定时执行成功，处理了 {result.items_processed} 个项目")
