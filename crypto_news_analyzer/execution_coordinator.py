@@ -477,7 +477,7 @@ class MainController:
                     raise Exception("系统初始化失败")
             
             # 执行完整工作流
-            result = self.coordinate_workflow(trigger_chat_id=trigger_chat_id)
+            result = self.coordinate_workflow(trigger_chat_id=trigger_chat_id, is_manual=(trigger_type == "manual"))
             
             # 更新执行状态
             end_time = datetime.now()
@@ -562,12 +562,13 @@ class MainController:
             with self._execution_lock:
                 self.current_execution = None
     
-    def coordinate_workflow(self, trigger_chat_id: Optional[str] = None) -> Dict[str, Any]:
+    def coordinate_workflow(self, trigger_chat_id: Optional[str] = None, is_manual: bool = False) -> Dict[str, Any]:
         """
         协调完整的工作流程
         
         Args:
             trigger_chat_id: 触发命令的聊天ID（用于发送报告）
+            is_manual: 是否为手动触发（手动触发时不缓存消息）
         
         Returns:
             工作流执行结果
@@ -630,7 +631,8 @@ class MainController:
             send_result = self._execute_sending_stage(
                 report_content, 
                 target_chat_id=trigger_chat_id,
-                categorized_items=categorized_items
+                categorized_items=categorized_items,
+                should_cache=not is_manual  # 手动触发时不缓存
             )
             
             # 更新结果
@@ -854,7 +856,8 @@ class MainController:
         return result
     
     def _execute_sending_stage(self, report_content: str, target_chat_id: Optional[str] = None, 
-                              categorized_items: Optional[Dict[str, List[Any]]] = None) -> Dict[str, Any]:
+                              categorized_items: Optional[Dict[str, List[Any]]] = None,
+                              should_cache: bool = True) -> Dict[str, Any]:
         """
         执行报告发送阶段
         
@@ -864,6 +867,7 @@ class MainController:
             report_content: 报告内容
             target_chat_id: 目标聊天ID（如果提供，发送到该聊天；否则发送到TELEGRAM_CHANNEL_ID）
             categorized_items: 分类后的内容项（用于缓存）
+            should_cache: 是否缓存已发送消息（手动触发时为False，定时任务为True）
         
         Returns:
             发送结果字典
@@ -894,7 +898,8 @@ class MainController:
                 result["success"] = True
                 
                 # 需求17.9: 报告发送成功后缓存已发送的消息
-                if self.cache_manager and categorized_items:
+                # 手动触发时不缓存，避免影响定时任务的去重逻辑
+                if should_cache and self.cache_manager and categorized_items:
                     try:
                         messages_to_cache = []
                         for category, items in categorized_items.items():
@@ -917,6 +922,8 @@ class MainController:
                     except Exception as cache_error:
                         # 需求17.15: 缓存失败不影响主流程
                         self.logger.warning(f"缓存已发送消息失败: {str(cache_error)}")
+                elif not should_cache:
+                    self.logger.info("手动触发执行，跳过消息缓存以避免影响定时任务去重")
             else:
                 error_msg = f"报告发送失败: {send_result.error_message}"
                 self.logger.error(error_msg)
