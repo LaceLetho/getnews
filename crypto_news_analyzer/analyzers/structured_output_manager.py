@@ -37,10 +37,10 @@ class ValidationResult:
 
 class StructuredAnalysisResult(BaseModel):
     """
-    结构化分析结果模型
+    Standard analysis result format.
     
-    这是大模型必须返回的标准格式，包含所有必需字段。
-    字段定义和描述来自 prompts/analysis_prompt.md 中的 Output Format 部分。
+    Field definitions and business rules are specified in system prompt.
+    This model only enforces structure and type constraints.
     """
     model_config = {"json_schema_extra": {
         "example": {
@@ -56,16 +56,12 @@ class StructuredAnalysisResult(BaseModel):
         }
     }}
     
-    # 字段定义参考 prompts/analysis_prompt.md 的 Output Format 部分
-    time: str = Field(..., description="RFC 2822 格式时间")
-    category: str = Field(..., description="Whale | MacroLiquidity | Regulation | NewProject | Arbitrage | Truth | MonetarySystem | MarketTrend")
-    weight_score: int = Field(..., ge=0, le=100, description="0-100 (整数，根据[Scoring Rubric]打分)")
-    summary: str = Field(..., min_length=1, description="根据 [Core Directives] 使用中文编写你的总结")
-    source: str = Field(..., description="保留该条消息的原始 URL")
-    related_sources: List[str] = Field(
-        default_factory=list,
-        description="所有相关信息源链接的数组，包括：1) 系统爬取提供的原始信息源URL，2) 你使用web_search工具搜索到的相关链接，3) 你使用x_search工具搜索到的相关推文链接。如果没有额外的相关链接，可以为空数组[]"
-    )
+    time: str = Field(..., description="RFC 2822 timestamp")
+    category: str = Field(..., description="Event category")
+    weight_score: int = Field(..., ge=0, le=100, description="Importance score")
+    summary: str = Field(..., min_length=1, description="Chinese summary")
+    source: str = Field(..., description="Original URL")
+    related_sources: List[str] = Field(default_factory=list, description="Related URLs")
     
     @field_validator('time')
     @classmethod
@@ -121,10 +117,10 @@ class StructuredAnalysisResult(BaseModel):
 
 
 class BatchAnalysisResult(BaseModel):
-    """批量分析结果容器"""
+    """Batch analysis result container"""
     results: List[StructuredAnalysisResult] = Field(
         default_factory=list,
-        description="分析结果列表，可以为空列表表示所有内容被过滤"
+        description="Analysis results list, can be empty if all content filtered"
     )
     
     @field_validator('results')
