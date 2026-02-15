@@ -361,7 +361,11 @@ class LLMAnalyzer:
         
         for i, item in enumerate(items, 1):
             prompt_parts.append(f"\n--- 内容 {i} ---")
-            prompt_parts.append(f"标题: {item.title}")
+            
+            # X/Twitter内容的标题只是正文的截断，跳过以节省token
+            if item.source_type != "x":
+                prompt_parts.append(f"标题: {item.title}")
+            
             prompt_parts.append(f"内容: {item.content}")
             prompt_parts.append(f"来源: {item.url}")
             
