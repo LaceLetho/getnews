@@ -1011,8 +1011,19 @@ class MainController:
         """
         self.logger.info("调度器循环开始")
         
-        # 初始化上次调度时间为当前时间
-        self._last_scheduled_time = datetime.now()
+        # 尝试从执行历史中恢复上次调度时间（避免重新部署后时间重置）
+        if not self._last_scheduled_time and self.execution_history:
+            # 查找最近一次scheduled类型的执行
+            for result in reversed(self.execution_history):
+                if result.trigger_type == "scheduled":
+                    self._last_scheduled_time = result.start_time
+                    self.logger.info(f"从执行历史恢复上次调度时间: {self._last_scheduled_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    break
+        
+        # 如果仍然没有上次调度时间，初始化为当前时间
+        if not self._last_scheduled_time:
+            self._last_scheduled_time = datetime.now()
+            self.logger.info(f"初始化上次调度时间为当前时间: {self._last_scheduled_time.strftime('%Y-%m-%d %H:%M:%S')}")
         
         consecutive_failures = 0
         max_consecutive_failures = 3
