@@ -87,6 +87,11 @@
       "name": "CFTC General Press",
       "url": "https://www.cftc.gov/RSS/RSSGP/rssgp.xml",
       "description": "CFTC news"
+    },
+    {
+      "name": "ambcrypto",
+      "url": "https://ambcrypto.com/feed/",
+      "description": "ambcrypto articles"
     }
   ],
   "x_sources": [
