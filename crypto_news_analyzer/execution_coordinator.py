@@ -1030,16 +1030,23 @@ class MainController:
         
         while not self._stop_event.is_set():
             try:
-                # 等待调度间隔或停止信号
-                if self._stop_event.wait(interval_seconds):
-                    break  # 收到停止信号
-                
-                # 记录本次调度开始时间（等待结束后，这是真正的执行时间）
-                scheduled_time = datetime.now()
-                
                 # 计算下次执行时间（基于上次调度时间 + 间隔）
                 next_execution = self._last_scheduled_time + timedelta(seconds=interval_seconds)
-                self.logger.info(f"下次执行时间: {next_execution.strftime('%Y-%m-%d %H:%M:%S')}")
+                
+                # 计算需要等待的时间
+                now = datetime.now()
+                wait_seconds = (next_execution - now).total_seconds()
+                
+                # 如果下次执行时间已经过了，立即执行
+                if wait_seconds <= 0:
+                    self.logger.info(f"下次执行时间 {next_execution.strftime('%Y-%m-%d %H:%M:%S')} 已过，立即执行")
+                    wait_seconds = 0
+                else:
+                    self.logger.info(f"下次执行时间: {next_execution.strftime('%Y-%m-%d %H:%M:%S')}，等待 {wait_seconds:.0f} 秒")
+                
+                # 等待到下次执行时间或停止信号
+                if wait_seconds > 0 and self._stop_event.wait(wait_seconds):
+                    break  # 收到停止信号
                 
                 # 检查是否有其他执行正在进行
                 with self._execution_lock:
