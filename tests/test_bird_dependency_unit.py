@@ -228,7 +228,7 @@ class TestBirdDependencyManager(unittest.TestCase):
         instructions = self.manager.get_installation_instructions()
         
         self.assertIsInstance(instructions, str)
-        self.assertIn("npm install -g @steipete/bird@latest", instructions)
+        self.assertIn("npm install -g @laceletho/bird@latest", instructions)
         self.assertIn("pip install", instructions)
         self.assertIn("curl", instructions)
     

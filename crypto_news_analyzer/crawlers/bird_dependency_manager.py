@@ -308,7 +308,7 @@ class BirdDependencyManager:
         try:
             self.logger.debug("尝试通过npm安装bird工具")
             result = subprocess.run(
-                ["npm", "install", "-g", "@steipete/bird@latest"],
+                ["npm", "install", "-g", "@laceletho/bird@latest"],
                 capture_output=True,
                 text=True,
                 timeout=300
@@ -378,7 +378,7 @@ class BirdDependencyManager:
             # 根据安装方式选择更新方法
             if self._is_npm_installation(status.executable_path):
                 result = subprocess.run(
-                    ["npm", "update", "-g", "@steipete/bird@latest"],
+                    ["npm", "update", "-g", "@laceletho/bird@latest"],
                     capture_output=True,
                     text=True,
                     timeout=300
@@ -433,23 +433,9 @@ class BirdDependencyManager:
 Bird工具安装指南:
 
 1. 通过npm安装 (推荐):
-   npm install -g @steipete/bird@latest
-
-2. 通过pip安装:
-   pip install bird-tool
-
-3. 手动下载:
-   curl -L -o ~/.local/bin/bird https://github.com/steipete/bird/releases/latest/download/bird
-   chmod +x ~/.local/bin/bird
-
-4. 从源码编译:
-   git clone https://github.com/steipete/bird.git
-   cd bird
-   make install
+   npm install -g @laceletho/bird@latest
 
 安装完成后，请确保bird工具在PATH环境变量中，或在配置文件中指定完整路径。
-
-如需帮助，请访问: https://github.com/steipete/bird
         """.strip()
         
         return instructions

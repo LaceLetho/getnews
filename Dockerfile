@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y \
 RUN node --version && npm --version
 
 # 全局安装bird工具
-RUN npm install -g @steipete/bird@latest
+RUN npm install -g @laceletho/bird@latest
 
 # 验证bird工具安装
 RUN bird --version || echo "Bird工具安装完成，但可能需要配置认证信息"
