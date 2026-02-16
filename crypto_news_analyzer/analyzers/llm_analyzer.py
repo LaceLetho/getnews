@@ -238,8 +238,9 @@ class LLMAnalyzer:
             market_snapshot.content
         )
         
-        # 替换 ${outdated_news} 占位符（最近6小时）
-        outdated_news = self._get_formatted_cached_messages(hours=6)
+        # 替换 ${outdated_news} 占位符（使用配置的时间长度）
+        cached_hours = self.config.get("llm_config", {}).get("cached_messages_hours", 6)
+        outdated_news = self._get_formatted_cached_messages(hours=cached_hours)
         system_prompt = system_prompt.replace(
             "${outdated_news}",
             outdated_news
