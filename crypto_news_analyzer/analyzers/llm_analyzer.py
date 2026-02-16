@@ -58,6 +58,7 @@ class LLMAnalyzer:
         max_tokens: int = 4000,
         batch_size: int = 10,
         cache_ttl_minutes: int = 30,
+        cached_messages_hours: int = 24,
         mock_mode: bool = False,
         cache_manager: Optional[SentMessageCacheManager] = None,
         storage_config: Optional[StorageConfig] = None
@@ -76,6 +77,7 @@ class LLMAnalyzer:
             max_tokens: 最大token数
             batch_size: 批量分析的批次大小
             cache_ttl_minutes: 缓存有效期（分钟）
+            cached_messages_hours: 缓存消息的时间范围（小时）
             mock_mode: 是否使用模拟模式（用于测试）
             cache_manager: 已发送消息缓存管理器（可选）
             storage_config: 存储配置（用于创建缓存管理器，可选）
@@ -90,6 +92,7 @@ class LLMAnalyzer:
         self.max_tokens = max_tokens
         self.batch_size = batch_size
         self.cache_ttl_minutes = cache_ttl_minutes
+        self.cached_messages_hours = cached_messages_hours
         self.mock_mode = mock_mode
         self.logger = logging.getLogger(__name__)
         
@@ -239,8 +242,7 @@ class LLMAnalyzer:
         )
         
         # 替换 ${outdated_news} 占位符（使用配置的时间长度）
-        cached_hours = self.config.get("llm_config", {}).get("cached_messages_hours", 6)
-        outdated_news = self._get_formatted_cached_messages(hours=cached_hours)
+        outdated_news = self._get_formatted_cached_messages(hours=self.cached_messages_hours)
         system_prompt = system_prompt.replace(
             "${outdated_news}",
             outdated_news
