@@ -51,18 +51,36 @@ class SentMessageCacheManager:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
-            # 创建已发送消息缓存表
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS sent_message_cache (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT NOT NULL,
-                    body TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    time TEXT NOT NULL,
-                    sent_at DATETIME NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
+            # 检查表是否存在以及其结构
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='sent_message_cache'
+            """)
+            table_exists = cursor.fetchone() is not None
+            
+            if table_exists:
+                # 检查是否有旧的 summary 列
+                cursor.execute("PRAGMA table_info(sent_message_cache)")
+                columns = {row[1] for row in cursor.fetchall()}
+                
+                if 'summary' in columns and 'title' not in columns:
+                    # 需要迁移：从 summary 迁移到 title + body
+                    logger.info("检测到旧表结构，开始迁移...")
+                    self._migrate_summary_to_title_body(conn)
+                    logger.info("表结构迁移完成")
+            else:
+                # 创建新表
+                cursor.execute('''
+                    CREATE TABLE sent_message_cache (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT NOT NULL,
+                        body TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        time TEXT NOT NULL,
+                        sent_at DATETIME NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
             
             # 创建索引以提高查询性能
             cursor.execute('''
@@ -77,6 +95,53 @@ class SentMessageCacheManager:
             
             conn.commit()
             logger.info("缓存表结构初始化完成")
+    
+    def _migrate_summary_to_title_body(self, conn):
+        """迁移旧表结构：将 summary 列拆分为 title 和 body"""
+        cursor = conn.cursor()
+        
+        try:
+            # 1. 创建新表
+            cursor.execute('''
+                CREATE TABLE sent_message_cache_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    time TEXT NOT NULL,
+                    sent_at DATETIME NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # 2. 迁移数据：将 summary 同时作为 title 和 body
+            cursor.execute('''
+                INSERT INTO sent_message_cache_new 
+                    (id, title, body, category, time, sent_at, created_at)
+                SELECT 
+                    id, 
+                    summary as title, 
+                    summary as body, 
+                    category, 
+                    time, 
+                    sent_at,
+                    created_at
+                FROM sent_message_cache
+            ''')
+            
+            # 3. 删除旧表
+            cursor.execute('DROP TABLE sent_message_cache')
+            
+            # 4. 重命名新表
+            cursor.execute('ALTER TABLE sent_message_cache_new RENAME TO sent_message_cache')
+            
+            conn.commit()
+            logger.info("成功迁移 sent_message_cache 表结构")
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"迁移表结构失败: {e}")
+            raise
     
     @contextmanager
     def _get_connection(self):
