@@ -467,8 +467,8 @@ class TelegramFormatter:
         """
         from ..utils.timezone_utils import format_rfc2822_to_utc8_string
         
-        # 将RFC 2822格式时间转换为东八区短格式（MM-DD HH:MM）
-        simplified_time = format_rfc2822_to_utc8_string(time, "%m-%d %H:%M")
+        # 将RFC 2822格式时间转换为东八区短格式（HH:MM）
+        simplified_time = format_rfc2822_to_utc8_string(time, "%H:%M")
         
         # 从URL中提取品牌名称
         source_name = self.extract_brand_name(source_url, '来源')
