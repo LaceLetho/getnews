@@ -38,21 +38,27 @@ class TestReportGenerator:
                 time="2024-01-01 12:00",
                 category="大户动向",
                 weight_score=85,
-                summary="某巨鲸地址转移10000 ETH到交易所",
+                title="某巨鲸地址转移10000 ETH到交易所",
+
+                body="某巨鲸地址转移10000 ETH到交易所",
                 source="https://example.com/news/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 13:30",
                 category="安全事件",
                 weight_score=95,
-                summary="某DeFi协议发现严重漏洞",
+                title="某DeFi协议发现严重漏洞",
+
+                body="某DeFi协议发现严重漏洞",
                 source="https://example.com/news/2"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 14:15",
                 category="大户动向",
                 weight_score=75,
-                summary="机构投资者增持BTC",
+                title="机构投资者增持BTC",
+
+                body="机构投资者增持BTC",
                 source="https://example.com/news/3"
             )
         ]
@@ -186,7 +192,9 @@ class TestReportGenerator:
             time="2024-01-01 12:00",
             category="大户动向",
             weight_score=85,
-            summary="某巨鲸地址转移10000 ETH到交易所",
+            title="某巨鲸地址转移10000 ETH到交易所",
+
+            body="某巨鲸地址转移10000 ETH到交易所",
             source="https://example.com/news/1"
         )
         
@@ -234,7 +242,9 @@ class TestReportGenerator:
                     time="2024-01-01 12:00",
                     category="大户动向",
                     weight_score=85,
-                    summary="测试",
+                    title="测试",
+
+                    body="测试",
                     source="https://example.com/1"
                 )
             ],
@@ -260,7 +270,9 @@ class TestReportGenerator:
                     time="2024-01-01 12:00",
                     category="大户动向",
                     weight_score=85,
-                    summary="测试",
+                    title="测试",
+
+                    body="测试",
                     source="https://example.com/1"
                 )
             ],
@@ -364,7 +376,9 @@ class TestReportGenerator:
                     time="2024-01-01 12:00",
                     category="分类A",
                     weight_score=80,
-                    summary="测试1",
+                    title="测试1",
+
+                    body="测试1",
                     source="https://example.com/1"
                 )
             ],
@@ -373,21 +387,27 @@ class TestReportGenerator:
                     time="2024-01-01 13:00",
                     category="分类B",
                     weight_score=85,
-                    summary="测试2",
+                    title="测试2",
+
+                    body="测试2",
                     source="https://example.com/2"
                 ),
                 StructuredAnalysisResult(
                     time="2024-01-01 14:00",
                     category="分类B",
                     weight_score=90,
-                    summary="测试3",
+                    title="测试3",
+
+                    body="测试3",
                     source="https://example.com/3"
                 ),
                 StructuredAnalysisResult(
                     time="2024-01-01 15:00",
                     category="分类B",
                     weight_score=75,
-                    summary="测试4",
+                    title="测试4",
+
+                    body="测试4",
                     source="https://example.com/4"
                 )
             ]
@@ -409,7 +429,9 @@ class TestReportGenerator:
             time="2024-01-01 12:00",
             category="测试",
             weight_score=80,
-            summary="测试摘要",
+            title="测试摘要",
+
+            body="测试摘要",
             source="https://example.com/news/123"
         )
         
@@ -435,7 +457,9 @@ class TestReportGenerator:
                 time="2024-01-01 12:00",
                 category="测试",
                 weight_score=score,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com/1"
             )
             
@@ -478,7 +502,9 @@ class TestEdgeCases:
             time="2024-01-01 12:00",
             category="测试",
             weight_score=80,
-            summary="包含特殊字符: *粗体* _斜体_ [链接]",
+            title="包含特殊字符: *粗体",
+
+            body="* _斜体_ [链接]",
             source="https://example.com/1"
         )
         
@@ -498,7 +524,9 @@ class TestEdgeCases:
                 time="2024-01-01 12:00",
                 category=long_category,
                 weight_score=80,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com/1"
             )
         ]
@@ -516,7 +544,9 @@ class TestEdgeCases:
             time="2024-01-01 12:00",
             category="测试",
             weight_score=80,
-            summary="测试",
+            title="测试",
+
+            body="测试",
             source="https://example.com/news?id=123&category=crypto"
         )
         

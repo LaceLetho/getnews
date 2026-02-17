@@ -86,21 +86,27 @@ def mock_analysis_results():
             time="2024-01-01 12:00",
             category="大户动向",
             weight_score=85,
-            summary="比特币突破50000美元",
+            title="比特币突破50000美元",
+
+            body="比特币突破50000美元",
             source="https://example.com/news/1"
         ),
         StructuredAnalysisResult(
             time="2024-01-01 13:00",
             category="新产品",
             weight_score=75,
-            summary="以太坊升级完成",
+            title="以太坊升级完成",
+
+            body="以太坊升级完成",
             source="https://example.com/news/2"
         ),
         StructuredAnalysisResult(
             time="2024-01-01 14:00",
             category="美国政府监管政策",
             weight_score=95,
-            summary="SEC批准比特币ETF",
+            title="SEC批准比特币ETF",
+
+            body="SEC批准比特币ETF",
             source="https://example.com/news/3"
         )
     ]
@@ -568,7 +574,9 @@ class TestDynamicClassificationDiscovery:
                 time="2024-01-01 15:00",
                 category="大户动向",
                 weight_score=80,
-                summary="另一个大户动向",
+                title="另一个大户动向",
+
+                body="另一个大户动向",
                 source="https://example.com/4"
             )
         ]

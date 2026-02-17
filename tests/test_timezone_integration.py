@@ -54,7 +54,9 @@ class TestTimezoneIntegration(unittest.TestCase):
                 time="2024-01-15",
                 category="测试分类",
                 weight_score=8,
-                summary="测试摘要",
+                title="测试摘要",
+
+                body="测试摘要",
                 source="https://example.com"
             )
         ]
@@ -86,14 +88,18 @@ class TestTimezoneIntegration(unittest.TestCase):
                 time="2024-01-15",
                 category="大户动向",
                 weight_score=9,
-                summary="测试新闻1",
+                title="测试新闻1",
+
+                body="测试新闻1",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-15",
                 category="利率事件",
                 weight_score=7,
-                summary="测试新闻2",
+                title="测试新闻2",
+
+                body="测试新闻2",
                 source="https://example.com/2"
             )
         ]
@@ -196,7 +202,9 @@ class TestTimezoneIntegration(unittest.TestCase):
                 time="2024-01-15",
                 category="测试",
                 weight_score=8,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com"
             )
         ]

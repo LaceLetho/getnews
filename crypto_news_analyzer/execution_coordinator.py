@@ -907,7 +907,8 @@ class MainController:
                             for item in items:
                                 # item 是 StructuredAnalysisResult 对象
                                 messages_to_cache.append({
-                                    "summary": item.summary,
+                                    "title": item.title,
+                                    "body": item.body,
                                     "category": item.category,
                                     "time": item.time,
                                     "sent_at": datetime.now().isoformat()

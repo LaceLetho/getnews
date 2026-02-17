@@ -336,7 +336,8 @@ class ReportGenerator:
             time=item.time,
             category=item.category,
             weight_score=item.weight_score,
-            summary=item.summary,
+            title=item.title,
+            body=item.body,
             source_url=item.source,
             related_sources=item.related_sources
         )

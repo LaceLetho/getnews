@@ -55,7 +55,8 @@ class SentMessageCacheManager:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS sent_message_cache (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    summary TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    body TEXT NOT NULL,
                     category TEXT NOT NULL,
                     time TEXT NOT NULL,
                     sent_at DATETIME NOT NULL,
@@ -108,7 +109,7 @@ class SentMessageCacheManager:
         缓存已发送的消息
         
         Args:
-            messages: 消息列表，每个消息包含 summary, category, time 字段
+            messages: 消息列表，每个消息包含 title, body, category, time 字段
             
         Returns:
             成功缓存的消息数量
@@ -126,17 +127,18 @@ class SentMessageCacheManager:
                 for message in messages:
                     try:
                         # 验证必需字段
-                        if not all(key in message for key in ['summary', 'category', 'time']):
+                        if not all(key in message for key in ['title', 'body', 'category', 'time']):
                             logger.warning(f"消息缺少必需字段，跳过: {message}")
                             continue
                         
                         # 插入缓存记录
                         cursor.execute('''
                             INSERT INTO sent_message_cache 
-                            (summary, category, time, sent_at)
-                            VALUES (?, ?, ?, ?)
+                            (title, body, category, time, sent_at)
+                            VALUES (?, ?, ?, ?, ?)
                         ''', (
-                            message['summary'],
+                            message['title'],
+                            message['body'],
                             message['category'],
                             message['time'],
                             sent_at.isoformat()
@@ -160,7 +162,7 @@ class SentMessageCacheManager:
             hours: 时间范围（小时），默认24小时
             
         Returns:
-            缓存消息列表，每条消息包含 summary, category, time, sent_at 字段
+            缓存消息列表，每条消息包含 title, body, category, time, sent_at 字段
         """
         cutoff_time = datetime.now() - timedelta(hours=hours)
         
@@ -168,7 +170,7 @@ class SentMessageCacheManager:
             cursor = conn.cursor()
             
             cursor.execute('''
-                SELECT summary, category, time, sent_at
+                SELECT title, body, category, time, sent_at
                 FROM sent_message_cache
                 WHERE sent_at >= ?
                 ORDER BY sent_at DESC
@@ -181,7 +183,8 @@ class SentMessageCacheManager:
             for row in rows:
                 try:
                     messages.append({
-                        'summary': row['summary'],
+                        'title': row['title'],
+                        'body': row['body'],
                         'category': row['category'],
                         'time': row['time'],
                         'sent_at': row['sent_at']
@@ -240,8 +243,8 @@ class SentMessageCacheManager:
         formatted_lines = []
         for message in messages:
             try:
-                # 格式: - [时间] [分类] 摘要
-                line = f"- [{message['time']}] [{message['category']}] {message['summary']}"
+                # 格式: - [时间] [分类] 标题
+                line = f"- [{message['time']}] [{message['category']}] {message['title']}"
                 formatted_lines.append(line)
             except Exception as e:
                 logger.warning(f"格式化缓存消息失败: {e}, 消息: {message}")

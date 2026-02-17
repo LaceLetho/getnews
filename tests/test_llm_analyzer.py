@@ -167,21 +167,27 @@ class TestLLMAnalyzer:
                 time="2024-01-01 12:00",
                 category="Whale",
                 weight_score=85,
-                summary="测试1",
+                title="测试1",
+
+                body="测试1",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 13:00",
                 category="Fed",
                 weight_score=90,
-                summary="测试2",
+                title="测试2",
+
+                body="测试2",
                 source="https://example.com/2"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 14:00",
                 category="Whale",
                 weight_score=75,
-                summary="测试3",
+                title="测试3",
+
+                body="测试3",
                 source="https://example.com/3"
             )
         ]

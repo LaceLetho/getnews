@@ -102,14 +102,18 @@ def test_cache_sent_messages_after_successful_send(temp_config_file):
                 time="2024-01-01 12:00",
                 category="大户动向",
                 weight_score=85,
-                summary="某巨鲸地址转移10000 ETH",
+                title="某巨鲸地址转移10000 ETH",
+
+                body="某巨鲸地址转移10000 ETH",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 13:00",
                 category="大户动向",
                 weight_score=90,
-                summary="大户买入BTC",
+                title="大户买入BTC",
+
+                body="大户买入BTC",
                 source="https://example.com/2"
             )
         ],
@@ -118,7 +122,9 @@ def test_cache_sent_messages_after_successful_send(temp_config_file):
                 time="2024-01-01 14:00",
                 category="市场新现象",
                 weight_score=75,
-                summary="新的DeFi协议上线",
+                title="新的DeFi协议上线",
+
+                body="新的DeFi协议上线",
                 source="https://example.com/3"
             )
         ]
@@ -147,10 +153,10 @@ def test_cache_sent_messages_after_successful_send(temp_config_file):
     assert len(cached_messages) == 3
     
     # 验证缓存内容
-    summaries = [msg["summary"] for msg in cached_messages]
-    assert "某巨鲸地址转移10000 ETH" in summaries
-    assert "大户买入BTC" in summaries
-    assert "新的DeFi协议上线" in summaries
+    titles = [msg["title"] for msg in cached_messages]
+    assert "某巨鲸地址转移10000 ETH" in titles
+    assert "大户买入BTC" in titles
+    assert "新的DeFi协议上线" in titles
 
 
 def test_cache_statistics_logged_after_caching(temp_config_file):
@@ -170,7 +176,9 @@ def test_cache_statistics_logged_after_caching(temp_config_file):
                 time="2024-01-01 12:00",
                 category="大户动向",
                 weight_score=85,
-                summary="测试消息",
+                title="测试消息",
+
+                body="测试消息",
                 source="https://example.com/1"
             )
         ]
@@ -219,7 +227,9 @@ def test_cache_failure_does_not_affect_main_flow(temp_config_file):
                 time="2024-01-01 12:00",
                 category="大户动向",
                 weight_score=85,
-                summary="测试消息",
+                title="测试消息",
+
+                body="测试消息",
                 source="https://example.com/1"
             )
         ]
@@ -277,7 +287,9 @@ def test_manual_execution_uses_cache(temp_config_file):
                         time="2024-01-01 12:00",
                         category="大户动向",
                         weight_score=85,
-                        summary="手动触发测试",
+                        title="手动触发测试",
+
+                        body="手动触发测试",
                         source="https://example.com/1"
                     )
                 ]

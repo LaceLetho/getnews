@@ -349,7 +349,9 @@ class TestProperty12TelegramFormatCorrectness:
                     time="2024-01-01 10:00",
                     category="TestCategory",
                     weight_score=80,
-                    summary="Test summary",
+                    title="Test summary",
+
+                    body="Test summary",
                     source="https://example.com"
                 )
             ]

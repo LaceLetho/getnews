@@ -416,11 +416,11 @@ class TelegramFormatter:
             return f"\n*{self.escape_special_characters(title)}*\n"
     
     def format_message_item(self, time: str, category: str, weight_score: int, 
-                           summary: str, source_url: str, related_sources: Optional[List[str]] = None) -> str:
+                           title: str, body: str, source_url: str, related_sources: Optional[List[str]] = None) -> str:
         """格式化单条消息项
         
         根据需求7.6和7.7实现消息格式化：
-        - 包含大模型返回的所有字段（time、category、weight_score、summary、source、related_sources）
+        - 包含大模型返回的所有字段（time、category、weight_score、title、body、source、related_sources）
         - 将source字段格式化为Telegram超链接形式
         - 将RFC 2822格式时间转换为东八区显示
         - 显示所有相关信息源链接
@@ -429,7 +429,8 @@ class TelegramFormatter:
             time: 时间（RFC 2822格式字符串，如 "Mon, 15 Jan 2024 14:30:00 +0000"）
             category: 分类
             weight_score: 重要性评分
-            summary: 摘要
+            title: 标题
+            body: 正文
             source_url: 来源URL
             related_sources: 相关信息源链接列表（可选）
             
@@ -452,8 +453,8 @@ class TelegramFormatter:
         except Exception:
             source_name = '来源'
         
-        # 构建消息项：摘要在前，时间、评分、链接在后面一行
-        message = f"{self.escape_special_characters(summary)}\n"
+        # 构建消息项：标题和正文在前，时间、评分、链接在后面一行
+        message = f"{self.escape_special_characters(title)}\n{self.escape_special_characters(body)}\n"
         message += f"{self.escape_special_characters(simplified_time)} | {weight_score} | {self.format_hyperlink(source_name, source_url)}"
         
         # 如果有相关信息源，添加到消息中

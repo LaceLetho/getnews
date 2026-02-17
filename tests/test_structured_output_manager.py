@@ -31,7 +31,9 @@ class TestStructuredAnalysisResult:
             time="2024-01-01 12:00",
             category="大户动向",
             weight_score=85,
-            summary="某巨鲸地址转移10000 ETH到交易所",
+            title="某巨鲸地址转移10000 ETH到交易所",
+
+            body="某巨鲸地址转移10000 ETH到交易所",
             source="https://example.com/news/123"
         )
         
@@ -48,7 +50,9 @@ class TestStructuredAnalysisResult:
             time="2024-01-01 12:00",
             category="测试",
             weight_score=0,
-            summary="测试",
+            title="测试",
+
+            body="测试",
             source="https://example.com"
         )
         assert result.weight_score == 0
@@ -57,7 +61,9 @@ class TestStructuredAnalysisResult:
             time="2024-01-01 12:00",
             category="测试",
             weight_score=100,
-            summary="测试",
+            title="测试",
+
+            body="测试",
             source="https://example.com"
         )
         assert result.weight_score == 100
@@ -68,7 +74,9 @@ class TestStructuredAnalysisResult:
                 time="2024-01-01 12:00",
                 category="测试",
                 weight_score=-1,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com"
             )
         
@@ -77,7 +85,9 @@ class TestStructuredAnalysisResult:
                 time="2024-01-01 12:00",
                 category="测试",
                 weight_score=101,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com"
             )
     
@@ -89,7 +99,9 @@ class TestStructuredAnalysisResult:
                 time="",
                 category="测试",
                 weight_score=50,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com"
             )
         
@@ -99,7 +111,9 @@ class TestStructuredAnalysisResult:
                 time="2024-01-01 12:00",
                 category="",
                 weight_score=50,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com"
             )
         
@@ -120,7 +134,9 @@ class TestStructuredAnalysisResult:
             time="2024-01-01 12:00",
             category="测试",
             weight_score=50,
-            summary="测试",
+            title="测试",
+
+            body="测试",
             source="https://example.com/news"
         )
         assert result.source == "https://example.com/news"
@@ -129,7 +145,9 @@ class TestStructuredAnalysisResult:
             time="2024-01-01 12:00",
             category="测试",
             weight_score=50,
-            summary="测试",
+            title="测试",
+
+            body="测试",
             source="http://example.com/news"
         )
         assert result.source == "http://example.com/news"
@@ -140,7 +158,9 @@ class TestStructuredAnalysisResult:
                 time="2024-01-01 12:00",
                 category="测试",
                 weight_score=50,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="not-a-url"
             )
 
@@ -161,14 +181,18 @@ class TestBatchAnalysisResult:
                 time="2024-01-01 12:00",
                 category="大户动向",
                 weight_score=85,
-                summary="测试1",
+                title="测试1",
+
+                body="测试1",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 13:00",
                 category="安全事件",
                 weight_score=95,
-                summary="测试2",
+                title="测试2",
+
+                body="测试2",
                 source="https://example.com/2"
             )
         ]

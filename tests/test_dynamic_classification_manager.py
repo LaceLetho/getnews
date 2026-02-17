@@ -36,21 +36,27 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="大户转移资金",
+                title="大户转移资金",
+
+                body="大户转移资金",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 11:00",
                 category="Fed",
                 weight_score=90,
-                summary="美联储政策变化",
+                title="美联储政策变化",
+
+                body="美联储政策变化",
                 source="https://example.com/2"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 12:00",
                 category="Whale",
                 weight_score=75,
-                summary="另一个大户动向",
+                title="另一个大户动向",
+
+                body="另一个大户动向",
                 source="https://example.com/3"
             )
         ]
@@ -75,14 +81,18 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="  Whale  ",
                 weight_score=80,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 11:00",
                 category="Whale",
                 weight_score=75,
-                summary="测试2",
+                title="测试2",
+
+                body="测试2",
                 source="https://example.com/2"
             )
         ]
@@ -212,21 +222,27 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="测试1",
+                title="测试1",
+
+                body="测试1",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 11:00",
                 category="Whale",
                 weight_score=75,
-                summary="测试2",
+                title="测试2",
+
+                body="测试2",
                 source="https://example.com/2"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 12:00",
                 category="Fed",
                 weight_score=90,
-                summary="测试3",
+                title="测试3",
+
+                body="测试3",
                 source="https://example.com/3"
             )
         ]
@@ -249,14 +265,18 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="测试1",
+                title="测试1",
+
+                body="测试1",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 11:00",
                 category="Fed",
                 weight_score=90,
-                summary="测试2",
+                title="测试2",
+
+                body="测试2",
                 source="https://example.com/2"
             )
         ]
@@ -283,7 +303,9 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="测试1",
+                title="测试1",
+
+                body="测试1",
                 source="https://example.com/1"
             )
         ]
@@ -296,7 +318,9 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 11:00",
                 category="Whale",
                 weight_score=75,
-                summary="测试2",
+                title="测试2",
+
+                body="测试2",
                 source="https://example.com/2"
             )
         ]
@@ -325,7 +349,9 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com/1"
             )
         ]
@@ -345,7 +371,9 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com/1"
             )
         ]
@@ -366,14 +394,18 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="测试1",
+                title="测试1",
+
+                body="测试1",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 11:00",
                 category="Fed",
                 weight_score=90,
-                summary="测试2",
+                title="测试2",
+
+                body="测试2",
                 source="https://example.com/2"
             )
         ]
@@ -400,7 +432,9 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="测试",
+                title="测试",
+
+                body="测试",
                 source="https://example.com/1"
             )
         ]
@@ -434,14 +468,18 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="测试1",
+                title="测试1",
+
+                body="测试1",
                 source="https://example.com/1"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 11:00",
                 category="Fed",
                 weight_score=90,
-                summary="测试2",
+                title="测试2",
+
+                body="测试2",
                 source="https://example.com/2"
             )
         ]
@@ -455,14 +493,18 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 12:00",
                 category="Whale",
                 weight_score=75,
-                summary="测试3",
+                title="测试3",
+
+                body="测试3",
                 source="https://example.com/3"
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 13:00",
                 category="Fed",
                 weight_score=85,
-                summary="测试4",
+                title="测试4",
+
+                body="测试4",
                 source="https://example.com/4"
             )
         ]
@@ -483,7 +525,9 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 10:00",
                 category="Whale",
                 weight_score=80,
-                summary="测试1",
+                title="测试1",
+
+                body="测试1",
                 source="https://example.com/1"
             )
         ]
@@ -496,7 +540,9 @@ class TestDynamicClassificationManager:
                 time="2024-01-01 11:00",
                 category="Regulation",
                 weight_score=90,
-                summary="测试2",
+                title="测试2",
+
+                body="测试2",
                 source="https://example.com/2"
             )
         ]

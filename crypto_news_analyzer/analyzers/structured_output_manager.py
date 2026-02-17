@@ -47,7 +47,8 @@ class StructuredAnalysisResult(BaseModel):
             "time": "Mon, 15 Jan 2024 14:30:00 +0000",
             "category": "Whale",
             "weight_score": 85,
-            "summary": "某巨鲸地址转移10000 ETH到交易所",
+            "title": "某巨鲸地址转移10000 ETH到交易所",
+            "body": "该地址在过去24小时内分批转移，目前交易所钱包余额增加显著，可能预示短期抛压",
             "source": "https://example.com/news/123",
             "related_sources": [
                 "https://example.com/related1",
@@ -59,7 +60,8 @@ class StructuredAnalysisResult(BaseModel):
     time: str = Field(..., description="RFC 2822 timestamp")
     category: str = Field(..., description="Event category")
     weight_score: int = Field(..., ge=0, le=100, description="Importance score")
-    summary: str = Field(..., min_length=1, description="Chinese summary")
+    title: str = Field(..., min_length=1, description="Chinese title")
+    body: str = Field(..., min_length=1, description="Chinese body content")
     source: str = Field(..., description="Original URL")
     related_sources: List[str] = Field(default_factory=list, description="Related URLs")
     
@@ -79,12 +81,20 @@ class StructuredAnalysisResult(BaseModel):
             raise ValueError("分类不能为空")
         return v.strip()
     
-    @field_validator('summary')
+    @field_validator('title')
     @classmethod
-    def validate_summary(cls, v: str) -> str:
-        """验证摘要不为空"""
+    def validate_title(cls, v: str) -> str:
+        """验证标题不为空"""
         if not v or not v.strip():
-            raise ValueError("摘要不能为空")
+            raise ValueError("标题不能为空")
+        return v.strip()
+    
+    @field_validator('body')
+    @classmethod
+    def validate_body(cls, v: str) -> str:
+        """验证正文不为空"""
+        if not v or not v.strip():
+            raise ValueError("正文不能为空")
         return v.strip()
     
     @field_validator('source')
@@ -483,7 +493,8 @@ class StructuredOutputManager:
             "time": "RFC 2822 格式时间",
             "category": "Whale | MacroLiquidity | Regulation | NewProject | Arbitrage | Truth | MonetarySystem | MarketTrend",
             "weight_score": 0-100 (整数),
-            "summary": "中文总结",
+            "title": "标题",
+            "body": "正文",
             "source": "原始 URL",
             "related_sources": ["相关链接数组"]
         }
@@ -499,7 +510,8 @@ class StructuredOutputManager:
     "time": "RFC 2822 格式时间",
     "category": "Whale | MacroLiquidity | Regulation | NewProject | Arbitrage | Truth | MonetarySystem | MarketTrend",
     "weight_score": 0-100 (整数),
-    "summary": "中文总结",
+    "title": "标题",
+    "body": "正文",
     "source": "原始 URL",
     "related_sources": ["相关链接数组"]
 }
@@ -581,7 +593,7 @@ class StructuredOutputManager:
         errors = []
         
         # 检查必需字段
-        required_fields = ['time', 'category', 'weight_score', 'summary', 'source']
+        required_fields = ['time', 'category', 'weight_score', 'title', 'body', 'source']
         for field in required_fields:
             if field not in result:
                 errors.append(f"缺少必需字段: {field}")
@@ -599,11 +611,17 @@ class StructuredOutputManager:
             elif not 0 <= result['weight_score'] <= 100:
                 errors.append("weight_score必须在0-100之间")
         
-        if 'summary' in result:
-            if not isinstance(result['summary'], str):
-                errors.append("summary字段必须是字符串")
-            elif not result['summary'].strip():
-                errors.append("summary不能为空")
+        if 'title' in result:
+            if not isinstance(result['title'], str):
+                errors.append("title字段必须是字符串")
+            elif not result['title'].strip():
+                errors.append("title不能为空")
+        
+        if 'body' in result:
+            if not isinstance(result['body'], str):
+                errors.append("body字段必须是字符串")
+            elif not result['body'].strip():
+                errors.append("body不能为空")
         
         if 'source' in result:
             if not isinstance(result['source'], str):
@@ -726,7 +744,8 @@ class StructuredOutputManager:
             "time": "Mon, 15 Jan 2024 14:30:00 +0000",
             "category": "Whale",
             "weight_score": 85,
-            "summary": "某巨鲸地址转移10000 ETH到交易所",
+            "title": "某巨鲸地址转移10000 ETH到交易所",
+            "body": "该地址在过去24小时内分批转移，目前交易所钱包余额增加显著，可能预示短期抛压",
             "source": "https://example.com/news/123",
             "related_sources": [
                 "https://etherscan.io/tx/0x123",
@@ -742,7 +761,8 @@ class StructuredOutputManager:
                         "time": "Mon, 15 Jan 2024 15:45:00 +0000",
                         "category": "Regulation",
                         "weight_score": 95,
-                        "summary": "SEC批准现货比特币ETF",
+                        "title": "SEC批准现货比特币ETF",
+                        "body": "这是自2013年以来首次批准，标志着加密货币监管的重大转折点，预计将带来大量机构资金流入",
                         "source": "https://example.com/news/456",
                         "related_sources": [
                             "https://sec.gov/announcement/456",
