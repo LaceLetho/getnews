@@ -123,6 +123,34 @@ class TelegramFormatter:
         escaped_text = self.escape_special_characters(text)
         return f"[{escaped_text}]({url})"
     
+    def extract_brand_name(self, url: str, fallback: str = '来源') -> str:
+        """从URL中提取品牌名称
+        
+        Args:
+            url: 完整URL
+            fallback: 提取失败时的默认值
+            
+        Returns:
+            品牌名称（主域名部分）
+        """
+        from urllib.parse import urlparse
+        
+        try:
+            parsed_url = urlparse(url)
+            domain = parsed_url.netloc or fallback
+            # 移除常见前缀
+            for prefix in ['www.', 'm.', 'mobile.']:
+                if domain.startswith(prefix):
+                    domain = domain[len(prefix):]
+                    break
+            # 提取主域名部分（去除TLD）
+            parts = domain.split('.')
+            if len(parts) >= 2:
+                return parts[0]
+            return domain
+        except Exception:
+            return fallback
+    
     def format_list_item(self, text: str, level: int = 0) -> str:
         """格式化列表项
         
@@ -438,28 +466,12 @@ class TelegramFormatter:
             格式化后的消息项
         """
         from ..utils.timezone_utils import format_rfc2822_to_utc8_string
-        from urllib.parse import urlparse
         
         # 将RFC 2822格式时间转换为东八区短格式（MM-DD HH:MM）
         simplified_time = format_rfc2822_to_utc8_string(time, "%m-%d %H:%M")
         
-        # 从URL中提取域名作为链接文本
-        try:
-            parsed_url = urlparse(source_url)
-            domain = parsed_url.netloc or '来源'
-            # 移除常见前缀
-            for prefix in ['www.', 'm.', 'mobile.']:
-                if domain.startswith(prefix):
-                    domain = domain[len(prefix):]
-                    break
-            # 提取主域名部分（去除TLD）
-            parts = domain.split('.')
-            if len(parts) >= 2:
-                source_name = parts[0]  # 取第一部分作为品牌名
-            else:
-                source_name = domain
-        except Exception:
-            source_name = '来源'
+        # 从URL中提取品牌名称
+        source_name = self.extract_brand_name(source_url, '来源')
         
         # 构建消息项：标题和正文在前，时间、评分、链接在后面一行
         message = f"*{self.escape_special_characters(title)}*\n{self.escape_special_characters(body)}\n"
@@ -469,14 +481,9 @@ class TelegramFormatter:
         if related_sources and len(related_sources) > 0:
             related_links = []
             for url in related_sources:
-                try:
-                    parsed = urlparse(url)
-                    domain = parsed.netloc or '链接'
-                    if domain.startswith('www.'):
-                        domain = domain[4:]
-                    related_links.append(self.format_hyperlink(domain, url))
-                except Exception:
-                    continue
+                brand_name = self.extract_brand_name(url, '链接')
+                if brand_name != '链接':  # 只添加成功提取的链接
+                    related_links.append(self.format_hyperlink(brand_name, url))
             
             if related_links:
                 message += f" | {' | '.join(related_links)}"
