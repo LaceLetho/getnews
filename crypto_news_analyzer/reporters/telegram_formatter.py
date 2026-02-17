@@ -446,15 +446,23 @@ class TelegramFormatter:
         # 从URL中提取域名作为链接文本
         try:
             parsed_url = urlparse(source_url)
-            source_name = parsed_url.netloc or '来源'
-            # 移除 www. 前缀使其更简洁
-            if source_name.startswith('www.'):
-                source_name = source_name[4:]
+            domain = parsed_url.netloc or '来源'
+            # 移除常见前缀
+            for prefix in ['www.', 'm.', 'mobile.']:
+                if domain.startswith(prefix):
+                    domain = domain[len(prefix):]
+                    break
+            # 提取主域名部分（去除TLD）
+            parts = domain.split('.')
+            if len(parts) >= 2:
+                source_name = parts[0]  # 取第一部分作为品牌名
+            else:
+                source_name = domain
         except Exception:
             source_name = '来源'
         
         # 构建消息项：标题和正文在前，时间、评分、链接在后面一行
-        message = f"{self.escape_special_characters(title)}\n{self.escape_special_characters(body)}\n"
+        message = f"*{self.escape_special_characters(title)}*\n{self.escape_special_characters(body)}\n"
         message += f"{self.escape_special_characters(simplified_time)} | {weight_score} | {self.format_hyperlink(source_name, source_url)}"
         
         # 如果有相关信息源，添加到消息中
