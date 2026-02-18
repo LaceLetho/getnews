@@ -56,7 +56,7 @@ class LLMAnalyzer:
         summary_model: str = "grok-beta",
         market_prompt_path: str = "./prompts/market_summary_prompt.md",
         analysis_prompt_path: str = "./prompts/analysis_prompt.md",
-        temperature: float = 0.1,
+        temperature: float = 0.5,
         max_tokens: int = 4000,
         batch_size: int = 10,
         cache_ttl_minutes: int = 30,
@@ -146,7 +146,8 @@ class LLMAnalyzer:
             summary_model=self.summary_model,
             cache_ttl_minutes=self.cache_ttl_minutes,
             mock_mode=mock_mode,
-            conversation_id=self.conversation_id
+            conversation_id=self.conversation_id,
+            temperature=self.temperature
         )
         
         # 初始化结构化输出管理器

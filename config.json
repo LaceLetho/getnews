@@ -18,7 +18,7 @@
   },
   "llm_config": {
     "model": "grok-4-1-fast-reasoning",
-    "temperature": 0.1,
+    "temperature": 0.5,
     "max_tokens": 2000000,
     "batch_size": 1000,
     "summary_model": "grok-4-1-fast-reasoning",

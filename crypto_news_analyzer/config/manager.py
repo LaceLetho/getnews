@@ -363,7 +363,7 @@ class ConfigManager:
             },
             "llm_config": {
                 "model": "MiniMax-M2.1",
-                "temperature": 0.1,
+                "temperature": 0.4,
                 "max_tokens": 1000,
                 "prompt_config_path": "./prompts/analysis_prompt.json",
                 "batch_size": 10

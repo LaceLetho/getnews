@@ -74,7 +74,8 @@ class MarketSnapshotService:
                  cache_ttl_minutes: int = 30,
                  cache_dir: str = "./data/cache",
                  mock_mode: bool = False,
-                 conversation_id: Optional[str] = None):
+                 conversation_id: Optional[str] = None,
+                 temperature: float = 0.5):
         """
         初始化市场快照服务
         
@@ -86,6 +87,7 @@ class MarketSnapshotService:
             cache_dir: 缓存目录
             mock_mode: 是否使用模拟模式（用于测试）
             conversation_id: 会话ID（用于提高缓存命中率，如果为None则自动生成）
+            temperature: 温度参数（控制输出随机性）
         """
         self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
         self.summary_model = summary_model
@@ -94,6 +96,7 @@ class MarketSnapshotService:
         self.cache_dir = cache_dir
         self.mock_mode = mock_mode
         self.conversation_id = conversation_id or str(uuid.uuid4())
+        self.temperature = temperature
         self.logger = logging.getLogger(__name__)
         
         # API配置 - 使用OpenAI SDK调用xAI API
@@ -250,7 +253,7 @@ class MarketSnapshotService:
             response = self.client.responses.create(
                 model=self.summary_model,
                 input=messages,
-                temperature=0.1,
+                temperature=self.temperature,
                 tools=tools,
                 tool_choice="required"
             )
