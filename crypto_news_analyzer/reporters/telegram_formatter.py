@@ -131,7 +131,7 @@ class TelegramFormatter:
             fallback: 提取失败时的默认值
             
         Returns:
-            品牌名称（主域名部分或X账户名）
+            品牌名称（主域名部分或X账户名），已转义特殊字符
         """
         from urllib.parse import urlparse
         
@@ -143,8 +143,11 @@ class TelegramFormatter:
             if 'x.com' in domain or 'twitter.com' in domain:
                 path_parts = [p for p in parsed_url.path.split('/') if p]
                 if path_parts:
-                    # 第一个路径部分通常是账户名
-                    return f"@{path_parts[0]}"
+                    # 第一个路径部分通常是账户名，需要转义特殊字符
+                    username = path_parts[0]
+                    # 移除可能的查询参数
+                    username = username.split('?')[0]
+                    return f"@{self.escape_markdown(username)}"
             
             # 移除常见前缀
             for prefix in ['www.', 'm.', 'mobile.', 'blog']:
