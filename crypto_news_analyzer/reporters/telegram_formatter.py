@@ -131,15 +131,23 @@ class TelegramFormatter:
             fallback: 提取失败时的默认值
             
         Returns:
-            品牌名称（主域名部分）
+            品牌名称（主域名部分或X账户名）
         """
         from urllib.parse import urlparse
         
         try:
             parsed_url = urlparse(url)
             domain = parsed_url.netloc or fallback
+            
+            # 特殊处理X/Twitter URL，提取账户名
+            if 'x.com' in domain or 'twitter.com' in domain:
+                path_parts = [p for p in parsed_url.path.split('/') if p]
+                if path_parts:
+                    # 第一个路径部分通常是账户名
+                    return f"@{path_parts[0]}"
+            
             # 移除常见前缀
-            for prefix in ['www.', 'm.', 'mobile.']:
+            for prefix in ['www.', 'm.', 'mobile.', 'blog']:
                 if domain.startswith(prefix):
                     domain = domain[len(prefix):]
                     break
