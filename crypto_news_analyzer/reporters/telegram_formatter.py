@@ -141,12 +141,10 @@ class TelegramFormatter:
             
             # 特殊处理X/Twitter URL，提取账户名
             if 'x.com' in domain or 'twitter.com' in domain:
-                path_parts = [p for p in parsed_url.path.split('/') if p]
+                path_parts = [p for p in parsed_url.path.split('/') if p and p != 'status']
                 if path_parts:
-                    # 第一个路径部分通常是账户名，需要转义特殊字符
+                    # 第一个非status路径部分是账户名
                     username = path_parts[0]
-                    # 移除可能的查询参数
-                    username = username.split('?')[0]
                     return f"@{self.escape_markdown(username)}"
             
             # 移除常见前缀
