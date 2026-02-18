@@ -604,7 +604,7 @@ class MainController:
             self._update_execution_progress(0.4, "analyzing")
             self.logger.info("开始内容分析阶段")
             
-            analysis_result = self._execute_analysis_stage(content_items)
+            analysis_result = self._execute_analysis_stage(content_items, is_manual=is_manual)
             if not analysis_result["success"]:
                 result["errors"].extend(analysis_result["errors"])
                 return result
@@ -753,7 +753,7 @@ class MainController:
         
         return result
     
-    def _execute_analysis_stage(self, newly_crawled_items: List[ContentItem]) -> Dict[str, Any]:
+    def _execute_analysis_stage(self, newly_crawled_items: List[ContentItem], is_manual: bool = False) -> Dict[str, Any]:
         """
         执行内容分析阶段
         
@@ -762,6 +762,7 @@ class MainController:
         
         Args:
             newly_crawled_items: 刚爬取的内容项（用于日志记录）
+            is_manual: 是否为手动触发（手动触发时不包含 Outdated News）
             
         Returns:
             分析结果字典
@@ -789,8 +790,9 @@ class MainController:
             llm_config = self.config_manager.config_data.get("llm_config", {})
             min_weight_score = llm_config.get("min_weight_score", 50)
             
-            # 批量分析内容（is_scheduled=True 以包含 Outdated News）
-            analysis_results = self.llm_analyzer.analyze_content_batch(all_content_items, is_scheduled=True)
+            # 批量分析内容（仅在定时任务时包含 Outdated News）
+            is_scheduled = not is_manual
+            analysis_results = self.llm_analyzer.analyze_content_batch(all_content_items, is_scheduled=is_scheduled)
             
             # 分类内容 - 注意这里存储的是 StructuredAnalysisResult 而不是 ContentItem
             categorized_items = {}
