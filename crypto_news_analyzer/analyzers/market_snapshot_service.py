@@ -104,8 +104,10 @@ class MarketSnapshotService:
             try:
                 self.client = OpenAI(
                     api_key=self.GROK_API_KEY,
-                    base_url=self.grok_api_base
+                    base_url=self.grok_api_base,
+                    default_headers={"x-grok-conv-id": self.conversation_id}
                 )
+                self.logger.info(f"Grok客户端已设置default_headers: x-grok-conv-id={self.conversation_id}")
             except Exception as e:
                 self.logger.error(f"初始化OpenAI客户端失败: {e}")
                 self.client = None
@@ -250,10 +252,7 @@ class MarketSnapshotService:
                 input=messages,
                 temperature=0.1,
                 tools=tools,
-                tool_choice="required",
-                extra_headers={
-                    "x-grok-conv-id": self.conversation_id
-                }
+                tool_choice="required"
             )
             
             if not response or not hasattr(response, 'output'):

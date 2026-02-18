@@ -128,11 +128,15 @@ class LLMAnalyzer:
                     # xAI Grok API
                     self.client = OpenAI(
                         api_key=self.api_key,
-                        base_url="https://api.x.ai/v1"
+                        base_url="https://api.x.ai/v1",
+                        default_headers={"x-grok-conv-id": self.conversation_id}
                     )
+                    self.logger.info(f"Grok客户端已设置default_headers: x-grok-conv-id={self.conversation_id}")
                 else:
                     # 标准 OpenAI API
-                    self.client = OpenAI(api_key=self.api_key)
+                    self.client = OpenAI(
+                        api_key=self.api_key
+                    )
             except Exception as e:
                 self.logger.error(f"初始化OpenAI客户端失败: {e}")
         

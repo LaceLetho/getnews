@@ -331,11 +331,6 @@ class StructuredOutputManager:
                     "text_format": response_model,
                     "temperature": temperature
                 }
-                
-                # 如果提供了conversation_id，添加到extra_headers
-                if conversation_id:
-                    parse_params["extra_headers"] = {"x-grok-conv-id": conversation_id}
-                    logger.info(f"使用会话ID提高缓存命中率: {conversation_id}")
 
                 # 使用responses.parse API
                 response = llm_client.responses.parse(**parse_params)
@@ -403,11 +398,6 @@ class StructuredOutputManager:
                 "temperature": temperature
             }
             
-            # 如果提供了conversation_id，添加到extra_headers
-            if conversation_id:
-                call_params["extra_headers"] = {"x-grok-conv-id": conversation_id}
-                logger.info(f"使用会话ID提高缓存命中率: {conversation_id}")
-            
             # 调用instructor
             result = self.instructor_client.chat.completions.create(**call_params)
             
@@ -447,11 +437,6 @@ class StructuredOutputManager:
                 "temperature": temperature,
                 "response_format": {"type": "json_object"}  # OpenAI JSON模式
             }
-            
-            # 如果提供了conversation_id，添加到extra_headers
-            if conversation_id:
-                call_params["extra_headers"] = {"x-grok-conv-id": conversation_id}
-                logger.info(f"使用会话ID提高缓存命中率: {conversation_id}")
             
             # 调用LLM
             response = llm_client.chat.completions.create(**call_params)
