@@ -448,6 +448,7 @@ class TelegramCommandHandler:
             self.application.add_handler(CommandHandler("run", self._handle_run_command))
             self.application.add_handler(CommandHandler("market", self._handle_market_command))
             self.application.add_handler(CommandHandler("status", self._handle_status_command))
+            self.application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
             self.application.add_handler(CommandHandler("help", self._handle_help_command))
             self.application.add_handler(CommandHandler("start", self._handle_start_command))
             
@@ -509,6 +510,7 @@ class TelegramCommandHandler:
                 BotCommand("run", "立即执行数据收集和分析"),
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
+                BotCommand("tokens", "查看LLM token使用统计"),
                 BotCommand("help", "显示帮助信息")
             ]
             
@@ -786,6 +788,68 @@ class TelegramCommandHandler:
                 f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+    
+    async def _handle_tokens_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """
+        处理/tokens命令 - 显示LLM token使用统计
+        """
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+
+        self.logger.info(
+            f"收到/tokens命令，用户: {username} ({user_id}), "
+            f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+        )
+
+        try:
+            # 验证权限
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限使用此机器人。"
+                await update.message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/tokens",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list"
+                )
+                self._log_command_execution("/tokens", user_id, username, None, False, response)
+                return
+
+            # Log successful authorization
+            self._log_authorization_attempt(
+                command="/tokens",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True
+            )
+
+            # 获取token使用统计
+            response = self.handle_tokens_command()
+            await update.message.reply_text(response, parse_mode="Markdown")
+            self._log_command_execution("/tokens", user_id, username, None, True, "Token统计已发送")
+
+        except Exception as e:
+            error_msg = f"处理/tokens命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+    
     async def _handle_start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
         处理/start命令 - 显示用户ID和基本信息
@@ -1005,6 +1069,11 @@ class TelegramCommandHandler:
             "查看所有可用命令和使用说明。\n"
         )
         
+        help_text.append(
+            "/tokens - 查看LLM token使用统计\n"
+            "显示最近50次调用的token使用情况和缓存命中率。\n"
+        )
+        
         if "market" in user_permissions:
             help_text.append(
                 "/market - 获取当前市场现状快照\n"
@@ -1019,6 +1088,46 @@ class TelegramCommandHandler:
         )
         
         return "\n".join(help_text)
+    
+    def handle_tokens_command(self) -> str:
+        """
+        处理/tokens命令的业务逻辑 - 显示LLM token使用统计
+        
+        Returns:
+            响应消息
+        """
+        try:
+            # 获取LLM分析器的token追踪器
+            if not hasattr(self.execution_coordinator, 'llm_analyzer') or not self.execution_coordinator.llm_analyzer:
+                return "❌ LLM分析器未初始化\n\n请先运行 /run 命令执行一次分析。"
+            
+            tracker = self.execution_coordinator.llm_analyzer.token_tracker
+            
+            # 获取统计信息
+            stats = tracker.get_statistics()
+            
+            if stats['total_calls'] == 0:
+                return "📊 *Token使用统计*\n\n暂无记录\n\n请先运行 /run 命令执行一次分析。"
+            
+            # 格式化摘要
+            summary = tracker.format_summary()
+            
+            # 格式化最近10次记录
+            recent = tracker.format_recent_records(count=10)
+            
+            # 组合响应
+            response = [
+                summary,
+                "\n" + "─" * 30 + "\n",
+                recent,
+                "\n\n💡 *提示:* 缓存命中率越高，token消耗越少"
+            ]
+            
+            return "\n".join(response)
+            
+        except Exception as e:
+            self.logger.error(f"获取token统计失败: {e}")
+            return f"❌ 获取统计信息失败\n\n{str(e)}"
     
     def handle_market_command(self, user_id: str, username: str) -> str:
         """

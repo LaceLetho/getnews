@@ -27,6 +27,7 @@ from .structured_output_manager import (
     BatchAnalysisResult
 )
 from ..storage.cache_manager import SentMessageCacheManager
+from .token_usage_tracker import TokenUsageTracker
 
 try:
     from openai import OpenAI
@@ -99,6 +100,9 @@ class LLMAnalyzer:
         self.mock_mode = mock_mode
         self.conversation_id = conversation_id or str(uuid.uuid4())
         self.logger = logging.getLogger(__name__)
+        
+        # 初始化token使用追踪器
+        self.token_tracker = TokenUsageTracker(max_records=50)
         
         # 初始化缓存管理器
         self.cache_manager = cache_manager
@@ -365,7 +369,8 @@ class LLMAnalyzer:
                     temperature=self.temperature,
                     batch_mode=True,
                     enable_web_search=True,  # 启用web_search工具
-                    conversation_id=self.conversation_id  # 传递会话ID提高缓存命中率
+                    conversation_id=self.conversation_id,  # 传递会话ID提高缓存命中率
+                    usage_callback=self._record_token_usage  # 记录token使用情况
                 )
                 
                 # 打印LLM返回的原始数据
@@ -841,3 +846,22 @@ class LLMAnalyzer:
             self.model = kwargs["model"]
         
         self.logger.info("LLM分析器配置已更新")
+    
+    def _record_token_usage(self, usage_data: Dict[str, Any]) -> None:
+        """
+        记录token使用情况的回调函数
+        
+        Args:
+            usage_data: 包含token使用信息的字典
+        """
+        try:
+            self.token_tracker.record_usage(
+                model=usage_data.get('model', self.model),
+                prompt_tokens=usage_data.get('prompt_tokens', 0),
+                completion_tokens=usage_data.get('completion_tokens', 0),
+                total_tokens=usage_data.get('total_tokens', 0),
+                cached_tokens=usage_data.get('cached_tokens', 0),
+                conversation_id=self.conversation_id
+            )
+        except Exception as e:
+            self.logger.warning(f"记录token使用情况失败: {e}")

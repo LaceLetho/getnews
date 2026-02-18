@@ -15,6 +15,7 @@ from .structured_output_manager import (
 )
 from .dynamic_classification_manager import DynamicClassificationManager
 from .llm_analyzer import LLMAnalyzer
+from .token_usage_tracker import TokenUsageTracker, TokenUsageRecord
 
 __all__ = [
     'PromptManager',
@@ -29,5 +30,7 @@ __all__ = [
     'ValidationResult',
     'StructuredOutputLibrary',
     'DynamicClassificationManager',
-    'LLMAnalyzer'
+    'LLMAnalyzer',
+    'TokenUsageTracker',
+    'TokenUsageRecord'
 ]

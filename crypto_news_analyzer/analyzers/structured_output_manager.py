@@ -238,7 +238,8 @@ class StructuredOutputManager:
         temperature: float = 0.1,
         batch_mode: bool = False,
         enable_web_search: bool = False,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        usage_callback: Optional[callable] = None
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """
         强制大模型返回结构化响应
@@ -252,6 +253,7 @@ class StructuredOutputManager:
             batch_mode: 是否批量模式（返回列表）
             enable_web_search: 是否启用web_search工具（仅Grok支持）
             conversation_id: 会话ID（用于提高缓存命中率）
+            usage_callback: token使用情况回调函数
             
         Returns:
             结构化的分析结果
@@ -263,17 +265,17 @@ class StructuredOutputManager:
         # 如果启用web_search，必须使用原生模式（instructor和response_format都会冲突）
         if enable_web_search:
             return self._force_with_web_search(
-                llm_client, messages, model, temperature, batch_mode, conversation_id
+                llm_client, messages, model, temperature, batch_mode, conversation_id, usage_callback
             )
         
         # 正常的结构化输出流程
         if self.library == StructuredOutputLibrary.INSTRUCTOR:
             return self._force_with_instructor(
-                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False, conversation_id=conversation_id
+                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False, conversation_id=conversation_id, usage_callback=usage_callback
             )
         else:
             return self._force_with_native_json(
-                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False, conversation_id=conversation_id
+                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False, conversation_id=conversation_id, usage_callback=usage_callback
             )
     
     def _force_with_web_search(
@@ -283,7 +285,8 @@ class StructuredOutputManager:
             model: str,
             temperature: float,
             batch_mode: bool,
-            conversation_id: Optional[str] = None
+            conversation_id: Optional[str] = None,
+            usage_callback: Optional[callable] = None
         ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
             """
             使用web_search工具时的特殊处理
@@ -341,6 +344,17 @@ class StructuredOutputManager:
                 openai_logger.setLevel(original_openai_level)
                 httpx_logger.setLevel(original_httpx_level)
 
+                # 提取token使用情况
+                if usage_callback and hasattr(response, 'usage') and response.usage:
+                    usage_data = {
+                        'model': model,
+                        'prompt_tokens': getattr(response.usage, 'prompt_tokens', 0),
+                        'completion_tokens': getattr(response.usage, 'completion_tokens', 0),
+                        'total_tokens': getattr(response.usage, 'total_tokens', 0),
+                        'cached_tokens': getattr(response.usage, 'prompt_tokens_details', {}).get('cached_tokens', 0) if hasattr(response.usage, 'prompt_tokens_details') else 0
+                    }
+                    usage_callback(usage_data)
+
                 # 获取解析后的结果
                 result = response.output_parsed
 
@@ -366,7 +380,8 @@ class StructuredOutputManager:
         temperature: float,
         batch_mode: bool,
         enable_web_search: bool = False,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        usage_callback: Optional[callable] = None
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """使用instructor库强制结构化输出"""
         try:
