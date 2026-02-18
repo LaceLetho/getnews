@@ -165,7 +165,8 @@ class LLMAnalyzer:
     def analyze_content_batch(
         self,
         items: List[ContentItem],
-        use_cached_snapshot: bool = True
+        use_cached_snapshot: bool = True,
+        is_scheduled: bool = False
     ) -> List[StructuredAnalysisResult]:
         """
         批量分析内容（四步流程）
@@ -173,6 +174,7 @@ class LLMAnalyzer:
         Args:
             items: 内容项列表
             use_cached_snapshot: 是否使用缓存的市场快照
+            is_scheduled: 是否为定时任务（True时包含Outdated News，False时显示"无"）
             
         Returns:
             结构化分析结果列表
@@ -192,7 +194,7 @@ class LLMAnalyzer:
             
             # 第三步和第四步：使用结构化输出进行批量分析
             results = self._analyze_batch_with_structured_output(
-                items, system_prompt, market_snapshot
+                items, system_prompt, market_snapshot, is_scheduled
             )
             
             self.logger.info(f"批量分析完成，返回 {len(results)} 条结果")
@@ -313,7 +315,8 @@ class LLMAnalyzer:
         self,
         items: List[ContentItem],
         system_prompt: str,
-        market_snapshot: MarketSnapshot
+        market_snapshot: MarketSnapshot,
+        is_scheduled: bool = False
     ) -> List[StructuredAnalysisResult]:
         """
         第三步和第四步：使用结构化输出进行批量分析
@@ -322,6 +325,7 @@ class LLMAnalyzer:
             items: 内容项列表
             system_prompt: 静态系统提示词
             market_snapshot: 市场快照对象
+            is_scheduled: 是否为定时任务（True时包含Outdated News，False时显示"无"）
             
         Returns:
             结构化分析结果列表
@@ -341,7 +345,7 @@ class LLMAnalyzer:
             
             try:
                 # 构建用户提示词（包含动态上下文和待分析内容）
-                user_prompt = self._build_user_prompt_with_context(batch, market_snapshot)
+                user_prompt = self._build_user_prompt_with_context(batch, market_snapshot, is_scheduled)
                 
                 # 构建消息列表
                 messages = [
@@ -384,19 +388,21 @@ class LLMAnalyzer:
     def _build_user_prompt_with_context(
         self,
         items: List[ContentItem],
-        market_snapshot: MarketSnapshot
+        market_snapshot: MarketSnapshot,
+        is_scheduled: bool = False
     ) -> str:
         """
         构建包含动态上下文的用户提示词
         
         新的提示词结构：
         1. 市场快照（Current Market Context）
-        2. 已发送消息缓存（Outdated News）
+        2. 已发送消息缓存（Outdated News）- 仅在定时任务时包含
         3. 待分析的新闻内容
         
         Args:
             items: 内容项列表
             market_snapshot: 市场快照对象
+            is_scheduled: 是否为定时任务（True时包含Outdated News，False时显示"无"）
             
         Returns:
             用户提示词字符串
@@ -411,9 +417,12 @@ class LLMAnalyzer:
         prompt_parts.append(market_snapshot.content)
         prompt_parts.append("")
         
-        # 添加已发送消息缓存
+        # 添加已发送消息缓存（仅在定时任务时包含实际内容）
         prompt_parts.append("# Outdated News")
-        outdated_news = self._get_formatted_cached_messages(hours=self.cached_messages_hours)
+        if is_scheduled:
+            outdated_news = self._get_formatted_cached_messages(hours=self.cached_messages_hours)
+        else:
+            outdated_news = "无"
         prompt_parts.append(outdated_news)
         prompt_parts.append("")
         
