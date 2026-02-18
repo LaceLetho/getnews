@@ -789,8 +789,8 @@ class MainController:
             llm_config = self.config_manager.config_data.get("llm_config", {})
             min_weight_score = llm_config.get("min_weight_score", 50)
             
-            # 批量分析内容
-            analysis_results = self.llm_analyzer.analyze_content_batch(all_content_items)
+            # 批量分析内容（is_scheduled=True 以包含 Outdated News）
+            analysis_results = self.llm_analyzer.analyze_content_batch(all_content_items, is_scheduled=True)
             
             # 分类内容 - 注意这里存储的是 StructuredAnalysisResult 而不是 ContentItem
             categorized_items = {}
