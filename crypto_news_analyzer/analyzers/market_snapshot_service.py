@@ -10,6 +10,7 @@ import logging
 import time
 import os
 import re
+import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass, asdict
@@ -72,7 +73,8 @@ class MarketSnapshotService:
                  fallback_providers: Optional[List[str]] = None,
                  cache_ttl_minutes: int = 30,
                  cache_dir: str = "./data/cache",
-                 mock_mode: bool = False):
+                 mock_mode: bool = False,
+                 conversation_id: Optional[str] = None):
         """
         初始化市场快照服务
         
@@ -83,6 +85,7 @@ class MarketSnapshotService:
             cache_ttl_minutes: 缓存有效期（分钟）
             cache_dir: 缓存目录
             mock_mode: 是否使用模拟模式（用于测试）
+            conversation_id: 会话ID（用于提高缓存命中率，如果为None则自动生成）
         """
         self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
         self.summary_model = summary_model
@@ -90,6 +93,7 @@ class MarketSnapshotService:
         self.cache_ttl_minutes = cache_ttl_minutes
         self.cache_dir = cache_dir
         self.mock_mode = mock_mode
+        self.conversation_id = conversation_id or str(uuid.uuid4())
         self.logger = logging.getLogger(__name__)
         
         # API配置 - 使用OpenAI SDK调用xAI API
@@ -137,6 +141,8 @@ class MarketSnapshotService:
             self.logger.info("市场快照服务运行在模拟模式")
         elif not self.GROK_API_KEY:
             self.logger.warning("未提供Grok API密钥，将使用备用快照")
+        else:
+            self.logger.info(f"使用会话ID提高缓存命中率: {self.conversation_id}")
     
     def get_market_snapshot(self, prompt_template: str) -> MarketSnapshot:
         """
@@ -238,13 +244,16 @@ class MarketSnapshotService:
                 },
             ]
             
-            # 调用 responses API
+            # 调用 responses API，添加 x-grok-conv-id 头以提高缓存命中率
             response = self.client.responses.create(
                 model=self.summary_model,
                 input=messages,
                 temperature=0.1,
                 tools=tools,
                 tool_choice="required",
+                extra_headers={
+                    "x-grok-conv-id": self.conversation_id
+                }
             )
             
             if not response or not hasattr(response, 'output'):

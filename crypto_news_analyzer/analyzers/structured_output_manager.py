@@ -237,7 +237,8 @@ class StructuredOutputManager:
         max_retries: int = 3,
         temperature: float = 0.1,
         batch_mode: bool = False,
-        enable_web_search: bool = False
+        enable_web_search: bool = False,
+        conversation_id: Optional[str] = None
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """
         强制大模型返回结构化响应
@@ -250,6 +251,7 @@ class StructuredOutputManager:
             temperature: 温度参数
             batch_mode: 是否批量模式（返回列表）
             enable_web_search: 是否启用web_search工具（仅Grok支持）
+            conversation_id: 会话ID（用于提高缓存命中率）
             
         Returns:
             结构化的分析结果
@@ -261,17 +263,17 @@ class StructuredOutputManager:
         # 如果启用web_search，必须使用原生模式（instructor和response_format都会冲突）
         if enable_web_search:
             return self._force_with_web_search(
-                llm_client, messages, model, temperature, batch_mode
+                llm_client, messages, model, temperature, batch_mode, conversation_id
             )
         
         # 正常的结构化输出流程
         if self.library == StructuredOutputLibrary.INSTRUCTOR:
             return self._force_with_instructor(
-                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False
+                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False, conversation_id=conversation_id
             )
         else:
             return self._force_with_native_json(
-                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False
+                llm_client, messages, model, max_retries, temperature, batch_mode, enable_web_search=False, conversation_id=conversation_id
             )
     
     def _force_with_web_search(
@@ -280,7 +282,8 @@ class StructuredOutputManager:
             messages: List[Dict[str, str]],
             model: str,
             temperature: float,
-            batch_mode: bool
+            batch_mode: bool,
+            conversation_id: Optional[str] = None
         ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
             """
             使用web_search工具时的特殊处理
@@ -314,17 +317,25 @@ class StructuredOutputManager:
 
                 logger.info(f"调用responses.parse API，model={model}, tools=[web_search, x_search]")
 
-                # 使用responses.parse API
-                response = llm_client.responses.parse(
-                    model=model,
-                    input=input_text,
-                    tools=[
+                # 构建调用参数
+                parse_params = {
+                    "model": model,
+                    "input": input_text,
+                    "tools": [
                         {"type": "web_search"},
                         {"type": "x_search"}
                     ],
-                    text_format=response_model,
-                    temperature=temperature
-                )
+                    "text_format": response_model,
+                    "temperature": temperature
+                }
+                
+                # 如果提供了conversation_id，添加到extra_headers
+                if conversation_id:
+                    parse_params["extra_headers"] = {"x-grok-conv-id": conversation_id}
+                    logger.info(f"使用会话ID提高缓存命中率: {conversation_id}")
+
+                # 使用responses.parse API
+                response = llm_client.responses.parse(**parse_params)
 
                 # 恢复日志级别
                 openai_logger.setLevel(original_openai_level)
@@ -354,7 +365,8 @@ class StructuredOutputManager:
         max_retries: int,
         temperature: float,
         batch_mode: bool,
-        enable_web_search: bool = False
+        enable_web_search: bool = False,
+        conversation_id: Optional[str] = None
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """使用instructor库强制结构化输出"""
         try:
@@ -375,6 +387,11 @@ class StructuredOutputManager:
                 "max_retries": max_retries,
                 "temperature": temperature
             }
+            
+            # 如果提供了conversation_id，添加到extra_headers
+            if conversation_id:
+                call_params["extra_headers"] = {"x-grok-conv-id": conversation_id}
+                logger.info(f"使用会话ID提高缓存命中率: {conversation_id}")
             
             # 调用instructor
             result = self.instructor_client.chat.completions.create(**call_params)
@@ -397,7 +414,8 @@ class StructuredOutputManager:
         max_retries: int,
         temperature: float,
         batch_mode: bool,
-        enable_web_search: bool = False
+        enable_web_search: bool = False,
+        conversation_id: Optional[str] = None
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """使用原生JSON模式强制结构化输出"""
         try:
@@ -414,6 +432,11 @@ class StructuredOutputManager:
                 "temperature": temperature,
                 "response_format": {"type": "json_object"}  # OpenAI JSON模式
             }
+            
+            # 如果提供了conversation_id，添加到extra_headers
+            if conversation_id:
+                call_params["extra_headers"] = {"x-grok-conv-id": conversation_id}
+                logger.info(f"使用会话ID提高缓存命中率: {conversation_id}")
             
             # 调用LLM
             response = llm_client.chat.completions.create(**call_params)

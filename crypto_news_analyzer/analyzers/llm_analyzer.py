@@ -13,6 +13,7 @@ LLM分析器
 import json
 import logging
 import os
+import uuid
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from pathlib import Path
@@ -61,7 +62,8 @@ class LLMAnalyzer:
         cached_messages_hours: int = 24,
         mock_mode: bool = False,
         cache_manager: Optional[SentMessageCacheManager] = None,
-        storage_config: Optional[StorageConfig] = None
+        storage_config: Optional[StorageConfig] = None,
+        conversation_id: Optional[str] = None
     ):
         """
         初始化LLM分析器
@@ -81,6 +83,7 @@ class LLMAnalyzer:
             mock_mode: 是否使用模拟模式（用于测试）
             cache_manager: 已发送消息缓存管理器（可选）
             storage_config: 存储配置（用于创建缓存管理器，可选）
+            conversation_id: 会话ID（用于提高缓存命中率，如果为None则自动生成）
         """
         self.api_key = api_key or os.getenv('LLM_API_KEY', '')
         self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
@@ -94,6 +97,7 @@ class LLMAnalyzer:
         self.cache_ttl_minutes = cache_ttl_minutes
         self.cached_messages_hours = cached_messages_hours
         self.mock_mode = mock_mode
+        self.conversation_id = conversation_id or str(uuid.uuid4())
         self.logger = logging.getLogger(__name__)
         
         # 初始化缓存管理器
@@ -133,7 +137,8 @@ class LLMAnalyzer:
             GROK_API_KEY=self.GROK_API_KEY,
             summary_model=self.summary_model,
             cache_ttl_minutes=self.cache_ttl_minutes,
-            mock_mode=mock_mode
+            mock_mode=mock_mode,
+            conversation_id=self.conversation_id
         )
         
         # 初始化结构化输出管理器
@@ -154,6 +159,8 @@ class LLMAnalyzer:
             self.logger.info("LLM分析器运行在模拟模式")
         elif not self.api_key:
             self.logger.warning("未提供LLM API密钥")
+        else:
+            self.logger.info(f"使用会话ID提高缓存命中率: {self.conversation_id}")
     
     def analyze_content_batch(
         self,
@@ -353,7 +360,8 @@ class LLMAnalyzer:
                     max_retries=3,
                     temperature=self.temperature,
                     batch_mode=True,
-                    enable_web_search=True  # 启用web_search工具
+                    enable_web_search=True,  # 启用web_search工具
+                    conversation_id=self.conversation_id  # 传递会话ID提高缓存命中率
                 )
                 
                 # 打印LLM返回的原始数据
@@ -634,7 +642,8 @@ class LLMAnalyzer:
             model=self.model,
             max_retries=3,
             temperature=self.temperature,
-            batch_mode=False
+            batch_mode=False,
+            conversation_id=self.conversation_id  # 传递会话ID提高缓存命中率
         )
         
         return result
