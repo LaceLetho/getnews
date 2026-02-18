@@ -150,7 +150,7 @@ class TelegramFormatter:
                     return f"@{self.escape_markdown(username)}"
             
             # 移除常见前缀
-            for prefix in ['www.', 'm.', 'mobile.', 'blog']:
+            for prefix in ['www.', 'm.', 'mobile.', 'blog.']:
                 if domain.startswith(prefix):
                     domain = domain[len(prefix):]
                     break
