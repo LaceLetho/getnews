@@ -36,6 +36,8 @@ class CategoryParser:
     
     # 默认emoji映射（作为后备）
     DEFAULT_EMOJI_MAP = {
+        "AlphaInsight": "🧠",
+        "CorrelatedAssets": "📈",
         "Whale": "🐋",
         "MacroLiquidity": "📊",
         "Regulation": "🏛️",
@@ -50,6 +52,8 @@ class CategoryParser:
     
     # 英文key到中文名称的映射（从描述推断）
     KEY_TO_CHINESE_NAME = {
+        "AlphaInsight": "深度洞察",
+        "CorrelatedAssets": "相关资产",
         "Whale": "大户动向",
         "MacroLiquidity": "宏观流动性",
         "Regulation": "监管政策",

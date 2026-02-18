@@ -491,7 +491,7 @@ class StructuredOutputManager:
     "results": [
         {
             "time": "RFC 2822 格式时间",
-            "category": "Whale | MacroLiquidity | Regulation | NewProject | Arbitrage | Truth | MonetarySystem | MarketTrend",
+            "category": "根据上文[Category Definitions]分类，如：Whale、MacroLiquidity、Truth、MonetarySystem",
             "weight_score": 0-100 (整数),
             "title": "标题",
             "body": "正文",
@@ -508,7 +508,7 @@ class StructuredOutputManager:
 你必须返回一个JSON对象，格式如下：
 {
     "time": "RFC 2822 格式时间",
-    "category": "Whale | MacroLiquidity | Regulation | NewProject | Arbitrage | Truth | MonetarySystem | MarketTrend",
+    "category": "根据上文[Category Definitions]分类，如：Whale、MacroLiquidity、Truth、MonetarySystem",
     "weight_score": 0-100 (整数),
     "title": "标题",
     "body": "正文",
