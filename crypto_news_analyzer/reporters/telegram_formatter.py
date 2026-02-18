@@ -145,7 +145,7 @@ class TelegramFormatter:
                 if path_parts:
                     # 第一个非status路径部分是账户名
                     username = path_parts[0]
-                    return f"@{self.escape_markdown(username)}"
+                    return f"@{self.escape_special_characters(username)}"
             
             # 移除常见前缀
             for prefix in ['www.', 'm.', 'mobile.', 'blog.']:
