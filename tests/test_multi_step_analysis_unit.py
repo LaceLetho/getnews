@@ -758,11 +758,11 @@ class TestFourStepAnalysisWorkflow:
         assert snapshot is not None
         assert snapshot.is_valid is True
         
-        # 第二步：合并提示词
-        system_prompt = analyzer.merge_prompts_with_snapshot(snapshot)
+        # 第二步：构建静态系统提示词
+        system_prompt = analyzer._build_static_system_prompt()
         assert system_prompt is not None
-        assert snapshot.content in system_prompt
         assert "${Grok_Summary_Here}" not in system_prompt
+        assert "${outdated_news}" not in system_prompt
         
         # 第三步和第四步：批量分析
         results = analyzer.analyze_content_batch(

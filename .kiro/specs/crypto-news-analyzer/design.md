@@ -415,13 +415,12 @@ class LLMAnalyzer:
                  market_prompt_path: str = "./prompts/market_summary_prompt.md",
                  analysis_prompt_path: str = "./prompts/analysis_prompt.md")
     def get_market_snapshot(self) -> str
-    def merge_prompts_with_snapshot(self, market_snapshot: str) -> str
+    def build_system_prompt(self) -> str
+    def build_user_prompt_with_context(self, items: List[ContentItem], market_snapshot: str, cached_messages: str) -> str
     def analyze_content_batch(self, items: List[ContentItem]) -> List[AnalysisResult]
     def setup_structured_output(self) -> None
     def classify_content_dynamic(self, content: str, market_context: str) -> AnalysisResult
     def should_ignore_content(self, content: str) -> bool
-    def build_system_prompt(self, market_snapshot: str) -> str
-    def build_user_prompt(self, items: List[ContentItem]) -> str
     def parse_structured_response(self, response: str) -> List[AnalysisResult]
     def validate_response_format(self, response: Dict) -> bool
     def get_dynamic_categories(self, response_data: List[Dict]) -> List[str]
@@ -436,10 +435,10 @@ class LLMAnalyzer:
    - 向联网AI（如Grok）请求当前市场现状快照
    - 获取实时市场信息作为分析上下文
 
-2. **第二步 - 提示词合并**: 
-   - 合并市场快照和analysis_prompt.md提示词
-   - 构建包含市场上下文的系统提示词
-   - 为大模型提供完整的分析背景
+2. **第二步 - 提示词构建**: 
+   - **系统提示词**: 使用analysis_prompt.md作为静态系统提示词（不包含动态内容）
+   - **用户提示词**: 将市场快照和已发送消息缓存作为动态上下文添加到用户提示词开头
+   - **缓存优化**: 静态系统提示词保持不变以提高LLM缓存命中率，动态内容放在用户提示词中
 
 3. **第三步 - 结构化输出**: 
    - 使用instructor等工具强制大模型返回结构化数据
@@ -1072,9 +1071,9 @@ class ErrorHandler:
 *对于任何*市场快照请求，系统应该能够从联网AI服务获取当前市场现状，或在服务不可用时使用缓存或默认快照
 **验证: 需求 5.1, 5.2, 5.18**
 
-### 属性 6: 提示词合并正确性
-*对于任何*获取到的市场快照，系统应该能够正确合并市场快照和分析提示词，生成包含完整上下文的系统提示词
-**验证: 需求 5.4**
+### 属性 6: 提示词构建正确性
+*对于任何*获取到的市场快照和缓存消息，系统应该能够正确构建静态系统提示词和包含动态上下文的用户提示词，确保静态部分保持不变以提高LLM缓存命中率
+**验证: 需求 5.4, 17.7, 17.8**
 
 ### 属性 7: 结构化输出一致性
 *对于任何*大模型响应，结构化输出工具应该强制返回包含time、category、weight_score、summary、source字段的标准JSON格式

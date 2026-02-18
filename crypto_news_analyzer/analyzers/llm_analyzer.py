@@ -179,13 +179,13 @@ class LLMAnalyzer:
             market_snapshot = self.get_market_snapshot(use_cached=use_cached_snapshot)
             self.logger.info(f"市场快照来源: {market_snapshot.source}")
             
-            # 第二步：合并提示词（注意市场快照中的超链接部分不要合并）
-            system_prompt = self.merge_prompts_with_snapshot(market_snapshot)
-            self.logger.info(f"系统提示词长度: {len(system_prompt)} 字符")
+            # 第二步：构建提示词（系统提示词为静态，动态内容放在用户提示词中）
+            system_prompt = self._build_static_system_prompt()
+            self.logger.info(f"静态系统提示词长度: {len(system_prompt)} 字符")
             
             # 第三步和第四步：使用结构化输出进行批量分析
             results = self._analyze_batch_with_structured_output(
-                items, system_prompt
+                items, system_prompt, market_snapshot
             )
             
             self.logger.info(f"批量分析完成，返回 {len(results)} 条结果")
@@ -223,35 +223,59 @@ class LLMAnalyzer:
     
     def merge_prompts_with_snapshot(self, market_snapshot: MarketSnapshot) -> str:
         """
-        第二步：合并提示词（注意市场快照中的超链接部分不要合并）
+        第二步：合并提示词（已废弃，保留用于向后兼容）
+        
+        注意：此方法已废弃，新的实现将动态内容移到用户提示词中。
+        建议使用 _build_static_system_prompt() 和 _build_user_prompt_with_context()
         
         Args:
             market_snapshot: 市场快照对象
             
         Returns:
-            合并后的系统提示词
+            合并后的系统提示词（包含动态内容，不推荐用于生产环境）
         """
+        self.logger.warning("merge_prompts_with_snapshot() 已废弃，建议使用新的提示词构建方法")
+        
         # 读取分析提示词模板
         analysis_template = self._load_analysis_prompt_template()
         
         # 将市场快照内容插入到分析提示词中
-        # 查找 ${Grok_Summary_Here} 占位符并替换
         system_prompt = analysis_template.replace(
             "${Grok_Summary_Here}",
             market_snapshot.content
         )
         
-        # 替换 ${outdated_news} 占位符（使用配置的时间长度）
+        # 替换 ${outdated_news} 占位符
         outdated_news = self._get_formatted_cached_messages(hours=self.cached_messages_hours)
         system_prompt = system_prompt.replace(
             "${outdated_news}",
             outdated_news
         )
         
-        # 缓存系统提示词
-        self._cached_system_prompt = system_prompt
-        
         return system_prompt
+    
+    def _build_static_system_prompt(self) -> str:
+        """
+        构建静态系统提示词（不包含动态内容）
+        
+        这是新的推荐方法，将动态内容（市场快照、缓存消息）移到用户提示词中，
+        以提高LLM缓存命中率。
+        
+        Returns:
+            静态系统提示词
+        """
+        # 如果有缓存，直接返回
+        if self._cached_system_prompt:
+            self.logger.debug("使用缓存的静态系统提示词")
+            return self._cached_system_prompt
+        
+        # 读取分析提示词模板（不包含占位符）
+        analysis_template = self._load_analysis_prompt_template()
+        
+        # 缓存静态系统提示词
+        self._cached_system_prompt = analysis_template
+        
+        return analysis_template
     
     def _get_formatted_cached_messages(self, hours: int = 6) -> str:
         """
@@ -281,14 +305,16 @@ class LLMAnalyzer:
     def _analyze_batch_with_structured_output(
         self,
         items: List[ContentItem],
-        system_prompt: str
+        system_prompt: str,
+        market_snapshot: MarketSnapshot
     ) -> List[StructuredAnalysisResult]:
         """
         第三步和第四步：使用结构化输出进行批量分析
         
         Args:
             items: 内容项列表
-            system_prompt: 系统提示词
+            system_prompt: 静态系统提示词
+            market_snapshot: 市场快照对象
             
         Returns:
             结构化分析结果列表
@@ -307,8 +333,8 @@ class LLMAnalyzer:
             self.logger.info(f"处理批次 {i // self.batch_size + 1}，包含 {len(batch)} 条内容")
             
             try:
-                # 构建用户提示词
-                user_prompt = self._build_user_prompt(batch)
+                # 构建用户提示词（包含动态上下文和待分析内容）
+                user_prompt = self._build_user_prompt_with_context(batch, market_snapshot)
                 
                 # 构建消息列表
                 messages = [
@@ -347,12 +373,22 @@ class LLMAnalyzer:
         
         return all_results
     
-    def _build_user_prompt(self, items: List[ContentItem]) -> str:
+    def _build_user_prompt_with_context(
+        self,
+        items: List[ContentItem],
+        market_snapshot: MarketSnapshot
+    ) -> str:
         """
-        构建用户提示词（批量内容）
+        构建包含动态上下文的用户提示词
+        
+        新的提示词结构：
+        1. 市场快照（Current Market Context）
+        2. 已发送消息缓存（Outdated News）
+        3. 待分析的新闻内容
         
         Args:
             items: 内容项列表
+            market_snapshot: 市场快照对象
             
         Returns:
             用户提示词字符串
@@ -360,7 +396,22 @@ class LLMAnalyzer:
         from email.utils import format_datetime
         from ..utils.timezone_utils import convert_to_utc8
         
-        prompt_parts = ["请分析以下新闻和社交媒体内容：\n"]
+        prompt_parts = []
+        
+        # 添加市场快照上下文
+        prompt_parts.append("# Current Market Context")
+        prompt_parts.append(market_snapshot.content)
+        prompt_parts.append("")
+        
+        # 添加已发送消息缓存
+        prompt_parts.append("# Outdated News")
+        outdated_news = self._get_formatted_cached_messages(hours=self.cached_messages_hours)
+        prompt_parts.append(outdated_news)
+        prompt_parts.append("")
+        
+        # 添加待分析的新闻内容
+        prompt_parts.append("# News and Social Media Content to Analyze")
+        prompt_parts.append("请分析以下新闻和社交媒体内容：\n")
         
         for i, item in enumerate(items, 1):
             prompt_parts.append(f"\n--- 内容 {i} ---")
@@ -608,31 +659,61 @@ class LLMAnalyzer:
         # 其他过滤逻辑由大模型在分析时完成
         return False
     
-    def build_system_prompt(self, market_snapshot: MarketSnapshot) -> str:
+    def build_system_prompt(self, market_snapshot: MarketSnapshot = None) -> str:
         """
         构建系统提示词（便捷方法）
         
-        此方法会自动替换 ${Grok_Summary_Here} 和 ${outdated_news} 占位符
+        注意：此方法的行为已更改。现在返回静态系统提示词（不包含动态内容）。
+        如果需要包含动态内容的完整提示词，请使用 merge_prompts_with_snapshot()（已废弃）
+        或使用新的 _build_user_prompt_with_context() 方法。
         
         Args:
-            market_snapshot: 市场快照
+            market_snapshot: 市场快照（为了向后兼容保留，但不再使用）
             
         Returns:
-            系统提示词
+            静态系统提示词
         """
-        return self.merge_prompts_with_snapshot(market_snapshot)
+        if market_snapshot:
+            self.logger.warning("build_system_prompt() 不再使用 market_snapshot 参数，动态内容已移至用户提示词")
+        
+        return self._build_static_system_prompt()
     
     def build_user_prompt(self, items: List[ContentItem]) -> str:
         """
-        构建用户提示词（便捷方法）
+        构建用户提示词（便捷方法，已废弃）
+        
+        注意：此方法已废弃，不包含动态上下文。
+        建议使用 _build_user_prompt_with_context() 方法。
         
         Args:
             items: 内容项列表
             
         Returns:
-            用户提示词
+            用户提示词（不包含动态上下文）
         """
-        return self._build_user_prompt(items)
+        self.logger.warning("build_user_prompt() 已废弃，建议使用 _build_user_prompt_with_context()")
+        
+        from email.utils import format_datetime
+        from ..utils.timezone_utils import convert_to_utc8
+        
+        prompt_parts = ["请分析以下新闻和社交媒体内容：\n"]
+        
+        for i, item in enumerate(items, 1):
+            prompt_parts.append(f"\n--- 内容 {i} ---")
+            
+            if item.source_type != "x":
+                prompt_parts.append(f"标题: {item.title}")
+            
+            prompt_parts.append(f"内容: {item.content}")
+            prompt_parts.append(f"来源: {item.url}")
+            
+            dt_with_tz = convert_to_utc8(item.publish_time)
+            rfc2822_time = format_datetime(dt_with_tz)
+            prompt_parts.append(f"发布时间: {rfc2822_time}")
+        
+        prompt_parts.append("\n\n请按照要求输出JSON格式的分析结果。")
+        
+        return "\n".join(prompt_parts)
     
     def parse_structured_response(self, response: str) -> List[StructuredAnalysisResult]:
         """

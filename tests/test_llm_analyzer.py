@@ -108,27 +108,35 @@ class TestLLMAnalyzer:
         # 应该是同一个对象
         assert snapshot1 is snapshot2
     
-    def test_merge_prompts_with_snapshot(self, mock_market_snapshot):
-        """测试合并提示词"""
+    def test_build_static_system_prompt(self):
+        """测试构建静态系统提示词（不包含动态内容）"""
         analyzer = LLMAnalyzer(mock_mode=True)
         
-        system_prompt = analyzer.merge_prompts_with_snapshot(mock_market_snapshot)
+        system_prompt = analyzer._build_static_system_prompt()
         
         assert system_prompt is not None
         assert len(system_prompt) > 0
-        assert mock_market_snapshot.content in system_prompt
+        # 静态提示词不应包含占位符
         assert "${Grok_Summary_Here}" not in system_prompt
+        assert "${outdated_news}" not in system_prompt
     
-    def test_build_user_prompt(self, mock_content_items):
-        """测试构建用户提示词"""
+    def test_build_user_prompt_with_context(self, mock_content_items, mock_market_snapshot):
+        """测试构建包含动态上下文的用户提示词"""
         analyzer = LLMAnalyzer(mock_mode=True)
         
-        user_prompt = analyzer.build_user_prompt(mock_content_items)
+        user_prompt = analyzer._build_user_prompt_with_context(mock_content_items, mock_market_snapshot)
         
         assert user_prompt is not None
         assert len(user_prompt) > 0
+        # 用户提示词应包含市场快照
+        assert "# Current Market Context" in user_prompt
+        assert mock_market_snapshot.content in user_prompt
+        # 用户提示词应包含缓存消息部分
+        assert "# Outdated News" in user_prompt
+        # 用户提示词应包含待分析内容
         assert "比特币突破50000美元" in user_prompt
-        assert "以太坊升级完成" in user_prompt
+        # 第二条是X内容，标题会被跳过，但内容应该在
+        assert "以太坊成功完成最新升级" in user_prompt
         assert "SEC批准比特币ETF" in user_prompt
     
     def test_analyze_content_batch_mock_mode(self, mock_content_items):

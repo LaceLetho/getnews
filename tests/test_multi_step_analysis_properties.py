@@ -273,28 +273,26 @@ class TestPromptMergingCorrectness:
             mock_mode=True
         )
         
-        # 合并提示词
-        merged_prompt = analyzer.merge_prompts_with_snapshot(snapshot)
+        # 构建静态系统提示词
+        system_prompt = analyzer._build_static_system_prompt()
         
-        # 验证：合并后的提示词应该包含市场快照内容
-        assert snapshot.content in merged_prompt, "合并后的提示词应该包含市场快照内容"
+        # 验证：静态系统提示词不应包含占位符
+        assert "${Grok_Summary_Here}" not in system_prompt, "静态系统提示词不应包含占位符"
+        assert "${outdated_news}" not in system_prompt, "静态系统提示词不应包含占位符"
         
-        # 验证：占位符应该被替换
-        assert "${Grok_Summary_Here}" not in merged_prompt, "占位符应该被替换"
-        
-        # 验证：合并后的提示词不应为空
-        assert len(merged_prompt) > 0, "合并后的提示词不应为空"
+        # 验证：静态系统提示词不应为空
+        assert len(system_prompt) > 0, "静态系统提示词不应为空"
     
     @given(
         snapshot1=valid_market_snapshot(),
         snapshot2=valid_market_snapshot()
     )
     @settings(max_examples=50, deadline=None)
-    def test_prompt_merging_deterministic(self, snapshot1: MarketSnapshot, snapshot2: MarketSnapshot):
+    def test_static_prompt_consistency(self, snapshot1: MarketSnapshot, snapshot2: MarketSnapshot):
         """
-        属性测试：提示词合并的确定性
+        属性测试：静态系统提示词的一致性
         
-        相同的快照应该产生相同的合并结果
+        无论市场快照如何变化，静态系统提示词应该保持不变
         """
         assume(snapshot1.content != snapshot2.content)
         
@@ -305,18 +303,16 @@ class TestPromptMergingCorrectness:
             mock_mode=True
         )
         
-        # 第一次合并
-        merged1_a = analyzer.merge_prompts_with_snapshot(snapshot1)
-        merged1_b = analyzer.merge_prompts_with_snapshot(snapshot1)
+        # 构建静态系统提示词（不依赖快照）
+        static_prompt1 = analyzer._build_static_system_prompt()
+        static_prompt2 = analyzer._build_static_system_prompt()
         
-        # 验证：相同快照的合并结果应该一致
-        assert merged1_a == merged1_b, "相同快照的合并结果应该一致"
+        # 验证：静态系统提示词应该完全相同
+        assert static_prompt1 == static_prompt2, "静态系统提示词应该保持不变"
         
-        # 第二次合并（不同快照）
-        merged2 = analyzer.merge_prompts_with_snapshot(snapshot2)
-        
-        # 验证：不同快照的合并结果应该不同
-        assert merged1_a != merged2, "不同快照的合并结果应该不同"
+        # 验证：静态提示词不包含动态内容
+        assert snapshot1.content not in static_prompt1, "静态提示词不应包含市场快照内容"
+        assert snapshot2.content not in static_prompt2, "静态提示词不应包含市场快照内容"
 
 
 # ============================================================================

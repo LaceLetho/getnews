@@ -75,12 +75,14 @@ class TestLLMAnalyzerCacheIntegration:
         # 先缓存一些消息
         messages = [
             {
-                'summary': '比特币价格突破50000美元',
+                'title': '比特币价格突破50000美元',
+                'body': '市场情绪高涨',
                 'category': 'MarketTrend',
                 'time': '2024-01-15 10:30'
             },
             {
-                'summary': 'SEC批准比特币ETF',
+                'title': 'SEC批准比特币ETF',
+                'body': '监管环境改善',
                 'category': 'Regulation',
                 'time': '2024-01-15 11:00'
             }
@@ -95,8 +97,8 @@ class TestLLMAnalyzerCacheIntegration:
         assert 'MarketTrend' in formatted
         assert 'Regulation' in formatted
     
-    def test_merge_prompts_replaces_outdated_news_empty(self):
-        """测试合并提示词时替换${outdated_news}占位符（空缓存）"""
+    def test_static_system_prompt_no_placeholders_empty_cache(self):
+        """测试静态系统提示词不包含占位符（空缓存）"""
         from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
         
         # 创建模拟市场快照
@@ -108,25 +110,28 @@ class TestLLMAnalyzerCacheIntegration:
             is_valid=True
         )
         
-        system_prompt = self.analyzer.merge_prompts_with_snapshot(snapshot)
+        system_prompt = self.analyzer._build_static_system_prompt()
         
-        # 验证${outdated_news}被替换为"无"
+        # 验证静态系统提示词不包含占位符
         assert "${outdated_news}" not in system_prompt
-        assert "# Outdated News\n无" in system_prompt
+        assert "${Grok_Summary_Here}" not in system_prompt
     
-    def test_merge_prompts_replaces_outdated_news_with_data(self):
-        """测试合并提示词时替换${outdated_news}占位符（有缓存数据）"""
+    def test_user_prompt_contains_outdated_news_with_data(self):
+        """测试用户提示词包含Outdated News部分（有缓存数据）"""
         from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
+        from crypto_news_analyzer.models import ContentItem
         
         # 先缓存一些消息
         messages = [
             {
-                'summary': '比特币价格突破50000美元',
+                'title': '比特币价格突破50000美元',
+                'body': '市场情绪高涨',
                 'category': 'MarketTrend',
                 'time': '2024-01-15 10:30'
             },
             {
-                'summary': 'SEC批准比特币ETF',
+                'title': 'SEC批准比特币ETF',
+                'body': '监管环境改善',
                 'category': 'Regulation',
                 'time': '2024-01-15 11:00'
             }
@@ -142,27 +147,41 @@ class TestLLMAnalyzerCacheIntegration:
             is_valid=True
         )
         
-        system_prompt = self.analyzer.merge_prompts_with_snapshot(snapshot)
+        items = [
+            ContentItem(
+                id="test1",
+                title="新测试新闻",
+                content="新测试内容",
+                url="https://example.com/new",
+                publish_time=datetime.now(),
+                source_name="test",
+                source_type="rss"
+            )
+        ]
         
-        # 验证${outdated_news}被替换为格式化的缓存消息
-        assert "${outdated_news}" not in system_prompt
-        assert "比特币价格突破50000美元" in system_prompt
-        assert "SEC批准比特币ETF" in system_prompt
-        assert "MarketTrend" in system_prompt
-        assert "Regulation" in system_prompt
+        user_prompt = self.analyzer._build_user_prompt_with_context(items, snapshot)
         
-        # 验证格式正确
-        assert "- [2024-01-15 10:30] [MarketTrend]" in system_prompt
-        assert "- [2024-01-15 11:00] [Regulation]" in system_prompt
+        # 验证用户提示词包含市场快照
+        assert "# Current Market Context" in user_prompt
+        assert "当前市场处于震荡状态" in user_prompt
+        
+        # 验证用户提示词包含格式化的缓存消息
+        assert "# Outdated News" in user_prompt
+        assert "比特币价格突破50000美元" in user_prompt
+        assert "SEC批准比特币ETF" in user_prompt
+        assert "MarketTrend" in user_prompt
+        assert "Regulation" in user_prompt
     
-    def test_build_system_prompt_with_cache(self):
-        """测试build_system_prompt方法集成缓存"""
+    def test_complete_prompt_structure_with_cache(self):
+        """测试完整的提示词结构（系统提示词 + 用户提示词）"""
         from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
+        from crypto_news_analyzer.models import ContentItem
         
         # 先缓存一些消息
         messages = [
             {
-                'summary': '某交易所遭受黑客攻击',
+                'title': '某交易所遭受黑客攻击',
+                'body': '安全事件影响市场',
                 'category': 'Security',
                 'time': '2024-01-15 12:00'
             }
@@ -178,13 +197,32 @@ class TestLLMAnalyzerCacheIntegration:
             is_valid=True
         )
         
-        system_prompt = self.analyzer.build_system_prompt(snapshot)
+        items = [
+            ContentItem(
+                id="test1",
+                title="新闻标题",
+                content="新闻内容",
+                url="https://example.com/news",
+                publish_time=datetime.now(),
+                source_name="test",
+                source_type="rss"
+            )
+        ]
         
-        # 验证两个占位符都被替换
+        # 构建系统提示词和用户提示词
+        system_prompt = self.analyzer._build_static_system_prompt()
+        user_prompt = self.analyzer._build_user_prompt_with_context(items, snapshot)
+        
+        # 验证系统提示词是静态的
         assert "${Grok_Summary_Here}" not in system_prompt
         assert "${outdated_news}" not in system_prompt
-        assert "当前市场处于震荡状态" in system_prompt
-        assert "某交易所遭受黑客攻击" in system_prompt
+        
+        # 验证用户提示词包含所有动态内容
+        assert "# Current Market Context" in user_prompt
+        assert "当前市场处于震荡状态" in user_prompt
+        assert "# Outdated News" in user_prompt
+        assert "某交易所遭受黑客攻击" in user_prompt
+        assert "新闻标题" in user_prompt
     
     def test_analyzer_without_cache_manager_returns_none(self):
         """测试没有缓存管理器时返回'无'"""
