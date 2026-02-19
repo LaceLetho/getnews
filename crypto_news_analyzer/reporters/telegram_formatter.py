@@ -191,15 +191,13 @@ class TelegramFormatter:
         if not isinstance(text, str):
             text = str(text)
         
-        # 使用MarkdownV1的简化转义规则（更稳定）
-        # 只转义真正会影响格式的字符
-        # 改进：使用正则避免重复转义，使用原始字符串避免转义问题
-        for char in self.markdown_v1_special_chars:
-            # 只转义未被转义的字符（使用负向后查找）
-            # 注意：需要使用4个反斜杠来匹配一个反斜杠
-            pattern = r'(?<!\\)' + re.escape(char)
-            replacement = '\\' + char
-            text = re.sub(pattern, replacement, text)
+        # MarkdownV1转义策略：
+        # 对于普通文本，不需要转义下划线和星号，因为它们只在成对时才会触发格式化
+        # 只需要转义方括号和反引号，因为它们会影响链接和代码格式
+        # 简单替换即可，不需要复杂的正则
+        text = text.replace('[', '\\[')
+        text = text.replace(']', '\\]')
+        text = text.replace('`', '\\`')
         
         return text
     
