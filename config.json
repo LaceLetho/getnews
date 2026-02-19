@@ -93,6 +93,11 @@
       "name": "ambcrypto",
       "url": "https://ambcrypto.com/feed/",
       "description": "ambcrypto articles"
+    },
+    {
+      "name": "Ethereum Foundation Blog",
+      "url": "https://blog.ethereum.org/en/feed.xml",
+      "description": "Ethereum Foundation Blog"
     }
   ],
   "x_sources": [

@@ -438,10 +438,10 @@ class LLMAnalyzer:
         
         # 添加待分析的新闻内容
         prompt_parts.append("# News and Social Media Content to Analyze")
-        prompt_parts.append("请分析以下新闻和社交媒体内容：\n")
+        prompt_parts.append("请分析以下新闻和社交媒体消息：\n")
         
         for i, item in enumerate(items, 1):
-            prompt_parts.append(f"\n--- 内容 {i} ---")
+            prompt_parts.append(f"\n--- 消息 {i} ---")
             
             # X/Twitter内容的标题只是正文的截断，跳过以节省token
             if item.source_type != "x":
@@ -724,10 +724,10 @@ class LLMAnalyzer:
         from email.utils import format_datetime
         from ..utils.timezone_utils import convert_to_utc8
         
-        prompt_parts = ["请分析以下新闻和社交媒体内容：\n"]
+        prompt_parts = ["请分析以下新闻和社交媒体消息：\n"]
         
         for i, item in enumerate(items, 1):
-            prompt_parts.append(f"\n--- 内容 {i} ---")
+            prompt_parts.append(f"\n--- 消息 {i} ---")
             
             if item.source_type != "x":
                 prompt_parts.append(f"标题: {item.title}")
