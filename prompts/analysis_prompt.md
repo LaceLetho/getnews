@@ -46,6 +46,12 @@
      - Traction ➡️ 意译为“实际业务增长”、“市场验证”或“落地数据”。（❌ 牵引力）
      - Alignment ➡️ 意译为“利益一致性”或“价值匹配”。（❌ 对齐）
      - Pricing in ➡️ 计价消化、预期兑现
+   - **情境概括（Contextual Abstraction）:**
+     - **非金融数据概括化**：不要列举武器型号、具体参会的一长串名单、具体的代码库文件名，而是提炼核心意图或表达事态的严重级（Severity）
+       - *Bad:* "美军48小时内调派48架F-16、12架F-22、18架F-35、6架E-3G预警机及40架加油机，福特号航母群接近地中海，形成两大航母战斗群规模超去年行动"
+       - *Good:* "美军在中东部署了包括双航母战斗群在内的空前军事力量。" (将清单概括为**规模**和**程度**)
+     - **金融数据精确化**：对于金额、利率、时间、涨跌幅，**必须**精确保留。
+       - *Good:* "美联储加息25个基点，比特币短时下跌3%。"
 
 ## Example (Few-Shot)
    - **Input News:** "Wintermute observed that after Consensus, capital is rotating to AI stocks because crypto tokens lack clear value alignment. VCs now prioritize real traction over high FDV narratives."
