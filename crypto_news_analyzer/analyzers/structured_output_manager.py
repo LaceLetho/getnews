@@ -326,7 +326,7 @@ class StructuredOutputManager:
                     "input": input_text,
                     "tools": [
                         {"type": "web_search"},
-                        {"type": "x_search"}
+                        {"type": "x_search","enable_image_understanding": True}
                     ],
                     "text_format": response_model,
                     "temperature": temperature
