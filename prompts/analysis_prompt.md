@@ -52,16 +52,23 @@
        - *Good:* "美军在中东部署了包括双航母战斗群在内的空前军事力量。" (将清单概括为**规模**和**程度**)
      - **金融数据精确化**：对于金额、利率、时间、涨跌幅，**必须**精确保留。
        - *Good:* "美联储加息25个基点，比特币短时下跌3%。"
+   - **增量深度 (Deep Insight)**：
+     - 如果事件属于深度分析类或宏观转折类，需解释“这意味着什么”。
+     - 如果事件仅为单一的链上数据或直白的客观事实，**保持克制，陈述完事实即止**。
 
 ## Example (Few-Shot)
-   - **Input News:** "Wintermute observed that after Consensus, capital is rotating to AI stocks because crypto tokens lack clear value alignment. VCs now prioritize real traction over high FDV narratives."
+1. Example A: 直白数据类 (禁止过度解读)
+   - **Input News:** "DefiLlama data shows that Binance has seen a net inflow of over $3 billion in the past 7 days, peaking at $3.364 billion."
+   
+   - **Bad Output (强行加戏):** 
+     - Title: 币安过去7天净流入资金33.64亿美元，机构筑底意愿增强
+     - Body: 币安过去7天净流入资金峰值触及33.64亿美元。这与当前市场BTC测试支撑位的防御态势相呼应，反映出机构投资者筑底配置行为增强，可能缓解短期抛压并支撑流动性回稳。
+     *(错误原因：过度解读数据，强行加入未被证实的市场情绪和抛压推演。)*
 
-   - **Bad Output:**
-     - 情绪谨慎资本轮动AI股票，代币陷身份危机。融资门槛抬高追真实牵引力，山寨兴奋低发行干扰价值对齐。
-
-   - **Good Output:**
-     - Title: Wintermute 市场观察：资金逃离加密圈转向 AI，代币面临“价值危机”
-     - Body: 机构资金正在撤离高估值但缺乏实际效用的加密叙事。受一级市场风向转变影响，资本目前更青睐具备实际业务增长（Traction）的 AI 概念股。这意味着纯概念型代币的估值逻辑正在失效，市场正迫切寻求价值匹配的新标的。
+   - **Good Output (客观陈述):**
+     - Title: 币安过去7天净流入超30亿美元，创近期峰值
+     - Body: 据 DefiLlama 数据，币安在过去7天内录得超过 30 亿美元的资金净流入，峰值达到 33.64 亿美元。
+     *(正确示范：对于简单的数据指标，清晰、准确地陈述事实即可，不加主观臆断。)*
 
 # Category Definitions
 - **AlphaInsight:** 深度市场分析与逻辑推演。
