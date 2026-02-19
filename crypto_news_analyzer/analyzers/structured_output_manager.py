@@ -325,7 +325,7 @@ class StructuredOutputManager:
                     "model": model,
                     "input": input_text,
                     "tools": [
-                        {"type": "web_search"},
+                        {"type": "web_search","enable_image_understanding": True},
                         {"type": "x_search","enable_image_understanding": True}
                     ],
                     "text_format": response_model,
