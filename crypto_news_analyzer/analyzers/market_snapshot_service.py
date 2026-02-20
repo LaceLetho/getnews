@@ -21,6 +21,8 @@ try:
 except ImportError:
     OpenAI = None
 
+from crypto_news_analyzer.utils.conversation_cache import ConversationIdManager
+
 
 @dataclass
 class MarketSnapshot:
@@ -95,9 +97,12 @@ class MarketSnapshotService:
         self.cache_ttl_minutes = cache_ttl_minutes
         self.cache_dir = cache_dir
         self.mock_mode = mock_mode
-        self.conversation_id = conversation_id or str(uuid.uuid4())
         self.temperature = temperature
         self.logger = logging.getLogger(__name__)
+        
+        # 使用会话ID管理器获取或创建持久化的conversation_id
+        conversation_id_manager = ConversationIdManager(cache_dir=cache_dir)
+        self.conversation_id = conversation_id or conversation_id_manager.get_or_create_conversation_id("market_snapshot")
         
         # API配置 - 使用OpenAI SDK调用xAI API
         self.grok_api_base = "https://api.x.ai/v1"

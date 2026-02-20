@@ -20,6 +20,7 @@ from pathlib import Path
 
 from ..models import ContentItem, AnalysisResult, StorageConfig
 from ..utils.timezone_utils import format_datetime_utc8
+from ..utils.conversation_cache import ConversationIdManager
 from .market_snapshot_service import MarketSnapshotService, MarketSnapshot
 from .structured_output_manager import (
     StructuredOutputManager,
@@ -98,8 +99,11 @@ class LLMAnalyzer:
         self.cache_ttl_minutes = cache_ttl_minutes
         self.cached_messages_hours = cached_messages_hours
         self.mock_mode = mock_mode
-        self.conversation_id = conversation_id or str(uuid.uuid4())
         self.logger = logging.getLogger(__name__)
+        
+        # 使用会话ID管理器获取或创建持久化的conversation_id
+        conversation_id_manager = ConversationIdManager(cache_dir="./data/cache")
+        self.conversation_id = conversation_id or conversation_id_manager.get_or_create_conversation_id("llm_analyzer")
         
         # 初始化token使用追踪器
         self.token_tracker = TokenUsageTracker(max_records=50)
