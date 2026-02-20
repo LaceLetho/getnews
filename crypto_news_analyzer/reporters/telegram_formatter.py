@@ -147,21 +147,13 @@ class TelegramFormatter:
                     username = path_parts[0]
                     return f"@{self.escape_special_characters(username)}"
             
-            # 移除常见前缀
-            for prefix in ['www.', 'm.', 'mobile.', 'blog.', 'cdn.', 'en.', 
-                          'news.', 'api.', 'app.', 'web.', 'static.', 'media.',
-                          'assets.', 'content.', 'secure.', 'my.', 'portal.',
-                          'support.', 'help.', 'docs.', 'dev.', 'staging.',
-                          'beta.', 'alpha.', 'test.', 'demo.', 'old.', 'new.',
-                          'v1.', 'v2.', 'v3.', 'amp.', 'i.', 'img.']:
-                if domain.startswith(prefix):
-                    domain = domain[len(prefix):]
-                    break
-            # 提取主域名部分（去除TLD）
             parts = domain.split('.')
-            if len(parts) >= 2:
+            if len(parts) == 2:
                 return parts[0]
-            return domain
+            elif len(parts) > 2:
+                return parts[1]
+            else:
+                return domain
         except Exception:
             return fallback
     
