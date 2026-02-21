@@ -264,7 +264,7 @@ class TelegramFormatter:
                 self.logger.warning(f"粗体标记不匹配: 发现{unescaped_asterisks}个未转义的*")
                 # 输出未转义的*位置用于调试
                 positions = [m.start() for m in re.finditer(r'(?<!\\)\*', text_without_links)]
-                self.logger.debug(f"未转义*的位置: {positions[:10]}")  # 只显示前10个
+                self.logger.warn(f"未转义*的位置: {positions[:10]}")  # 只显示前10个
                 return False
             
             if unescaped_underscores % 2 != 0:
@@ -275,7 +275,7 @@ class TelegramFormatter:
                     start = max(0, m.start() - 20)
                     end = min(len(text_without_links), m.end() + 20)
                     context = text_without_links[start:end]
-                    self.logger.debug(f"未转义_位置{i+1}: ...{context}...")
+                    self.logger.warn(f"未转义_位置{i+1}: ...{context}...")
                 return False
             
             return True
