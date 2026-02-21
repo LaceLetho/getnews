@@ -341,6 +341,9 @@ class StructuredOutputManager:
 
                 # 提取token使用情况
                 if usage_callback and hasattr(response, 'usage') and response.usage:
+                    # 打印完整的usage信息到日志
+                    logger.info(f"Token使用情况: {response.usage.to_json()}")
+                    
                     usage_data = {
                         'model': model,
                         'prompt_tokens': getattr(response.usage, 'prompt_tokens', 0),
@@ -364,6 +367,32 @@ class StructuredOutputManager:
                 raise
             except Exception as e:
                 logger.error(f"使用web_search失败: {e}")
+                
+                # 尝试获取原始响应内容用于调试
+                try:
+                    if 'response' in locals():
+                        logger.error(f"响应对象类型: {type(response)}")
+                        logger.error(f"响应对象属性: {dir(response)}")
+                        
+                        # 尝试获取原始输出
+                        if hasattr(response, 'output'):
+                            logger.error(f"原始output: {response.output}")
+                        if hasattr(response, 'output_parsed'):
+                            logger.error(f"output_parsed: {response.output_parsed}")
+                        if hasattr(response, 'text'):
+                            logger.error(f"text: {response.text}")
+                            
+                        # 尝试手动解析JSON
+                        raw_output = getattr(response, 'output', None) or getattr(response, 'text', None)
+                        if raw_output:
+                            logger.info("尝试手动修复JSON...")
+                            fixed_result = self.handle_malformed_response(raw_output, batch_mode)
+                            if fixed_result:
+                                logger.info("成功修复JSON响应")
+                                return fixed_result
+                except Exception as debug_error:
+                    logger.error(f"调试信息提取失败: {debug_error}")
+                
                 raise
 
     def _force_with_instructor(
@@ -701,8 +730,77 @@ class StructuredOutputManager:
             else:
                 return StructuredAnalysisResult(**parsed_data)
                 
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON解析失败: {e}")
+            
+            # 尝试修复截断的JSON字符串
+            try:
+                fixed_json = self._fix_truncated_json(response, batch_mode)
+                if fixed_json:
+                    logger.info("成功修复截断的JSON")
+                    return fixed_json
+            except Exception as fix_error:
+                logger.error(f"修复截断JSON失败: {fix_error}")
+            
+            return None
         except Exception as e:
             logger.error(f"无法恢复格式错误的响应: {e}")
+            return None
+    
+    def _fix_truncated_json(
+        self,
+        json_str: str,
+        batch_mode: bool = False
+    ) -> Union[StructuredAnalysisResult, BatchAnalysisResult, None]:
+        """
+        尝试修复截断的JSON字符串
+        
+        Args:
+            json_str: 可能被截断的JSON字符串
+            batch_mode: 是否批量模式
+            
+        Returns:
+            修复后的结构化结果，如果无法修复则返回None
+        """
+        import re
+        
+        logger.info("尝试修复截断的JSON字符串...")
+        
+        # 1. 尝试补全未闭合的字符串
+        # 查找最后一个未闭合的引号
+        if json_str.count('"') % 2 != 0:
+            logger.info("检测到未闭合的字符串，尝试补全...")
+            json_str = json_str + '"'
+        
+        # 2. 尝试补全未闭合的数组和对象
+        open_braces = json_str.count('{')
+        close_braces = json_str.count('}')
+        open_brackets = json_str.count('[')
+        close_brackets = json_str.count(']')
+        
+        # 补全缺失的闭合括号
+        if open_brackets > close_brackets:
+            logger.info(f"补全 {open_brackets - close_brackets} 个数组闭合括号")
+            json_str = json_str + ']' * (open_brackets - close_brackets)
+        
+        if open_braces > close_braces:
+            logger.info(f"补全 {open_braces - close_braces} 个对象闭合括号")
+            json_str = json_str + '}' * (open_braces - close_braces)
+        
+        # 3. 移除末尾的逗号（可能导致解析失败）
+        json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+        
+        # 4. 尝试解析修复后的JSON
+        try:
+            parsed_data = json.loads(json_str)
+            
+            if batch_mode:
+                return BatchAnalysisResult(**parsed_data)
+            else:
+                return StructuredAnalysisResult(**parsed_data)
+        except Exception as e:
+            logger.error(f"修复后的JSON仍然无法解析: {e}")
+            logger.debug(f"修复后的JSON: {json_str[:500]}...")
             return None
     
     def _handle_malformed_json(
