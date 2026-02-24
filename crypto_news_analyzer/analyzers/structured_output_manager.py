@@ -344,12 +344,21 @@ class StructuredOutputManager:
                     # 打印完整的usage信息到日志
                     logger.info(f"Token使用情况: {response.usage.to_json()}")
                     
+                    # 从 input_tokens_details 中提取 cached_tokens
+                    cached_tokens = 0
+                    if hasattr(response.usage, 'input_tokens_details'):
+                        input_details = getattr(response.usage, 'input_tokens_details', {})
+                        if isinstance(input_details, dict):
+                            cached_tokens = input_details.get('cached_tokens', 0)
+                        else:
+                            cached_tokens = getattr(input_details, 'cached_tokens', 0)
+                    
                     usage_data = {
                         'model': model,
-                        'prompt_tokens': getattr(response.usage, 'prompt_tokens', 0),
-                        'completion_tokens': getattr(response.usage, 'completion_tokens', 0),
+                        'prompt_tokens': getattr(response.usage, 'input_tokens', 0),
+                        'completion_tokens': getattr(response.usage, 'output_tokens', 0),
                         'total_tokens': getattr(response.usage, 'total_tokens', 0),
-                        'cached_tokens': getattr(response.usage, 'prompt_tokens_details', {}).get('cached_tokens', 0) if hasattr(response.usage, 'prompt_tokens_details') else 0
+                        'cached_tokens': cached_tokens
                     }
                     usage_callback(usage_data)
 
