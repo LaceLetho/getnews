@@ -98,6 +98,41 @@
       "name": "Ethereum Foundation Blog",
       "url": "https://blog.ethereum.org/en/feed.xml",
       "description": "Ethereum Foundation Blog"
+    },
+    {
+      "name": "動區動趨",
+      "url": "https://www.blocktempo.com/feed/",
+      "description": "動區動趨 all, 曾扒Arbitrum、YGG、TRB等项目与DWF Labs的秘密交易"
+    },
+    {
+      "name": "reddit options",
+      "url": "https://www.reddit.com/r/options/new/.rss",
+      "description": "Subreddit options, known for Former Market Makers AMA"
+    },
+    {
+      "name": "reddit CryptoCurrency",
+      "url": "https://www.reddit.com/r/CryptoCurrency/new/.rss",
+      "description": "Subreddit CryptoCurrency, known for order book analysis"
+    },
+    {
+      "name": "reddit BitcoinMarkets",
+      "url": "https://www.reddit.com/r/BitcoinMarkets/new/.rss",
+      "description": "Subreddit BitcoinMarkets, known for order book analysis"
+    },
+    {
+      "name": "elitetrader crypto assets",
+      "url": "https://www.elitetrader.com/et/forums/crypto-assets.67/index.rss",
+      "description": "Elitetrader subforum crypto assets, known for Quantitative Trading"
+    },
+    {
+      "name": "stackexchange market making",
+      "url": "https://quant.stackexchange.com/feeds/tag/market-making",
+      "description": "Stackexchange tag market making"
+    },
+    {
+      "name": "dlnews",
+      "url": "https://www.dlnews.com/arc/outboundfeeds/rss/",
+      "description": "dlnews, known for Movement Labs event"
     }
   ],
   "x_sources": [
