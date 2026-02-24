@@ -258,7 +258,11 @@ class TelegramFormatter:
             
             # 统计未转义的*和_（需要排除已经被转义的情况）
             unescaped_asterisks = len(re.findall(r'(?<!\\)\*', text_without_links))
-            unescaped_underscores = len(re.findall(r'(?<!\\)_', text_without_links))
+            
+            # 对于下划线，需要排除@username中的下划线（如@whale_alert）
+            # 先移除所有@username格式的文本，然后再统计下划线
+            text_without_usernames = re.sub(r'@\w+', '', text_without_links)
+            unescaped_underscores = len(re.findall(r'(?<!\\)_', text_without_usernames))
             
             if unescaped_asterisks % 2 != 0:
                 self.logger.warning(f"粗体标记不匹配: 发现{unescaped_asterisks}个未转义的*")
