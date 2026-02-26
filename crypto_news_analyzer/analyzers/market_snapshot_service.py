@@ -231,11 +231,11 @@ class MarketSnapshotService:
             messages = [
                 {
                     "role": "system",
-                    "content": "你是一个专业的加密货币市场分析师，获取最新信息，然后提供完整的市场现状总结。"
+                    "content": prompt_template  # 使用完整的market_summary_prompt.md作为系统提示词
                 },
                 {
                     "role": "user", 
-                    "content": prompt_template
+                    "content": "Generate a 24-Hour Crypto Market Snapshot"
                 }
             ]
             
