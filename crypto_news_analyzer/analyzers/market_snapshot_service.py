@@ -77,7 +77,8 @@ class MarketSnapshotService:
                  cache_dir: str = "./data/cache",
                  mock_mode: bool = False,
                  conversation_id: Optional[str] = None,
-                 temperature: float = 0.5):
+                 temperature: float = 0.5,
+                 config: Optional[Dict[str, Any]] = None):
         """
         初始化市场快照服务
         
@@ -90,6 +91,7 @@ class MarketSnapshotService:
             mock_mode: 是否使用模拟模式（用于测试）
             conversation_id: 会话ID（用于提高缓存命中率，如果为None则自动生成）
             temperature: 温度参数（控制输出随机性）
+            config: 配置字典（用于读取enable_debug_logging等设置）
         """
         self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
         self.summary_model = summary_model
@@ -98,6 +100,7 @@ class MarketSnapshotService:
         self.cache_dir = cache_dir
         self.mock_mode = mock_mode
         self.temperature = temperature
+        self.config = config or {}
         self.logger = logging.getLogger(__name__)
         
         # 使用会话ID管理器获取或创建持久化的conversation_id
@@ -239,6 +242,31 @@ class MarketSnapshotService:
                 }
             ]
             
+            # 根据配置决定是否启用DEBUG日志
+            enable_debug = self.config.get("llm_config", {}).get("enable_debug_logging", False)
+            
+            if enable_debug:
+                import logging as stdlib_logging
+                openai_logger = stdlib_logging.getLogger("openai")
+                httpx_logger = stdlib_logging.getLogger("httpx")
+                original_openai_level = openai_logger.level
+                original_httpx_level = httpx_logger.level
+                openai_logger.setLevel(stdlib_logging.DEBUG)
+                httpx_logger.setLevel(stdlib_logging.DEBUG)
+            
+            # 打印发送给LLM的完整内容到日志
+            self.logger.info("=" * 80)
+            self.logger.info("发送给Grok的市场快照请求:")
+            self.logger.info(f"模型: {self.summary_model}")
+            self.logger.info(f"温度: {self.temperature}")
+            self.logger.info("-" * 80)
+            self.logger.info("系统提示词:")
+            self.logger.info(messages[0]["content"])
+            self.logger.info("-" * 80)
+            self.logger.info("用户消息:")
+            self.logger.info(messages[1]["content"])
+            self.logger.info("=" * 80)
+            
             # 获取24小时之前的时间
             twenty_four_hours_ago = (datetime.now() - timedelta(hours=24)).isoformat()
 
@@ -254,6 +282,8 @@ class MarketSnapshotService:
                 },
             ]
             
+            self.logger.info(f"启用工具: web_search, x_search (from_date: {twenty_four_hours_ago})")
+            
             # 调用 responses API，添加 x-grok-conv-id 头以提高缓存命中率
             response = self.client.responses.create(
                 model=self.summary_model,
@@ -262,6 +292,11 @@ class MarketSnapshotService:
                 tools=tools,
                 tool_choice="required"
             )
+            
+            # 恢复日志级别
+            if enable_debug:
+                openai_logger.setLevel(original_openai_level)
+                httpx_logger.setLevel(original_httpx_level)
             
             if not response or not hasattr(response, 'output'):
                 self.logger.error("Grok API返回空响应或格式错误")

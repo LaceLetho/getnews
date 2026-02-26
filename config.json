@@ -27,7 +27,7 @@
     "min_weight_score": 50,
     "cache_ttl_minutes": 240,
     "cached_messages_hours": 24,
-    "enable_debug_logging": false
+    "enable_debug_logging": true
   },
   "rss_sources": [
     {

@@ -154,7 +154,8 @@ class LLMAnalyzer:
             cache_ttl_minutes=self.cache_ttl_minutes,
             mock_mode=mock_mode,
             conversation_id=self.conversation_id,
-            temperature=self.temperature
+            temperature=self.temperature,
+            config=self.config  # 传递config以支持enable_debug_logging
         )
         
         # 初始化结构化输出管理器
