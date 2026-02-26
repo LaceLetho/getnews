@@ -1157,10 +1157,17 @@ class TelegramCommandHandler:
                 self.logger.error(error_msg)
                 return f"❌ {error_msg}\n\n请确保已正确配置GROK_API_KEY环境变量。"
             
-            # 获取市场快照（从缓存）
-            # 注意：MarketSnapshotService.get_market_snapshot() 需要 prompt_template 参数
-            # 但我们只需要从缓存获取，所以传递一个空字符串即可
-            snapshot = self.market_snapshot_service.get_market_snapshot("")
+            # 通过LLMAnalyzer获取市场快照（优先使用缓存，缓存不存在时自动生成）
+            try:
+                if hasattr(self.execution_coordinator, 'llm_analyzer') and self.execution_coordinator.llm_analyzer:
+                    snapshot = self.execution_coordinator.llm_analyzer.get_market_snapshot(use_cached=True)
+                else:
+                    self.logger.warning("LLMAnalyzer未初始化，使用备用快照")
+                    snapshot = self.market_snapshot_service.get_fallback_snapshot()
+                    
+            except Exception as e:
+                self.logger.error(f"获取市场快照失败: {e}")
+                snapshot = self.market_snapshot_service.get_fallback_snapshot()
             
             if not snapshot or not snapshot.is_valid:
                 error_msg = "无法获取市场快照"
