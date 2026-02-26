@@ -239,6 +239,8 @@ class LLMAnalyzer:
         # 读取市场快照提示词模板
         prompt_template = self._load_market_prompt_template()
         
+        self.logger.info(f"准备调用市场快照服务，提示词长度: {len(prompt_template)} 字符")
+        
         # 调用市场快照服务获取快照
         snapshot = self.market_snapshot_service.get_market_snapshot(prompt_template)
         
@@ -566,7 +568,16 @@ class LLMAnalyzer:
                 raise FileNotFoundError(f"市场快照提示词文件不存在: {self.market_prompt_path}")
             
             with open(self.market_prompt_path, 'r', encoding='utf-8') as f:
-                return f.read().strip()
+                content = f.read().strip()
+                
+            # 打印加载的提示词长度用于调试
+            self.logger.info(f"成功加载市场快照提示词，长度: {len(content)} 字符")
+            
+            if not content:
+                self.logger.warning("市场快照提示词文件为空")
+                return "请简要描述当前加密货币市场的现状。"
+                
+            return content
         except Exception as e:
             self.logger.error(f"加载市场快照提示词失败: {e}")
             # 返回默认提示词

@@ -168,6 +168,13 @@ class MarketSnapshotService:
             市场快照对象
         """
         try:
+            # 验证提示词不为空
+            if not prompt_template or not prompt_template.strip():
+                self.logger.error("收到空的提示词模板")
+                return self.get_fallback_snapshot()
+            
+            self.logger.info(f"收到提示词模板，长度: {len(prompt_template)} 字符")
+            
             # 模拟模式直接返回模拟数据，不使用缓存
             if self.mock_mode:
                 self.logger.info("模拟模式：直接生成模拟快照")
