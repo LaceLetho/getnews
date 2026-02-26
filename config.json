@@ -26,7 +26,8 @@
     "analysis_prompt_path": "./prompts/analysis_prompt.md",
     "min_weight_score": 50,
     "cache_ttl_minutes": 240,
-    "cached_messages_hours": 24
+    "cached_messages_hours": 24,
+    "enable_debug_logging": false
   },
   "rss_sources": [
     {

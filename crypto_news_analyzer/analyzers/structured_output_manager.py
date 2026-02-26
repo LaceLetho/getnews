@@ -150,16 +150,18 @@ class StructuredOutputManager:
     支持多种结构化输出库的集成（instructor等）。
     """
     
-    def __init__(self, library: str = "instructor"):
+    def __init__(self, library: str = "instructor", config: Optional[Dict[str, Any]] = None):
         """
         初始化结构化输出管理器
         
         Args:
             library: 使用的结构化输出库名称，默认为"instructor"
+            config: 配置字典，用于读取调试日志等设置
         """
         self.library = self._validate_library(library)
         self.output_schema = self._build_output_schema()
         self.instructor_client = None
+        self.config = config or {}
         
         logger.info(f"初始化结构化输出管理器，使用库: {self.library.value}")
     
@@ -309,14 +311,17 @@ class StructuredOutputManager:
                     for msg in messages
                 ])
 
-                # 启用DEBUG日志
-                import logging as stdlib_logging
-                openai_logger = stdlib_logging.getLogger("openai")
-                httpx_logger = stdlib_logging.getLogger("httpx")
-                original_openai_level = openai_logger.level
-                original_httpx_level = httpx_logger.level
-                openai_logger.setLevel(stdlib_logging.DEBUG)
-                httpx_logger.setLevel(stdlib_logging.DEBUG)
+                # 根据配置决定是否启用DEBUG日志
+                enable_debug = self.config.get("llm_config", {}).get("enable_debug_logging", False)
+                
+                if enable_debug:
+                    import logging as stdlib_logging
+                    openai_logger = stdlib_logging.getLogger("openai")
+                    httpx_logger = stdlib_logging.getLogger("httpx")
+                    original_openai_level = openai_logger.level
+                    original_httpx_level = httpx_logger.level
+                    openai_logger.setLevel(stdlib_logging.DEBUG)
+                    httpx_logger.setLevel(stdlib_logging.DEBUG)
 
                 logger.info(f"调用responses.parse API，model={model}, tools=[web_search, x_search]")
 
@@ -336,8 +341,9 @@ class StructuredOutputManager:
                 response = llm_client.responses.parse(**parse_params)
 
                 # 恢复日志级别
-                openai_logger.setLevel(original_openai_level)
-                httpx_logger.setLevel(original_httpx_level)
+                if enable_debug:
+                    openai_logger.setLevel(original_openai_level)
+                    httpx_logger.setLevel(original_httpx_level)
 
                 # 提取token使用情况
                 if usage_callback and hasattr(response, 'usage') and response.usage:

@@ -248,7 +248,8 @@ class MainController:
                 cache_ttl_minutes=llm_config.get("cache_ttl_minutes", 30),
                 cached_messages_hours=llm_config.get("cached_messages_hours", 24),
                 mock_mode=not auth_config.LLM_API_KEY,  # 如果没有API密钥则使用模拟模式
-                storage_config=self.storage_config  # 传入storage_config以创建缓存管理器
+                storage_config=self.storage_config,  # 传入storage_config以创建缓存管理器
+                config=config_data  # 传入完整配置
             )
             
             # 获取LLMAnalyzer内部的market_snapshot_service实例供命令处理器使用

@@ -65,7 +65,8 @@ class LLMAnalyzer:
         mock_mode: bool = False,
         cache_manager: Optional[SentMessageCacheManager] = None,
         storage_config: Optional[StorageConfig] = None,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None
     ):
         """
         初始化LLM分析器
@@ -86,6 +87,7 @@ class LLMAnalyzer:
             cache_manager: 已发送消息缓存管理器（可选）
             storage_config: 存储配置（用于创建缓存管理器，可选）
             conversation_id: 会话ID（用于提高缓存命中率，如果为None则自动生成）
+            config: 完整配置字典（用于传递给子组件）
         """
         self.api_key = api_key or os.getenv('LLM_API_KEY', '')
         self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
@@ -99,6 +101,7 @@ class LLMAnalyzer:
         self.cache_ttl_minutes = cache_ttl_minutes
         self.cached_messages_hours = cached_messages_hours
         self.mock_mode = mock_mode
+        self.config = config or {}
         self.logger = logging.getLogger(__name__)
         
         # 使用会话ID管理器获取或创建持久化的conversation_id
@@ -155,7 +158,7 @@ class LLMAnalyzer:
         )
         
         # 初始化结构化输出管理器
-        self.structured_output_manager = StructuredOutputManager(library="instructor")
+        self.structured_output_manager = StructuredOutputManager(library="instructor", config=self.config)
         
         # 如果有客户端，设置instructor客户端
         if self.client and not mock_mode:
