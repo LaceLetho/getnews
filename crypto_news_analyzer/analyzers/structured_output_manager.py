@@ -370,6 +370,9 @@ class StructuredOutputManager:
 
                 # 获取解析后的结果
                 result = response.output_parsed
+                
+                # 清理结果中的 Grok 标签
+                result = self._clean_result_grok_tags(result)
 
                 logger.info(f"成功获取web_search结构化响应 (batch_mode={batch_mode})")
                 logger.info(f"响应类型: {type(result)}")
@@ -726,6 +729,9 @@ class StructuredOutputManager:
         """
         logger.warning("尝试恢复格式错误的响应")
         
+        # 首先清理 Grok 标签
+        response = self._clean_grok_tags(response)
+        
         try:
             # 尝试从markdown代码块中提取JSON
             json_str = self._extract_json_from_markdown(response)
@@ -761,6 +767,52 @@ class StructuredOutputManager:
         except Exception as e:
             logger.error(f"无法恢复格式错误的响应: {e}")
             return None
+    
+    def _clean_grok_tags(self, text: str) -> str:
+        """清理 Grok 引用标签和其他不兼容的格式
+        
+        Args:
+            text: 原始文本
+            
+        Returns:
+            清理后的文本
+        """
+        if not text:
+            return text
+        
+        import re
+        
+        # 移除 Grok 引用标签 <grok:render>...</grok:render>
+        text = re.sub(r'<grok:render[^>]*>.*?</grok:render>', '', text, flags=re.DOTALL)
+        
+        # 清理多余的空格
+        text = re.sub(r' +', ' ', text)
+        
+        return text
+    
+    def _clean_result_grok_tags(
+        self, 
+        result: Union[StructuredAnalysisResult, BatchAnalysisResult]
+    ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
+        """清理结构化结果中的 Grok 标签
+        
+        Args:
+            result: 结构化分析结果
+            
+        Returns:
+            清理后的结果
+        """
+        if isinstance(result, BatchAnalysisResult):
+            # 批量模式：清理每个结果项
+            for item in result.results:
+                item.title = self._clean_grok_tags(item.title)
+                item.body = self._clean_grok_tags(item.body)
+        elif isinstance(result, StructuredAnalysisResult):
+            # 单个结果：直接清理
+            result.title = self._clean_grok_tags(result.title)
+            result.body = self._clean_grok_tags(result.body)
+        
+        return result
     
     def _fix_truncated_json(
         self,

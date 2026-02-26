@@ -132,13 +132,15 @@
 # Output Format
 只输出一个 JSON List，无结果请输出 `[]`。
 
+**重要**：输出的 JSON 必须是纯文本格式，**严禁**包含任何 HTML 标签、XML 标签或特殊格式标记（如 `<grok:render>`、`<argument>` 等）。所有内容必须是纯文本字符串。
+
 JSON 对象结构定义：
 {
   "time": "RFC 2822 格式时间",
   "category": "根据上文[Category Definitions]分类，如：Whale、MacroLiquidity、Truth、MonetarySystem",
   "weight_score": 根据上文[Scoring Rubric]打分,
   "title": "根据上文[Style Guide]的标题要求使用中文撰写标题",
-  "body": "根据上文[Style Guide]的正文要求使用中文撰写正文",
+  "body": "根据上文[Style Guide]的正文要求使用中文撰写正文（纯文本，不包含任何标签）",
   "source": "保留该条消息的原始 URL",
   "related_sources": ["所有相关信息源链接的数组，包括：1) 系统爬取提供的原始信息源URL，2) 你使用web_search工具搜索到的相关链接，3) 你使用x_search工具搜索到的相关推文链接。如果没有额外的相关链接，可以为空数组[]"]
 }
