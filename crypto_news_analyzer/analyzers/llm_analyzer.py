@@ -489,11 +489,7 @@ class LLMAnalyzer:
         # 打印用户提示词
         self.logger.info("👤 用户提示词 (User Prompt):")
         self.logger.info(f"{'-' * 80}")
-        # 截断过长的用户提示词，只显示前1000字符和后300字符
-        if len(user_prompt) > 1300:
-            self.logger.info(f"{user_prompt[:1000]}\n\n... [中间省略 {len(user_prompt) - 1300} 字符] ...\n\n{user_prompt[-300:]}")
-        else:
-            self.logger.info(user_prompt)
+        self.logger.info(user_prompt)
         self.logger.info(f"{'-' * 80}\n")
 
         # 打印统计信息
