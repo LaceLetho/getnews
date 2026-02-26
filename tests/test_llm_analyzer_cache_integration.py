@@ -77,7 +77,7 @@ class TestLLMAnalyzerCacheIntegration:
             {
                 'title': '比特币价格突破50000美元',
                 'body': '市场情绪高涨',
-                'category': 'MarketTrend',
+                'category': 'BlackSwan',
                 'time': '2024-01-15 10:30'
             },
             {
@@ -94,7 +94,7 @@ class TestLLMAnalyzerCacheIntegration:
         assert formatted != "无"
         assert '比特币价格突破50000美元' in formatted
         assert 'SEC批准比特币ETF' in formatted
-        assert 'MarketTrend' in formatted
+        assert 'BlackSwan' in formatted
         assert 'Regulation' in formatted
     
     def test_static_system_prompt_no_placeholders_empty_cache(self):
@@ -126,7 +126,7 @@ class TestLLMAnalyzerCacheIntegration:
             {
                 'title': '比特币价格突破50000美元',
                 'body': '市场情绪高涨',
-                'category': 'MarketTrend',
+                'category': 'BlackSwan',
                 'time': '2024-01-15 10:30'
             },
             {
@@ -169,7 +169,7 @@ class TestLLMAnalyzerCacheIntegration:
         assert "# Outdated News" in user_prompt
         assert "比特币价格突破50000美元" in user_prompt
         assert "SEC批准比特币ETF" in user_prompt
-        assert "MarketTrend" in user_prompt
+        assert "BlackSwan" in user_prompt
         assert "Regulation" in user_prompt
     
     def test_complete_prompt_structure_with_cache(self):

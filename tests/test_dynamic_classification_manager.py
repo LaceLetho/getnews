@@ -171,7 +171,7 @@ class TestDynamicClassificationManager:
         self.manager.update_category_registry(categories1)
         
         # 验证完全不同的分类
-        categories2 = {"NewProject", "MarketTrend"}
+        categories2 = {"NewProject", "BlackSwan"}
         is_consistent = self.manager.validate_category_consistency(categories2)
         
         assert is_consistent is False

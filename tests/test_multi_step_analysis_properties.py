@@ -92,7 +92,7 @@ def valid_structured_result(draw):
     """生成有效的结构化分析结果"""
     time_str = datetime.now().strftime('%Y-%m-%d %H:%M')
     category = draw(st.sampled_from([
-        "Whale", "Fed", "Regulation", "Security", "NewProject", "MarketTrend"
+        "Whale", "Fed", "Regulation", "Security", "NewProject", "BlackSwan"
     ]))
     weight_score = draw(st.integers(min_value=0, max_value=100))
     summary = draw(st.text(min_size=20, max_size=200))

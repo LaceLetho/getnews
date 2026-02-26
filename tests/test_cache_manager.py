@@ -417,7 +417,7 @@ class TestSentMessageCacheManager:
         messages = [
             {
                 'summary': '比特币价格突破50000美元',
-                'category': 'MarketTrend',
+                'category': 'BlackSwan',
                 'time': '2024-01-15 10:30'
             },
             {
@@ -452,7 +452,7 @@ class TestSentMessageCacheManager:
         assert '比特币价格突破50000美元' in formatted
         assert 'SEC批准比特币ETF' in formatted
         assert '某交易所遭受黑客攻击' in formatted
-        assert 'MarketTrend' in formatted
+        assert 'BlackSwan' in formatted
         assert 'Regulation' in formatted
         assert 'Security' in formatted
     
@@ -466,7 +466,7 @@ class TestSentMessageCacheManager:
         messages = [
             {
                 'summary': '消息1',
-                'category': 'MarketTrend',
+                'category': 'BlackSwan',
                 'time': '2024-01-15 10:30'
             },
             {

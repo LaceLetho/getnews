@@ -591,7 +591,7 @@ class LLMAnalyzer:
         """生成模拟分析结果（用于测试）"""
         mock_results = []
         
-        categories = ["Whale", "MacroLiquidity", "Regulation", "NewProject", "Arbitrage", "Truth", "MonetarySystem", "MarketTrend"]
+        categories = ["Whale", "MacroLiquidity", "Regulation", "NewProject", "Arbitrage", "Truth", "MonetarySystem", "BlackSwan"]
         
         for i, item in enumerate(items):
             # 模拟：只保留部分内容，其他被过滤
@@ -645,7 +645,7 @@ class LLMAnalyzer:
         if self.mock_mode:
             return StructuredAnalysisResult(
                 time=datetime.now().strftime('%Y-%m-%d %H:%M'),
-                category="MarketTrend",
+                category="BlackSwan",
                 weight_score=75,
                 summary=f"模拟分析: {content[:50]}...",
                 source="https://example.com/mock",

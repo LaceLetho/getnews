@@ -32,7 +32,7 @@ def test_parse_categories_from_prompt():
     assert "Fed" in categories
     assert "Regulation" in categories
     assert "NewProject" in categories
-    assert "MarketTrend" in categories
+    assert "BlackSwan" in categories
     
     # 验证系统默认分类
     assert "Uncategorized" in categories

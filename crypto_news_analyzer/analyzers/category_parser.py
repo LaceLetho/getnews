@@ -45,7 +45,7 @@ class CategoryParser:
         "Arbitrage": "💰",
         "Truth": "💡",
         "MonetarySystem": "💵",
-        "MarketTrend": "✨",
+        "BlackSwan": "🦢",
         "Security": "🔒",  # 保留以防旧配置
         "Fed": "📊",  # 保留以防旧配置
     }
@@ -61,7 +61,7 @@ class CategoryParser:
         "Arbitrage": "套利机会",
         "Truth": "真相",
         "MonetarySystem": "货币体系",
-        "MarketTrend": "市场趋势",
+        "BlackSwan": "黑天鹅",
         "Security": "安全事件",  # 保留以防旧配置
         "Fed": "利率事件",  # 保留以防旧配置
     }
