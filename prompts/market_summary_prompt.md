@@ -45,7 +45,13 @@ For each of the following 8 dimensions, provide **1-2 high-information-density s
 Output plain text directly with each dimension prefixed by its title followed by a colon, one line per point.
 
 Example format:
-Market Structure & On-Chain Liquidity: [your analysis here]
-Sector Rotation: [your analysis here]
-Global Monetary System & Liquidity Valves: [your analysis here]
+1. Market Structure & On-Chain Liquidity
+[your analysis here]
+
+2. Sector Rotation
+[your analysis here]
+
+3. Global Monetary System & Liquidity Valves
+[your analysis here]
+
 ...and so on for all 8 dimensions
