@@ -1,5 +1,6 @@
 ---
 inclusion: auto
+description: Technology stack, dependencies, build system, and deployment configuration
 ---
 
 # Tech Stack

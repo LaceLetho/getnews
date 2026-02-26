@@ -1,5 +1,6 @@
 ---
 inclusion: auto
+description: Project directory layout, module organization, and data flow architecture
 ---
 
 # Project Structure

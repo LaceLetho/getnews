@@ -1,5 +1,6 @@
 ---
 inclusion: auto
+description: Cryptocurrency news analysis tool product overview and core features
 ---
 
 # Product Overview
