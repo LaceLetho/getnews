@@ -338,7 +338,7 @@ class MarketSnapshotService:
                 if is_valid:
                     return MarketSnapshot(
                         content=content,
-                        timestamp=datetime.now(),
+                        timestamp=datetime.now(timezone.utc),
                         source="grok",
                         quality_score=quality_score,
                         is_valid=True
@@ -478,8 +478,8 @@ class MarketSnapshotService:
         cache_file = os.path.join(self.cache_dir, "market_snapshot.json")
         
         try:
-            # 更新时间戳为当前时间
-            snapshot.timestamp = datetime.now()
+            # 更新时间戳为当前UTC时间
+            snapshot.timestamp = datetime.now(timezone.utc)
             
             with open(cache_file, 'w', encoding='utf-8') as f:
                 json.dump(snapshot.to_dict(), f, ensure_ascii=False, indent=2)
@@ -545,7 +545,7 @@ class MarketSnapshotService:
         Returns:
             是否有效
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         cache_age = now - cache_timestamp
         return cache_age.total_seconds() < (self.cache_ttl_minutes * 60)
     
@@ -574,7 +574,7 @@ class MarketSnapshotService:
         
         return MarketSnapshot(
             content=fallback_content,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc),
             source="fallback",
             quality_score=0.7,
             is_valid=True
@@ -588,7 +588,7 @@ class MarketSnapshotService:
             模拟的市场快照
         """
         mock_content = f"""
-当前加密货币市场现状（模拟数据 - {datetime.now().strftime('%Y-%m-%d %H:%M')}）：
+当前加密货币市场现状（模拟数据 - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}）：
 
 1. 当前行情与普遍预期：比特币价格在45,000-50,000美元区间震荡，市场情绪偏向谨慎乐观，等待更多利好消息。
 
@@ -603,7 +603,7 @@ class MarketSnapshotService:
         
         return MarketSnapshot(
             content=mock_content,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc),
             source="mock",
             quality_score=0.85,
             is_valid=True
@@ -646,10 +646,10 @@ class MarketSnapshotService:
         if info["cache_exists"]:
             try:
                 stat = os.stat(cache_file)
-                cache_time = datetime.fromtimestamp(stat.st_mtime)
+                cache_time = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
                 info.update({
                     "cache_time": cache_time.isoformat(),
-                    "cache_age_minutes": (datetime.now() - cache_time).total_seconds() / 60,
+                    "cache_age_minutes": (datetime.now(timezone.utc) - cache_time).total_seconds() / 60,
                     "is_valid": self._is_cache_valid(cache_time),
                     "file_size": stat.st_size
                 })
