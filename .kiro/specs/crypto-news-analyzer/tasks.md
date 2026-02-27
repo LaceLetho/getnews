@@ -266,39 +266,99 @@
     - 测试错误处理（缓存失败不影响主流程）
     - _需求: 17.15_
 
-- [x] 12. 实现Telegram命令触发功能
-  - [x] 12.1 创建Telegram命令处理器
-    - 实现TelegramCommandHandler类，支持命令解析和权限验证
-    - 实现/run、/market、/status、/help命令的处理逻辑
-    - 添加授权用户管理和权限验证机制
-    - 实现命令执行历史记录和日志管理
-    - _需求: 16.1, 16.2, 16.3, 16.4, 16.5, 16.8, 16.10, 16.11_
-  
-  - [x] 12.2 集成命令触发与执行协调器
-    - 扩展ExecutionCoordinator支持手动触发执行
-    - 实现并发控制，防止多个执行同时进行
-    - 添加执行超时管理和状态查询功能
-    - 实现执行完成后的用户通知机制
-    - _需求: 16.6, 16.7, 16.9, 16.14, 16.15_
-  
-  - [x] 12.3 实现/market命令功能
-    - 集成MarketSnapshotService到TelegramCommandHandler
-    - 实现handle_market_command方法，获取实时市场快照
-    - 将市场快照格式化为Telegram消息并发送给用户
-    - 实现错误处理，在获取失败时返回明确的错误信息
-    - _需求: 16.3, 16.17, 16.18, 16.19_
-  
-  - [x] 12.4 为Telegram命令功能编写属性测试
-    - **属性 18: 命令权限验证一致性**
-    - **属性 19: 市场快照命令正确性**
-    - **验证: 需求 16.3, 16.5, 16.10, 16.11, 16.17, 16.18, 16.19**
-  
-  - [ ]* 12.5 编写Telegram命令单元测试
-    - 测试命令解析和权限验证逻辑
-    - 测试各种命令场景和错误处理
-    - 测试并发控制和超时机制
-    - 测试/market命令的市场快照获取和格式化
-    - _需求: 16.12, 16.13_
+- [x] 12. 实现Telegram命令触发和多用户授权功能
+  - [x] 12.1 实现用户名解析功能
+    - 创建_resolve_username()方法调用Telegram Bot API的getChat端点
+    - 接受带或不带@前缀的用户名
+    - 成功时返回user_id字符串，失败时返回None
+    - 优雅处理API异常
+    - 记录解析尝试和结果
+    - _需求: 16.21_
+
+  - [x] 12.2 添加用户名缓存数据结构
+    - 在TelegramCommandHandler中添加`_username_cache`字典实例变量
+    - 在__init__中初始化为空字典
+    - 存储username -> user_id映射
+    - _需求: 16.23_
+
+  - [x] 12.3 更新授权加载以支持混合格式
+    - 修改_load_authorized_users()方法
+    - 读取TELEGRAM_AUTHORIZED_USERS环境变量
+    - 解析逗号分隔的条目
+    - 识别数字条目为直接用户ID
+    - 识别以"@"开头的条目为用户名
+    - 验证并跳过无效条目并记录警告
+    - 在集合中存储直接用户ID
+    - _需求: 16.12, 16.13, 16.14, 16.18, 16.19, 16.20_
+
+  - [x] 12.4 添加用户名解析循环到_load_authorized_users()
+    - 遍历用户名条目
+    - 为每个用户名调用_resolve_username()
+    - 将解析的user_id添加到授权集合
+    - 在_username_cache中存储映射
+    - 记录解析成功和失败
+    - 出错时继续（不崩溃）
+    - _需求: 16.21, 16.22, 16.23, 16.24, 16.25, 16.26_
+
+  - [x] 12.5 添加用户名解析的错误处理
+    - 处理用户未找到错误
+    - 处理解析期间的API错误
+    - 处理bot权限错误
+    - 所有情况下继续初始化
+    - _需求: 16.24, 16.25_
+
+  - [x] 12.6 更新授权逻辑
+    - 简化is_authorized_user()方法
+    - 针对`_authorized_user_ids`集合检查user_id
+    - 返回布尔结果
+    - _需求: 16.28, 16.29, 16.30, 16.42_
+
+  - [x] 12.7 添加聊天上下文提取功能
+    - 在crypto_news_analyzer/models.py中创建ChatContext数据类
+    - 包含字段: user_id, username, chat_id, chat_type, is_private, is_group
+    - 添加context_description属性用于人类可读输出
+    - 实现_extract_chat_context()辅助方法
+    - 从update.effective_user.id提取user_id
+    - 从update.effective_chat提取chat_id和chat_type
+    - 返回填充所有字段的ChatContext实例
+    - 优雅处理缺失字段并记录错误
+    - _需求: 16.28, 16.29_
+
+  - [x] 12.8 添加增强的授权日志记录
+    - 实现_log_authorization_attempt()方法
+    - 接受参数: command, user_id, username, chat_type, chat_id, authorized, reason
+    - 授权成功时在INFO级别记录
+    - 授权失败时在WARNING级别记录
+    - 在日志消息中包含所有上下文字段
+    - _需求: 16.38, 16.39, 16.40, 16.41_
+
+  - [x] 12.9 更新命令处理器以使用聊天上下文
+    - 更新_handle_run_command()方法
+    - 更新_handle_status_command()方法
+    - 更新_handle_market_command()方法
+    - 更新_handle_help_command()方法
+    - 更新_handle_tokens_command()方法
+    - 在方法开始时调用_extract_chat_context()
+    - 从上下文提取user_id, username, chat_type, chat_id
+    - 更新现有日志语句以包含chat_type和chat_id
+    - 为所有授权检查调用_log_authorization_attempt()
+    - _需求: 16.28, 16.29, 16.30, 16.38, 16.39, 16.40, 16.41_
+
+  - [x] 12.10 更新配置文件
+    - 从config.json的telegram_commands部分移除authorized_users字段
+    - 保持其他telegram_commands配置不变
+    - 更新.env.template添加TELEGRAM_AUTHORIZED_USERS示例
+    - 添加注释解释格式（ID和用户名）
+    - 提供示例: "123456789,@user1,987654321,@user2"
+    - 添加关于用户名解析要求的说明
+    - _需求: 16.12_
+
+  - [x] 12.11 实现报告发送规则
+    - 手动触发的/run命令将报告发送到触发命令的聊天窗口
+    - 定时任务报告发送到TELEGRAM_CHANNEL_ID指定的频道
+    - 在ExecutionCoordinator中实现chat_id参数传递
+    - 在TelegramSender中支持动态chat_id
+    - _需求: 16.43, 16.44_
 - [x] 13. 创建部署配置和示例文件
   - [x] 13.1 创建部署配置和示例文件
     - 创建requirements.txt和setup.py

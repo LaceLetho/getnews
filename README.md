@@ -184,12 +184,14 @@ uv run pytest tests/test_minimax_llm_analyzer.py -v
 ### 可用命令
 
 - `/run` - 立即执行一次数据收集和分析任务
+- `/market` - 获取当前市场快照
 - `/status` - 查询系统运行状态
+- `/tokens` - 查看token使用统计
 - `/help` - 显示帮助信息
 
-### 授权机制
+### 多用户授权机制
 
-系统使用基于用户的授权机制：
+系统支持多个授权用户在私聊和群组中与bot交互：
 
 1. **私聊授权**: 授权用户可以在与 bot 的私聊中执行命令
 2. **群组授权**: 授权用户可以在群组中执行命令（基于用户 ID，而非群组 ID）
@@ -202,32 +204,44 @@ uv run pytest tests/test_minimax_llm_analyzer.py -v
 
 ### 配置授权用户
 
-在 `.env` 文件中配置 `TELEGRAM_AUTHORIZED_USERS`：
+在 `.env` 文件中配置 `TELEGRAM_AUTHORIZED_USERS`，支持两种格式：
 
 ```bash
 # 支持用户ID和用户名混合格式
-TELEGRAM_AUTHORIZED_USERS=123456789,@user1,987654321,@user2
+# 格式1: 用户ID（数字）
+# 格式2: 用户名（@开头）
+# 多个用户用逗号分隔
+
+# 示例1: 仅用户ID
+TELEGRAM_AUTHORIZED_USERS=123456789,987654321
+
+# 示例2: 仅用户名
+TELEGRAM_AUTHORIZED_USERS=@user1,@user2,@user3
+
+# 示例3: 混合格式（推荐）
+TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 ```
+
+#### 如何获取 Telegram 用户 ID
+
+1. 在 Telegram 中搜索 `@userinfobot`
+2. 发送 `/start` 命令
+3. Bot 会返回你的用户 ID
+
+#### 用户名解析说明
+
+- 使用用户名时，bot 必须先与该用户互动过，或者用户有公开的 profile
+- 如果用户名解析失败，系统会记录警告并跳过该用户名
+- 建议对关键用户使用用户 ID 作为备份
+- 所有授权用户都有相同的权限，可以执行所有命令（/run, /status, /help, /market, /tokens）
 
 ### 速率限制
 
 为防止滥用，系统实施了速率限制：
-- 每小时最多执行命令次数（默认：60次）
+- 每小时最多执行命令次数（默认：120次）
 - 命令冷却时间（默认：5分钟）
 
 可在 `config.json` 的 `telegram_commands.command_rate_limit` 中调整。
-
-## 配置说明
-
-系统通过 `config.json` 文件进行配置，主要包括：
-
-- **execution_interval**: 执行间隔（秒）
-- **time_window_hours**: 时间窗口（小时）
-- **storage**: 存储配置
-- **auth**: 认证信息
-- **llm_config**: LLM模型配置
-- **rss_sources**: RSS订阅源列表
-- **x_sources**: X/Twitter信息源列表
 
 ## 部署
 

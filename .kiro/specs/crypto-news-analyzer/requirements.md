@@ -47,6 +47,17 @@
 - **Telegram_Command**: Telegram命令，用户通过发送特定消息触发系统执行
 - **Command_Handler**: 命令处理器，解析和执行Telegram命令
 - **Manual_Trigger**: 手动触发，通过外部命令启动系统执行
+- **Bot**: Telegram bot应用程序，接收和处理命令
+- **Private_Chat**: 用户与Bot之间的一对一对话
+- **Group_Chat**: 多个用户和Bot参与的Telegram群组对话
+- **Authorized_User**: 其user_id或username在授权用户配置中列出的用户
+- **User_ID**: Telegram分配给每个用户的唯一数字标识符
+- **Username**: 以"@"开头的Telegram用户名（handle），唯一标识用户
+- **Chat_ID**: 聊天的唯一标识符（私聊为正数，群组为负数）
+- **Command_Sender**: 向Bot发送命令的用户
+- **Username_Resolution**: 使用Telegram Bot API将用户名转换为对应user_id的过程
+- **Username_Cache**: 用户名到user_id的内存映射，避免重复API调用
+- **Chat_Context**: 从Telegram更新中提取的聊天上下文信息
 
 ## 需求
 
@@ -350,9 +361,9 @@
 9. THE System SHALL 记录Telegram发送的成功率和消息分割统计
 10. THE System SHALL 提供可视化的监控面板显示关键指标趋势
 
-### 需求 16: Telegram命令触发
+### 需求 16: Telegram命令触发和多用户授权
 
-**用户故事:** 作为用户，我希望能够通过向Telegram Bot发送命令来手动触发一次程序运行或查询市场快照，以便在需要时立即获取最新的分析报告或市场信息。
+**用户故事:** 作为用户，我希望能够通过向Telegram Bot发送命令来手动触发一次程序运行或查询市场快照，并且系统支持多个授权用户在私聊和群组中与bot交互，以便在需要时立即获取最新的分析报告或市场信息。
 
 #### 验收标准
 
@@ -361,20 +372,45 @@
 3. WHEN 用户发送"/market"命令 THEN System SHALL 获取并返回当前市场现状快照
 4. WHEN 用户发送"/status"命令 THEN System SHALL 返回当前系统运行状态和上次执行信息
 5. WHEN 用户发送"/help"命令 THEN System SHALL 返回可用命令列表和使用说明
-6. THE System SHALL 验证命令发送者的权限，只允许授权用户触发执行
-7. WHEN 系统正在执行任务 THEN System SHALL 拒绝新的执行命令并返回当前执行状态
-8. WHEN 手动触发执行完成 THEN System SHALL 发送执行结果通知给触发用户
-9. THE System SHALL 记录所有手动触发的执行历史和触发用户信息
-10. WHEN 手动触发执行失败 THEN System SHALL 发送详细的错误信息给触发用户
-11. THE System SHALL 支持配置授权用户列表，限制命令执行权限
-12. WHEN 未授权用户发送命令 THEN System SHALL 返回权限拒绝消息
-13. THE System SHALL 支持在定时调度模式和命令触发模式之间切换
-14. WHEN 收到无效命令 THEN System SHALL 返回友好的错误提示和帮助信息
-15. THE System SHALL 为手动触发的执行设置超时限制，避免长时间占用资源
-16. WHEN 手动触发执行超时 THEN System SHALL 终止执行并通知用户
-17. WHEN 用户发送"/market"命令 THEN System SHALL 使用联网AI服务获取实时市场快照
-18. WHEN 市场快照获取成功 THEN System SHALL 将市场快照以Telegram格式发送给用户
-19. WHEN 市场快照获取失败 THEN System SHALL 返回错误信息并说明失败原因
+6. WHEN 用户发送"/tokens"命令 THEN System SHALL 返回当前会话的token使用统计
+7. THE System SHALL 验证命令发送者的权限，只允许授权用户触发执行
+8. WHEN 系统正在执行任务 THEN System SHALL 拒绝新的执行命令并返回当前执行状态
+9. WHEN 手动触发执行完成 THEN System SHALL 发送执行结果通知给触发用户
+10. THE System SHALL 记录所有手动触发的执行历史和触发用户信息
+11. WHEN 手动触发执行失败 THEN System SHALL 发送详细的错误信息给触发用户
+12. THE System SHALL 从TELEGRAM_AUTHORIZED_USERS环境变量读取授权用户列表
+13. THE TELEGRAM_AUTHORIZED_USERS环境变量 SHALL 包含逗号分隔的Telegram用户ID和/或用户名列表
+14. WHEN Bot初始化时 THEN System SHALL 解析TELEGRAM_AUTHORIZED_USERS变量并加载所有条目到内存
+15. WHEN TELEGRAM_AUTHORIZED_USERS变量为空或未设置 THEN System SHALL 记录警告并拒绝所有命令尝试
+16. THE System SHALL 支持多个用户在授权列表中，数量不受限制
+17. THE System SHALL 在解析时修剪每个条目的空格以处理格式变化
+18. WHEN 环境变量中的条目是数字 THEN System SHALL 将其视为用户ID
+19. WHEN 环境变量中的条目以"@"开头 THEN System SHALL 将其视为用户名
+20. WHEN 环境变量中的条目既不是数字也不以"@"开头 THEN System SHALL 记录警告并跳过该条目
+21. WHEN TELEGRAM_AUTHORIZED_USERS中提供用户名（以"@"开头） THEN System SHALL 使用Telegram Bot API将其解析为对应的user_id
+22. WHEN Bot收到用户命令 THEN System SHALL 检查发送者的user_id是否匹配任何从用户名条目解析的user_id
+23. WHEN 用户名解析成功 THEN System SHALL 缓存用户名到user_id的映射以避免重复API调用
+24. WHEN 用户名解析因用户未找到而失败 THEN System SHALL 记录警告并跳过该用户名条目
+25. WHEN 用户名解析因API错误而失败 THEN System SHALL 记录错误并跳过该用户名条目
+26. THE System SHALL 在接受命令前在初始化期间尝试用户名解析
+27. THE System SHALL 在同一TELEGRAM_AUTHORIZED_USERS变量中支持数字用户ID和@username条目的混合格式
+28. WHEN 授权用户在私聊中发送命令 THEN System SHALL 验证命令发送者的User_ID并处理命令
+29. WHEN 授权用户在群组中发送命令 THEN System SHALL 验证命令发送者的User_ID（而非群组ID）并处理命令
+30. WHEN 未授权用户发送命令 THEN System SHALL 返回权限拒绝消息
+31. THE System SHALL 支持在定时调度模式和命令触发模式之间切换
+32. WHEN 收到无效命令 THEN System SHALL 返回友好的错误提示和帮助信息
+33. THE System SHALL 为手动触发的执行设置超时限制，避免长时间占用资源
+34. WHEN 手动触发执行超时 THEN System SHALL 终止执行并通知用户
+35. WHEN 用户发送"/market"命令 THEN System SHALL 使用联网AI服务获取实时市场快照
+36. WHEN 市场快照获取成功 THEN System SHALL 将市场快照以Telegram格式发送给用户
+37. WHEN 市场快照获取失败 THEN System SHALL 返回错误信息并说明失败原因
+38. THE System SHALL 记录所有授权尝试，包括user_id、username、聊天类型和授权决定
+39. WHEN 授权失败 THEN System SHALL 记录失败原因
+40. WHEN 授权成功 THEN System SHALL 记录正在执行的命令和触发用户
+41. THE System SHALL 在所有授权日志中包含聊天上下文信息（私聊vs群组）
+42. THE System SHALL 为所有授权用户提供相同的权限集（/run, /status, /help, /market, /tokens）
+43. WHEN 手动触发的/run命令执行时 THEN System SHALL 将报告发送到触发命令的聊天窗口（私聊或群组）
+44. WHEN 定时任务报告生成时 THEN System SHALL 将报告发送到TELEGRAM_CHANNEL_ID指定的频道
 
 ### 需求 17: 已发送消息缓存和去重
 

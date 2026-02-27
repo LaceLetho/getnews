@@ -615,26 +615,28 @@ class TelegramSender:
 
 ### 8.1. Telegram命令处理器 (TelegramCommandHandler)
 
-处理用户通过Telegram发送的命令，支持手动触发系统执行。
+处理用户通过Telegram发送的命令，支持手动触发系统执行和多用户授权。
 
 ```python
 class TelegramCommandHandler:
     def __init__(self, bot_token: str, execution_coordinator: ExecutionCoordinator, config_manager: ConfigManager, market_snapshot_service: MarketSnapshotService)
-    def start_command_listener(self) -> None
-    def stop_command_listener(self) -> None
-    def handle_command(self, update: Update, context: CallbackContext) -> None
-    def handle_run_command(self, user_id: str, username: str) -> str
-    def handle_market_command(self, user_id: str, username: str) -> str
-    def handle_status_command(self, user_id: str) -> str
-    def handle_help_command(self, user_id: str) -> str
-    def is_authorized_user(self, user_id: str, username: str) -> bool
-    def get_execution_status(self) -> ExecutionStatus
-    def trigger_manual_execution(self, user_id: str) -> ExecutionResult
-    def get_market_snapshot(self, user_id: str) -> MarketSnapshotResult
-    def log_command_execution(self, command: str, user_id: str, result: str) -> None
-    def validate_user_permissions(self, user_id: str) -> bool
-    def send_execution_notification(self, user_id: str, result: ExecutionResult) -> None
-    def send_market_snapshot(self, user_id: str, snapshot: MarketSnapshot) -> None
+    async def start_command_listener(self) -> None
+    async def stop_command_listener(self) -> None
+    async def _handle_run_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
+    async def _handle_status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
+    async def _handle_market_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
+    async def _handle_help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
+    async def _handle_tokens_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
+    async def _handle_start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
+    def _load_authorized_users(self) -> None
+    async def _resolve_username(self, username: str) -> Optional[str]
+    async def _resolve_all_usernames(self) -> None
+    def is_authorized_user(self, user_id: str, username: str = None) -> bool
+    def check_rate_limit(self, user_id: str) -> tuple[bool, Optional[str]]
+    def _extract_chat_context(self, update: Update) -> ChatContext
+    def _log_authorization_attempt(self, command: str, user_id: str, username: str, chat_type: str, chat_id: str, authorized: bool, reason: str = None) -> None
+    def trigger_manual_execution(self, user_id: str, chat_id: str = None) -> ExecutionResult
+    def get_execution_status(self) -> Dict[str, Any]
 ```
 
 **支持的命令**:
@@ -642,11 +644,108 @@ class TelegramCommandHandler:
 - **/market**: 获取并返回当前市场现状快照
 - **/status**: 查询当前系统运行状态和上次执行信息
 - **/help**: 显示可用命令列表和使用说明
+- **/tokens**: 显示当前会话的token使用统计
+- **/start**: 欢迎消息和快速开始指南
 
-**权限管理**:
-- **授权用户列表**: 通过配置文件管理有权限执行命令的用户
-- **用户ID验证**: 验证命令发送者的Telegram用户ID
-- **权限拒绝处理**: 对未授权用户返回友好的拒绝消息
+**多用户授权机制**:
+
+系统支持多个授权用户在私聊和群组中与bot交互，通过环境变量配置授权用户列表。
+
+**授权用户配置**:
+- **环境变量**: TELEGRAM_AUTHORIZED_USERS
+- **格式**: 逗号分隔的用户ID和/或用户名列表
+- **支持格式**:
+  - 用户ID（数字）: `123456789`
+  - 用户名（@开头）: `@username`
+  - 混合格式: `123456789,@user1,987654321,@user2`
+
+**用户名解析**:
+```python
+async def _resolve_username(self, username: str) -> Optional[str]:
+    """
+    使用Telegram Bot API将用户名解析为user_id
+    
+    Args:
+        username: Telegram用户名（带或不带@前缀）
+        
+    Returns:
+        user_id字符串，失败时返回None
+        
+    注意:
+        - Bot必须先与用户互动过，或用户有公开profile
+        - 解析结果会被缓存以避免重复API调用
+    """
+```
+
+**聊天上下文检测**:
+```python
+def _extract_chat_context(self, update: Update) -> ChatContext:
+    """
+    从Telegram更新中提取聊天上下文信息
+    
+    Returns:
+        ChatContext包含:
+        - user_id: 发送者的用户ID
+        - username: 发送者的用户名
+        - chat_id: 聊天ID
+        - chat_type: "private", "group", 或 "supergroup"
+        - is_private: 是否为私聊
+        - is_group: 是否为群组
+    """
+```
+
+**授权验证**:
+- **私聊授权**: 验证发送者的user_id是否在授权列表中
+- **群组授权**: 验证发送者的user_id（而非群组ID）是否在授权列表中
+- **统一权限**: 所有授权用户拥有相同的权限，可执行所有命令
+
+**报告发送规则**:
+- **手动触发报告**: 发送到触发命令的聊天窗口（私聊或群组）
+- **定时任务报告**: 发送到TELEGRAM_CHANNEL_ID指定的频道
+
+**速率限制**:
+- 每小时最多执行命令次数（可配置，默认：120次）
+- 命令冷却时间（可配置，默认：5分钟）
+
+**增强日志记录**:
+```python
+def _log_authorization_attempt(
+    self,
+    command: str,
+    user_id: str,
+    username: str,
+    chat_type: str,
+    chat_id: str,
+    authorized: bool,
+    reason: str = None
+) -> None:
+    """
+    记录授权尝试的完整上下文
+    
+    包含:
+    - 命令名称
+    - 用户ID和用户名
+    - 聊天类型（private/group/supergroup）
+    - 聊天ID
+    - 授权结果
+    - 失败原因（如适用）
+    """
+```
+
+**环境变量配置示例**:
+```bash
+# 单个用户ID
+TELEGRAM_AUTHORIZED_USERS=123456789
+
+# 单个用户名
+TELEGRAM_AUTHORIZED_USERS=@username
+
+# 多个用户（混合格式）
+TELEGRAM_AUTHORIZED_USERS=123456789,@user1,987654321,@user2
+
+# 实际示例
+TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
+```
 
 **执行状态管理**:
 - **并发控制**: 防止多个用户同时触发执行
@@ -658,22 +757,17 @@ class TelegramCommandHandler:
 {
     "telegram_commands": {
         "enabled": true,
-        "authorized_users": [
-            {
-                "user_id": "123456789",
-                "username": "admin_user",
-                "permissions": ["run", "market", "status", "help"]
-            }
-        ],
         "execution_timeout_minutes": 30,
         "max_concurrent_executions": 1,
         "command_rate_limit": {
-            "max_commands_per_hour": 10,
+            "max_commands_per_hour": 120,
             "cooldown_minutes": 5
         }
     }
 }
 ```
+
+**注意**: 授权用户列表不再存储在config.json中，而是通过TELEGRAM_AUTHORIZED_USERS环境变量配置，以保护用户隐私。
 
 ### 9. 执行协调器 (ExecutionCoordinator)
 
@@ -943,10 +1037,25 @@ class CategoryConfig:
 @dataclass
 class TelegramCommandConfig:
     enabled: bool = True
-    authorized_users: List[Dict[str, Any]] = None
     execution_timeout_minutes: int = 30
     max_concurrent_executions: int = 1
     command_rate_limit: Dict[str, int] = None
+    # 注意: authorized_users已移除 - 现在从TELEGRAM_AUTHORIZED_USERS环境变量加载
+
+@dataclass
+class ChatContext:
+    """聊天上下文信息"""
+    user_id: str
+    username: str
+    chat_id: str
+    chat_type: str  # "private", "group", "supergroup"
+    is_private: bool
+    is_group: bool
+    
+    @property
+    def context_description(self) -> str:
+        """人类可读的上下文描述"""
+        return f"{self.chat_type} chat ({self.chat_id})"
 
 @dataclass
 class ExecutionInfo:
