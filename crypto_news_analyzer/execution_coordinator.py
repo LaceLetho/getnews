@@ -137,6 +137,7 @@ class MainController:
         self.command_handler: Optional[Any] = None  # TelegramCommandHandler实例
         self.cache_manager: Optional[Any] = None  # SentMessageCacheManager实例
         self.market_snapshot_service: Optional[Any] = None  # MarketSnapshotService实例（可选）
+        self.market_data_service: Optional[Any] = None  # MarketDataService实例（波动率检测）
         
         # 执行状态管理
         self.current_execution: Optional[ExecutionInfo] = None
@@ -298,6 +299,28 @@ class MainController:
                 elif not auth_config.TELEGRAM_BOT_TOKEN:
                     self.logger.warning("Telegram Bot Token未配置，无法启用命令功能")
             
+            # 初始化市场数据服务（波动率检测）
+            try:
+                from .market_data import MarketDataService, VolatilityConfig
+                volatility_config = self._get_volatility_config()
+                if volatility_config.get("enabled", False):
+                    vol_config = VolatilityConfig(
+                        threshold_percent=volatility_config.get("threshold_percent", 5.0),
+                        window_minutes=volatility_config.get("window_minutes", 5),
+                        severity_thresholds=volatility_config.get("severity_thresholds")
+                    )
+                    self.market_data_service = MarketDataService(
+                        data_manager=self.data_manager,
+                        symbols=volatility_config.get("symbols", ["BTC", "ETH"]),
+                        volatility_config=vol_config
+                    )
+                    self.logger.info("市场数据服务（波动率检测）初始化完成")
+                else:
+                    self.logger.info("波动率检测功能未启用")
+            except Exception as e:
+                self.logger.error(f"市场数据服务初始化失败: {e}")
+                self.logger.debug(traceback.format_exc())
+            
             self._initialized = True
             self.logger.info("系统组件初始化完成")
             return True
@@ -327,6 +350,36 @@ class MainController:
                 "cooldown_minutes": 5
             })
         )
+    
+    def _get_volatility_config(self) -> Dict[str, Any]:
+        """
+        获取波动率检测配置
+        
+        Returns:
+            配置字典
+        """
+        default_config = {
+            "enabled": False,
+            "symbols": ["BTC", "ETH"],
+            "threshold_percent": 5.0,
+            "window_minutes": 5,
+            "severity_thresholds": {
+                "low": 2.0,
+                "medium": 5.0,
+                "high": 10.0,
+                "extreme": 20.0
+            },
+            "fetch_funding_rate": True,
+            "fetch_basis_spread": True,
+            "fetch_order_book": True
+        }
+        
+        config_data = self.config_manager.config_data
+        volatility_config = config_data.get("volatility_detection", {})
+        
+        merged_config = {**default_config, **volatility_config}
+        
+        return merged_config
     
     def validate_prerequisites(self) -> Dict[str, Any]:
         """
@@ -588,6 +641,12 @@ class MainController:
             # 使用配置管理器的getter方法获取时间窗口
             time_window_hours = self.config_manager.get_time_window_hours()
             
+            # 阶段0: 波动率检测（在新闻分析之前执行）
+            self._update_execution_progress(0.05, "volatility_detection")
+            volatility_events = self._execute_volatility_detection_stage(time_window_hours)
+            if volatility_events:
+                self.logger.info(f"检测到 {len(volatility_events)} 个异常波动事件，将用于辅助新闻分析")
+            
             # 阶段1: 数据爬取
             self._update_execution_progress(0.1, "crawling")
             self.logger.info("开始数据爬取阶段")
@@ -658,6 +717,61 @@ class MainController:
             result["errors"].append(error_msg)
         
         return result
+    
+    def _execute_volatility_detection_stage(self, time_window_hours: int):
+        """
+        执行波动率检测阶段
+        
+        在新闻爬取之前检测ETH和BTC的价格异常波动，为后续新闻分析提供市场上下文。
+        
+        Args:
+            time_window_hours: 新闻时间窗口（小时），波动检测使用2倍时间窗口
+            
+        Returns:
+            List[VolatilityEvent]: 检测到的波动事件列表，如果没有则返回空列表
+        """
+        try:
+            if not self.market_data_service:
+                self.logger.info("市场数据服务未初始化，跳过波动率检测")
+                return []
+            
+            volatility_config = self._get_volatility_config()
+            if not volatility_config.get("enabled", False):
+                self.logger.info("波动率检测功能未启用")
+                return []
+            
+            # 使用2倍时间窗口获取K线数据
+            detection_window_hours = time_window_hours * 2
+            self.logger.info(f"开始波动率检测，时间窗口: {detection_window_hours}小时")
+            
+            # 检测波动事件
+            events = self.market_data_service.detect_volatility_for_time_window(
+                time_window_hours=detection_window_hours,
+                enrich_with_market_data=volatility_config.get("fetch_funding_rate", True)
+            )
+            
+            if events:
+                # 保存到数据库
+                saved_count = self.market_data_service.save_events_to_database(events)
+                self.logger.info(f"波动率检测完成，发现 {len(events)} 个事件，已保存 {saved_count} 个")
+                
+                # 输出事件摘要
+                for event in events:
+                    self.logger.info(
+                        f"  {event.symbol}: {event.volatility_type} "
+                        f"{event.price_change_percent:+.2f}% "
+                        f"({event.severity}) "
+                        f"{event.start_time.strftime('%H:%M')}"
+                    )
+            else:
+                self.logger.info("未检测到显著的价格波动")
+            
+            return events
+            
+        except Exception as e:
+            self.logger.error(f"波动率检测阶段失败: {e}")
+            # 波动率检测失败不应阻塞主流程
+            return []
     
     def _execute_crawling_stage(self, time_window_hours: int) -> Dict[str, Any]:
         """执行数据爬取阶段"""

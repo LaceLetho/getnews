@@ -162,5 +162,20 @@
       "max_commands_per_hour": 120,
       "cooldown_minutes": 5
     }
+  },
+  "volatility_detection": {
+    "enabled": true,
+    "symbols": ["BTC", "ETH"],
+    "threshold_percent": 5.0,
+    "window_minutes": 5,
+    "severity_thresholds": {
+      "low": 2.0,
+      "medium": 5.0,
+      "high": 10.0,
+      "extreme": 20.0
+    },
+    "fetch_funding_rate": true,
+    "fetch_basis_spread": true,
+    "fetch_order_book": true
   }
 }
