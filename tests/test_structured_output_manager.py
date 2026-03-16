@@ -32,15 +32,15 @@ class TestStructuredAnalysisResult:
             category="大户动向",
             weight_score=85,
             title="某巨鲸地址转移10000 ETH到交易所",
-
             body="某巨鲸地址转移10000 ETH到交易所",
             source="https://example.com/news/123"
         )
-        
+
         assert result.time == "2024-01-01 12:00"
         assert result.category == "大户动向"
         assert result.weight_score == 85
-        assert result.summary == "某巨鲸地址转移10000 ETH到交易所"
+        assert result.title == "某巨鲸地址转移10000 ETH到交易所"
+        assert result.body == "某巨鲸地址转移10000 ETH到交易所"
         assert result.source == "https://example.com/news/123"
     
     def test_weight_score_validation(self):
@@ -117,13 +117,25 @@ class TestStructuredAnalysisResult:
                 source="https://example.com"
             )
         
-        # 空摘要
+        # 空标题
         with pytest.raises(ValidationError):
             StructuredAnalysisResult(
                 time="2024-01-01 12:00",
                 category="测试",
                 weight_score=50,
-                summary="",
+                title="",
+                body="测试",
+                source="https://example.com"
+            )
+
+        # 空正文
+        with pytest.raises(ValidationError):
+            StructuredAnalysisResult(
+                time="2024-01-01 12:00",
+                category="测试",
+                weight_score=50,
+                title="测试",
+                body="",
                 source="https://example.com"
             )
     
@@ -233,7 +245,8 @@ class TestStructuredOutputManager:
         assert "time" in schema["properties"]
         assert "category" in schema["properties"]
         assert "weight_score" in schema["properties"]
-        assert "summary" in schema["properties"]
+        assert "title" in schema["properties"]
+        assert "body" in schema["properties"]
         assert "source" in schema["properties"]
     
     def test_setup_output_schema(self):
@@ -256,7 +269,8 @@ class TestStructuredOutputManager:
             "time": "2024-01-01 12:00",
             "category": "大户动向",
             "weight_score": 85,
-            "summary": "测试摘要",
+            "title": "测试标题",
+            "body": "测试内容",
             "source": "https://example.com/news"
         }
         
@@ -289,14 +303,16 @@ class TestStructuredOutputManager:
                     "time": "2024-01-01 12:00",
                     "category": "大户动向",
                     "weight_score": 85,
-                    "summary": "测试1",
+                    "title": "测试1",
+                    "body": "内容1",
                     "source": "https://example.com/1"
                 },
                 {
                     "time": "2024-01-01 13:00",
                     "category": "安全事件",
                     "weight_score": 95,
-                    "summary": "测试2",
+                    "title": "测试2",
+                    "body": "内容2",
                     "source": "https://example.com/2"
                 }
             ]
@@ -326,7 +342,9 @@ class TestStructuredOutputManager:
                     "time": "2024-01-01 12:00",
                     "category": "大户动向",
                     "weight_score": 150,  # 超出范围
-                    "summary": "测试",
+                    "title": "测试",
+    "body": "测试",
+                    "body": "测试",
                     "source": "https://example.com"
                 }
             ]
@@ -344,7 +362,8 @@ class TestStructuredOutputManager:
         assert "time" in example
         assert "category" in example
         assert "weight_score" in example
-        assert "summary" in example
+        assert "title" in example
+        assert "body" in example
         assert "source" in example
     
     def test_create_example_response_batch(self):
@@ -368,18 +387,19 @@ class TestStructuredOutputManager:
     "time": "2024-01-01 12:00",
     "category": "测试",
     "weight_score": 50,
-    "summary": "测试",
+    "title": "测试",
+    "body": "测试内容",
     "source": "https://example.com"
 }
 ```
 更多文本
 """
-        
+
         json_str = manager._extract_json_from_markdown(text)
         assert json_str is not None
         data = json.loads(json_str)
         assert data["category"] == "测试"
-        
+
         # 不带json标记的代码块
         text2 = """
 ```
@@ -387,12 +407,13 @@ class TestStructuredOutputManager:
     "time": "2024-01-01 12:00",
     "category": "测试2",
     "weight_score": 60,
-    "summary": "测试2",
+    "title": "测试2",
+    "body": "内容2",
     "source": "https://example.com"
 }
 ```
 """
-        
+
         json_str2 = manager._extract_json_from_markdown(text2)
         assert json_str2 is not None
         data2 = json.loads(json_str2)
@@ -401,7 +422,7 @@ class TestStructuredOutputManager:
     def test_handle_malformed_response_with_markdown(self):
         """测试处理包含markdown的格式错误响应"""
         manager = StructuredOutputManager()
-        
+
         response = """
 这是一些解释文本
 ```json
@@ -409,12 +430,13 @@ class TestStructuredOutputManager:
     "time": "2024-01-01 12:00",
     "category": "大户动向",
     "weight_score": 85,
-    "summary": "测试摘要",
+    "title": "测试标题",
+    "body": "测试内容",
     "source": "https://example.com/news"
 }
 ```
 """
-        
+
         result = manager.handle_malformed_response(response, batch_mode=False)
         assert result is not None
         assert isinstance(result, StructuredAnalysisResult)
@@ -451,7 +473,8 @@ class TestStructuredOutputManager:
         assert "time" in instruction
         assert "category" in instruction
         assert "weight_score" in instruction
-        assert "summary" in instruction
+        assert "title" in instruction
+        assert "body" in instruction
         assert "source" in instruction
     
     def test_build_json_instruction_batch(self):
@@ -496,7 +519,7 @@ class TestStructuredOutputManager:
 
 class TestValidationResult:
     """测试ValidationResult数据类"""
-    
+
     def test_valid_result(self):
         """测试有效的验证结果"""
         result = ValidationResult(
@@ -504,11 +527,11 @@ class TestValidationResult:
             errors=[],
             warnings=[]
         )
-        
+
         assert result.is_valid
         assert len(result.errors) == 0
         assert len(result.warnings) == 0
-    
+
     def test_invalid_result_with_errors(self):
         """测试包含错误的验证结果"""
         result = ValidationResult(
@@ -516,10 +539,148 @@ class TestValidationResult:
             errors=["错误1", "错误2"],
             warnings=["警告1"]
         )
-        
+
         assert not result.is_valid
         assert len(result.errors) == 2
         assert len(result.warnings) == 1
+
+
+class TestKimiIntegration:
+    """测试Kimi模型集成相关功能"""
+
+    def test_clean_kimi_thinking(self):
+        """测试清理Kimi thinking标签"""
+        manager = StructuredOutputManager()
+
+        # 带thinking内容的响应
+        text = """
+============= Kimi Thinking =============
+用户希望我分析一系列新闻和社交媒体消息...
+消息1看起来是meme币...
+============= End Thinking =============
+
+{
+    "time": "2024-01-01 12:00",
+    "category": "测试",
+    "weight_score": 50,
+    "title": "测试标题",
+    "body": "测试内容",
+    "source": "https://example.com"
+}
+"""
+
+        result = manager._clean_kimi_thinking(text)
+        assert "============= Kimi Thinking =============" not in result
+        assert "============= End Thinking =============" not in result
+        assert '"category": "测试"' in result
+
+    def test_clean_kimi_final_thinking(self):
+        """测试清理Kimi Final Thinking标签"""
+        manager = StructuredOutputManager()
+
+        text = """
+============= Kimi Final Thinking =============
+我需要输出JSON格式...
+============= End Final Thinking =============
+
+{"results": []}
+"""
+
+        result = manager._clean_kimi_thinking(text)
+        assert "============= Kimi Final Thinking =============" not in result
+        assert "============= End Final Thinking =============" not in result
+        assert '{"results": []}' in result
+
+    def test_clean_kimi_thinking_empty(self):
+        """测试清理空或None输入"""
+        manager = StructuredOutputManager()
+
+        assert manager._clean_kimi_thinking("") == ""
+        assert manager._clean_kimi_thinking(None) is None
+
+    def test_handle_malformed_response_with_kimi_thinking(self):
+        """测试处理包含Kimi thinking的格式错误响应"""
+        manager = StructuredOutputManager()
+
+        response = """
+============= Kimi Thinking =============
+分析这条新闻...
+============= End Thinking =============
+
+```json
+{
+    "time": "2024-01-01 12:00",
+    "category": "大户动向",
+    "weight_score": 85,
+    "title": "测试标题",
+    "body": "测试内容",
+    "source": "https://example.com/news"
+}
+```
+"""
+
+        result = manager.handle_malformed_response(response, batch_mode=False)
+        assert result is not None
+        assert isinstance(result, StructuredAnalysisResult)
+        assert result.category == "大户动向"
+
+    def test_handle_malformed_response_with_kimi_batch(self):
+        """测试处理包含Kimi thinking的批量格式错误响应"""
+        manager = StructuredOutputManager()
+
+        response = """
+============= Kimi Thinking =============
+批量分析这些新闻...
+============= End Thinking =============
+
+```json
+{
+    "results": [
+        {
+            "time": "2024-01-01 12:00",
+            "category": "大户动向",
+            "weight_score": 85,
+            "title": "测试1",
+            "body": "内容1",
+            "source": "https://example.com/1"
+        }
+    ]
+}
+```
+"""
+
+        result = manager.handle_malformed_response(response, batch_mode=True)
+        assert result is not None
+        assert isinstance(result, BatchAnalysisResult)
+        assert len(result.results) == 1
+        assert result.results[0].category == "大户动向"
+
+    def test_clean_grok_tags_with_empty(self):
+        """测试清理Grok标签时处理空输入"""
+        manager = StructuredOutputManager()
+
+        assert manager._clean_grok_tags("") == ""
+        assert manager._clean_grok_tags(None) is None
+
+    def test_clean_grok_tags_removes_render_tags(self):
+        """测试清理Grok render标签"""
+        manager = StructuredOutputManager()
+
+        text = """<grok:render reference="123">一些引用内容</grok:render>
+{
+    "time": "2024-01-01 12:00",
+    "category": "测试",
+    "weight_score": 50,
+    "title": "测试",
+    "body": "测试",
+    "body": "测试",
+    "source": "https://example.com"
+}"""
+
+        result = manager._clean_grok_tags(text)
+        assert "<grok:render" not in result
+        assert "</grok:render>" not in result
+        assert '"category": "测试"' in result
 
 
 if __name__ == "__main__":
