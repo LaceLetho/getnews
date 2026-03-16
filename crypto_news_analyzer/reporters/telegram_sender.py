@@ -72,13 +72,16 @@ class TelegramSender:
     
     async def send_report(self, report: str) -> SendResult:
         """发送报告
-        
+
         Args:
             report: Markdown格式的报告内容
-            
+
         Returns:
             发送结果
         """
+        start_time = time.time()
+        self.logger.info(f"[TG] 开始发送报告 ({len(report)} 字符)")
+
         try:
             # 验证配置
             validation_result = await self.validate_configuration()
@@ -87,38 +90,38 @@ class TelegramSender:
                     success=False,
                     error_message=f"配置验证失败: {validation_result.error_message}"
                 )
-            
+
             # 分割长消息
             message_parts = self.split_long_message(report)
-            
+            if len(message_parts) > 1:
+                self.logger.info(f"[TG] 报告已分割为 {len(message_parts)} 部分")
+
             # 发送所有部分
             sent_parts = 0
             last_message_id = None
             total_retry_budget = self.config.retry_attempts
-            
+
             for i, part in enumerate(message_parts):
-                # 为每个部分分配重试预算
                 remaining_parts = len(message_parts) - i
                 part_retry_budget = max(1, total_retry_budget // remaining_parts)
-                
+
                 part_result = await self._send_message_part(part, i + 1, len(message_parts), part_retry_budget)
-                
+
                 if part_result.success:
                     sent_parts += 1
                     last_message_id = part_result.message_id
-                    self.logger.info(f"成功发送消息部分 {i + 1}/{len(message_parts)}")
                 else:
-                    self.logger.error(f"发送消息部分 {i + 1}/{len(message_parts)} 失败: {part_result.error_message}")
-                    
-                    # 减少剩余的重试预算
+                    self.logger.error(f"[TG] 部分 {i + 1}/{len(message_parts)} 发送失败: {part_result.error_message}")
                     total_retry_budget -= part_retry_budget
-                    
-                    # 如果不是最后一部分，继续尝试发送剩余部分
                     if i < len(message_parts) - 1:
                         await asyncio.sleep(self.config.retry_delay)
                         continue
-            
+
+            # 生成结果
             success = sent_parts > 0
+            elapsed_time = time.time() - start_time
+            self.logger.info(f"[TG] 发送完成: {sent_parts}/{len(message_parts)} 部分成功, 耗时 {elapsed_time:.1f}s")
+
             return SendResult(
                 success=success,
                 message_id=last_message_id,
@@ -126,21 +129,24 @@ class TelegramSender:
                 parts_sent=sent_parts,
                 total_parts=len(message_parts)
             )
-            
+
         except Exception as e:
+            elapsed_time = time.time() - start_time
             error_msg = f"发送报告时发生异常: {str(e)}"
-            self.logger.error(error_msg)
+            self.logger.error(f"[Telegram报告发送] ✗ 异常: {error_msg}")
+            self.logger.error(f"[Telegram报告发送]   - 总耗时: {elapsed_time:.2f} 秒")
+            self.logger.info("=" * 60)
             return SendResult(success=False, error_message=error_msg)
     
     async def _send_message_part(self, message: str, part_num: int, total_parts: int, max_retries: int = None) -> SendResult:
         """发送单个消息部分
-        
+
         Args:
             message: 消息内容
             part_num: 当前部分编号
             total_parts: 总部分数
             max_retries: 最大重试次数，如果为None则使用配置值
-            
+
         Returns:
             发送结果
         """
@@ -148,9 +154,9 @@ class TelegramSender:
         if total_parts > 1:
             header = f"📊 *加密货币新闻分析报告 ({part_num}/{total_parts})*\n\n"
             message = header + message
-        
+
         retry_attempts = max_retries if max_retries is not None else self.config.retry_attempts
-        
+
         for attempt in range(retry_attempts):
             try:
                 result = await self._make_api_request("sendMessage", {
@@ -159,88 +165,73 @@ class TelegramSender:
                     "parse_mode": self.config.parse_mode,
                     "disable_web_page_preview": self.config.disable_web_page_preview
                 })
-                
+
                 if result.get("ok"):
                     message_id = result.get("result", {}).get("message_id")
                     return SendResult(success=True, message_id=message_id)
                 else:
                     error_desc = result.get("description", "未知错误")
-                    self.logger.warning(f"API返回错误 (尝试 {attempt + 1}/{retry_attempts}): {error_desc}")
-                    
+                    self.logger.warning(f"[TG] API错误 (尝试 {attempt + 1}/{retry_attempts}): {error_desc}")
+
                     if attempt < retry_attempts - 1:
-                        await asyncio.sleep(self.config.retry_delay * (2 ** attempt))  # 指数退避
-                    
+                        await asyncio.sleep(self.config.retry_delay * (2 ** attempt))
+
             except Exception as e:
-                self.logger.warning(f"发送消息失败 (尝试 {attempt + 1}/{retry_attempts}): {str(e)}")
-                
+                self.logger.warning(f"[TG] 发送失败 (尝试 {attempt + 1}/{retry_attempts}): {str(e)}")
                 if attempt < retry_attempts - 1:
                     await asyncio.sleep(self.config.retry_delay * (2 ** attempt))
-        
+
         return SendResult(success=False, error_message="达到最大重试次数")
     
     async def validate_configuration(self) -> SendResult:
-        """验证配置有效性
-        
-        Returns:
-            验证结果
-        """
+        """验证配置有效性"""
         try:
-            # 验证Bot Token
             bot_valid = await self.validate_bot_token()
             if not bot_valid.success:
                 return bot_valid
-            
-            # 验证Channel访问权限
+
             channel_valid = await self.validate_channel_access()
             if not channel_valid.success:
                 return channel_valid
-            
+
             return SendResult(success=True)
-            
+
         except Exception as e:
             return SendResult(success=False, error_message=f"配置验证异常: {str(e)}")
     
     async def validate_bot_token(self) -> SendResult:
-        """验证Bot Token有效性
-        
-        Returns:
-            验证结果
-        """
+        """验证Bot Token有效性"""
         try:
             result = await self._make_api_request("getMe")
-            
+
             if result.get("ok"):
                 bot_info = result.get("result", {})
-                bot_username = bot_info.get("username", "未知")
-                self.logger.info(f"Bot Token验证成功: @{bot_username}")
+                bot_username = bot_info.get("username", "unknown")
+                self.logger.info(f"[TG] Bot验证通过: @{bot_username}")
                 return SendResult(success=True)
             else:
                 error_desc = result.get("description", "Token无效")
                 return SendResult(success=False, error_message=f"Bot Token验证失败: {error_desc}")
-                
+
         except Exception as e:
             return SendResult(success=False, error_message=f"Bot Token验证异常: {str(e)}")
     
     async def validate_channel_access(self) -> SendResult:
-        """验证Channel访问权限
-        
-        Returns:
-            验证结果
-        """
+        """验证Channel访问权限"""
         try:
             result = await self._make_api_request("getChat", {
                 "chat_id": self.config.channel_id
             })
-            
+
             if result.get("ok"):
                 chat_info = result.get("result", {})
-                chat_title = chat_info.get("title", chat_info.get("username", "未知"))
-                self.logger.info(f"Channel访问验证成功: {chat_title}")
+                chat_title = chat_info.get("title", "unknown")
+                self.logger.info(f"[TG] 频道验证通过: {chat_title}")
                 return SendResult(success=True)
             else:
                 error_desc = result.get("description", "无法访问频道")
                 return SendResult(success=False, error_message=f"Channel访问验证失败: {error_desc}")
-                
+
         except Exception as e:
             return SendResult(success=False, error_message=f"Channel访问验证异常: {str(e)}")
     
@@ -264,41 +255,37 @@ class TelegramSender:
     
     def split_long_message(self, message: str) -> List[str]:
         """分割长消息
-        
+
         Args:
             message: 原始消息
-            
+
         Returns:
             分割后的消息列表
         """
         if len(message) <= self.config.max_message_length:
             return [message]
-        
+
         parts = []
         current_part = ""
         lines = message.split('\n')
-        
+
         for line in lines:
-            # 检查添加这一行是否会超出长度限制
             test_part = current_part + '\n' + line if current_part else line
-            
+
             if len(test_part) <= self.config.max_message_length:
                 current_part = test_part
             else:
-                # 如果当前部分不为空，保存它
                 if current_part:
                     parts.append(current_part)
                     current_part = line
                 else:
-                    # 单行就超出限制，需要进一步分割
                     line_parts = self._split_long_line(line)
                     parts.extend(line_parts[:-1])
                     current_part = line_parts[-1] if line_parts else ""
-        
-        # 添加最后一部分
+
         if current_part:
             parts.append(current_part)
-        
+
         return parts
     
     def _split_long_line(self, line: str) -> List[str]:

@@ -264,11 +264,18 @@ class StructuredOutputManager:
             ValidationError: 验证失败
             Exception: 其他错误
         """
-        # 如果启用web_search，必须使用原生模式（instructor和response_format都会冲突）
+        # 如果启用web_search，根据模型类型选择不同的实现方式
         if enable_web_search:
-            return self._force_with_web_search(
-                llm_client, messages, model, temperature, batch_mode, conversation_id, usage_callback
-            )
+            if "kimi" in model.lower():
+                # Kimi 使用标准 function calling
+                return self._force_with_kimi_web_search(
+                    llm_client, messages, model, temperature, batch_mode, conversation_id, usage_callback
+                )
+            else:
+                # Grok 使用 responses.parse() API
+                return self._force_with_web_search(
+                    llm_client, messages, model, temperature, batch_mode, conversation_id, usage_callback
+                )
         
         # 正常的结构化输出流程
         if self.library == StructuredOutputLibrary.INSTRUCTOR:
@@ -385,13 +392,13 @@ class StructuredOutputManager:
                 raise
             except Exception as e:
                 logger.error(f"使用web_search失败: {e}")
-                
+
                 # 尝试获取原始响应内容用于调试
                 try:
                     if 'response' in locals():
                         logger.error(f"响应对象类型: {type(response)}")
                         logger.error(f"响应对象属性: {dir(response)}")
-                        
+
                         # 尝试获取原始输出
                         if hasattr(response, 'output'):
                             logger.error(f"原始output: {response.output}")
@@ -399,7 +406,7 @@ class StructuredOutputManager:
                             logger.error(f"output_parsed: {response.output_parsed}")
                         if hasattr(response, 'text'):
                             logger.error(f"text: {response.text}")
-                            
+
                         # 尝试手动解析JSON
                         raw_output = getattr(response, 'output', None) or getattr(response, 'text', None)
                         if raw_output:
@@ -410,8 +417,139 @@ class StructuredOutputManager:
                                 return fixed_result
                 except Exception as debug_error:
                     logger.error(f"调试信息提取失败: {debug_error}")
-                
+
                 raise
+
+    def _force_with_kimi_web_search(
+        self,
+        llm_client: Any,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        batch_mode: bool,
+        conversation_id: Optional[str] = None,
+        usage_callback: Optional[callable] = None
+    ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
+        """
+        使用 Kimi 的 web_search 工具
+
+        Kimi 使用标准的 OpenAI function calling API
+        参考：https://platform.moonshot.ai/docs/guide/use-web-search
+        """
+        import json
+
+        try:
+            logger.info("启用 Kimi web_search 工具，使用标准 function calling")
+
+            # 选择响应模型
+            response_model = BatchAnalysisResult if batch_mode else StructuredAnalysisResult
+
+            # 定义 web_search 工具
+            tools = [
+                {
+                    "type": "builtin_function",
+                    "function": {
+                        "name": "$web_search"
+                    }
+                }
+            ]
+
+            # 构建调用参数
+            call_params = {
+                "model": model,
+                "messages": messages,
+                "tools": tools,
+                "temperature": temperature
+            }
+
+            logger.info(f"调用 Kimi chat.completions.create，model={model}, tools=[web_search]")
+
+            # 第一次调用：让模型决定是否使用 web_search
+            response = llm_client.chat.completions.create(**call_params)
+
+            # 检查是否有 tool calls
+            message = response.choices[0].message
+
+            # 捕获 thinking/reasoning_content（kimi k2.5 默认开启）
+            reasoning_content = getattr(message, 'reasoning_content', None)
+            if reasoning_content:
+                logger.info(f"============= Kimi Thinking =============")
+                logger.info(reasoning_content[:500] + "..." if len(reasoning_content) > 500 else reasoning_content)
+                logger.info(f"============= End Thinking =============")
+
+            # 如果模型调用了 web_search 工具
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                logger.info(f"Kimi 决定使用 web_search 工具，调用次数: {len(message.tool_calls)}")
+
+                # 构建包含工具结果的消息历史
+                extended_messages = messages.copy()
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": message.content or "",
+                    "tool_calls": [tc.model_dump() for tc in message.tool_calls],
+                    # kimi k2.5 强制启用 thinking，必须包含 reasoning_content 字段
+                    "reasoning_content": reasoning_content if reasoning_content else ""
+                }
+                extended_messages.append(assistant_msg)
+
+                # 为每个 tool call 添加结果（Kimi 会自动处理 web_search）
+                for tool_call in message.tool_calls:
+                    extended_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": "{}"  # Kimi 的 builtin_function 不需要我们实际执行
+                    })
+
+                # 第二次调用：获取最终响应
+                final_params = {
+                    "model": model,
+                    "messages": extended_messages,
+                    "temperature": temperature,
+                    "response_format": {"type": "json_object"}
+                }
+
+                final_response = llm_client.chat.completions.create(**final_params)
+                final_message = final_response.choices[0].message
+                content = final_message.content
+
+                # 捕获第二次调用的 reasoning_content
+                final_reasoning = getattr(final_message, 'reasoning_content', None)
+                if final_reasoning:
+                    logger.info(f"============= Kimi Final Thinking =============")
+                    logger.info(final_reasoning[:500] + "..." if len(final_reasoning) > 500 else final_reasoning)
+                    logger.info(f"============= End Final Thinking =============")
+
+            else:
+                # 模型没有调用工具，直接使用响应
+                content = message.content
+
+            # 提取token使用情况
+            if usage_callback and hasattr(response, 'usage') and response.usage:
+                usage_data = {
+                    'model': model,
+                    'prompt_tokens': getattr(response.usage, 'prompt_tokens', 0),
+                    'completion_tokens': getattr(response.usage, 'completion_tokens', 0),
+                    'total_tokens': getattr(response.usage, 'total_tokens', 0),
+                    'cached_tokens': 0
+                }
+                usage_callback(usage_data)
+
+            # 解析响应
+            try:
+                parsed_data = json.loads(content)
+                result = response_model(**parsed_data)
+                logger.info(f"成功获取 Kimi web_search 结构化响应 (batch_mode={batch_mode})")
+                return result
+            except json.JSONDecodeError as e:
+                logger.warning(f"Kimi 响应不是有效 JSON，尝试修复: {e}")
+                fixed_result = self.handle_malformed_response(content, batch_mode)
+                if fixed_result:
+                    return fixed_result
+                raise
+
+        except Exception as e:
+            logger.error(f"使用 Kimi web_search 失败: {e}")
+            raise
 
     def _force_with_instructor(
         self,

@@ -17,7 +17,7 @@
     "bird_max_page": 1
   },
   "llm_config": {
-    "model": "kimi-k2.5",
+    "model": "kimi-for-coding",
     "temperature": 0.5,
     "max_tokens": 2000000,
     "batch_size": 1000,

@@ -143,11 +143,15 @@ class LLMAnalyzer:
                     )
                     self.logger.info(f"Grok客户端已设置default_headers: x-grok-conv-id={self.conversation_id}")
                 elif "kimi" in self.model.lower():
-                    # Kimi API - 使用 OpenAI 兼容格式
+                    # Kimi API - 使用 OpenAI 兼容格式 (coding endpoint)
+                    # 需要设置 User-Agent 为 claude-code 才能通过身份验证
                     api_key_to_use = self.KIMI_API_KEY or self.api_key
                     self.client = OpenAI(
                         api_key=api_key_to_use,
-                        base_url="https://api.kimi.com/coding"
+                        base_url="https://api.kimi.com/coding/v1",
+                        default_headers={
+                            "User-Agent": "claude-code/1.0"
+                        }
                     )
                     self.logger.info(f"Kimi客户端已初始化，使用模型: {self.model}")
                 else:
@@ -386,10 +390,18 @@ class LLMAnalyzer:
                 # 以用户友好的方式打印最终发送给LLM的完整提示词
                 self._log_final_prompt(system_prompt, user_prompt, i // self.batch_size + 1)
 
-                # 判断是否启用 web_search：kimi 不支持 web_search 和 x_search
-                enable_web_search = "kimi" not in self.model.lower()
-                if not enable_web_search:
-                    self.logger.info("检测到 Kimi 模型，禁用 web_search 和 x_search 工具")
+                # 判断是否启用 web_search 及使用哪种方式
+                # Grok 使用 responses.parse() API
+                # Kimi 使用标准 function calling
+                is_kimi = "kimi" in self.model.lower()
+                is_grok = "grok" in self.model.lower()
+                enable_web_search = is_kimi or is_grok
+
+                if enable_web_search:
+                    if is_kimi:
+                        self.logger.info("检测到 Kimi 模型，启用 web_search 工具（标准 function calling）")
+                    elif is_grok:
+                        self.logger.info("检测到 Grok 模型，启用 web_search 和 x_search 工具")
 
                 # 使用结构化输出管理器强制返回结构化数据
                 batch_result = self.structured_output_manager.force_structured_response(
@@ -399,9 +411,9 @@ class LLMAnalyzer:
                     max_retries=3,
                     temperature=self.temperature,
                     batch_mode=True,
-                    enable_web_search=enable_web_search,  # kimi 禁用 web_search
-                    conversation_id=self.conversation_id,  # 传递会话ID提高缓存命中率
-                    usage_callback=self._record_token_usage  # 记录token使用情况
+                    enable_web_search=enable_web_search,
+                    conversation_id=self.conversation_id,
+                    usage_callback=self._record_token_usage
                 )
                 
                 # 打印LLM返回的原始数据
