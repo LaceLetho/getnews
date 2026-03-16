@@ -100,6 +100,12 @@ class LLMAnalyzer:
         self.analysis_prompt_path = Path(analysis_prompt_path)
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.cache_ttl_minutes = cache_ttl_minutes
+        self.cached_messages_hours = cached_messages_hours
+        self.mock_mode = mock_mode
+        self.config = config or {}
+        self.logger = logging.getLogger(__name__)
+
         # 根据 max_tokens 动态计算 batch_size
         # 假设每条新闻分析约需 500 tokens 输出空间（含推理过程）
         TOKENS_PER_NEWS = 500
@@ -110,11 +116,6 @@ class LLMAnalyzer:
                 f"根据 max_tokens={max_tokens} 调整 batch_size: {batch_size} -> {self.batch_size} "
                 f"(计算依据: {max_tokens}/{TOKENS_PER_NEWS}={calculated_batch_size})"
             )
-        self.cache_ttl_minutes = cache_ttl_minutes
-        self.cached_messages_hours = cached_messages_hours
-        self.mock_mode = mock_mode
-        self.config = config or {}
-        self.logger = logging.getLogger(__name__)
         
         # 使用会话ID管理器获取或创建持久化的conversation_id
         conversation_id_manager = ConversationIdManager(cache_dir="./data/cache")
