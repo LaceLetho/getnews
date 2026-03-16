@@ -226,3 +226,6 @@ Check `logs/` directory for execution logs. The bot uses `python-telegram-bot` v
 - Database: SQLite at `./data/crypto_news.db` (gitignored)
 - Logs: Written to `./logs/` directory
 - Prompts: Stored in `./prompts/` directory as Markdown files
+
+## How to debug
+The ./DEBUG.md explained how to do debug online.
