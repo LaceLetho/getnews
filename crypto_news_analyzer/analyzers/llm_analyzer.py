@@ -100,7 +100,16 @@ class LLMAnalyzer:
         self.analysis_prompt_path = Path(analysis_prompt_path)
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.batch_size = batch_size
+        # 根据 max_tokens 动态计算 batch_size
+        # 假设每条新闻分析约需 500 tokens 输出空间（含推理过程）
+        TOKENS_PER_NEWS = 500
+        calculated_batch_size = max_tokens // TOKENS_PER_NEWS
+        self.batch_size = min(batch_size, calculated_batch_size)
+        if self.batch_size < batch_size:
+            self.logger.info(
+                f"根据 max_tokens={max_tokens} 调整 batch_size: {batch_size} -> {self.batch_size} "
+                f"(计算依据: {max_tokens}/{TOKENS_PER_NEWS}={calculated_batch_size})"
+            )
         self.cache_ttl_minutes = cache_ttl_minutes
         self.cached_messages_hours = cached_messages_hours
         self.mock_mode = mock_mode
