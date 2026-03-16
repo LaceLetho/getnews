@@ -500,17 +500,30 @@ class StructuredOutputManager:
                         "content": "{}"  # Kimi 的 builtin_function 不需要我们实际执行
                     })
 
+                # DEBUG: 记录 extended_messages
+                logger.info(f"Kimi 第二次调用 - extended_messages 长度: {len(extended_messages)}")
+                for i, msg in enumerate(extended_messages):
+                    logger.info(f"  Message {i}: role={msg.get('role')}, content_len={len(msg.get('content', ''))}")
+
                 # 第二次调用：获取最终响应
+                # 注意：使用 tools 后，不能同时使用 response_format
                 final_params = {
                     "model": model,
                     "messages": extended_messages,
-                    "temperature": temperature,
-                    "response_format": {"type": "json_object"}
+                    "temperature": temperature
+                    # 移除 response_format，因为与 tool calling 不兼容
                 }
 
                 final_response = llm_client.chat.completions.create(**final_params)
                 final_message = final_response.choices[0].message
                 content = final_message.content or ""  # 确保不为 None
+
+                # DEBUG: 记录第二次调用的详细信息
+                logger.info(f"Kimi 第二次调用 - content 长度: {len(content) if content else 0}")
+                logger.info(f"Kimi 第二次调用 - content 前200字符: {content[:200] if content else '(空)'}")
+                logger.info(f"Kimi 第二次调用 - final_message 属性: {dir(final_message)}")
+                if hasattr(final_message, 'tool_calls'):
+                    logger.info(f"Kimi 第二次调用 - tool_calls: {final_message.tool_calls}")
 
                 # 捕获第二次调用的 reasoning_content
                 final_reasoning = getattr(final_message, 'reasoning_content', None)
