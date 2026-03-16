@@ -51,3 +51,6 @@ dist/
 # Kiro 相关
 .kiro/cache/
 .kiro/temp/
+
+
+DEBUG.md
