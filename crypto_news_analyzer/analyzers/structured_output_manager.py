@@ -536,6 +536,11 @@ class StructuredOutputManager:
                 # 模型没有调用工具，直接使用响应
                 content = message.content or ""
 
+                # 如果 content 为空但 reasoning_content 有内容，尝试从 reasoning_content 中提取 JSON
+                if not content and reasoning_content:
+                    logger.warning("Kimi content 为空，尝试从 reasoning_content 中提取 JSON")
+                    content = reasoning_content
+
             # 提取token使用情况
             if usage_callback and hasattr(response, 'usage') and response.usage:
                 usage_data = {
