@@ -101,6 +101,47 @@ class DataManager:
                 )
             ''')
             
+            # 创建波动事件表
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS volatility_events (
+                    id TEXT PRIMARY KEY,
+                    symbol TEXT NOT NULL,
+                    start_time DATETIME NOT NULL,
+                    end_time DATETIME NOT NULL,
+                    price_change_percent REAL NOT NULL,
+                    start_price REAL NOT NULL,
+                    end_price REAL NOT NULL,
+                    volatility_type TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    funding_rate REAL,
+                    funding_time DATETIME,
+                    basis_spread_percent REAL,
+                    spot_price REAL,
+                    futures_price REAL,
+                    order_book_bid_depth REAL,
+                    order_book_ask_depth REAL,
+                    order_book_spread_percent REAL,
+                    volume_spike_ratio REAL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # 创建波动事件索引
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_volatility_events_time 
+                ON volatility_events (start_time, end_time)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_volatility_events_symbol 
+                ON volatility_events (symbol, start_time)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_volatility_events_severity 
+                ON volatility_events (severity, start_time)
+            ''')
+            
             conn.commit()
             logger.info("数据库表结构初始化完成")
     
@@ -597,6 +638,174 @@ class DataManager:
                 result[row['source_name']] = row['count']
             
             logger.info(f"获取到 {len(result)} 个数据源的消息统计（时间窗口: {time_window_hours}小时）")
+            return result
+    
+    def add_volatility_event(self, event) -> bool:
+        """
+        添加波动事件到数据库
+        
+        Args:
+            event: VolatilityEvent对象
+            
+        Returns:
+            是否添加成功
+        """
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                try:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO volatility_events 
+                        (id, symbol, start_time, end_time, price_change_percent, 
+                         start_price, end_price, volatility_type, severity,
+                         funding_rate, funding_time, basis_spread_percent,
+                         spot_price, futures_price, order_book_bid_depth,
+                         order_book_ask_depth, order_book_spread_percent,
+                         volume_spike_ratio)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        event.id,
+                        event.symbol,
+                        event.start_time.isoformat(),
+                        event.end_time.isoformat(),
+                        event.price_change_percent,
+                        event.start_price,
+                        event.end_price,
+                        event.volatility_type,
+                        event.severity,
+                        event.funding_rate,
+                        event.funding_time.isoformat() if event.funding_time else None,
+                        event.basis_spread_percent,
+                        event.spot_price,
+                        event.futures_price,
+                        event.order_book_bid_depth,
+                        event.order_book_ask_depth,
+                        event.order_book_spread_percent,
+                        event.volume_spike_ratio
+                    ))
+                    
+                    conn.commit()
+                    success = cursor.rowcount > 0
+                    if success:
+                        logger.info(f"波动事件已保存: {event.id}")
+                    return success
+                    
+                except Exception as e:
+                    logger.error(f"保存波动事件失败: {e}")
+                    return False
+    
+    def get_volatility_events(
+        self,
+        hours: int = 24,
+        symbols: Optional[List[str]] = None,
+        min_severity: Optional[str] = None
+    ) -> List:
+        """
+        获取波动事件列表
+        
+        Args:
+            hours: 时间窗口（小时）
+            symbols: 币种过滤列表（可选）
+            min_severity: 最小严重程度过滤（可选）
+            
+        Returns:
+            VolatilityEvent列表
+        """
+        from ..market_data.models import VolatilityEvent
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+            
+            query = '''
+                SELECT * FROM volatility_events
+                WHERE start_time >= ?
+            '''
+            params = [cutoff_time.isoformat()]
+            
+            if symbols:
+                placeholders = ','.join(['?' for _ in symbols])
+                query += f' AND symbol IN ({placeholders})'
+                params.extend([s.upper() for s in symbols])
+            
+            if min_severity:
+                severity_order = {'low': 1, 'medium': 2, 'high': 3, 'extreme': 4}
+                min_level = severity_order.get(min_severity, 1)
+                valid_severities = [
+                    s for s, level in severity_order.items() if level >= min_level
+                ]
+                placeholders = ','.join(['?' for _ in valid_severities])
+                query += f' AND severity IN ({placeholders})'
+                params.extend(valid_severities)
+            
+            query += ' ORDER BY start_time DESC'
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            
+            events = []
+            for row in rows:
+                try:
+                    event = VolatilityEvent(
+                        id=row['id'],
+                        symbol=row['symbol'],
+                        start_time=datetime.fromisoformat(row['start_time']),
+                        end_time=datetime.fromisoformat(row['end_time']),
+                        price_change_percent=row['price_change_percent'],
+                        start_price=row['start_price'],
+                        end_price=row['end_price'],
+                        volatility_type=row['volatility_type'],
+                        severity=row['severity'],
+                        funding_rate=row['funding_rate'],
+                        funding_time=datetime.fromisoformat(row['funding_time']) if row['funding_time'] else None,
+                        basis_spread_percent=row['basis_spread_percent'],
+                        spot_price=row['spot_price'],
+                        futures_price=row['futures_price'],
+                        order_book_bid_depth=row['order_book_bid_depth'],
+                        order_book_ask_depth=row['order_book_ask_depth'],
+                        order_book_spread_percent=row['order_book_spread_percent'],
+                        volume_spike_ratio=row['volume_spike_ratio'],
+                        created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None
+                    )
+                    events.append(event)
+                except Exception as e:
+                    logger.warning(f"解析波动事件失败 {row['id']}: {e}")
+                    continue
+            
+            logger.info(f"获取到 {len(events)} 个波动事件")
+            return events
+    
+    def get_volatility_events_count(self, hours: int = 24) -> Dict[str, int]:
+        """
+        获取波动事件统计
+        
+        Args:
+            hours: 时间窗口（小时）
+            
+        Returns:
+            按币种和严重程度的统计字典
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+            
+            cursor.execute('''
+                SELECT symbol, severity, COUNT(*) as count
+                FROM volatility_events
+                WHERE start_time >= ?
+                GROUP BY symbol, severity
+            ''', (cutoff_time.isoformat(),))
+            
+            rows = cursor.fetchall()
+            
+            result = {}
+            for row in rows:
+                key = f"{row['symbol']}_{row['severity']}"
+                result[key] = row['count']
+            
             return result
     
     def __exit__(self, exc_type, exc_val, exc_tb):
