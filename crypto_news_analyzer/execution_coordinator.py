@@ -238,6 +238,7 @@ class MainController:
             self.llm_analyzer = LLMAnalyzer(
                 api_key=auth_config.LLM_API_KEY,
                 GROK_API_KEY=auth_config.GROK_API_KEY,
+                KIMI_API_KEY=auth_config.KIMI_API_KEY,
                 model=llm_config.get("model", "gpt-4"),
                 summary_model=llm_config.get("summary_model", "grok-beta"),
                 market_prompt_path=llm_config.get("market_prompt_path", "./prompts/market_summary_prompt.md"),

@@ -233,6 +233,7 @@ class AuthConfig:
     X_AUTH_TOKEN: str
     LLM_API_KEY: str
     GROK_API_KEY: str  # Grok API密钥，用于市场快照
+    KIMI_API_KEY: str  # Kimi API密钥
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_CHANNEL_ID: str
     
@@ -260,6 +261,10 @@ class AuthConfig:
         # Grok API密钥可以为空（如果不使用市场快照功能）
         if self.GROK_API_KEY and not self.GROK_API_KEY.strip():
             self.GROK_API_KEY = ""
+
+        # Kimi API密钥可以为空（如果不使用Kimi模型）
+        if self.KIMI_API_KEY and not self.KIMI_API_KEY.strip():
+            self.KIMI_API_KEY = ""
     
     @classmethod
     def from_env(cls) -> 'AuthConfig':
@@ -270,6 +275,7 @@ class AuthConfig:
             X_AUTH_TOKEN=os.getenv('X_AUTH_TOKEN', ''),
             LLM_API_KEY=os.getenv('LLM_API_KEY', ''),
             GROK_API_KEY=os.getenv('GROK_API_KEY', ''),
+            KIMI_API_KEY=os.getenv('KIMI_API_KEY', ''),
             TELEGRAM_BOT_TOKEN=os.getenv('TELEGRAM_BOT_TOKEN', ''),
             TELEGRAM_CHANNEL_ID=os.getenv('TELEGRAM_CHANNEL_ID', '')
         )

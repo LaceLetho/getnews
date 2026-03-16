@@ -53,6 +53,7 @@ class LLMAnalyzer:
         self,
         api_key: Optional[str] = None,
         GROK_API_KEY: Optional[str] = None,
+        KIMI_API_KEY: Optional[str] = None,
         model: str = "gpt-4",
         summary_model: str = "grok-beta",
         market_prompt_path: str = "./prompts/market_summary_prompt.md",
@@ -70,10 +71,11 @@ class LLMAnalyzer:
     ):
         """
         初始化LLM分析器
-        
+
         Args:
             api_key: LLM API密钥，如果为None则从环境变量读取
             GROK_API_KEY: Grok API密钥，用于市场快照
+            KIMI_API_KEY: Kimi API密钥，用于新闻分析
             model: 分析使用的模型名称
             summary_model: 市场快照使用的模型名称
             market_prompt_path: 市场快照提示词路径
@@ -91,6 +93,7 @@ class LLMAnalyzer:
         """
         self.api_key = api_key or os.getenv('LLM_API_KEY', '')
         self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
+        self.KIMI_API_KEY = KIMI_API_KEY or os.getenv('KIMI_API_KEY', '')
         self.model = model
         self.summary_model = summary_model
         self.market_prompt_path = Path(market_prompt_path)
@@ -139,6 +142,14 @@ class LLMAnalyzer:
                         default_headers={"x-grok-conv-id": self.conversation_id}
                     )
                     self.logger.info(f"Grok客户端已设置default_headers: x-grok-conv-id={self.conversation_id}")
+                elif "kimi" in self.model.lower():
+                    # Kimi API - 使用 OpenAI 兼容格式
+                    api_key_to_use = self.KIMI_API_KEY or self.api_key
+                    self.client = OpenAI(
+                        api_key=api_key_to_use,
+                        base_url="https://api.kimi.com/coding"
+                    )
+                    self.logger.info(f"Kimi客户端已初始化，使用模型: {self.model}")
                 else:
                     # 标准 OpenAI API
                     self.client = OpenAI(
@@ -374,8 +385,13 @@ class LLMAnalyzer:
                 
                 # 以用户友好的方式打印最终发送给LLM的完整提示词
                 self._log_final_prompt(system_prompt, user_prompt, i // self.batch_size + 1)
-                
-                # 使用结构化输出管理器强制返回结构化数据（启用web_search工具）
+
+                # 判断是否启用 web_search：kimi 不支持 web_search 和 x_search
+                enable_web_search = "kimi" not in self.model.lower()
+                if not enable_web_search:
+                    self.logger.info("检测到 Kimi 模型，禁用 web_search 和 x_search 工具")
+
+                # 使用结构化输出管理器强制返回结构化数据
                 batch_result = self.structured_output_manager.force_structured_response(
                     llm_client=self.client,
                     messages=messages,
@@ -383,7 +399,7 @@ class LLMAnalyzer:
                     max_retries=3,
                     temperature=self.temperature,
                     batch_mode=True,
-                    enable_web_search=True,  # 启用web_search工具
+                    enable_web_search=enable_web_search,  # kimi 禁用 web_search
                     conversation_id=self.conversation_id,  # 传递会话ID提高缓存命中率
                     usage_callback=self._record_token_usage  # 记录token使用情况
                 )
