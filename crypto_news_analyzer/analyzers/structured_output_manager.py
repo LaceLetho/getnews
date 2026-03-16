@@ -510,7 +510,7 @@ class StructuredOutputManager:
 
                 final_response = llm_client.chat.completions.create(**final_params)
                 final_message = final_response.choices[0].message
-                content = final_message.content
+                content = final_message.content or ""  # 确保不为 None
 
                 # 捕获第二次调用的 reasoning_content
                 final_reasoning = getattr(final_message, 'reasoning_content', None)
@@ -521,7 +521,7 @@ class StructuredOutputManager:
 
             else:
                 # 模型没有调用工具，直接使用响应
-                content = message.content
+                content = message.content or ""
 
             # 提取token使用情况
             if usage_callback and hasattr(response, 'usage') and response.usage:
@@ -536,12 +536,18 @@ class StructuredOutputManager:
 
             # 解析响应
             try:
+                # 检查 content 是否为空
+                if not content or not content.strip():
+                    logger.error(f"Kimi 返回的 content 为空，无法解析。原始 message: {message}")
+                    raise ValueError("Kimi 返回的响应内容为空")
+
                 parsed_data = json.loads(content)
                 result = response_model(**parsed_data)
                 logger.info(f"成功获取 Kimi web_search 结构化响应 (batch_mode={batch_mode})")
                 return result
             except json.JSONDecodeError as e:
                 logger.warning(f"Kimi 响应不是有效 JSON，尝试修复: {e}")
+                logger.debug(f"原始响应内容: {content[:1000] if content else '(空)'}")
                 fixed_result = self.handle_malformed_response(content, batch_mode)
                 if fixed_result:
                     return fixed_result
@@ -857,18 +863,21 @@ class StructuredOutputManager:
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult, None]:
         """
         处理格式错误的响应，尝试恢复
-        
+
         Args:
             response: 原始响应字符串
             batch_mode: 是否批量模式
-            
+
         Returns:
             恢复后的结构化结果，如果无法恢复则返回None
         """
         logger.warning("尝试恢复格式错误的响应")
-        
+
         # 首先清理 Grok 标签
         response = self._clean_grok_tags(response)
+
+        # 清理 Kimi Thinking 标签
+        response = self._clean_kimi_thinking(response)
         
         try:
             # 尝试从markdown代码块中提取JSON
@@ -925,9 +934,49 @@ class StructuredOutputManager:
         
         # 清理多余的空格
         text = re.sub(r' +', ' ', text)
-        
+
         return text
-    
+
+    def _clean_kimi_thinking(self, text: str) -> str:
+        """清理 Kimi Thinking 标签
+
+        Kimi k2.5 模型会返回 thinking 内容，格式为：
+        ============= Kimi Thinking =============
+        ...思考内容...
+        ============= End Thinking =============
+
+        Args:
+            text: 原始文本
+
+        Returns:
+            清理后的文本（只保留实际JSON内容）
+        """
+        if not text:
+            return text
+
+        import re
+
+        # 移除 Kimi Thinking 区块
+        text = re.sub(
+            r'============= Kimi Thinking =============.*?============= End Thinking =============',
+            '',
+            text,
+            flags=re.DOTALL
+        )
+
+        # 也尝试匹配可能的变体（Final Thinking）
+        text = re.sub(
+            r'============= Kimi Final Thinking =============.*?============= End Final Thinking =============',
+            '',
+            text,
+            flags=re.DOTALL
+        )
+
+        # 清理多余的空行
+        text = re.sub(r'\n\n+', '\n', text)
+
+        return text.strip()
+
     def _clean_result_grok_tags(
         self, 
         result: Union[StructuredAnalysisResult, BatchAnalysisResult]
