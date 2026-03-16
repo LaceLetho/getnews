@@ -884,16 +884,22 @@ class StructuredOutputManager:
             json_str = self._extract_json_from_markdown(response)
             if json_str:
                 parsed_data = json.loads(json_str)
-                
+
                 # 验证并转换
                 if batch_mode:
+                    # 如果返回的是列表，自动包装为 {"results": [...]}
+                    if isinstance(parsed_data, list):
+                        parsed_data = {"results": parsed_data}
                     return BatchAnalysisResult(**parsed_data)
                 else:
                     return StructuredAnalysisResult(**parsed_data)
-            
+
             # 尝试直接解析
             parsed_data = json.loads(response)
             if batch_mode:
+                # 如果返回的是列表，自动包装为 {"results": [...]}
+                if isinstance(parsed_data, list):
+                    parsed_data = {"results": parsed_data}
                 return BatchAnalysisResult(**parsed_data)
             else:
                 return StructuredAnalysisResult(**parsed_data)
@@ -1047,8 +1053,11 @@ class StructuredOutputManager:
         # 4. 尝试解析修复后的JSON
         try:
             parsed_data = json.loads(json_str)
-            
+
             if batch_mode:
+                # 如果返回的是列表，自动包装为 {"results": [...]}
+                if isinstance(parsed_data, list):
+                    parsed_data = {"results": parsed_data}
                 return BatchAnalysisResult(**parsed_data)
             else:
                 return StructuredAnalysisResult(**parsed_data)
