@@ -575,6 +575,22 @@ class StructuredOutputManager:
                 raise
 
         except Exception as e:
+            error_msg = str(e)
+            # 检查是否是内容过滤错误
+            if "content_filter" in error_msg.lower() or "high risk" in error_msg.lower() or "considered high risk" in error_msg.lower():
+                logger.warning(f"Kimi 内容过滤触发，降级到非 web_search 模式重试: {e}")
+                # 降级到 instructor 模式，不使用 web_search
+                return self._force_with_instructor(
+                    llm_client=llm_client,
+                    messages=messages,
+                    model=model,
+                    max_retries=3,
+                    temperature=temperature,
+                    batch_mode=batch_mode,
+                    enable_web_search=False,
+                    conversation_id=conversation_id,
+                    usage_callback=usage_callback
+                )
             logger.error(f"使用 Kimi web_search 失败: {e}")
             raise
 
