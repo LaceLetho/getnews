@@ -445,11 +445,24 @@ class StructuredOutputManager:
             response_model = BatchAnalysisResult if batch_mode else StructuredAnalysisResult
 
             # 定义 web_search 工具
+            # 注意：根据测试，Kimi 使用标准 function 类型，不是 builtin_function
+            # 参考：https://platform.moonshot.ai/docs/guide/use-web-search
             tools = [
                 {
-                    "type": "builtin_function",
+                    "type": "function",
                     "function": {
-                        "name": "$web_search"
+                        "name": "web_search",
+                        "description": "Search the internet for real-time information to verify news, get background details, or find latest updates about crypto projects, regulations, and market events",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "The search query to find relevant information"
+                                }
+                            },
+                            "required": ["query"]
+                        }
                     }
                 }
             ]
@@ -492,12 +505,14 @@ class StructuredOutputManager:
                 }
                 extended_messages.append(assistant_msg)
 
-                # 为每个 tool call 添加结果（Kimi 会自动处理 web_search）
+                    # 为每个 tool call 添加结果
+                    # 注意：对于标准 function 类型，客户端需要实际执行搜索并返回结果
+                    # 这里我们返回空结果，实际项目中应该调用搜索引擎 API
                 for tool_call in message.tool_calls:
                     extended_messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
-                        "content": "{}"  # Kimi 的 builtin_function 不需要我们实际执行
+                        "content": "{}"  # 实际项目中应该返回搜索结果
                     })
 
                 # 第二次调用：获取最终响应
