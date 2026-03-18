@@ -563,6 +563,12 @@ class StructuredOutputManager:
                     raise ValueError("Kimi 返回的响应内容为空")
 
                 parsed_data = json.loads(content)
+
+                # 如果返回的是列表，自动包装为 {"results": [...]}
+                if batch_mode and isinstance(parsed_data, list):
+                    logger.info(f"Kimi 返回列表格式，自动包装为 BatchAnalysisResult 格式")
+                    parsed_data = {"results": parsed_data}
+
                 result = response_model(**parsed_data)
                 logger.info(f"成功获取 Kimi web_search 结构化响应 (batch_mode={batch_mode})")
                 return result

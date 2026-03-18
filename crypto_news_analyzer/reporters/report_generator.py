@@ -152,7 +152,7 @@ class ReportGenerator:
             格式化后的报告头部
         """
         # 格式化标题
-        title = self.formatter.format_header(f"📰 {time_window}小时加密货币新闻快讯", level=1)
+        title = self.formatter.format_header(f"📰 {time_window}小时快讯", level=1)
         
         return title
     
