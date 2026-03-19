@@ -29,6 +29,7 @@ from .structured_output_manager import (
 )
 from ..storage.cache_manager import SentMessageCacheManager
 from .token_usage_tracker import TokenUsageTracker
+from ..utils.errors import ContentFilterError
 
 try:
     from openai import OpenAI
@@ -436,6 +437,50 @@ class LLMAnalyzer:
                 else:
                     self.logger.warning(f"批次返回格式异常: {type(batch_result)}")
                 
+            except ContentFilterError as e:
+                self.logger.error(f"Kimi 内容过滤错误: {e}")
+                # 尝试使用 Grok 作为备用模型
+                if self.GROK_API_KEY and "kimi" in self.model.lower():
+                    self.logger.info("尝试切换到 Grok 模型重试...")
+                    try:
+                        # 使用 Grok 客户端和模型重试
+                        fallback_model = "grok-2-latest"
+                        fallback_client = OpenAI(
+                            api_key=self.GROK_API_KEY,
+                            base_url="https://api.x.ai/v1",
+                            default_headers={"x-grok-conv-id": self.conversation_id}
+                        )
+                        
+                        # 为Grok调整消息格式（不使用web_search工具，因为提示词可能仍然触发过滤）
+                        batch_result = self.structured_output_manager.force_structured_response(
+                            llm_client=fallback_client,
+                            messages=messages,
+                            model=fallback_model,
+                            max_retries=2,
+                            temperature=self.temperature,
+                            batch_mode=True,
+                            enable_web_search=False,  # 禁用web_search以避免进一步问题
+                            conversation_id=self.conversation_id,
+                            usage_callback=self._record_token_usage
+                        )
+                        
+                        # 打印LLM返回的原始数据
+                        self._log_llm_response(batch_result, i // self.batch_size + 1)
+                        
+                        # 提取结果
+                        if isinstance(batch_result, BatchAnalysisResult):
+                            all_results.extend(batch_result.results)
+                            self.logger.info(f"Grok备用模型批次返回 {len(batch_result.results)} 条结果")
+                        else:
+                            self.logger.warning(f"Grok批次返回格式异常: {type(batch_result)}")
+                        
+                    except Exception as fallback_error:
+                        self.logger.error(f"Grok备用模型也失败: {fallback_error}")
+                        continue
+                else:
+                    self.logger.warning("未配置 Grok API 密钥，无法使用备用模型")
+                    continue
+                    
             except Exception as e:
                 self.logger.error(f"批次分析失败: {e}")
                 # 继续处理下一批次

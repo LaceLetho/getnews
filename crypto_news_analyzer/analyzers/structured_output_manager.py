@@ -584,17 +584,13 @@ class StructuredOutputManager:
             error_msg = str(e)
             # 检查是否是内容过滤错误
             if "content_filter" in error_msg.lower() or "high risk" in error_msg.lower() or "considered high risk" in error_msg.lower():
-                logger.warning(f"Kimi 内容过滤触发，降级到非 web_search 模式重试: {e}")
-                # 降级到原生 JSON 模式，不使用 web_search（避免 instructor 的 tool_choice 冲突）
-                return self._force_with_native_json(
-                    llm_client=llm_client,
-                    messages=messages,
+                logger.error(f"Kimi 内容过滤触发，无法完成分析: {e}")
+                # 抛出特定的内容过滤错误，让上层处理模型切换
+                from ..utils.errors import ContentFilterError
+                raise ContentFilterError(
+                    message=f"Kimi API 内容过滤触发: {e}",
                     model=model,
-                    max_retries=3,
-                    temperature=temperature,
-                    batch_mode=batch_mode,
-                    enable_web_search=False,
-                    conversation_id=conversation_id
+                    details={"original_error": error_msg}
                 )
             logger.error(f"使用 Kimi web_search 失败: {e}")
             raise

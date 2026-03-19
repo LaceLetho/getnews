@@ -116,6 +116,15 @@ class XPlatformError(CryptoNewsAnalyzerError):
         super().__init__(message, ErrorType.X_PLATFORM_ERROR, details)
 
 
+class ContentFilterError(CryptoNewsAnalyzerError):
+    """内容过滤错误（LLM API触发内容安全过滤）"""
+    
+    def __init__(self, message: str, model: str = "unknown", details: Optional[Dict[str, Any]] = None):
+        details = details or {}
+        details["model"] = model
+        super().__init__(message, ErrorType.API_ERROR, details)
+
+
 class CrawlerError(CryptoNewsAnalyzerError):
     """爬取器通用错误"""
     
