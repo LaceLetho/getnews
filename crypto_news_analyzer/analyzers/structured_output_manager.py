@@ -594,8 +594,7 @@ class StructuredOutputManager:
                     temperature=temperature,
                     batch_mode=batch_mode,
                     enable_web_search=False,
-                    conversation_id=conversation_id,
-                    usage_callback=usage_callback
+                    conversation_id=conversation_id
                 )
             logger.error(f"使用 Kimi web_search 失败: {e}")
             raise
