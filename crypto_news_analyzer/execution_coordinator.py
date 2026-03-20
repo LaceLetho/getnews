@@ -835,11 +835,15 @@ class MainController:
         result = {"success": False, "report_content": "", "errors": []}
         
         try:
+            # 获取模型信息
+            model_info = self.llm_analyzer.get_model_info() if self.llm_analyzer else None
+            
             # 创建分析数据对象
             analyzed_data = create_analyzed_data(
                 categorized_items=categorized_items,
                 analysis_results=analysis_results,
-                time_window_hours=time_window_hours
+                time_window_hours=time_window_hours,
+                model_info=model_info
             )
             
             # 生成报告

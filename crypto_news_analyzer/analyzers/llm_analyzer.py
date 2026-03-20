@@ -198,6 +198,9 @@ class LLMAnalyzer:
         self._cached_market_snapshot: Optional[MarketSnapshot] = None
         self._cached_system_prompt: Optional[str] = None
         
+        # 记录实际使用的模型（包括备用模型）
+        self._last_used_model: Optional[str] = None
+        
         if mock_mode:
             self.logger.info("LLM分析器运行在模拟模式")
         elif not self.api_key:
@@ -427,6 +430,15 @@ class LLMAnalyzer:
                     usage_callback=self._record_token_usage
                 )
                 
+                # 记录主模型使用情况（如果没有使用过备用模型）
+                if self._last_used_model is None:
+                    if "kimi" in self.model.lower():
+                        self._last_used_model = "Kimi"
+                    elif "grok" in self.model.lower():
+                        self._last_used_model = "Grok"
+                    else:
+                        self._last_used_model = self.model
+                
                 # 打印LLM返回的原始数据
                 self._log_llm_response(batch_result, i // self.batch_size + 1)
                 
@@ -450,6 +462,9 @@ class LLMAnalyzer:
                             base_url="https://api.x.ai/v1",
                             default_headers={"x-grok-conv-id": self.conversation_id}
                         )
+                        
+                        # 记录使用了备用模型
+                        self._last_used_model = f"Kimi (主模型) -> Grok (备用模型)"
                         
                         # 为Grok调整消息格式（不使用web_search工具，因为提示词可能仍然触发过滤）
                         batch_result = self.structured_output_manager.force_structured_response(
@@ -909,10 +924,27 @@ class LLMAnalyzer:
         # 目前返回空列表
         return []
     
+    def get_model_info(self) -> str:
+        """
+        获取模型使用信息
+        
+        Returns:
+            模型信息字符串，说明本次分析使用的模型
+        """
+        if self._last_used_model:
+            return self._last_used_model
+        elif "kimi" in self.model.lower():
+            return "Kimi"
+        elif "grok" in self.model.lower():
+            return "Grok"
+        else:
+            return self.model
+    
     def clear_cache(self) -> None:
         """清除缓存的市场快照和系统提示词"""
         self._cached_market_snapshot = None
         self._cached_system_prompt = None
+        self._last_used_model = None  # 同时清除模型使用记录
         self.logger.info("已清除LLM分析器缓存")
     
     def get_cache_info(self) -> Dict[str, Any]:

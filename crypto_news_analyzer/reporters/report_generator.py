@@ -27,6 +27,7 @@ class AnalyzedData:
     start_time: datetime
     end_time: datetime
     total_items: int
+    model_info: Optional[str] = None  # 使用的模型信息
 
 
 class ReportGenerator:
@@ -116,6 +117,11 @@ class ReportGenerator:
             data.categorized_items
         )
         report_sections.extend(category_sections)
+        
+        # 4. 添加模型信息说明
+        if data.model_info:
+            model_section = self._generate_model_info_section(data.model_info)
+            report_sections.append(model_section)
         
         # 合并所有部分
         full_report = "\n\n".join(report_sections)
@@ -451,6 +457,26 @@ class ReportGenerator:
             图标，如果未设置则返回默认图标
         """
         return self.category_emojis.get(category, "📄")
+    
+    def _generate_model_info_section(self, model_info: str) -> str:
+        """
+        生成模型信息说明部分
+        
+        Args:
+            model_info: 模型信息字符串
+            
+        Returns:
+            格式化后的模型信息说明
+        """
+        # 使用分隔线和说明文字
+        section = f"\n\n---\n\n🤖 *模型说明*\n"
+        section += f"本次报告由 *{model_info}* 进行新闻筛选分析。"
+        
+        # 添加额外说明
+        if "备用" in model_info or "fallback" in model_info.lower():
+            section += "\n（主模型Kimi遇到内容过滤限制，已自动切换至备用模型Grok完成分析）"
+        
+        return section
 
 
 # 工具函数
@@ -510,7 +536,8 @@ def categorize_analysis_results(
 def create_analyzed_data(
     categorized_items: Dict[str, List[StructuredAnalysisResult]],
     analysis_results: List[StructuredAnalysisResult],
-    time_window_hours: int
+    time_window_hours: int,
+    model_info: Optional[str] = None
 ) -> AnalyzedData:
     """
     创建分析数据对象
@@ -519,6 +546,7 @@ def create_analyzed_data(
         categorized_items: 按分类组织的分析结果
         analysis_results: 所有分析结果列表
         time_window_hours: 时间窗口（小时）
+        model_info: 使用的模型信息
         
     Returns:
         AnalyzedData对象
@@ -531,5 +559,6 @@ def create_analyzed_data(
         time_window_hours=time_window_hours,
         start_time=start_time,
         end_time=now,
-        total_items=len(analysis_results)
+        total_items=len(analysis_results),
+        model_info=model_info
     )

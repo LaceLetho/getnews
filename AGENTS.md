@@ -78,7 +78,10 @@ uv run flake8 crypto_news_analyzer/
 ## Application Commands
 
 ```bash
-# Run once
+# Install Bird CLI (required for X/Twitter crawling)
+npm install -g @laceletho/bird
+
+# Run once (uses .env file for configuration)
 uv run python -m crypto_news_analyzer.main --mode once
 
 # Run scheduled
