@@ -583,26 +583,36 @@ class StructuredOutputManager:
                 raise ValueError("Kimi 返回的响应内容为空")
 
             for index, candidate in enumerate(parse_candidates, start=1):
-                try:
-                    parsed_data = json.loads(candidate)
+                parse_inputs = self._extract_json_candidates_from_raw_text(candidate)
+                parse_inputs.append(candidate)
+                dedup_parse_inputs: List[str] = []
+                for parse_input in parse_inputs:
+                    if parse_input and parse_input not in dedup_parse_inputs:
+                        dedup_parse_inputs.append(parse_input)
 
-                    if batch_mode and isinstance(parsed_data, list):
-                        logger.info("Kimi 返回列表格式，自动包装为 BatchAnalysisResult 格式")
-                        parsed_data = {"results": parsed_data}
+                for parse_input in dedup_parse_inputs:
+                    try:
+                        parsed_data = json.loads(parse_input)
 
-                    result = response_model(**parsed_data)
-                    logger.info(f"成功获取 Kimi web_search 结构化响应 (batch_mode={batch_mode})")
-                    return result
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Kimi 响应不是有效 JSON，尝试修复: {e}")
-                    self._log_parse_error_raw_response(candidate, f"Kimi parse candidate #{index}")
-                    fixed_result = self.handle_malformed_response(candidate, batch_mode)
-                    if fixed_result:
-                        return fixed_result
+                        if batch_mode:
+                            parsed_data = self._normalize_batch_payload(parsed_data)
+
+                        result = response_model(**parsed_data)
+                        logger.info(f"成功获取 Kimi web_search 结构化响应 (batch_mode={batch_mode})")
+                        return result
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Kimi 响应不是有效 JSON，尝试修复: {e}")
+                        self._log_parse_error_raw_response(candidate, f"Kimi parse candidate #{index}")
+                        fixed_result = self.handle_malformed_response(candidate, batch_mode)
+                        if fixed_result:
+                            return fixed_result
+                        break
+                    except (ValidationError, ValueError):
+                        continue
 
             if batch_mode:
-                logger.warning("Kimi 响应无法恢复，批量模式返回空结果")
-                return BatchAnalysisResult(results=[])
+                logger.error("Kimi 响应无法恢复，批量模式抛出解析失败异常")
+                raise ValueError("Kimi 响应无法解析为有效 JSON")
 
             raise ValueError("Kimi 响应无法解析为有效 JSON")
 
@@ -968,19 +978,25 @@ class StructuredOutputManager:
 
                 # 验证并转换
                 if batch_mode:
-                    # 如果返回的是列表，自动包装为 {"results": [...]}
-                    if isinstance(parsed_data, list):
-                        parsed_data = {"results": parsed_data}
+                    parsed_data = self._normalize_batch_payload(parsed_data)
                     return BatchAnalysisResult(**parsed_data)
                 else:
                     return StructuredAnalysisResult(**parsed_data)
 
+            for json_str in self._extract_json_candidates_from_raw_text(response):
+                try:
+                    parsed_data = json.loads(json_str)
+                    if batch_mode:
+                        parsed_data = self._normalize_batch_payload(parsed_data)
+                        return BatchAnalysisResult(**parsed_data)
+                    return StructuredAnalysisResult(**parsed_data)
+                except (json.JSONDecodeError, ValidationError, ValueError):
+                    continue
+
             # 尝试直接解析
             parsed_data = json.loads(response)
             if batch_mode:
-                # 如果返回的是列表，自动包装为 {"results": [...]}
-                if isinstance(parsed_data, list):
-                    parsed_data = {"results": parsed_data}
+                parsed_data = self._normalize_batch_payload(parsed_data)
                 return BatchAnalysisResult(**parsed_data)
             else:
                 return StructuredAnalysisResult(**parsed_data)
@@ -1185,8 +1201,80 @@ class StructuredOutputManager:
             match = re.search(pattern, text, re.DOTALL)
             if match:
                 return match.group(1).strip()
-        
+
         return None
+
+    def _extract_json_from_raw_text(self, text: Optional[str]) -> Optional[str]:
+        candidates = self._extract_json_candidates_from_raw_text(text)
+        if not candidates:
+            return None
+        return candidates[0]
+
+    def _extract_json_candidates_from_raw_text(self, text: Optional[str]) -> List[str]:
+        if not text:
+            return []
+
+        candidates: List[str] = []
+        for index, char in enumerate(text):
+            if char not in "[{":
+                continue
+
+            segment = self._extract_balanced_json_segment(text[index:].strip())
+            if segment and segment not in candidates:
+                candidates.append(segment)
+
+        return candidates
+
+    def _extract_balanced_json_segment(self, text: str) -> Optional[str]:
+        if not text or text[0] not in "[{":
+            return None
+
+        stack: List[str] = []
+        in_string = False
+        escape_next = False
+
+        for index, char in enumerate(text):
+            if in_string:
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == "\\":
+                    escape_next = True
+                    continue
+                if char == '"':
+                    in_string = False
+                continue
+
+            if char == '"':
+                in_string = True
+                continue
+
+            if char in "[{":
+                stack.append(char)
+                continue
+
+            if char in "]}":
+                if not stack:
+                    return None
+
+                opener = stack.pop()
+                if (opener == "{" and char != "}") or (opener == "[" and char != "]"):
+                    return None
+
+                if not stack:
+                    return text[: index + 1]
+
+        return None
+
+    def _normalize_batch_payload(self, parsed_data: Any) -> Dict[str, Any]:
+        if isinstance(parsed_data, list):
+            logger.info("Kimi 返回列表格式，自动包装为 BatchAnalysisResult 格式")
+            return {"results": parsed_data}
+
+        if isinstance(parsed_data, dict) and "results" in parsed_data:
+            return parsed_data
+
+        raise ValueError("批量模式JSON缺少 results 字段")
     
     def get_supported_libraries(self) -> List[str]:
         """

@@ -1586,6 +1586,19 @@ class MainController:
             result["success"] = True
             result["report_content"] = report_result["report_content"]
             result["items_processed"] = len(content_items)
+
+            if not result["report_content"] and len(content_items) > 0:
+                error_message = "分析未生成有效报告内容"
+                result["success"] = False
+                result["errors"].append(error_message)
+                self.data_manager.log_analysis_execution(
+                    chat_id=chat_id,
+                    time_window_hours=time_window_hours,
+                    items_count=len(content_items),
+                    success=False,
+                    error_message=error_message,
+                )
+                return result
             
             self.data_manager.log_analysis_execution(
                 chat_id=chat_id,
