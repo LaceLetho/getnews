@@ -2,7 +2,6 @@
 set -e
 
 # 加密货币新闻分析工具 Docker 入口点脚本
-# 支持一次性执行模式和定时调度模式
 
 # 颜色输出
 RED='\033[0;31m'
@@ -245,9 +244,15 @@ main() {
             python /app/run.py --mode schedule $config_arg &
             MAIN_PID=$!
             ;;
+        "api-server"|"api")
+            log_info "启动 API 服务器模式"
+            log_info "API 监听地址: ${API_HOST:-0.0.0.0}:${API_PORT:-8000}"
+            python /app/run.py --mode api-server $config_arg &
+            MAIN_PID=$!
+            ;;
         *)
             log_error "未知的运行模式: $mode"
-            log_info "支持的模式: once, schedule, command"
+            log_info "支持的模式: once, schedule, command, api-server"
             log_execution_state "failed" "未知的运行模式: $mode"
             exit 1
             ;;

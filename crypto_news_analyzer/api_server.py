@@ -155,9 +155,21 @@ def create_api_server(config_path: str = "./config.json") -> FastAPI:
     """
     global controller
     
+    if controller is not None:
+        logger.info("API server already initialized")
+        return app
+
     controller = MainController(config_path)
     if not controller.initialize_system():
         raise RuntimeError("Failed to initialize system")
-    
+
+    controller.start_scheduler()
+
+    if controller.command_handler:
+        controller.start_command_listener()
+        logger.info("Telegram command listener started in API mode")
+    else:
+        logger.warning("Telegram command handler not configured, listener not started")
+
     logger.info("API server initialized")
     return app
