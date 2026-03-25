@@ -32,6 +32,11 @@ dependencies = [
     
     # JSON处理增强
     "orjson>=3.8.0",
+    
+    # HTTP API服务
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "python-multipart>=0.0.6",  # FastAPI表单支持
 ]
 
 [project.optional-dependencies]

@@ -446,6 +446,7 @@ class TelegramCommandHandler:
             
             # 注册命令处理器
             self.application.add_handler(CommandHandler("run", self._handle_run_command))
+            self.application.add_handler(CommandHandler("analyze", self._handle_analyze_command))
             self.application.add_handler(CommandHandler("market", self._handle_market_command))
             self.application.add_handler(CommandHandler("status", self._handle_status_command))
             self.application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
@@ -508,6 +509,7 @@ class TelegramCommandHandler:
             commands = [
                 BotCommand("start", "获取您的用户ID和授权状态"),
                 BotCommand("run", "立即执行数据收集和分析"),
+                BotCommand("analyze", "分析消息，可指定小时数如/analyze 24"),
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
                 BotCommand("tokens", "查看LLM token使用统计"),
@@ -593,7 +595,87 @@ class TelegramCommandHandler:
                     f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
                 )
                 await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
-    
+
+    async def _handle_analyze_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """
+        处理/analyze命令
+
+        分析指定时间窗口内的消息并发送报告。
+
+        Args:
+            update: Telegram Update对象
+            context: Telegram Bot context对象
+        """
+        # Extract chat context at the start
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        # Extract fields from context
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+
+        self.logger.info(
+            f"收到/analyze命令，用户: {username} ({user_id}), "
+            f"聊天类型: {chat_type}, 聊天ID: {chat_id}, "
+            f"参数: {context.args}"
+        )
+
+        try:
+            # 验证权限
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await update.message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/analyze",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list"
+                )
+                self._log_command_execution("/analyze", user_id, username, None, False, response)
+                return
+
+            # Log successful authorization
+            self._log_authorization_attempt(
+                command="/analyze",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True
+            )
+
+            # 解析参数 - 从 context.args 获取小时数
+            hours = None
+            if context.args:
+                try:
+                    hours = int(context.args[0])
+                except ValueError:
+                    await update.message.reply_text(
+                        "❌ 参数错误\n\n请输入有效的小时数，例如：/analyze 24"
+                    )
+                    return
+
+            # 调用业务逻辑
+            response = self.handle_analyze_command(user_id, username, chat_id, hours)
+            await update.message.reply_text(response, parse_mode="Markdown")
+
+        except Exception as e:
+            error_msg = f"处理/analyze命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
     async def _handle_status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
         处理/status命令
@@ -885,8 +967,176 @@ class TelegramCommandHandler:
         except Exception as e:
             self.logger.error(f"处理/start命令时发生错误: {str(e)}")
             await update.message.reply_text("❌ 命令执行失败")
-
     
+    
+    def handle_analyze_command(self, user_id: str, username: str, chat_id: str, hours: Optional[int] = None) -> str:
+        """
+        处理/analyze命令的业务逻辑
+
+        Args:
+            user_id: 用户ID
+            username: 用户名
+            chat_id: 聊天ID（用于发送报告）
+            hours: 分析时间窗口（小时数），可选
+
+        Returns:
+            响应消息
+        """
+        try:
+            if self.execution_coordinator.is_execution_running():
+                current_exec = self.execution_coordinator.get_execution_status()
+                response = (
+                    "⏳ 执行中\n\n"
+                    f"系统正在执行任务，请稍后再试。\n\n"
+                    f"执行ID: `{current_exec.execution_id}`\n"
+                    f"当前阶段: {current_exec.current_stage}\n"
+                    f"进度: {current_exec.progress * 100:.1f}%"
+                )
+                self._log_command_execution("/analyze", user_id, username, None, False, "执行中，拒绝新请求")
+                return response
+
+            effective_hours = None
+
+            if hours is not None:
+                effective_hours = min(hours, 24)
+            else:
+                try:
+                    last_analysis_time = self.execution_coordinator.data_manager.get_last_successful_analysis_time(chat_id)
+                    if last_analysis_time:
+                        from datetime import timezone
+                        now = datetime.now(timezone.utc)
+                        hours_since_last = (now - last_analysis_time).total_seconds() / 3600
+                        effective_hours = min(int(hours_since_last), 24)
+                        self.logger.info(
+                            f"上次分析时间: {last_analysis_time}, 距今 {hours_since_last:.1f} 小时, "
+                            f"使用时间窗口: {effective_hours} 小时"
+                        )
+                    else:
+                        effective_hours = 24
+                        self.logger.info("没有找到上次分析记录，使用默认时间窗口: 24小时")
+                except Exception as e:
+                    self.logger.warning(f"获取上次分析时间失败: {str(e)}，使用默认24小时")
+                    effective_hours = 24
+
+            if effective_hours is None or effective_hours <= 0:
+                effective_hours = 24
+
+            response_initial = (
+                f"🔍 开始分析\n\n"
+                f"系统将分析最近 {effective_hours} 小时的消息。\n"
+                "执行完成后将自动发送报告到此聊天窗口。"
+            )
+
+            def execute_in_background():
+                try:
+                    self._execute_analyze_and_notify(user_id, username, chat_id, effective_hours)
+                except Exception as e:
+                    self.logger.error(f"后台分析执行失败: {str(e)}")
+
+            thread = threading.Thread(target=execute_in_background, daemon=True)
+            thread.start()
+
+            return response_initial
+
+        except Exception as e:
+            error_msg = f"触发分析失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution("/analyze", user_id, username, None, False, error_msg)
+            return f"❌ 执行失败\n\n{str(e)}"
+
+    def _execute_analyze_and_notify(self, user_id: str, username: str, chat_id: str, hours: int) -> None:
+        """
+        在后台线程中执行分析并发送通知
+
+        Args:
+            user_id: 用户ID
+            username: 用户名
+            chat_id: 聊天ID（用于发送报告）
+            hours: 分析时间窗口（小时数）
+        """
+        self.logger.info(
+            f"开始后台分析: 用户={username} ({user_id}), "
+            f"chat_id={chat_id}, 时间窗口={hours}小时"
+        )
+
+        try:
+            result = self.execution_coordinator.analyze_by_time_window(chat_id, hours)
+
+            execution_id = result.get("execution_id", "unknown")
+            success = result.get("success", False)
+            errors = result.get("errors", [])
+
+            self._log_command_execution(
+                "/analyze",
+                user_id,
+                username,
+                execution_id,
+                success,
+                "分析完成" if success else f"分析失败: {'; '.join(errors)}"
+            )
+
+            if success and result.get("report_content"):
+                report_content = result["report_content"]
+                items_processed = result.get("items_processed", 0)
+
+                self.logger.info(
+                    f"分析成功，准备发送报告到 chat_id={chat_id}, "
+                    f"处理项目数: {items_processed}"
+                )
+
+                send_result = self.execution_coordinator.telegram_sender.send_report_to_chat(
+                    report_content, chat_id
+                )
+
+                if send_result.success:
+                    self.logger.info(f"报告已成功发送到 chat_id={chat_id}")
+                    notification = (
+                        "✅ *分析完成*\n\n"
+                        f"处理项目: {items_processed}\n"
+                        f"时间窗口: {hours} 小时\n"
+                        f"报告已发送。"
+                    )
+                else:
+                    self.logger.warning(f"报告发送失败: {send_result.error_message}")
+                    notification = (
+                        "⚠️ *分析完成但报告发送失败*\n\n"
+                        f"处理项目: {items_processed}\n"
+                        f"时间窗口: {hours} 小时\n"
+                        f"错误: {send_result.error_message}"
+                    )
+
+                self._send_message_sync(chat_id, notification)
+
+            else:
+                error_msg = "; ".join(errors) if errors else "未知错误"
+                self.logger.error(f"分析失败: {error_msg}")
+
+                notification = (
+                    "❌ *分析失败*\n\n"
+                    f"错误信息:\n{error_msg}"
+                )
+
+                self._send_message_sync(chat_id, notification)
+
+        except Exception as e:
+            error_msg = f"后台分析执行异常: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+
+            try:
+                notification = f"❌ *分析执行异常*\n\n{str(e)}"
+                self._send_message_sync(chat_id, notification)
+            except Exception as notify_error:
+                self.logger.error(f"发送错误通知失败: {str(notify_error)}")
+
+            self._log_command_execution(
+                "/analyze",
+                user_id,
+                username,
+                None,
+                False,
+                f"执行异常: {str(e)}"
+            )
+
     def handle_run_command(self, user_id: str, username: str, chat_id: str) -> str:
         """
         处理/run命令的业务逻辑

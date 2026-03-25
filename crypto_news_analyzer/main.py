@@ -24,8 +24,8 @@ def main():
     
     # 解析命令行参数
     parser = argparse.ArgumentParser(description="加密货币新闻分析工具")
-    parser.add_argument("--mode", choices=["once", "schedule"], default="once",
-                       help="运行模式: once=一次性执行, schedule=定时调度")
+    parser.add_argument("--mode", choices=["once", "schedule", "api-server"], default="once",
+                       help="运行模式: once=一次性执行, schedule=定时调度, api-server=API服务器模式")
     parser.add_argument("--config", default="./config.json",
                        help="配置文件路径")
     
@@ -40,6 +40,9 @@ def main():
         elif args.mode == "schedule":
             # 定时调度模式
             exit_code = run_scheduled_mode(args.config)
+        elif args.mode == "api-server":
+            # API服务器模式
+            exit_code = run_api_server(args.config)
         else:
             logger.error(f"未知的运行模式: {args.mode}")
             exit_code = 1
@@ -53,6 +56,38 @@ def main():
     except Exception as e:
         logger.error(f"系统运行异常: {e}")
         sys.exit(1)
+
+
+def run_api_server(config_path: str = "./config.json") -> int:
+    """
+    运行HTTP API服务器
+    
+    Args:
+        config_path: 配置文件路径
+        
+    Returns:
+        退出状态码
+    """
+    import uvicorn
+    from .api_server import create_api_server
+    
+    logger = logging.getLogger(__name__)
+    logger.info("启动API服务器模式")
+    
+    try:
+        app = create_api_server(config_path)
+        
+        # 从环境变量获取配置，或使用默认值
+        host = os.environ.get("API_HOST", "0.0.0.0")
+        port = int(os.environ.get("API_PORT", "8000"))
+        
+        logger.info(f"API服务器启动在 {host}:{port}")
+        uvicorn.run(app, host=host, port=port)
+        
+        return 0
+    except Exception as e:
+        logger.error(f"API服务器启动失败: {e}")
+        return 1
 
 
 def initialize_system(config_path: str = "./config.json") -> tuple:

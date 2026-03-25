@@ -1066,7 +1066,7 @@ class MainController:
                 
                 # 执行工作流
                 self.logger.info("定时调度触发执行")
-                result = self.run_once(trigger_type="scheduled", trigger_user=None)
+                result = self.run_crawl_only()
                 
                 # 更新上次调度时间为本次调度的理论时间（而不是实际执行时间）
                 # 这样可以避免执行耗时影响下次调度时间
@@ -1372,6 +1372,254 @@ class MainController:
             except Exception as e:
                 self.logger.error(f"停止命令监听器失败: {str(e)}")
 
+
+    def run_crawl_only(self) -> ExecutionResult:
+        """
+        仅执行爬取阶段，不执行分析
+        
+        Returns:
+            执行结果
+        """
+        execution_id = f"crawl_{int(time.time())}"
+        start_time = datetime.now()
+        
+        # 创建执行信息
+        execution_info = ExecutionInfo(
+            execution_id=execution_id,
+            trigger_type="scheduled",
+            trigger_user=None,
+            start_time=start_time,
+            end_time=None,
+            status=ExecutionStatus.RUNNING,
+            progress=0.0,
+            current_stage="crawling",
+            error_message=None
+        )
+        
+        with self._execution_lock:
+            self.current_execution = execution_info
+        
+        try:
+            self.logger.info(f"开始爬取阶段 {execution_id}")
+            
+            # 验证前提条件
+            validation_result = self.validate_prerequisites()
+            if not validation_result["valid"]:
+                raise Exception(f"前提条件验证失败: {validation_result['errors']}")
+            
+            # 初始化系统（如果尚未初始化）
+            if not self._initialized:
+                if not self.initialize_system():
+                    raise Exception("系统初始化失败")
+            
+            # 执行爬取阶段
+            time_window_hours = self.config_manager.get_time_window_hours()
+            crawl_result = self._execute_crawling_stage(time_window_hours)
+            
+            # 更新执行状态
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            if crawl_result["success"]:
+                # 更新执行信息
+                with self._execution_lock:
+                    if self.current_execution:
+                        self.current_execution.end_time = end_time
+                        self.current_execution.status = ExecutionStatus.COMPLETED
+                        self.current_execution.progress = 1.0
+                        self.current_execution.current_stage = "completed"
+                
+                execution_result = ExecutionResult(
+                    execution_id=execution_id,
+                    success=True,
+                    start_time=start_time,
+                    end_time=end_time,
+                    duration_seconds=duration,
+                    items_processed=len(crawl_result.get("content_items", [])),
+                    categories_found={},
+                    errors=[],
+                    trigger_user=None,
+                    trigger_type="scheduled",
+                    trigger_chat_id=None,
+                    report_sent=False
+                )
+                
+                # 记录执行历史
+                self.execution_history.append(execution_result)
+                self._save_execution_history()
+                
+                # 记录执行日志
+                self.log_execution_cycle(start_time, end_time, "success")
+                
+                self.logger.info(f"爬取阶段完成 {execution_id}: 成功")
+            else:
+                raise Exception("; ".join(crawl_result.get("errors", ["爬取失败"])))
+            
+            return execution_result
+            
+        except Exception as e:
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            error_msg = str(e)
+            self.logger.error(f"爬取阶段失败 {execution_id}: {error_msg}")
+            self.logger.debug(traceback.format_exc())
+            
+            # 更新执行状态
+            with self._execution_lock:
+                if self.current_execution:
+                    self.current_execution.end_time = end_time
+                    self.current_execution.status = ExecutionStatus.FAILED
+                    self.current_execution.error_message = error_msg
+            
+            execution_result = ExecutionResult(
+                execution_id=execution_id,
+                success=False,
+                start_time=start_time,
+                end_time=end_time,
+                duration_seconds=duration,
+                items_processed=0,
+                categories_found={},
+                errors=[error_msg],
+                trigger_user=None,
+                trigger_type="scheduled",
+                trigger_chat_id=None,
+                report_sent=False
+            )
+            
+            # 记录执行历史
+            self.execution_history.append(execution_result)
+            self._save_execution_history()
+            
+            # 记录执行日志
+            self.log_execution_cycle(start_time, end_time, "failed")
+            
+            return execution_result
+        
+        finally:
+            # 清理当前执行状态
+            with self._execution_lock:
+                self.current_execution = None
+
+    def analyze_by_time_window(self, chat_id: str, time_window_hours: int) -> Dict[str, Any]:
+        """
+        按时间窗口执行分析
+        
+        Args:
+            chat_id: 聊天ID
+            time_window_hours: 时间窗口（小时）
+        
+        Returns:
+            包含report_content的字典
+        """
+        result = {
+            "success": False,
+            "report_content": "",
+            "items_processed": 0,
+            "errors": []
+        }
+        
+        try:
+            # 初始化系统（如果尚未初始化）
+            if not self._initialized:
+                if not self.initialize_system():
+                    raise Exception("系统初始化失败")
+            
+            # 从数据库获取时间窗口内的内容
+            content_items = self.data_manager.get_content_items(time_window_hours=time_window_hours)
+            self.logger.info(f"从数据库获取到 {len(content_items)} 个内容项进行时间窗口分析")
+            
+            if not content_items:
+                result["success"] = True
+                self.data_manager.log_analysis_execution(
+                    chat_id=chat_id,
+                    time_window_hours=time_window_hours,
+                    items_count=0,
+                    success=True
+                )
+                return result
+            
+            # 执行分析阶段
+            analysis_result = self._execute_analysis_stage(content_items, is_manual=True)
+            if not analysis_result["success"]:
+                result["errors"].extend(analysis_result["errors"])
+                self.data_manager.log_analysis_execution(
+                    chat_id=chat_id,
+                    time_window_hours=time_window_hours,
+                    items_count=len(content_items),
+                    success=False,
+                    error_message="; ".join(analysis_result["errors"])
+                )
+                return result
+            
+            categorized_items = analysis_result["categorized_items"]
+            analysis_results = analysis_result["analysis_results"]
+            
+            # 执行报告生成阶段
+            report_result = self._execute_reporting_stage(
+                categorized_items, 
+                analysis_results, 
+                None,  # crawl_status
+                time_window_hours
+            )
+            
+            if not report_result["success"]:
+                result["errors"].extend(report_result["errors"])
+                self.data_manager.log_analysis_execution(
+                    chat_id=chat_id,
+                    time_window_hours=time_window_hours,
+                    items_count=len(content_items),
+                    success=False,
+                    error_message="; ".join(report_result["errors"])
+                )
+                return result
+            
+            result["success"] = True
+            result["report_content"] = report_result["report_content"]
+            result["items_processed"] = len(content_items)
+            
+            self.data_manager.log_analysis_execution(
+                chat_id=chat_id,
+                time_window_hours=time_window_hours,
+                items_count=len(content_items),
+                success=True
+            )
+            
+        except Exception as e:
+            error_msg = f"时间窗口分析失败: {str(e)}"
+            self.logger.error(error_msg)
+            self.logger.debug(traceback.format_exc())
+            result["errors"].append(error_msg)
+            self.data_manager.log_analysis_execution(
+                chat_id=chat_id,
+                time_window_hours=time_window_hours,
+                items_count=0,
+                success=False,
+                error_message=error_msg
+            )
+        
+        return result
+
+    def get_markdown_report_for_api(self, time_window_hours: int) -> str:
+        """
+        获取API用的Markdown报告
+        
+        Args:
+            time_window_hours: 时间窗口（小时）
+        
+        Returns:
+            Markdown格式的报告内容
+        """
+        analyze_result = self.analyze_by_time_window(
+            chat_id="api",
+            time_window_hours=time_window_hours
+        )
+        
+        if analyze_result["success"]:
+            return analyze_result.get("report_content", "")
+        else:
+            errors = analyze_result.get("errors", ["未知错误"])
+            return f"# 分析失败\n\n错误信息: {'; '.join(errors)}"
 
 # 工具函数
 def create_main_controller(config_path: str = "./config.json") -> MainController:

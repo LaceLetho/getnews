@@ -100,7 +100,32 @@ class DataManager:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            
+
+            # 创建分析执行记录表（用于追踪上次成功分析时间）
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS analysis_execution_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id TEXT NOT NULL,
+                    execution_time DATETIME NOT NULL,
+                    time_window_hours INTEGER NOT NULL,
+                    items_count INTEGER NOT NULL,
+                    success BOOLEAN NOT NULL,
+                    error_message TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # 创建索引
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_analysis_chat_time
+                ON analysis_execution_log (chat_id, execution_time)
+            ''')
+
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_analysis_success
+                ON analysis_execution_log (chat_id, success, execution_time)
+            ''')
+
             conn.commit()
             logger.info("数据库表结构初始化完成")
     
@@ -599,6 +624,187 @@ class DataManager:
             logger.info(f"获取到 {len(result)} 个数据源的消息统计（时间窗口: {time_window_hours}小时）")
             return result
     
+    def get_content_items_since(
+        self,
+        since_time: datetime,
+        max_hours: int = 24,
+        source_types: Optional[List[str]] = None,
+        limit: Optional[int] = None
+    ) -> List[ContentItem]:
+        """
+        获取指定时间之后的内容项（带最大时间限制）
+
+        Args:
+            since_time: 起始时间
+            max_hours: 最大时间窗口（小时），默认24小时
+            source_types: 数据源类型过滤
+            limit: 限制返回数量
+
+        Returns:
+            内容项列表
+        """
+        from datetime import timezone
+
+        now = datetime.now(timezone.utc)
+        max_end_time = since_time + timedelta(hours=max_hours)
+        end_time = min(now, max_end_time)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            conditions = ["publish_time >= ?", "publish_time <= ?"]
+            params = [since_time.isoformat(), end_time.isoformat()]
+
+            if source_types:
+                placeholders = ",".join(["?" for _ in source_types])
+                conditions.append(f"source_type IN ({placeholders})")
+                params.extend(source_types)
+
+            query = "SELECT * FROM content_items"
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+
+            query += " ORDER BY publish_time DESC"
+
+            if limit:
+                query += " LIMIT ?"
+                params.append(limit)
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            items = []
+            for row in rows:
+                try:
+                    publish_time = datetime.fromisoformat(row["publish_time"])
+                    if publish_time.tzinfo is None:
+                        from datetime import timezone
+                        publish_time = publish_time.replace(tzinfo=timezone.utc)
+
+                    item = ContentItem(
+                        id=row["id"],
+                        title=row["title"],
+                        content=row["content"],
+                        url=row["url"],
+                        publish_time=publish_time,
+                        source_name=row["source_name"],
+                        source_type=row["source_type"],
+                    )
+                    items.append(item)
+                except Exception as e:
+                    logger.warning(f"解析内容项失败 {row['id']}: {e}")
+                    continue
+
+            logger.info(f"从 {since_time} 到 {end_time} 获取到 {len(items)} 个内容项")
+            return items
+
+    def log_analysis_execution(
+        self,
+        chat_id: str,
+        time_window_hours: int,
+        items_count: int,
+        success: bool,
+        error_message: Optional[str] = None,
+    ) -> None:
+        """
+        记录分析执行日志
+
+        Args:
+            chat_id: 聊天ID（"api"表示API调用，或TG chat_id）
+            time_window_hours: 分析的时间窗口（小时）
+            items_count: 分析的项目数量
+            success: 是否成功
+            error_message: 错误信息（如果失败）
+        """
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute(
+                    """
+                    INSERT INTO analysis_execution_log
+                    (chat_id, execution_time, time_window_hours, items_count, success, error_message)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        chat_id,
+                        datetime.now().isoformat(),
+                        time_window_hours,
+                        items_count,
+                        success,
+                        error_message,
+                    ),
+                )
+
+                conn.commit()
+                logger.info(f"分析执行日志已记录: chat_id={chat_id}, success={success}")
+
+    def get_last_successful_analysis_time(self, chat_id: str) -> Optional[datetime]:
+        """
+        获取指定chat_id的上次成功分析时间
+
+        Args:
+            chat_id: 聊天ID
+
+        Returns:
+            上次成功分析的执行时间，如果没有则返回None
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT execution_time FROM analysis_execution_log
+                WHERE chat_id = ? AND success = TRUE
+                ORDER BY execution_time DESC
+                LIMIT 1
+            """,
+                (chat_id,),
+            )
+
+            row = cursor.fetchone()
+            if row and row["execution_time"]:
+                try:
+                    execution_time = datetime.fromisoformat(row["execution_time"])
+                    logger.info(f"chat_id={chat_id} 的上次成功分析时间: {execution_time}")
+                    return execution_time
+                except Exception as e:
+                    logger.warning(f"解析分析执行时间失败: {e}")
+                    return None
+            else:
+                logger.info(f"chat_id={chat_id} 没有成功分析记录")
+                return None
+
+    def cleanup_analysis_logs(self, retention_days: int = 30) -> int:
+        """
+        清理旧的分析执行日志
+
+        Args:
+            retention_days: 保留天数
+
+        Returns:
+            删除的记录数量
+        """
+        cutoff_time = datetime.now() - timedelta(days=retention_days)
+
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute(
+                    """
+                    DELETE FROM analysis_execution_log
+                    WHERE created_at < ?
+                """,
+                    (cutoff_time.isoformat(),),
+                )
+
+                deleted_count = cursor.rowcount
+                conn.commit()
+
+                logger.info(f"清理了 {deleted_count} 条旧分析执行日志")
+                return deleted_count
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器出口"""
         self.close()
