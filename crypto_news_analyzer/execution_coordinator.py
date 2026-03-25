@@ -1504,30 +1504,39 @@ class MainController:
     def analyze_by_time_window(self, chat_id: str, time_window_hours: int) -> Dict[str, Any]:
         """
         按时间窗口执行分析
-        
+
         Args:
             chat_id: 聊天ID
             time_window_hours: 时间窗口（小时）
-        
+
         Returns:
-            包含report_content的字典
+            包含report_content和execution_id的字典
         """
+        from datetime import timezone
+
+        execution_id = f"analyze_{chat_id}_{int(time.time())}"
         result = {
             "success": False,
             "report_content": "",
             "items_processed": 0,
+            "execution_id": execution_id,
             "errors": []
         }
-        
+
         try:
             # 初始化系统（如果尚未初始化）
             if not self._initialized:
                 if not self.initialize_system():
                     raise Exception("系统初始化失败")
-            
+
+            since_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
+
             # 从数据库获取时间窗口内的内容
-            content_items = self.data_manager.get_content_items(time_window_hours=time_window_hours)
-            self.logger.info(f"从数据库获取到 {len(content_items)} 个内容项进行时间窗口分析")
+            content_items = self.data_manager.get_content_items_since(
+                since_time=since_time,
+                max_hours=time_window_hours
+            )
+            self.logger.info(f"从数据库获取到 {len(content_items)} 个内容项进行时间窗口分析 (execution_id: {execution_id})")
             
             if not content_items:
                 result["success"] = True

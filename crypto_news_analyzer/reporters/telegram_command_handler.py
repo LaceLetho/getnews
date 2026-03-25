@@ -997,8 +997,11 @@ class TelegramCommandHandler:
 
             effective_hours = None
 
+            analysis_config = self.execution_coordinator.config_manager.get_analysis_config()
+            max_hours = analysis_config.get("max_analysis_window_hours", 24)
+
             if hours is not None:
-                effective_hours = min(hours, 24)
+                effective_hours = min(hours, max_hours)
             else:
                 try:
                     last_analysis_time = self.execution_coordinator.data_manager.get_last_successful_analysis_time(chat_id)
@@ -1006,20 +1009,20 @@ class TelegramCommandHandler:
                         from datetime import timezone
                         now = datetime.now(timezone.utc)
                         hours_since_last = (now - last_analysis_time).total_seconds() / 3600
-                        effective_hours = min(int(hours_since_last), 24)
+                        effective_hours = min(int(hours_since_last), max_hours)
                         self.logger.info(
                             f"上次分析时间: {last_analysis_time}, 距今 {hours_since_last:.1f} 小时, "
                             f"使用时间窗口: {effective_hours} 小时"
                         )
                     else:
-                        effective_hours = 24
-                        self.logger.info("没有找到上次分析记录，使用默认时间窗口: 24小时")
+                        effective_hours = max_hours
+                        self.logger.info(f"没有找到上次分析记录，使用默认时间窗口: {max_hours}小时")
                 except Exception as e:
-                    self.logger.warning(f"获取上次分析时间失败: {str(e)}，使用默认24小时")
-                    effective_hours = 24
+                    self.logger.warning(f"获取上次分析时间失败: {str(e)}，使用默认{max_hours}小时")
+                    effective_hours = max_hours
 
             if effective_hours is None or effective_hours <= 0:
-                effective_hours = 24
+                effective_hours = max_hours
 
             response_initial = (
                 f"🔍 开始分析\n\n"
