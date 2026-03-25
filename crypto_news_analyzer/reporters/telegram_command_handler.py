@@ -16,6 +16,7 @@ Telegram命令处理器
 
 import asyncio
 import logging
+import math
 import os
 import threading
 import time
@@ -996,43 +997,65 @@ class TelegramCommandHandler:
                 return response
 
             effective_hours = None
+            window_description = None
 
             analysis_config = self.execution_coordinator.config_manager.get_analysis_config()
             max_hours = analysis_config.get("max_analysis_window_hours", 24)
 
             if hours is not None:
-                effective_hours = min(hours, max_hours)
+                effective_hours = min(max(hours, 1), max_hours)
+                window_description = f"最近 {effective_hours} 小时"
             else:
                 try:
                     last_analysis_time = self.execution_coordinator.data_manager.get_last_successful_analysis_time(chat_id)
                     if last_analysis_time:
-                        from datetime import timezone
-                        now = datetime.now(timezone.utc)
+                        if last_analysis_time.tzinfo is None:
+                            from datetime import timezone
+
+                            last_analysis_time = last_analysis_time.replace(tzinfo=timezone.utc)
+
+                        now = datetime.now(last_analysis_time.tzinfo)
                         hours_since_last = (now - last_analysis_time).total_seconds() / 3600
-                        effective_hours = min(int(hours_since_last), max_hours)
+                        bounded_hours = max(1, math.ceil(max(hours_since_last, 0)))
+                        effective_hours = min(bounded_hours, max_hours)
+                        if bounded_hours > max_hours:
+                            window_description = f"最近 {effective_hours} 小时"
+                        else:
+                            window_description = f"自上次成功运行以来（约 {effective_hours} 小时）"
                         self.logger.info(
                             f"上次分析时间: {last_analysis_time}, 距今 {hours_since_last:.1f} 小时, "
                             f"使用时间窗口: {effective_hours} 小时"
                         )
                     else:
                         effective_hours = max_hours
+                        window_description = f"最近 {effective_hours} 小时"
                         self.logger.info(f"没有找到上次分析记录，使用默认时间窗口: {max_hours}小时")
                 except Exception as e:
                     self.logger.warning(f"获取上次分析时间失败: {str(e)}，使用默认{max_hours}小时")
                     effective_hours = max_hours
+                    window_description = f"最近 {effective_hours} 小时"
 
             if effective_hours is None or effective_hours <= 0:
-                effective_hours = max_hours
+                effective_hours = 1
+
+            if not window_description:
+                window_description = f"最近 {effective_hours} 小时"
 
             response_initial = (
                 f"🔍 开始分析\n\n"
-                f"系统将分析最近 {effective_hours} 小时的消息。\n"
+                f"系统将分析{window_description}的消息。\n"
                 "执行完成后将自动发送报告到此聊天窗口。"
             )
 
             def execute_in_background():
                 try:
-                    self._execute_analyze_and_notify(user_id, username, chat_id, effective_hours)
+                    self._execute_analyze_and_notify(
+                        user_id,
+                        username,
+                        chat_id,
+                        effective_hours,
+                        window_description,
+                    )
                 except Exception as e:
                     self.logger.error(f"后台分析执行失败: {str(e)}")
 
@@ -1047,7 +1070,14 @@ class TelegramCommandHandler:
             self._log_command_execution("/analyze", user_id, username, None, False, error_msg)
             return f"❌ 执行失败\n\n{str(e)}"
 
-    def _execute_analyze_and_notify(self, user_id: str, username: str, chat_id: str, hours: int) -> None:
+    def _execute_analyze_and_notify(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        hours: int,
+        window_description: Optional[str] = None,
+    ) -> None:
         """
         在后台线程中执行分析并发送通知
 
@@ -1078,9 +1108,37 @@ class TelegramCommandHandler:
                 "分析完成" if success else f"分析失败: {'; '.join(errors)}"
             )
 
-            if success and result.get("report_content"):
-                report_content = result["report_content"]
+            window_text = window_description or f"最近 {hours} 小时"
+
+            if success:
                 items_processed = result.get("items_processed", 0)
+                report_content = result.get("report_content", "")
+
+                if not report_content and items_processed == 0:
+                    self.logger.info(
+                        f"分析成功但无新内容: chat_id={chat_id}, 时间窗口={hours}小时"
+                    )
+                    notification = (
+                        "✅ *分析完成*\n\n"
+                        "暂无符合条件的新内容。\n"
+                        f"分析范围: {window_text}"
+                    )
+                    self._send_message_sync(chat_id, notification)
+                    return
+
+                if not report_content and items_processed > 0:
+                    self.logger.warning(
+                        f"分析成功但报告为空: chat_id={chat_id}, 时间窗口={hours}小时, "
+                        f"处理项目数={items_processed}"
+                    )
+                    notification = (
+                        "⚠️ *分析完成但报告为空*\n\n"
+                        f"处理项目: {items_processed}\n"
+                        f"分析范围: {window_text}\n"
+                        "请检查日志后重试。"
+                    )
+                    self._send_message_sync(chat_id, notification)
+                    return
 
                 self.logger.info(
                     f"分析成功，准备发送报告到 chat_id={chat_id}, "
@@ -1096,7 +1154,7 @@ class TelegramCommandHandler:
                     notification = (
                         "✅ *分析完成*\n\n"
                         f"处理项目: {items_processed}\n"
-                        f"时间窗口: {hours} 小时\n"
+                        f"分析范围: {window_text}\n"
                         f"报告已发送。"
                     )
                 else:
@@ -1104,7 +1162,7 @@ class TelegramCommandHandler:
                     notification = (
                         "⚠️ *分析完成但报告发送失败*\n\n"
                         f"处理项目: {items_processed}\n"
-                        f"时间窗口: {hours} 小时\n"
+                        f"分析范围: {window_text}\n"
                         f"错误: {send_result.error_message}"
                     )
 

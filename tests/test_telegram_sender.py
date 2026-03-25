@@ -134,8 +134,26 @@ class TestTelegramSender:
         
         async with self.sender:
             result = await self.sender._send_message_part("测试消息", 1, 1)
-        
+
         assert result.success is False
+
+    @pytest.mark.asyncio
+    async def test_send_message_part_second_chunk_has_continuation_header(self):
+        captured = {}
+
+        async def _mock_api_request(method, params=None):
+            captured["method"] = method
+            captured["text"] = params.get("text", "") if params else ""
+            return {"ok": True, "result": {"message_id": 999}}
+
+        self.sender._make_api_request = _mock_api_request
+
+        async with self.sender:
+            result = await self.sender._send_message_part("续写内容", 2, 2)
+
+        assert result.success is True
+        assert captured["method"] == "sendMessage"
+        assert captured["text"].startswith("📊 *加密货币新闻分析报告（续）*\n\n")
     
     def test_save_report_backup(self):
         """测试保存报告备份"""
@@ -194,6 +212,7 @@ class TestTelegramSender:
             result = await self.sender.send_report("测试消息")
         
         assert result.success is False
+        assert result.error_message is not None
         assert "Network error" in result.error_message
         
         # 重置mock
