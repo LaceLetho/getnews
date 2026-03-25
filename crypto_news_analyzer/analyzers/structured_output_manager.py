@@ -490,6 +490,9 @@ class StructuredOutputManager:
                 logger.info(reasoning_content[:500] + "..." if len(reasoning_content) > 500 else reasoning_content)
                 logger.info(f"============= End Thinking =============")
 
+            final_reasoning = None
+            final_message = None
+
             # 如果模型调用了 web_search 工具
             if hasattr(message, 'tool_calls') and message.tool_calls:
                 logger.info(f"Kimi 决定使用 web_search 工具，调用次数: {len(message.tool_calls)}")
@@ -555,30 +558,53 @@ class StructuredOutputManager:
                 }
                 usage_callback(usage_data)
 
-            # 解析响应
-            try:
-                # 检查 content 是否为空
-                if not content or not content.strip():
-                    logger.error(f"Kimi 返回的 content 为空，无法解析。原始 message: {message}")
-                    raise ValueError("Kimi 返回的响应内容为空")
+            parse_candidates: List[str] = []
 
-                parsed_data = json.loads(content)
+            def add_candidate(text: Optional[str]) -> None:
+                if text and text.strip() and text not in parse_candidates:
+                    parse_candidates.append(text)
 
-                # 如果返回的是列表，自动包装为 {"results": [...]}
-                if batch_mode and isinstance(parsed_data, list):
-                    logger.info(f"Kimi 返回列表格式，自动包装为 BatchAnalysisResult 格式")
-                    parsed_data = {"results": parsed_data}
+            add_candidate(content)
+            add_candidate(final_reasoning)
+            add_candidate(reasoning_content)
 
-                result = response_model(**parsed_data)
-                logger.info(f"成功获取 Kimi web_search 结构化响应 (batch_mode={batch_mode})")
-                return result
-            except json.JSONDecodeError as e:
-                logger.warning(f"Kimi 响应不是有效 JSON，尝试修复: {e}")
-                logger.debug(f"原始响应内容: {content[:1000] if content else '(空)'}")
-                fixed_result = self.handle_malformed_response(content, batch_mode)
-                if fixed_result:
-                    return fixed_result
-                raise
+            parse_message = final_message if final_message is not None else message
+            tool_calls = getattr(parse_message, 'tool_calls', None)
+            if tool_calls:
+                for tool_call in tool_calls:
+                    function_obj = getattr(tool_call, 'function', None)
+                    arguments = getattr(function_obj, 'arguments', None)
+                    add_candidate(arguments)
+
+            if not parse_candidates:
+                logger.warning("Kimi 未返回可解析内容")
+                if batch_mode:
+                    return BatchAnalysisResult(results=[])
+                raise ValueError("Kimi 返回的响应内容为空")
+
+            for index, candidate in enumerate(parse_candidates, start=1):
+                try:
+                    parsed_data = json.loads(candidate)
+
+                    if batch_mode and isinstance(parsed_data, list):
+                        logger.info("Kimi 返回列表格式，自动包装为 BatchAnalysisResult 格式")
+                        parsed_data = {"results": parsed_data}
+
+                    result = response_model(**parsed_data)
+                    logger.info(f"成功获取 Kimi web_search 结构化响应 (batch_mode={batch_mode})")
+                    return result
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Kimi 响应不是有效 JSON，尝试修复: {e}")
+                    self._log_parse_error_raw_response(candidate, f"Kimi parse candidate #{index}")
+                    fixed_result = self.handle_malformed_response(candidate, batch_mode)
+                    if fixed_result:
+                        return fixed_result
+
+            if batch_mode:
+                logger.warning("Kimi 响应无法恢复，批量模式返回空结果")
+                return BatchAnalysisResult(results=[])
+
+            raise ValueError("Kimi 响应无法解析为有效 JSON")
 
         except Exception as e:
             error_msg = str(e)
@@ -685,6 +711,7 @@ class StructuredOutputManager:
             
         except json.JSONDecodeError as e:
             logger.error(f"JSON解析失败: {e}")
+            self._log_parse_error_raw_response(locals().get("content"), "Native JSON mode")
             # 尝试恢复
             return self._handle_malformed_json(content, batch_mode)
         except ValidationError as e:
@@ -911,11 +938,27 @@ class StructuredOutputManager:
         """
         logger.warning("尝试恢复格式错误的响应")
 
+        if not response:
+            if batch_mode:
+                return BatchAnalysisResult(results=[])
+            return None
+
+        response = response.strip()
+        if not response:
+            if batch_mode:
+                return BatchAnalysisResult(results=[])
+            return None
+
         # 首先清理 Grok 标签
         response = self._clean_grok_tags(response)
 
         # 清理 Kimi Thinking 标签
         response = self._clean_kimi_thinking(response)
+
+        if not response:
+            if batch_mode:
+                return BatchAnalysisResult(results=[])
+            return None
         
         try:
             # 尝试从markdown代码块中提取JSON
@@ -944,6 +987,7 @@ class StructuredOutputManager:
                 
         except json.JSONDecodeError as e:
             logger.warning(f"JSON解析失败: {e}")
+            self._log_parse_error_raw_response(response, "Malformed response recovery")
             
             # 尝试修复截断的JSON字符串
             try:
@@ -958,6 +1002,18 @@ class StructuredOutputManager:
         except Exception as e:
             logger.error(f"无法恢复格式错误的响应: {e}")
             return None
+
+    def _log_parse_error_raw_response(self, raw_response: Any, context: str) -> None:
+        if raw_response is None:
+            response_text = "(空)"
+        elif isinstance(raw_response, str):
+            response_text = raw_response
+        else:
+            response_text = str(raw_response)
+
+        logger.error(f"[{context}] LLM原始响应开始")
+        logger.error(response_text if response_text else "(空)")
+        logger.error(f"[{context}] LLM原始响应结束")
     
     def _clean_grok_tags(self, text: str) -> str:
         """清理 Grok 引用标签和其他不兼容的格式

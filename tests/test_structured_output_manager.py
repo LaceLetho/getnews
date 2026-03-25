@@ -655,6 +655,27 @@ class TestKimiIntegration:
         assert len(result.results) == 1
         assert result.results[0].category == "大户动向"
 
+    def test_handle_malformed_response_with_kimi_final_thinking_only_batch(self):
+        manager = StructuredOutputManager()
+
+        response = """
+============= Kimi Final Thinking =============
+============= End Final Thinking =============
+"""
+
+        result = manager.handle_malformed_response(response, batch_mode=True)
+        assert result is not None
+        assert isinstance(result, BatchAnalysisResult)
+        assert result.results == []
+
+    def test_handle_malformed_response_empty_batch_returns_empty(self):
+        manager = StructuredOutputManager()
+
+        result = manager.handle_malformed_response("", batch_mode=True)
+        assert result is not None
+        assert isinstance(result, BatchAnalysisResult)
+        assert result.results == []
+
     def test_clean_grok_tags_with_empty(self):
         """测试清理Grok标签时处理空输入"""
         manager = StructuredOutputManager()
