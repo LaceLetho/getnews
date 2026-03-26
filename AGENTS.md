@@ -6,6 +6,8 @@ Guidance for AI coding agents working on the Cryptocurrency News Analyzer projec
 
 Automated Python system collecting crypto news from RSS/X, analyzing with LLM (Grok/MiniMax), delivering reports via Telegram Bot.
 
+Assigned production domain: `news.tradao.xyz`
+
 ## Build/Lint/Test Commands
 
 ```bash

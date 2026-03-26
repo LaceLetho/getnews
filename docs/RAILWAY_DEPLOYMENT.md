@@ -20,6 +20,8 @@
 - 提供 HTTP 接口：
   - `GET /health`
   - `POST /analyze`
+  - `GET /analyze/{job_id}`
+  - `GET /analyze/{job_id}/result`
 - 同时保留：
   - 定时爬取
   - Telegram 命令监听（含 `/analyze`）
@@ -84,11 +86,19 @@ API_PORT=8080
 # 健康检查
 curl -sS https://<your-domain>/health
 
-# 鉴权分析（hours > 0）
-curl -X POST "https://<your-domain>/analyze" \
+# 创建分析任务（hours > 0）
+curl -i -X POST "https://<your-domain>/analyze" \
   -H "Authorization: Bearer ${API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"hours":24}'
+
+# 查询任务状态
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://<your-domain>/analyze/<job_id>"
+
+# 获取最终结果
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://<your-domain>/analyze/<job_id>/result"
 ```
 
 预期：
@@ -97,7 +107,18 @@ curl -X POST "https://<your-domain>/analyze" \
 - `/analyze`：
   - 无 token 或错误 token 返回 401
   - `hours<=0` 返回 422（Pydantic 校验）
-  - 合法请求返回 200，包含 `success/report/items_processed/time_window_hours`
+  - 合法请求返回 202，包含 `job_id/status_url/result_url`
+- `GET /analyze/{job_id}`：
+  - 返回 200，包含任务状态（`queued/running/completed/failed`）
+- `GET /analyze/{job_id}/result`：
+  - 任务未完成时返回 202
+  - 任务完成时返回 200，包含 `report/items_processed/time_window_hours`
+
+说明：
+
+- 这是为避免 Cloudflare 524 引入的异步接口契约
+- `POST /analyze` 不再同步返回 Markdown 报告
+- 客户端应保存 `job_id` 并轮询状态/结果接口
 
 ---
 
@@ -179,4 +200,8 @@ A: 因为请求体先经过 Pydantic 校验（`hours > 0`），不满足时由 F
 
 ### Q: 如何确认线上是否真的命中了接口？
 
-A: 查 `deploymentLogs` 中的 Uvicorn 访问日志（如 `"POST /analyze HTTP/1.1" 200 OK`）。
+A: 查 `deploymentLogs` 中的 Uvicorn 访问日志，例如：
+
+- `"POST /analyze HTTP/1.1" 202 Accepted`
+- `"GET /analyze/<job_id> HTTP/1.1" 200 OK`
+- `"GET /analyze/<job_id>/result HTTP/1.1" 200 OK`

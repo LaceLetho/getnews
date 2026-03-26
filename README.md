@@ -13,7 +13,7 @@
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
 - 🎯 **智能分类**: 支持大户动向、利率事件、监管政策、真相揭露等多种分类
 - ☁️ **云端部署**: 支持部署到 Railway 平台
-- 🌐 **HTTP API**: 支持 Bearer Token 鉴权的手动分析接口（`POST /analyze`）
+- 🌐 **HTTP API**: 支持 Bearer Token 鉴权的异步分析接口（`POST /analyze` 创建任务，轮询获取结果）
 - 🤖 **Telegram 手动分析**: 支持 `/analyze [hours]` 按时间窗口触发分析
 
 ## 项目结构
@@ -275,7 +275,9 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 ### 接口列表
 
 - `GET /health`：健康检查
-- `POST /analyze`：按小时窗口触发分析并返回 Markdown 报告
+- `POST /analyze`：按小时窗口创建分析任务（返回 `202 Accepted`）
+- `GET /analyze/{job_id}`：查询分析任务状态
+- `GET /analyze/{job_id}/result`：获取分析任务最终结果
 
 ### 调用示例
 
@@ -289,11 +291,54 @@ curl -X POST "http://localhost:8080/analyze" \
 ### `POST /analyze` 请求与返回
 
 - 请求体：`{"hours": <int>}`，`hours > 0`
+- 成功时返回 `202 Accepted`
+- 响应头：
+  - `Location`：状态查询地址
+  - `Retry-After`：建议轮询间隔（秒）
 - 返回字段：
-  - `success`：是否成功
-  - `report`：Markdown 报告正文
-  - `items_processed`：处理条目数
+  - `success`：是否成功创建任务
+  - `job_id`：分析任务 ID
+  - `status`：初始状态（通常为 `queued`）
   - `time_window_hours`：实际使用的时间窗口（上限由配置控制，默认 24）
+  - `status_url`：状态查询接口
+  - `result_url`：结果获取接口
+
+示例响应：
+
+```json
+{
+  "success": true,
+  "job_id": "analyze_job_xxx",
+  "status": "queued",
+  "time_window_hours": 24,
+  "status_url": "/analyze/analyze_job_xxx",
+  "result_url": "/analyze/analyze_job_xxx/result"
+}
+```
+
+### 轮询任务状态
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "http://localhost:8080/analyze/<job_id>"
+```
+
+状态接口返回：
+
+- `queued`：任务已入队，等待执行
+- `running`：分析进行中
+- `completed`：分析完成，可读取结果
+- `failed`：分析失败，可查看 `error`
+
+### 获取最终分析结果
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "http://localhost:8080/analyze/<job_id>/result"
+```
+
+- 若任务尚未完成，返回 `202`，提示 `Analyze job still queued/running`
+- 若任务完成，返回最终 Markdown 报告与处理条目数
 
 ## 部署
 
