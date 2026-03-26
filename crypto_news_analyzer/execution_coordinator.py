@@ -755,7 +755,13 @@ class MainController:
         
         return result
     
-    def _execute_analysis_stage(self, newly_crawled_items: List[ContentItem], is_manual: bool = False) -> Dict[str, Any]:
+    def _execute_analysis_stage(
+        self,
+        newly_crawled_items: List[ContentItem],
+        is_manual: bool = False,
+        analysis_time_window_hours: Optional[int] = None,
+        preloaded_content_items: Optional[List[ContentItem]] = None,
+    ) -> Dict[str, Any]:
         """
         执行内容分析阶段
         
@@ -765,6 +771,8 @@ class MainController:
         Args:
             newly_crawled_items: 刚爬取的内容项（用于日志记录）
             is_manual: 是否为手动触发（手动触发时不包含 Outdated News）
+            analysis_time_window_hours: 分析时间窗口（小时），传入时优先于配置
+            preloaded_content_items: 预加载的待分析内容项（传入时不再重新查询数据库）
             
         Returns:
             分析结果字典
@@ -772,13 +780,20 @@ class MainController:
         result = {"success": False, "categorized_items": {}, "analysis_results": {}, "errors": []}
         
         try:
-            # 从数据库获取时间窗口内的所有消息（使用配置管理器的getter方法）
-            time_window_hours = self.config_manager.get_time_window_hours()
-            
-            # 获取时间窗口内的所有内容项（包括之前爬取的和刚爬取的）
-            all_content_items = self.data_manager.get_content_items(
-                time_window_hours=time_window_hours
-            )
+            if preloaded_content_items is not None:
+                all_content_items = preloaded_content_items
+                self.logger.info(f"使用预加载内容项进行分析，共 {len(all_content_items)} 个")
+            else:
+                time_window_hours = (
+                    analysis_time_window_hours
+                    if analysis_time_window_hours is not None
+                    else self.config_manager.get_time_window_hours()
+                )
+
+                # 获取时间窗口内的所有内容项（包括之前爬取的和刚爬取的）
+                all_content_items = self.data_manager.get_content_items(
+                    time_window_hours=time_window_hours
+                )
             
             self.logger.info(f"从数据库获取到时间窗口内的 {len(all_content_items)} 个内容项进行分析")
             self.logger.info(f"其中本次新爬取 {len(newly_crawled_items)} 个，历史数据 {len(all_content_items) - len(newly_crawled_items)} 个")
@@ -1549,7 +1564,12 @@ class MainController:
                 return result
             
             # 执行分析阶段
-            analysis_result = self._execute_analysis_stage(content_items, is_manual=True)
+            analysis_result = self._execute_analysis_stage(
+                content_items,
+                is_manual=True,
+                analysis_time_window_hours=time_window_hours,
+                preloaded_content_items=content_items,
+            )
             if not analysis_result["success"]:
                 result["errors"].extend(analysis_result["errors"])
                 self.data_manager.log_analysis_execution(
