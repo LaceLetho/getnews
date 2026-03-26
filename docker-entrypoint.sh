@@ -246,7 +246,7 @@ main() {
             ;;
         "api-server"|"api")
             log_info "启动 API 服务器模式"
-            log_info "API 监听地址: ${API_HOST:-0.0.0.0}:${API_PORT:-8000}"
+            log_info "API 监听地址: ${API_HOST:-0.0.0.0}:${API_PORT:-8080}"
             python /app/run.py --mode api-server $config_arg &
             MAIN_PID=$!
             ;;

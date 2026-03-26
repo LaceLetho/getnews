@@ -79,7 +79,7 @@ def run_api_server(config_path: str = "./config.json") -> int:
         
         # 从环境变量获取配置，或使用默认值
         host = os.environ.get("API_HOST", "0.0.0.0")
-        port = int(os.environ.get("API_PORT", "8000"))
+        port = int(os.environ.get("API_PORT", "8080"))
         
         logger.info(f"API服务器启动在 {host}:{port}")
         uvicorn.run(app, host=host, port=port)
@@ -107,10 +107,11 @@ def initialize_system(config_path: str = "./config.json") -> tuple:
     from .utils.logging import get_log_manager
     from .utils.errors import ErrorRecoveryManager, ConfigError
     
+    logger = logging.getLogger(__name__)
+
     try:
         # 设置日志系统
         setup_logging()
-        logger = logging.getLogger(__name__)
         logger.info("开始初始化加密货币新闻分析系统")
         
         # 初始化配置管理器
