@@ -14,6 +14,7 @@ from crypto_news_analyzer.analyzers.structured_output_manager import (
     BatchAnalysisResult
 )
 from crypto_news_analyzer.models import ContentItem
+from crypto_news_analyzer.utils.errors import ContentFilterError
 
 
 @pytest.fixture
@@ -413,6 +414,87 @@ class TestLLMAnalyzer:
 
         assert "- 第一批实际输出标题" in captured_user_prompts[1]
         assert "第一批原始输入标题" not in captured_user_prompts[1]
+
+    @patch("crypto_news_analyzer.analyzers.llm_analyzer.OpenAI")
+    def test_kimi_content_filter_fallback_uses_configured_grok_with_search(
+        self,
+        mock_openai_cls,
+        mock_market_snapshot,
+    ):
+        analyzer = LLMAnalyzer(
+            mock_mode=False,
+            batch_size=1,
+            model="kimi-for-coding",
+            summary_model="grok-4-1-fast-reasoning",
+            GROK_API_KEY="test-grok-key",
+        )
+        analyzer.client = Mock()
+        analyzer._log_final_prompt = Mock()
+        analyzer._log_llm_response = Mock()
+
+        items = [self._make_content_item("batch-1", "第一批输入标题")]
+        fallback_result = BatchAnalysisResult(results=[
+            self._make_result("Grok 备用输出标题", "https://example.com/fallback"),
+        ])
+
+        analyzer.structured_output_manager.force_structured_response = Mock(
+            side_effect=[
+                ContentFilterError("Kimi rejected", model="kimi-for-coding"),
+                fallback_result,
+            ]
+        )
+
+        results = analyzer._analyze_batch_with_structured_output(
+            items=items,
+            system_prompt="system prompt",
+            market_snapshot=mock_market_snapshot,
+            is_scheduled=False,
+            historical_titles=[],
+        )
+
+        assert len(results) == 1
+        assert results[0].title == "Grok 备用输出标题"
+        assert analyzer.structured_output_manager.force_structured_response.call_count == 2
+
+        fallback_call = analyzer.structured_output_manager.force_structured_response.call_args_list[1]
+        assert fallback_call.kwargs["model"] == "grok-4-1-fast-reasoning"
+        assert fallback_call.kwargs["enable_web_search"] is True
+        assert fallback_call.kwargs["llm_client"] is mock_openai_cls.return_value
+        assert analyzer._last_used_model == "Kimi (主模型) -> Grok (备用模型)"
+
+    @patch("crypto_news_analyzer.analyzers.llm_analyzer.OpenAI")
+    def test_kimi_content_filter_fallback_grok_failure_raises(
+        self,
+        mock_openai_cls,
+        mock_market_snapshot,
+    ):
+        analyzer = LLMAnalyzer(
+            mock_mode=False,
+            batch_size=1,
+            model="kimi-for-coding",
+            summary_model="grok-4-1-fast-reasoning",
+            GROK_API_KEY="test-grok-key",
+        )
+        analyzer.client = Mock()
+        analyzer._log_final_prompt = Mock()
+        analyzer._log_llm_response = Mock()
+
+        items = [self._make_content_item("batch-1", "第一批输入标题")]
+        analyzer.structured_output_manager.force_structured_response = Mock(
+            side_effect=[
+                ContentFilterError("Kimi rejected", model="kimi-for-coding"),
+                RuntimeError("insufficient balance"),
+            ]
+        )
+
+        with pytest.raises(RuntimeError, match="insufficient balance"):
+            analyzer._analyze_batch_with_structured_output(
+                items=items,
+                system_prompt="system prompt",
+                market_snapshot=mock_market_snapshot,
+                is_scheduled=False,
+                historical_titles=[],
+            )
 
 
 class TestLLMAnalyzerIntegration:

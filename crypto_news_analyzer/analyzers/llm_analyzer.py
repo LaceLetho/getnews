@@ -519,8 +519,11 @@ class LLMAnalyzer:
                 if self.GROK_API_KEY and "kimi" in self.model.lower():
                     self.logger.info("尝试切换到 Grok 模型重试...")
                     try:
-                        # 使用 Grok 客户端和模型重试
-                        fallback_model = "grok-2-latest"
+                        # 优先使用配置中的 Grok 模型作为 Kimi 的备用分析模型
+                        fallback_model = self.summary_model
+                        if "grok" not in fallback_model.lower():
+                            fallback_model = "grok-4-1-fast-reasoning"
+
                         fallback_client = OpenAI(
                             api_key=self.GROK_API_KEY,
                             base_url="https://api.x.ai/v1",
@@ -532,7 +535,7 @@ class LLMAnalyzer:
                             "Kimi (主模型) -> Grok (备用模型)"
                         )
 
-                        # 为 Grok 调整消息格式
+                        # Grok 备用模型保持开启 web_search/x_search
                         batch_result = self.structured_output_manager.force_structured_response(
                             llm_client=fallback_client,
                             messages=messages,
@@ -540,7 +543,7 @@ class LLMAnalyzer:
                             max_retries=2,
                             temperature=self.temperature,
                             batch_mode=True,
-                            enable_web_search=False,
+                            enable_web_search=True,
                             conversation_id=self.conversation_id,
                             usage_callback=self._record_token_usage
                         )
@@ -569,11 +572,11 @@ class LLMAnalyzer:
                             )
 
                     except Exception as fallback_error:
-                        self.logger.error(f"Grok备用模型也失败: {fallback_error}")
-                        continue
+                        self.logger.error(f"Grok备用模型失败，停止当前分析: {fallback_error}")
+                        raise
                 else:
                     self.logger.warning("未配置 Grok API 密钥，无法使用备用模型")
-                    continue
+                    raise
                     
             except Exception as e:
                 self.logger.error(f"批次分析失败: {e}")
