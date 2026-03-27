@@ -19,8 +19,8 @@
   "llm_config": {
     "model": "kimi-for-coding",
     "temperature": 0.5,
-    "max_tokens": 200000,
-    "batch_size": 1000,
+    "max_tokens": 150000,
+    "batch_size": 500,
     "summary_model": "grok-4-1-fast-reasoning",
     "market_prompt_path": "./prompts/market_summary_prompt.md",
     "analysis_prompt_path": "./prompts/analysis_prompt.md",
