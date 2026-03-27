@@ -1,0 +1,24 @@
+# Learnings
+
+- Use normalized manual recipient keys: `api:{user_id}` and `telegram:{chat_id}`.
+- Historical manual outdated-news window is `[prior_success - 48h, prior_success]` in UTC.
+- Only final delivered/returned report titles count for historical and rolling batch dedup.
+- Scheduled/global outdated-news behavior must remain unchanged.
+- `sent_message_cache.recipient_key` is nullable; scheduled/global reads stay on `recipient_key IS NULL`, while manual history uses recipient-scoped title lookup.
+- Recipient-scoped title history uses inclusive UTC bounds with `datetime(sent_at)` over `[anchor_time - 48h, anchor_time]` and deterministic `ORDER BY datetime(sent_at) ASC, id ASC`.
+- Storage compatibility still needs legacy `summary` payload support on write and a `summary` alias on read so older cache-manager tests and callers remain valid while newer title/body flows coexist.
+- Manual success history now needs a caller-owned completion step: `analyze_by_time_window()` may log normalized manual failures immediately, but manual successes should only be recorded after the API report-return path or the Telegram delivery path completes.
+- Reusing `analysis_execution_log.chat_id` for manual recipient history works with normalized keys like `api:123` and `telegram:123` without changing scheduled/internal semantics.
+- Telegram manual success persistence belongs in `_execute_analyze_and_notify()` after `send_report_to_chat()` returns success, using the shared `telegram:{chat_id}` recipient-key helpers from the coordinator.
+- Manual outdated-title preparation now resolves `recipient_key`, loads that recipient's prior successful manual analyze time, queries `cache_manager.get_recipient_cached_titles(recipient_key, anchor_time)` for `[prior_success - 48h, prior_success]`, and threads the exact list into the analyzer boundary as `historical_titles`.
+- When no prior manual success exists, `analyze_by_time_window()` now passes an explicit empty `historical_titles` list instead of falling back to any current-time cache formatting path.
+- Task 4 added `_format_historical_titles()` helper that collapses duplicate titles (first-seen order preserved) and renders them in `# Outdated News` when `is_scheduled=False` but `historical_titles` is provided.
+- Prompt rendering logic: `is_scheduled=True` → global cache formatting; `is_scheduled=False` + `historical_titles` → render titles via `_format_historical_titles`; `is_scheduled=False` + no `historical_titles` → "无".
+- Task 5 extends that same manual `historical_titles` path across structured batches by seeding a per-run ordered title list from the caller input, then appending only emitted `BatchAnalysisResult.results[*].title` values after each completed batch.
+- Empty later/intermediate batches must leave the rolling manual title accumulator unchanged so subsequent prompts still receive all first-seen titles gathered earlier in the same analyze run.
+- HTTP `POST /analyze` now trims and strictly validates `user_id` with `^[A-Za-z0-9_-]{1,128}$`, then stores that exact normalized value on the async job record instead of collapsing API jobs onto a shared `"api"` identity.
+- The async API result path now finalizes manual success only on `GET /analyze/{job_id}/result`: it caches recipient-scoped final report messages with `recipient_key="api:{user_id}"` from structured report data and then records success history, so same-user retries reuse their own titles while other users stay isolated.
+- Telegram `/analyze` now uses `telegram:{chat_id}` for both last-success lookup and post-send manual success persistence, so default window estimation and historical outdated-title reuse stay aligned on the same recipient identity.
+- Telegram delivery completion now goes through the shared `_persist_manual_analysis_success(...)` hook with `final_report_messages`, which means same-chat retries reuse prior delivered titles while failed sends leave both cached titles and last-success history untouched.
+- Task 8 confirmed scheduled/global outdated-news stays on the legacy global cache path while manual HTTP/Telegram dedup coverage still passes together in the full requested pytest suite.
+- The broad regression pass also needed small compatibility guardrails outside the dedup core: legacy `summary`-only structured payloads now normalize into `title/body`, deprecated `merge_prompts_with_snapshot()` still injects market context for older tests, and mock analyzer tests must account for the current default `temperature=0.5` and token-capped initial `batch_size=8`.
