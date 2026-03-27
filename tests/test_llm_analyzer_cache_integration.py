@@ -4,11 +4,13 @@ LLM分析器缓存集成测试
 测试LLM分析器与缓存管理器的集成，验证提示词中的${outdated_news}占位符替换功能。
 """
 
-import pytest
-import tempfile
 import os
-from datetime import datetime
-from pathlib import Path
+import sqlite3
+import tempfile
+from datetime import datetime, timedelta, timezone
+from typing import Optional, cast
+
+import pytest
 
 from crypto_news_analyzer.analyzers.llm_analyzer import LLMAnalyzer
 from crypto_news_analyzer.storage.cache_manager import SentMessageCacheManager
@@ -17,6 +19,43 @@ from crypto_news_analyzer.models import StorageConfig
 
 class TestLLMAnalyzerCacheIntegration:
     """LLM分析器缓存集成测试"""
+
+    temp_dir: str = ""
+    db_path: str = ""
+    storage_config: StorageConfig = cast(StorageConfig, object())
+    cache_manager: SentMessageCacheManager = cast(SentMessageCacheManager, object())
+    analyzer: LLMAnalyzer = cast(LLMAnalyzer, object())
+
+    def _insert_cached_message(
+        self,
+        *,
+        title: str,
+        sent_at: datetime,
+        recipient_key: Optional[str] = None,
+        body: str = "报告正文",
+        category: str = "Digest",
+        time: str = "2024-01-15 10:30",
+    ) -> None:
+        connection = sqlite3.connect(self.db_path)
+        try:
+            _ = connection.execute(
+                """
+                INSERT INTO sent_message_cache
+                    (title, body, category, time, sent_at, recipient_key)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    title,
+                    body,
+                    category,
+                    time,
+                    sent_at.astimezone(timezone.utc).isoformat(),
+                    recipient_key,
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
     
     def setup_method(self):
         """测试前设置"""
@@ -116,8 +155,7 @@ class TestLLMAnalyzerCacheIntegration:
         assert "${outdated_news}" not in system_prompt
         assert "${Grok_Summary_Here}" not in system_prompt
     
-    def test_user_prompt_contains_outdated_news_with_data(self):
-        """测试用户提示词包含Outdated News部分（有缓存数据）"""
+    def test_scheduled_user_prompt_contains_outdated_news_with_cached_global_data(self):
         from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
         from crypto_news_analyzer.models import ContentItem
         
@@ -159,7 +197,11 @@ class TestLLMAnalyzerCacheIntegration:
             )
         ]
         
-        user_prompt = self.analyzer._build_user_prompt_with_context(items, snapshot)
+        user_prompt = self.analyzer._build_user_prompt_with_context(
+            items,
+            snapshot,
+            is_scheduled=True,
+        )
         
         # 验证用户提示词包含市场快照
         assert "# Current Market Context" in user_prompt
@@ -172,8 +214,7 @@ class TestLLMAnalyzerCacheIntegration:
         assert "BlackSwan" in user_prompt
         assert "Regulation" in user_prompt
     
-    def test_complete_prompt_structure_with_cache(self):
-        """测试完整的提示词结构（系统提示词 + 用户提示词）"""
+    def test_scheduled_prompt_structure_with_cached_global_data(self):
         from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
         from crypto_news_analyzer.models import ContentItem
         
@@ -211,7 +252,11 @@ class TestLLMAnalyzerCacheIntegration:
         
         # 构建系统提示词和用户提示词
         system_prompt = self.analyzer._build_static_system_prompt()
-        user_prompt = self.analyzer._build_user_prompt_with_context(items, snapshot)
+        user_prompt = self.analyzer._build_user_prompt_with_context(
+            items,
+            snapshot,
+            is_scheduled=True,
+        )
         
         # 验证系统提示词是静态的
         assert "${Grok_Summary_Here}" not in system_prompt
@@ -239,6 +284,271 @@ class TestLLMAnalyzerCacheIntegration:
         # 应该返回"无"而不是抛出异常
         formatted = self.analyzer._get_formatted_cached_messages()
         assert formatted == "无"
+
+    def test_recipient_scoped_cached_titles_isolate_recipients(self):
+        anchor_time = datetime(2026, 3, 27, 12, 0, tzinfo=timezone.utc)
+
+        self._insert_cached_message(
+            title="API 用户报告 A",
+            sent_at=anchor_time - timedelta(hours=2),
+            recipient_key="api:42",
+        )
+        self._insert_cached_message(
+            title="Telegram 用户报告 B",
+            sent_at=anchor_time - timedelta(hours=1),
+            recipient_key="telegram:1001",
+        )
+        self._insert_cached_message(
+            title="Legacy 全局报告",
+            sent_at=anchor_time - timedelta(hours=3),
+            recipient_key=None,
+        )
+
+        assert self.cache_manager.get_recipient_cached_titles(
+            recipient_key="api:42",
+            anchor_time=anchor_time,
+        ) == ["API 用户报告 A"]
+        assert self.cache_manager.get_recipient_cached_titles(
+            recipient_key="telegram:1001",
+            anchor_time=anchor_time,
+        ) == ["Telegram 用户报告 B"]
+
+    def test_recipient_scoped_cached_titles_use_inclusive_utc_window(self):
+        anchor_time = datetime(2026, 3, 27, 12, 0, tzinfo=timezone.utc)
+        window_start = anchor_time - timedelta(hours=48)
+
+        self._insert_cached_message(
+            title="窗口起点",
+            sent_at=window_start,
+            recipient_key="api:42",
+        )
+        self._insert_cached_message(
+            title="窗口终点",
+            sent_at=anchor_time,
+            recipient_key="api:42",
+        )
+        self._insert_cached_message(
+            title="窗口前一秒",
+            sent_at=window_start - timedelta(seconds=1),
+            recipient_key="api:42",
+        )
+        self._insert_cached_message(
+            title="窗口后一秒",
+            sent_at=anchor_time + timedelta(seconds=1),
+            recipient_key="api:42",
+        )
+
+        assert self.cache_manager.get_recipient_cached_titles(
+            recipient_key="api:42",
+            anchor_time=anchor_time,
+        ) == ["窗口起点", "窗口终点"]
+
+    def test_recipient_scoped_cached_titles_are_deterministically_ordered(self):
+        anchor_time = datetime(2026, 3, 27, 12, 0, tzinfo=timezone.utc)
+
+        self._insert_cached_message(
+            title="第三条",
+            sent_at=anchor_time - timedelta(hours=1),
+            recipient_key="telegram:9001",
+        )
+        self._insert_cached_message(
+            title="第一条",
+            sent_at=anchor_time - timedelta(hours=3),
+            recipient_key="telegram:9001",
+        )
+        self._insert_cached_message(
+            title="第二条",
+            sent_at=anchor_time - timedelta(hours=2),
+            recipient_key="telegram:9001",
+        )
+
+        assert self.cache_manager.get_recipient_cached_titles(
+            recipient_key="telegram:9001",
+            anchor_time=anchor_time,
+        ) == ["第一条", "第二条", "第三条"]
+
+    def test_cached_prompt_formatting_keeps_legacy_global_rows(self):
+        self._insert_cached_message(
+            title="旧全局标题",
+            sent_at=datetime.now(timezone.utc),
+            recipient_key=None,
+            category="Legacy",
+            time="2026-03-27 12:00",
+        )
+        self._insert_cached_message(
+            title="手动收件人标题",
+            sent_at=datetime.now(timezone.utc),
+            recipient_key="api:42",
+            category="Manual",
+            time="2026-03-27 12:05",
+        )
+
+        formatted = self.cache_manager.format_cached_messages_for_prompt(hours=24)
+
+        assert formatted == "- [2026-03-27 12:00] [Legacy] 旧全局标题"
+
+    def test_manual_historical_titles_render_in_prompt(self):
+        """手动调用时传入historical_titles，应渲染到# Outdated News"""
+        from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
+        from crypto_news_analyzer.models import ContentItem
+
+        snapshot = MarketSnapshot(
+            content="当前市场处于震荡状态",
+            timestamp=datetime.now(),
+            source="mock",
+            quality_score=1.0,
+            is_valid=True
+        )
+
+        items = [
+            ContentItem(
+                id="test1",
+                title="新测试新闻",
+                content="新测试内容",
+                url="https://example.com/new",
+                publish_time=datetime.now(),
+                source_name="test",
+                source_type="rss"
+            )
+        ]
+
+        historical_titles = ["历史报告标题A", "历史报告标题B"]
+
+        user_prompt = self.analyzer._build_user_prompt_with_context(
+            items,
+            snapshot,
+            is_scheduled=False,
+            historical_titles=historical_titles,
+        )
+
+        assert "# Outdated News" in user_prompt
+        assert "历史报告标题A" in user_prompt
+        assert "历史报告标题B" in user_prompt
+
+    def test_manual_empty_historical_titles_shows_none(self):
+        """手动调用时传入空historical_titles列表，应显示'无'"""
+        from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
+        from crypto_news_analyzer.models import ContentItem
+
+        snapshot = MarketSnapshot(
+            content="当前市场处于震荡状态",
+            timestamp=datetime.now(),
+            source="mock",
+            quality_score=1.0,
+            is_valid=True
+        )
+
+        items = [
+            ContentItem(
+                id="test1",
+                title="新测试新闻",
+                content="新测试内容",
+                url="https://example.com/new",
+                publish_time=datetime.now(),
+                source_name="test",
+                source_type="rss"
+            )
+        ]
+
+        user_prompt = self.analyzer._build_user_prompt_with_context(
+            items,
+            snapshot,
+            is_scheduled=False,
+            historical_titles=[],
+        )
+
+        assert "# Outdated News" in user_prompt
+        assert "无" in user_prompt
+
+    def test_manual_historical_titles_duplicate_collapse(self):
+        """手动调用时传入重复historical_titles，应去重只保留一个"""
+        from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
+        from crypto_news_analyzer.models import ContentItem
+
+        snapshot = MarketSnapshot(
+            content="当前市场处于震荡状态",
+            timestamp=datetime.now(),
+            source="mock",
+            quality_score=1.0,
+            is_valid=True
+        )
+
+        items = [
+            ContentItem(
+                id="test1",
+                title="新测试新闻",
+                content="新测试内容",
+                url="https://example.com/new",
+                publish_time=datetime.now(),
+                source_name="test",
+                source_type="rss"
+            )
+        ]
+
+        historical_titles = ["重复标题", "重复标题", "唯一标题", "重复标题"]
+
+        user_prompt = self.analyzer._build_user_prompt_with_context(
+            items,
+            snapshot,
+            is_scheduled=False,
+            historical_titles=historical_titles,
+        )
+
+        assert "# Outdated News" in user_prompt
+        assert "重复标题" in user_prompt
+        # 重复标题应该只出现一次
+        count = user_prompt.count("重复标题")
+        assert count == 1, f"重复标题出现了{count}次，期望1次"
+        assert "唯一标题" in user_prompt
+
+    def test_scheduled_outdated_news_unchanged_with_historical_titles(self):
+        """is_scheduled=True时仍使用全局缓存，historical_titles被忽略"""
+        from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
+        from crypto_news_analyzer.models import ContentItem
+
+        # 先缓存一些消息
+        messages = [
+            {
+                'title': '全局缓存标题',
+                'body': '全局缓存内容',
+                'category': 'Global',
+                'time': '2024-01-15 10:30'
+            }
+        ]
+        self.cache_manager.cache_sent_messages(messages)
+
+        snapshot = MarketSnapshot(
+            content="当前市场处于震荡状态",
+            timestamp=datetime.now(),
+            source="mock",
+            quality_score=1.0,
+            is_valid=True
+        )
+
+        items = [
+            ContentItem(
+                id="test1",
+                title="新测试新闻",
+                content="新测试内容",
+                url="https://example.com/new",
+                publish_time=datetime.now(),
+                source_name="test",
+                source_type="rss"
+            )
+        ]
+
+        # 传入historical_titles但is_scheduled=True，应该使用全局缓存
+        user_prompt = self.analyzer._build_user_prompt_with_context(
+            items,
+            snapshot,
+            is_scheduled=True,
+            historical_titles=["手动历史标题"],
+        )
+
+        assert "# Outdated News" in user_prompt
+        assert "全局缓存标题" in user_prompt
+        # is_scheduled=True时不应该渲染historical_titles
+        assert "手动历史标题" not in user_prompt
 
 
 if __name__ == "__main__":

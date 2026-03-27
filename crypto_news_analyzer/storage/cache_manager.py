@@ -6,8 +6,9 @@
 
 import sqlite3
 import threading
-from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from collections.abc import Iterator
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional, Dict, Any, Tuple, cast
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from ..utils.logging import get_log_manager
 from ..utils.errors import StorageError
 
 logger = get_log_manager().get_logger(__name__)
+RECIPIENT_CACHE_LOOKBACK_HOURS = 48
 
 
 class SentMessageCacheManager:
@@ -31,7 +33,7 @@ class SentMessageCacheManager:
         self.config = storage_config
         self.db_path = storage_config.database_path
         self._lock = threading.RLock()  # 线程安全锁
-        self._connection_pool = {}  # 简单的连接池
+        self._connection_pool: Dict[int, sqlite3.Connection] = {}  # 简单的连接池
         
         # 确保数据库目录存在
         self._ensure_database_directory()
@@ -68,6 +70,11 @@ class SentMessageCacheManager:
                     logger.info("检测到旧表结构，开始迁移...")
                     self._migrate_summary_to_title_body(conn)
                     logger.info("表结构迁移完成")
+                    cursor.execute("PRAGMA table_info(sent_message_cache)")
+                    columns = {row[1] for row in cursor.fetchall()}
+
+                if 'recipient_key' not in columns:
+                    cursor.execute("ALTER TABLE sent_message_cache ADD COLUMN recipient_key TEXT")
             else:
                 # 创建新表
                 cursor.execute('''
@@ -78,6 +85,7 @@ class SentMessageCacheManager:
                         category TEXT NOT NULL,
                         time TEXT NOT NULL,
                         sent_at DATETIME NOT NULL,
+                        recipient_key TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
@@ -92,11 +100,16 @@ class SentMessageCacheManager:
                 CREATE INDEX IF NOT EXISTS idx_category 
                 ON sent_message_cache (category)
             ''')
+
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_recipient_key_sent_at
+                ON sent_message_cache (recipient_key, sent_at)
+            ''')
             
             conn.commit()
             logger.info("缓存表结构初始化完成")
     
-    def _migrate_summary_to_title_body(self, conn):
+    def _migrate_summary_to_title_body(self, conn: sqlite3.Connection) -> None:
         """迁移旧表结构：将 summary 列拆分为 title 和 body"""
         cursor = conn.cursor()
         
@@ -110,6 +123,7 @@ class SentMessageCacheManager:
                     category TEXT NOT NULL,
                     time TEXT NOT NULL,
                     sent_at DATETIME NOT NULL,
+                    recipient_key TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -117,7 +131,7 @@ class SentMessageCacheManager:
             # 2. 迁移数据：将 summary 同时作为 title 和 body
             cursor.execute('''
                 INSERT INTO sent_message_cache_new 
-                    (id, title, body, category, time, sent_at, created_at)
+                    (id, title, body, category, time, sent_at, recipient_key, created_at)
                 SELECT 
                     id, 
                     summary as title, 
@@ -125,6 +139,7 @@ class SentMessageCacheManager:
                     category, 
                     time, 
                     sent_at,
+                    NULL as recipient_key,
                     created_at
                 FROM sent_message_cache
             ''')
@@ -144,7 +159,7 @@ class SentMessageCacheManager:
             raise
     
     @contextmanager
-    def _get_connection(self):
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
         """获取数据库连接（上下文管理器）"""
         thread_id = threading.get_ident()
         
@@ -164,12 +179,39 @@ class SentMessageCacheManager:
         except Exception as e:
             conn.rollback()
             logger.error(f"数据库操作失败: {e}")
-            raise StorageError(f"数据库操作失败: {e}")
+            raise StorageError(f"数据库操作失败: {e}", operation="database_operation")
         finally:
             # 不在这里关闭连接，保持连接池
             pass
+
+    def _normalize_cache_message(
+        self,
+        message: Dict[str, Any],
+    ) -> Optional[Tuple[str, str, str, str]]:
+        if all(key in message for key in ["title", "body", "category", "time"]):
+            return (
+                cast(str, message["title"]),
+                cast(str, message["body"]),
+                cast(str, message["category"]),
+                cast(str, message["time"]),
+            )
+
+        if all(key in message for key in ["summary", "category", "time"]):
+            summary = cast(str, message["summary"])
+            return (
+                summary,
+                summary,
+                cast(str, message["category"]),
+                cast(str, message["time"]),
+            )
+
+        return None
     
-    def cache_sent_messages(self, messages: List[Dict[str, Any]]) -> int:
+    def cache_sent_messages(
+        self,
+        messages: List[Dict[str, Any]],
+        recipient_key: Optional[str] = None,
+    ) -> int:
         """
         缓存已发送的消息
         
@@ -187,26 +229,28 @@ class SentMessageCacheManager:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cached_count = 0
-                sent_at = datetime.now()
+                sent_at = datetime.now(timezone.utc)
                 
                 for message in messages:
                     try:
-                        # 验证必需字段
-                        if not all(key in message for key in ['title', 'body', 'category', 'time']):
+                        normalized_message = self._normalize_cache_message(message)
+                        if normalized_message is None:
                             logger.warning(f"消息缺少必需字段，跳过: {message}")
                             continue
+                        title, body, category, time_text = normalized_message
                         
                         # 插入缓存记录
                         cursor.execute('''
                             INSERT INTO sent_message_cache 
-                            (title, body, category, time, sent_at)
-                            VALUES (?, ?, ?, ?, ?)
+                            (title, body, category, time, sent_at, recipient_key)
+                            VALUES (?, ?, ?, ?, ?, ?)
                         ''', (
-                            message['title'],
-                            message['body'],
-                            message['category'],
-                            message['time'],
-                            sent_at.isoformat()
+                            title,
+                            body,
+                            category,
+                            time_text,
+                            sent_at.isoformat(),
+                            recipient_key,
                         ))
                         
                         cached_count += 1
@@ -229,7 +273,7 @@ class SentMessageCacheManager:
         Returns:
             缓存消息列表，每条消息包含 title, body, category, time, sent_at 字段
         """
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
         
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -237,8 +281,9 @@ class SentMessageCacheManager:
             cursor.execute('''
                 SELECT title, body, category, time, sent_at
                 FROM sent_message_cache
-                WHERE sent_at >= ?
-                ORDER BY sent_at DESC
+                WHERE recipient_key IS NULL
+                  AND julianday(sent_at) >= julianday(?)
+                ORDER BY julianday(sent_at) DESC, id DESC
             ''', (cutoff_time.isoformat(),))
             
             rows = cursor.fetchall()
@@ -249,6 +294,7 @@ class SentMessageCacheManager:
                 try:
                     messages.append({
                         'title': row['title'],
+                        'summary': row['title'],
                         'body': row['body'],
                         'category': row['category'],
                         'time': row['time'],
@@ -260,6 +306,39 @@ class SentMessageCacheManager:
             
             logger.info(f"获取到 {len(messages)} 条缓存消息（{hours}小时内）")
             return messages
+
+    def get_recipient_cached_titles(
+        self,
+        recipient_key: str,
+        anchor_time: datetime,
+    ) -> List[str]:
+        if not recipient_key:
+            logger.info("recipient_key 为空，返回空标题列表")
+            return []
+
+        if anchor_time.tzinfo is None:
+            anchor_time_utc = anchor_time.replace(tzinfo=timezone.utc)
+        else:
+            anchor_time_utc = anchor_time.astimezone(timezone.utc)
+
+        window_start = anchor_time_utc - timedelta(hours=RECIPIENT_CACHE_LOOKBACK_HOURS)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT title
+                FROM sent_message_cache
+                WHERE recipient_key = ?
+                  AND julianday(sent_at) >= julianday(?)
+                  AND julianday(sent_at) <= julianday(?)
+                ORDER BY julianday(sent_at) ASC, id ASC
+            ''', (recipient_key, window_start.isoformat(), anchor_time_utc.isoformat()))
+
+            titles = [row['title'] for row in cursor.fetchall()]
+            logger.info(
+                f"获取到 {len(titles)} 条收件人缓存标题，recipient_key={recipient_key}"
+            )
+            return titles
     
     def cleanup_expired_cache(self, hours: int = 24) -> int:
         """
@@ -271,7 +350,7 @@ class SentMessageCacheManager:
         Returns:
             删除的记录数量
         """
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
         
         with self._lock:
             with self._get_connection() as conn:
@@ -279,10 +358,10 @@ class SentMessageCacheManager:
                 
                 cursor.execute('''
                     DELETE FROM sent_message_cache
-                    WHERE sent_at < ?
+                    WHERE julianday(sent_at) < julianday(?)
                 ''', (cutoff_time.isoformat(),))
                 
-                deleted_count = cursor.rowcount
+                deleted_count = cast(int, cursor.rowcount)
                 conn.commit()
                 
                 logger.info(f"清理过期缓存完成，删除了 {deleted_count} 条记录")
@@ -337,10 +416,10 @@ class SentMessageCacheManager:
             total_count = cursor.fetchone()[0]
             
             # 24小时内的记录数
-            cutoff_24h = datetime.now() - timedelta(hours=24)
+            cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
             cursor.execute('''
                 SELECT COUNT(*) FROM sent_message_cache
-                WHERE sent_at >= ?
+                WHERE julianday(sent_at) >= julianday(?)
             ''', (cutoff_24h.isoformat(),))
             count_24h = cursor.fetchone()[0]
             
@@ -348,7 +427,7 @@ class SentMessageCacheManager:
             cursor.execute('''
                 SELECT category, COUNT(*) as count
                 FROM sent_message_cache
-                WHERE sent_at >= ?
+                WHERE julianday(sent_at) >= julianday(?)
                 GROUP BY category
                 ORDER BY count DESC
             ''', (cutoff_24h.isoformat(),))
@@ -384,7 +463,7 @@ class SentMessageCacheManager:
                 cursor = conn.cursor()
                 
                 cursor.execute("DELETE FROM sent_message_cache")
-                deleted_count = cursor.rowcount
+                deleted_count = cast(int, cursor.rowcount)
                 conn.commit()
                 
                 logger.warning(f"清空所有缓存，删除了 {deleted_count} 条记录")

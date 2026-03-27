@@ -1007,7 +1007,13 @@ class TelegramCommandHandler:
                 window_description = f"最近 {effective_hours} 小时"
             else:
                 try:
-                    last_analysis_time = self.execution_coordinator.data_manager.get_last_successful_analysis_time(chat_id)
+                    recipient_key = self.execution_coordinator._resolve_manual_recipient_key(
+                        chat_id,
+                        manual_source="telegram",
+                    )
+                    last_analysis_time = self.execution_coordinator.data_manager.get_last_successful_analysis_time(
+                        recipient_key
+                    )
                     if last_analysis_time:
                         if last_analysis_time.tzinfo is None:
                             from datetime import timezone
@@ -1150,6 +1156,16 @@ class TelegramCommandHandler:
                 )
 
                 if send_result.success:
+                    recipient_key = self.execution_coordinator._resolve_manual_recipient_key(
+                        chat_id,
+                        manual_source="telegram",
+                    )
+                    self.execution_coordinator._persist_manual_analysis_success(
+                        recipient_key=recipient_key,
+                        time_window_hours=hours,
+                        items_count=items_processed,
+                        final_report_messages=result.get("final_report_messages", []),
+                    )
                     self.logger.info(f"报告已成功发送到 chat_id={chat_id}")
                     notification = (
                         "✅ *分析完成*\n\n"

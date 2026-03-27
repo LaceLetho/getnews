@@ -64,6 +64,28 @@ def mock_market_snapshot():
 
 class TestLLMAnalyzer:
     """LLM分析器测试类"""
+
+    def _make_content_item(self, item_id: str, title: str) -> ContentItem:
+        return ContentItem(
+            id=item_id,
+            title=title,
+            content=f"{title} 的详细内容",
+            url=f"https://example.com/{item_id}",
+            publish_time=datetime(2024, 1, 1, 12, 0),
+            source_name="测试源",
+            source_type="rss"
+        )
+
+    def _make_result(self, title: str, source: str) -> StructuredAnalysisResult:
+        return StructuredAnalysisResult(
+            time="Mon, 01 Jan 2024 12:00:00 +0000",
+            category="Whale",
+            weight_score=80,
+            title=title,
+            body=f"{title} 的正文",
+            source=source,
+            related_sources=[]
+        )
     
     def test_initialization_mock_mode(self):
         """测试模拟模式初始化"""
@@ -259,8 +281,8 @@ class TestLLMAnalyzer:
         analyzer = LLMAnalyzer(mock_mode=True)
         
         # 初始值
-        assert analyzer.temperature == 0.1
-        assert analyzer.batch_size == 10
+        assert analyzer.temperature == 0.5
+        assert analyzer.batch_size == 8
         
         # 更新配置
         analyzer.update_config(
@@ -307,6 +329,90 @@ class TestLLMAnalyzer:
         assert isinstance(results, list)
         # 验证结果数量合理
         assert len(results) <= len(items)
+
+    def test_batch_outdated_news_propagates_prior_batch_titles(self, mock_market_snapshot):
+        analyzer = LLMAnalyzer(mock_mode=False, batch_size=2)
+        analyzer.client = Mock()
+        analyzer._log_final_prompt = Mock()
+        analyzer._log_llm_response = Mock()
+
+        items = [
+            self._make_content_item("batch-1-a", "原始输入标题 1"),
+            self._make_content_item("batch-1-b", "原始输入标题 2"),
+            self._make_content_item("batch-2-a", "第二批输入标题 1"),
+            self._make_content_item("batch-2-b", "第二批输入标题 2"),
+        ]
+        batch_results = [
+            BatchAnalysisResult(results=[
+                self._make_result("批次一最终标题 A", "https://example.com/final-1"),
+                self._make_result("批次一最终标题 B", "https://example.com/final-2"),
+            ]),
+            BatchAnalysisResult(results=[
+                self._make_result("批次二最终标题", "https://example.com/final-3"),
+            ]),
+        ]
+        captured_user_prompts = []
+
+        def capture_and_return(*args, **kwargs):
+            captured_user_prompts.append(kwargs["messages"][1]["content"])
+            return batch_results.pop(0)
+
+        analyzer.structured_output_manager.force_structured_response = Mock(
+            side_effect=capture_and_return
+        )
+
+        results = analyzer._analyze_batch_with_structured_output(
+            items=items,
+            system_prompt="system prompt",
+            market_snapshot=mock_market_snapshot,
+            is_scheduled=False,
+            historical_titles=["手动历史标题"],
+        )
+
+        assert len(results) == 3
+        assert "# Outdated News\n- 手动历史标题" in captured_user_prompts[0]
+        assert "- 手动历史标题" in captured_user_prompts[1]
+        assert "- 批次一最终标题 A" in captured_user_prompts[1]
+        assert "- 批次一最终标题 B" in captured_user_prompts[1]
+        assert "原始输入标题 1" not in captured_user_prompts[1]
+        assert "原始输入标题 2" not in captured_user_prompts[1]
+
+    def test_batch_outdated_news_uses_only_emitted_final_titles(self, mock_market_snapshot):
+        analyzer = LLMAnalyzer(mock_mode=False, batch_size=1)
+        analyzer.client = Mock()
+        analyzer._log_final_prompt = Mock()
+        analyzer._log_llm_response = Mock()
+
+        items = [
+            self._make_content_item("batch-1", "第一批原始输入标题"),
+            self._make_content_item("batch-2", "第二批原始输入标题"),
+        ]
+        batch_results = [
+            BatchAnalysisResult(results=[
+                self._make_result("第一批实际输出标题", "https://example.com/final-1"),
+            ]),
+            BatchAnalysisResult(results=[]),
+        ]
+        captured_user_prompts = []
+
+        def capture_and_return(*args, **kwargs):
+            captured_user_prompts.append(kwargs["messages"][1]["content"])
+            return batch_results.pop(0)
+
+        analyzer.structured_output_manager.force_structured_response = Mock(
+            side_effect=capture_and_return
+        )
+
+        analyzer._analyze_batch_with_structured_output(
+            items=items,
+            system_prompt="system prompt",
+            market_snapshot=mock_market_snapshot,
+            is_scheduled=False,
+            historical_titles=[],
+        )
+
+        assert "- 第一批实际输出标题" in captured_user_prompts[1]
+        assert "第一批原始输入标题" not in captured_user_prompts[1]
 
 
 class TestLLMAnalyzerIntegration:

@@ -212,7 +212,8 @@ class LLMAnalyzer:
         self,
         items: List[ContentItem],
         use_cached_snapshot: bool = True,
-        is_scheduled: bool = False
+        is_scheduled: bool = False,
+        historical_titles: Optional[List[str]] = None,
     ) -> List[StructuredAnalysisResult]:
         """
         批量分析内容（四步流程）
@@ -220,7 +221,8 @@ class LLMAnalyzer:
         Args:
             items: 内容项列表
             use_cached_snapshot: 是否使用缓存的市场快照
-            is_scheduled: 是否为定时任务（True时包含Outdated News，False时显示"无"）
+            is_scheduled: 是否为定时任务（True时使用全局缓存，False时使用historical_titles）
+            historical_titles: 手动调用时传入的历史标题列表
             
         Returns:
             结构化分析结果列表
@@ -228,19 +230,16 @@ class LLMAnalyzer:
         if not items:
             self.logger.info("没有内容需要分析")
             return []
-        
+
         try:
-            # 第一步：获取市场快照
             market_snapshot = self.get_market_snapshot(use_cached=use_cached_snapshot)
             self.logger.info(f"市场快照来源: {market_snapshot.source}")
             
-            # 第二步：构建提示词（系统提示词为静态，动态内容放在用户提示词中）
             system_prompt = self._build_static_system_prompt()
             self.logger.info(f"静态系统提示词长度: {len(system_prompt)} 字符")
             
-            # 第三步和第四步：使用结构化输出进行批量分析
             results = self._analyze_batch_with_structured_output(
-                items, system_prompt, market_snapshot, is_scheduled
+                items, system_prompt, market_snapshot, is_scheduled, historical_titles
             )
             
             self.logger.info(f"批量分析完成，返回 {len(results)} 条结果")
@@ -297,18 +296,26 @@ class LLMAnalyzer:
         analysis_template = self._load_analysis_prompt_template()
         
         # 将市场快照内容插入到分析提示词中
-        system_prompt = analysis_template.replace(
-            "${Grok_Summary_Here}",
-            market_snapshot.content
-        )
-        
+        if "${Grok_Summary_Here}" in analysis_template:
+            system_prompt = analysis_template.replace(
+                "${Grok_Summary_Here}",
+                market_snapshot.content
+            )
+        else:
+            system_prompt = (
+                f"{analysis_template}\n\n# Current Market Context\n{market_snapshot.content}"
+            )
+
         # 替换 ${outdated_news} 占位符
         outdated_news = self._get_formatted_cached_messages(hours=self.cached_messages_hours)
-        system_prompt = system_prompt.replace(
-            "${outdated_news}",
-            outdated_news
-        )
-        
+        if "${outdated_news}" in system_prompt:
+            system_prompt = system_prompt.replace(
+                "${outdated_news}",
+                outdated_news
+            )
+        else:
+            system_prompt = f"{system_prompt}\n\n# Outdated News\n{outdated_news}"
+
         return system_prompt
     
     def _build_static_system_prompt(self) -> str:
@@ -358,13 +365,59 @@ class LLMAnalyzer:
         except Exception as e:
             self.logger.warning(f"获取缓存消息失败: {e}，Outdated News将显示'无'")
             return "无"
-    
+
+    def _format_historical_titles(self, titles: List[str]) -> str:
+        """
+        格式化历史标题列表，用于手动分析时的Outdated News部分。
+        
+        Args:
+            titles: 历史标题列表
+            
+        Returns:
+            格式化后的标题文本，重复标题会被去重（保留首次出现的顺序）
+        """
+        if not titles:
+            return "无"
+        
+        seen = set()
+        unique_titles = []
+        for title in titles:
+            if title not in seen:
+                seen.add(title)
+                unique_titles.append(title)
+        
+        if not unique_titles:
+            return "无"
+        
+        formatted_lines = [f"- {title}" for title in unique_titles]
+        return "\n".join(formatted_lines)
+
+    def _deduplicate_titles_preserving_order(self, titles: Optional[List[str]]) -> List[str]:
+        if not titles:
+            return []
+
+        seen = set()
+        unique_titles = []
+        for title in titles:
+            if not title or title in seen:
+                continue
+            seen.add(title)
+            unique_titles.append(title)
+
+        return unique_titles
+
+    def _extract_result_titles(self, results: List[StructuredAnalysisResult]) -> List[str]:
+        return self._deduplicate_titles_preserving_order([
+            result.title for result in results if getattr(result, "title", None)
+        ])
+
     def _analyze_batch_with_structured_output(
         self,
         items: List[ContentItem],
         system_prompt: str,
         market_snapshot: MarketSnapshot,
-        is_scheduled: bool = False
+        is_scheduled: bool = False,
+        historical_titles: Optional[List[str]] = None,
     ) -> List[StructuredAnalysisResult]:
         """
         第三步和第四步：使用结构化输出进行批量分析
@@ -373,7 +426,8 @@ class LLMAnalyzer:
             items: 内容项列表
             system_prompt: 静态系统提示词
             market_snapshot: 市场快照对象
-            is_scheduled: 是否为定时任务（True时包含Outdated News，False时显示"无"）
+            is_scheduled: 是否为定时任务（True时使用全局缓存，False时使用historical_titles）
+            historical_titles: 手动调用时传入的历史标题列表
             
         Returns:
             结构化分析结果列表
@@ -385,15 +439,17 @@ class LLMAnalyzer:
             raise RuntimeError("OpenAI客户端未初始化")
         
         all_results = []
+        rolling_historical_titles = self._deduplicate_titles_preserving_order(historical_titles)
         
-        # 分批处理
         for i in range(0, len(items), self.batch_size):
             batch = items[i:i + self.batch_size]
             self.logger.info(f"处理批次 {i // self.batch_size + 1}，包含 {len(batch)} 条内容")
             
             try:
-                # 构建用户提示词（包含动态上下文和待分析内容）
-                user_prompt = self._build_user_prompt_with_context(batch, market_snapshot, is_scheduled)
+                batch_historical_titles = historical_titles if is_scheduled else rolling_historical_titles
+                user_prompt = self._build_user_prompt_with_context(
+                    batch, market_snapshot, is_scheduled, batch_historical_titles
+                )
                 
                 # 构建消息列表
                 messages = [
@@ -445,6 +501,10 @@ class LLMAnalyzer:
                 # 提取结果
                 if isinstance(batch_result, BatchAnalysisResult):
                     all_results.extend(batch_result.results)
+                    if not is_scheduled:
+                        rolling_historical_titles = self._deduplicate_titles_preserving_order(
+                            rolling_historical_titles + self._extract_result_titles(batch_result.results)
+                        )
                     self.logger.info(f"批次返回 {len(batch_result.results)} 条结果")
                 else:
                     self.logger.warning(f"批次返回格式异常: {type(batch_result)}")
@@ -485,6 +545,10 @@ class LLMAnalyzer:
                         # 提取结果
                         if isinstance(batch_result, BatchAnalysisResult):
                             all_results.extend(batch_result.results)
+                            if not is_scheduled:
+                                rolling_historical_titles = self._deduplicate_titles_preserving_order(
+                                    rolling_historical_titles + self._extract_result_titles(batch_result.results)
+                                )
                             self.logger.info(f"Grok备用模型批次返回 {len(batch_result.results)} 条结果")
                         else:
                             self.logger.warning(f"Grok批次返回格式异常: {type(batch_result)}")
@@ -507,20 +571,22 @@ class LLMAnalyzer:
         self,
         items: List[ContentItem],
         market_snapshot: MarketSnapshot,
-        is_scheduled: bool = False
+        is_scheduled: bool = False,
+        historical_titles: Optional[List[str]] = None,
     ) -> str:
         """
         构建包含动态上下文的用户提示词
         
         新的提示词结构：
         1. 市场快照（Current Market Context）
-        2. 已发送消息缓存（Outdated News）- 仅在定时任务时包含
+        2. 已发送消息缓存（Outdated News）
         3. 待分析的新闻内容
         
         Args:
             items: 内容项列表
             market_snapshot: 市场快照对象
-            is_scheduled: 是否为定时任务（True时包含Outdated News，False时显示"无"）
+            is_scheduled: 是否为定时任务（True时使用全局缓存，False时使用historical_titles）
+            historical_titles: 手动调用时传入的历史标题列表
             
         Returns:
             用户提示词字符串
@@ -530,15 +596,15 @@ class LLMAnalyzer:
         
         prompt_parts = []
         
-        # 添加市场快照上下文
         prompt_parts.append("# Current Market Context")
         prompt_parts.append(market_snapshot.content)
         prompt_parts.append("")
         
-        # 添加已发送消息缓存（仅在定时任务时包含实际内容）
         prompt_parts.append("# Outdated News")
         if is_scheduled:
             outdated_news = self._get_formatted_cached_messages(hours=self.cached_messages_hours)
+        elif historical_titles:
+            outdated_news = self._format_historical_titles(historical_titles)
         else:
             outdated_news = "无"
         prompt_parts.append(outdated_news)
@@ -706,7 +772,8 @@ class LLMAnalyzer:
                     time=item.publish_time.strftime('%Y-%m-%d %H:%M'),
                     category=categories[i % len(categories)],
                     weight_score=50 + (i * 10) % 50,
-                    summary=f"模拟分析: {item.title[:50]}...",
+                    title=item.title,
+                    body=f"模拟分析: {item.title[:50]}...",
                     source=item.url,
                     related_sources=[
                         f"https://example.com/related/{i}/1",
@@ -753,7 +820,8 @@ class LLMAnalyzer:
                 time=datetime.now().strftime('%Y-%m-%d %H:%M'),
                 category="BlackSwan",
                 weight_score=75,
-                summary=f"模拟分析: {content[:50]}...",
+                title=content[:50],
+                body=f"模拟分析: {content[:50]}...",
                 source="https://example.com/mock",
                 related_sources=[]
             )

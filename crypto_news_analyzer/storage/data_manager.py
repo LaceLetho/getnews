@@ -150,7 +150,7 @@ class DataManager:
         except Exception as e:
             conn.rollback()
             logger.error(f"数据库操作失败: {e}")
-            raise StorageError(f"数据库操作失败: {e}")
+            raise StorageError(f"数据库操作失败: {e}", operation="database_operation")
         finally:
             # 不在这里关闭连接，保持连接池
             pass
@@ -438,7 +438,7 @@ class DataManager:
                 
         except Exception as e:
             logger.error(f"获取存储信息失败: {e}")
-            raise StorageError(f"获取存储信息失败: {e}")
+            raise StorageError(f"获取存储信息失败: {e}", operation="get_storage_size")
     
     def save_crawl_status(self, status: CrawlStatus) -> None:
         """
@@ -653,7 +653,7 @@ class DataManager:
             cursor = conn.cursor()
 
             conditions = ["publish_time >= ?", "publish_time <= ?"]
-            params = [since_time.isoformat(), end_time.isoformat()]
+            params: List[Any] = [since_time.isoformat(), end_time.isoformat()]
 
             if source_types:
                 placeholders = ",".join(["?" for _ in source_types])
@@ -716,6 +716,10 @@ class DataManager:
             success: 是否成功
             error_message: 错误信息（如果失败）
         """
+        recipient_key = str(chat_id).strip()
+        if not recipient_key:
+            raise ValueError("analysis execution 标识不能为空")
+
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -727,7 +731,7 @@ class DataManager:
                     VALUES (?, ?, ?, ?, ?, ?)
                 """,
                     (
-                        chat_id,
+                        recipient_key,
                         datetime.now().isoformat(),
                         time_window_hours,
                         items_count,
@@ -737,7 +741,7 @@ class DataManager:
                 )
 
                 conn.commit()
-                logger.info(f"分析执行日志已记录: chat_id={chat_id}, success={success}")
+                logger.info(f"分析执行日志已记录: chat_id={recipient_key}, success={success}")
 
     def get_last_successful_analysis_time(self, chat_id: str) -> Optional[datetime]:
         """
@@ -749,6 +753,10 @@ class DataManager:
         Returns:
             上次成功分析的执行时间，如果没有则返回None
         """
+        recipient_key = str(chat_id).strip()
+        if not recipient_key:
+            raise ValueError("analysis execution 标识不能为空")
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
@@ -759,20 +767,20 @@ class DataManager:
                 ORDER BY execution_time DESC
                 LIMIT 1
             """,
-                (chat_id,),
+                (recipient_key,),
             )
 
             row = cursor.fetchone()
             if row and row["execution_time"]:
                 try:
                     execution_time = datetime.fromisoformat(row["execution_time"])
-                    logger.info(f"chat_id={chat_id} 的上次成功分析时间: {execution_time}")
+                    logger.info(f"chat_id={recipient_key} 的上次成功分析时间: {execution_time}")
                     return execution_time
                 except Exception as e:
                     logger.warning(f"解析分析执行时间失败: {e}")
                     return None
             else:
-                logger.info(f"chat_id={chat_id} 没有成功分析记录")
+                logger.info(f"chat_id={recipient_key} 没有成功分析记录")
                 return None
 
     def cleanup_analysis_logs(self, retention_days: int = 30) -> int:

@@ -57,13 +57,14 @@ with single or multiple workers.
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import re
 import threading
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Depends, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import os
 import logging
 
@@ -71,9 +72,19 @@ from .execution_coordinator import MainController
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
+USER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 class AnalyzeRequest(BaseModel):
     hours: int = Field(..., gt=0, description="分析最近N小时的消息（必填，必须>0）")
+    user_id: str = Field(..., description="请求用户标识（必填，仅允许字母、数字、_、-）")
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id(cls, value: str) -> str:
+        normalized_value = value.strip()
+        if not USER_ID_PATTERN.fullmatch(normalized_value):
+            raise ValueError("user_id must match ^[A-Za-z0-9_-]{1,128}$")
+        return normalized_value
 
 class AnalyzeResponse(BaseModel):
     success: bool
@@ -116,6 +127,7 @@ class AnalyzeJobResultResponse(BaseModel):
 
 class AnalyzeJobRecord(BaseModel):
     job_id: str
+    user_id: str
     status: str
     time_window_hours: int
     created_at: str
@@ -124,6 +136,8 @@ class AnalyzeJobRecord(BaseModel):
     report: str = ""
     items_processed: int = 0
     error: str | None = None
+    final_report_messages: list[dict[str, Any]] = Field(default_factory=list)
+    success_persisted: bool = False
 
     def to_status_response(self) -> AnalyzeJobStatusResponse:
         return AnalyzeJobStatusResponse(
@@ -224,7 +238,11 @@ def _run_analyze_job(job_id: str) -> None:
         job.started_at = _utcnow_iso()
 
     try:
-        result = controller.analyze_by_time_window("api", job.time_window_hours)
+        result = controller.analyze_by_time_window(
+            chat_id=job.user_id,
+            time_window_hours=job.time_window_hours,
+            manual_source="api",
+        )
         with analyze_jobs_lock:
             stored_job = analyze_jobs.get(job_id)
             if stored_job is None:
@@ -235,6 +253,7 @@ def _run_analyze_job(job_id: str) -> None:
                 stored_job.status = "completed"
                 stored_job.report = result.get("report_content", "")
                 stored_job.error = None
+                stored_job.final_report_messages = list(result.get("final_report_messages", []))
             else:
                 stored_job.status = "failed"
                 stored_job.error = "; ".join(
@@ -253,10 +272,25 @@ def _run_analyze_job(job_id: str) -> None:
             _trim_finished_jobs()
 
 
-def enqueue_analyze_job(hours: int) -> AnalyzeJobRecord:
+def _persist_completed_api_job_success(job: AnalyzeJobRecord) -> None:
+    if controller is None:
+        raise HTTPException(status_code=503, detail="System not initialized")
+
+    recipient_key = controller._normalize_manual_recipient_key("api", job.user_id)
+    controller._persist_manual_analysis_success(
+        recipient_key=recipient_key,
+        time_window_hours=job.time_window_hours,
+        items_count=job.items_processed,
+        final_report_messages=job.final_report_messages,
+    )
+    job.success_persisted = True
+
+
+def enqueue_analyze_job(hours: int, user_id: str) -> AnalyzeJobRecord:
     job_id = f"analyze_job_{uuid.uuid4().hex}"
     job = AnalyzeJobRecord(
         job_id=job_id,
+        user_id=user_id,
         status="queued",
         time_window_hours=hours,
         created_at=_utcnow_iso(),
@@ -294,7 +328,7 @@ async def analyze(
     hours = min(request.hours, max_hours)
 
     try:
-        job = enqueue_analyze_job(hours)
+        job = enqueue_analyze_job(hours, request.user_id)
         status_url, result_url = _job_urls(job.job_id)
         response.headers["Location"] = status_url
         response.headers["Retry-After"] = "2"
@@ -334,6 +368,15 @@ async def get_analyze_job_result(
     if job.status in {"queued", "running"}:
         response.headers["Retry-After"] = "2"
         raise HTTPException(status_code=202, detail=f"Analyze job still {job.status}")
+
+    if job.status == "completed" and not job.success_persisted:
+        try:
+            _persist_completed_api_job_success(job)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error(f"Analyze job success persistence failed: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
 
     return job.to_result_response()
 

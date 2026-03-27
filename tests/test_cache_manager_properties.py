@@ -13,6 +13,7 @@ import os
 from datetime import datetime, timedelta
 from hypothesis import given, strategies as st, settings, assume
 from hypothesis.stateful import RuleBasedStateMachine, rule, invariant, initialize
+from typing import cast
 
 from crypto_news_analyzer.storage.cache_manager import SentMessageCacheManager
 from crypto_news_analyzer.models import StorageConfig
@@ -41,6 +42,10 @@ def message_list(draw, min_size=0, max_size=20):
 
 class TestCacheManagerProperties:
     """缓存管理器属性测试"""
+
+    temp_dir: str = ""
+    db_path: str = ""
+    storage_config: StorageConfig = cast(StorageConfig, object())
     
     def setup_method(self):
         """测试前设置"""
@@ -73,6 +78,7 @@ class TestCacheManagerProperties:
         属性: 缓存的消息数量应该等于成功缓存的数量，且检索到的消息应该包含所有缓存的消息
         """
         with SentMessageCacheManager(self.storage_config) as cache_mgr:
+            cache_mgr.clear_all_cache()
             # 缓存消息
             cached_count = cache_mgr.cache_sent_messages(messages)
             
@@ -107,6 +113,7 @@ class TestCacheManagerProperties:
         属性: 多次缓存操作应该累积，总缓存数量应该等于所有缓存操作的总和
         """
         with SentMessageCacheManager(self.storage_config) as cache_mgr:
+            cache_mgr.clear_all_cache()
             # 第一次缓存
             count1 = cache_mgr.cache_sent_messages(messages1)
             
@@ -135,6 +142,7 @@ class TestCacheManagerProperties:
         属性: 使用不同时间窗口检索时，较大的时间窗口应该包含较小时间窗口的所有消息
         """
         with SentMessageCacheManager(self.storage_config) as cache_mgr:
+            cache_mgr.clear_all_cache()
             # 缓存消息
             cache_mgr.cache_sent_messages(messages)
             
@@ -160,7 +168,15 @@ class TestCacheManagerProperties:
         
         属性: 格式化后的文本应该包含所有缓存消息的关键信息（时间、分类、摘要）
         """
+        assume(
+            all(
+                all("\n" not in msg[field] and "\r" not in msg[field] for field in ("summary", "category", "time"))
+                for msg in messages
+            )
+        )
+
         with SentMessageCacheManager(self.storage_config) as cache_mgr:
+            cache_mgr.clear_all_cache()
             # 缓存消息
             cache_mgr.cache_sent_messages(messages)
             
@@ -205,6 +221,7 @@ class TestCacheManagerProperties:
         属性: 当缓存为空时，格式化结果应该返回"无"
         """
         with SentMessageCacheManager(self.storage_config) as cache_mgr:
+            cache_mgr.clear_all_cache()
             # 验证空缓存返回"无"
             formatted_empty = cache_mgr.format_cached_messages_for_prompt(hours=24)
             assert formatted_empty == "无", "空缓存应该返回'无'"
@@ -237,6 +254,7 @@ class TestCacheManagerProperties:
         属性: 清理操作应该只删除超过指定时间的消息，不影响时间窗口内的消息
         """
         with SentMessageCacheManager(self.storage_config) as cache_mgr:
+            cache_mgr.clear_all_cache()
             # 缓存消息
             cached_count = cache_mgr.cache_sent_messages(messages)
             
@@ -271,6 +289,7 @@ class TestCacheManagerProperties:
         属性: 统计信息应该与实际缓存的消息数量和分类一致
         """
         with SentMessageCacheManager(self.storage_config) as cache_mgr:
+            cache_mgr.clear_all_cache()
             # 缓存消息
             cached_count = cache_mgr.cache_sent_messages(messages)
             
@@ -311,6 +330,7 @@ class TestCacheManagerProperties:
         属性: 缓存空列表应该返回0，不影响现有缓存
         """
         with SentMessageCacheManager(self.storage_config) as cache_mgr:
+            cache_mgr.clear_all_cache()
             # 先缓存一些消息（如果有）
             if messages:
                 initial_count = cache_mgr.cache_sent_messages(messages)

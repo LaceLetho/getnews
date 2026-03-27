@@ -668,6 +668,28 @@ class TestDynamicClassificationConsistency:
 
 class TestBatchAnalysisAndDeduplication:
     """测试批量分析和去重功能"""
+
+    def _make_content_item(self, item_id: str, title: str) -> ContentItem:
+        return ContentItem(
+            id=item_id,
+            title=title,
+            content=f"{title} 的详细内容",
+            url=f"https://example.com/{item_id}",
+            publish_time=datetime(2024, 1, 1, 12, 0),
+            source_name="测试源",
+            source_type="rss"
+        )
+
+    def _make_result(self, title: str, source: str) -> StructuredAnalysisResult:
+        return StructuredAnalysisResult(
+            time="Mon, 01 Jan 2024 12:00:00 +0000",
+            category="Whale",
+            weight_score=80,
+            title=title,
+            body=f"{title} 的正文",
+            source=source,
+            related_sources=[]
+        )
     
     def test_batch_analysis_mock_mode(self, mock_content_items):
         """测试批量分析（模拟模式） (需求 5.17)"""
@@ -740,6 +762,107 @@ class TestBatchAnalysisAndDeduplication:
         assert len(categories) > 0
         # 验证所有分类都是字符串
         assert all(isinstance(cat, str) for cat in categories)
+
+    def test_batch_outdated_news_accumulates_titles_in_first_seen_order_across_three_batches(self):
+        analyzer = LLMAnalyzer(mock_mode=False, batch_size=1)
+        analyzer.client = Mock()
+        analyzer._log_final_prompt = Mock()
+        analyzer._log_llm_response = Mock()
+
+        market_snapshot = MarketSnapshot(
+            content="市场快照",
+            timestamp=datetime(2024, 1, 1, 10, 0),
+            source="mock",
+            quality_score=0.9,
+            is_valid=True
+        )
+        items = [
+            self._make_content_item("batch-1", "第一批输入标题"),
+            self._make_content_item("batch-2", "第二批输入标题"),
+            self._make_content_item("batch-3", "第三批输入标题"),
+        ]
+        batch_results = [
+            BatchAnalysisResult(results=[
+                self._make_result("第一批最终标题", "https://example.com/final-1"),
+            ]),
+            BatchAnalysisResult(results=[
+                self._make_result("第二批最终标题", "https://example.com/final-2"),
+            ]),
+            BatchAnalysisResult(results=[]),
+        ]
+        captured_user_prompts = []
+
+        def capture_and_return(*args, **kwargs):
+            captured_user_prompts.append(kwargs["messages"][1]["content"])
+            return batch_results.pop(0)
+
+        analyzer.structured_output_manager.force_structured_response = Mock(
+            side_effect=capture_and_return
+        )
+
+        analyzer._analyze_batch_with_structured_output(
+            items=items,
+            system_prompt="system prompt",
+            market_snapshot=market_snapshot,
+            is_scheduled=False,
+            historical_titles=["手动历史标题"],
+        )
+
+        third_prompt = captured_user_prompts[2]
+        assert "- 手动历史标题" in third_prompt
+        assert "- 第一批最终标题" in third_prompt
+        assert "- 第二批最终标题" in third_prompt
+        assert third_prompt.index("- 手动历史标题") < third_prompt.index("- 第一批最终标题")
+        assert third_prompt.index("- 第一批最终标题") < third_prompt.index("- 第二批最终标题")
+
+    def test_batch_outdated_news_empty_middle_batch_keeps_earlier_titles_for_later_batches(self):
+        analyzer = LLMAnalyzer(mock_mode=False, batch_size=1)
+        analyzer.client = Mock()
+        analyzer._log_final_prompt = Mock()
+        analyzer._log_llm_response = Mock()
+
+        market_snapshot = MarketSnapshot(
+            content="市场快照",
+            timestamp=datetime(2024, 1, 1, 10, 0),
+            source="mock",
+            quality_score=0.9,
+            is_valid=True
+        )
+        items = [
+            self._make_content_item("batch-1", "第一批输入标题"),
+            self._make_content_item("batch-2", "第二批输入标题"),
+            self._make_content_item("batch-3", "第三批输入标题"),
+        ]
+        batch_results = [
+            BatchAnalysisResult(results=[
+                self._make_result("第一批最终标题", "https://example.com/final-1"),
+            ]),
+            BatchAnalysisResult(results=[]),
+            BatchAnalysisResult(results=[]),
+        ]
+        captured_user_prompts = []
+
+        def capture_and_return(*args, **kwargs):
+            captured_user_prompts.append(kwargs["messages"][1]["content"])
+            return batch_results.pop(0)
+
+        analyzer.structured_output_manager.force_structured_response = Mock(
+            side_effect=capture_and_return
+        )
+
+        analyzer._analyze_batch_with_structured_output(
+            items=items,
+            system_prompt="system prompt",
+            market_snapshot=market_snapshot,
+            is_scheduled=False,
+            historical_titles=["手动历史标题"],
+        )
+
+        second_prompt = captured_user_prompts[1]
+        third_prompt = captured_user_prompts[2]
+        assert "- 第一批最终标题" in second_prompt
+        assert "- 第一批最终标题" in third_prompt
+        assert "- 手动历史标题" in third_prompt
 
 
 # ============================================================================

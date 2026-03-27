@@ -109,7 +109,7 @@ Wave 2: HTTP recipient plumbing, Telegram manual caching/plumbing, cross-flow re
 > Implementation + Test = ONE task. Never separate.
 > EVERY task MUST have: Agent Profile + Parallelization + QA Scenarios.
 
-- [ ] 1. Add recipient-scoped sent-title storage and bounded lookup
+- [x] 1. Add recipient-scoped sent-title storage and bounded lookup
 
   **What to do**: Extend `sent_message_cache` with nullable `recipient_key TEXT`, add an index on `(recipient_key, sent_at)`, keep existing scheduled/global queries working when `recipient_key` is `NULL` or ignored, and add a new query API that returns final report titles for one recipient inside the exact UTC window `[anchor_time - 48h, anchor_time]`. Write failing tests first for schema compatibility, boundary timestamps, duplicate-preserving storage, and recipient isolation, then implement the minimum storage changes to make them pass.
   **Must NOT do**: Do not replace the global scheduled cache query path; do not create a second linkage table unless the existing table cannot support the required query contract during implementation.
@@ -151,7 +151,7 @@ Wave 2: HTTP recipient plumbing, Telegram manual caching/plumbing, cross-flow re
 
   **Commit**: YES | Message: `add recipient-scoped sent title lookup for manual dedup` | Files: `crypto_news_analyzer/storage/cache_manager.py`, `tests/test_llm_analyzer_cache_integration.py`
 
-- [ ] 2. Normalize manual recipient identity and defer success history writes until delivery success
+- [x] 2. Normalize manual recipient identity and defer success history writes until delivery success
 
   **What to do**: Introduce a shared helper that converts manual callers into `recipient_key` values (`api:{user_id}`, `telegram:{chat_id}`), store that normalized value in the existing `analysis_execution_log.chat_id` column for manual analyze rows only, keep scheduled/internal paths untouched, and update manual success-history recording so `analysis_execution_log` only records a successful manual `/analyze` after the actual success point: successful HTTP report generation for API and successful `send_report_to_chat()` completion for Telegram. Add failing tests first for recipient-key normalization, raw-key collision prevention, and “failed manual run does not advance last-success timestamp.”
   **Must NOT do**: Do not rename or migrate the `analysis_execution_log` table unnecessarily; do not let `analyze_by_time_window()` write a successful manual history row before the caller-specific completion step.
@@ -193,7 +193,7 @@ Wave 2: HTTP recipient plumbing, Telegram manual caching/plumbing, cross-flow re
 
   **Commit**: NO | Message: `n/a` | Files: `crypto_news_analyzer/execution_coordinator.py`, `crypto_news_analyzer/storage/data_manager.py`, `tests/test_main_controller.py`
 
-- [ ] 3. Build manual historical outdated-title context from prior success anchor
+- [x] 3. Build manual historical outdated-title context from prior success anchor
 
   **What to do**: Add a coordinator-level helper for manual analyze flows that (a) resolves the normalized `recipient_key`, (b) reads the recipient’s prior successful manual analyze time, (c) queries recipient-scoped sent titles inside `[prior_success - 48h, prior_success]`, and (d) passes those titles into the analyzer only when a prior success exists; otherwise pass an explicit empty/`无` state. Write failing tests first for “no prior success”, “prior success with no cached titles”, “titles exactly at both window boundaries”, and “future rows after anchor excluded”.
   **Must NOT do**: Do not base the historical query on current wall-clock time; do not use global scheduled cache formatting for this manual path.
@@ -235,7 +235,7 @@ Wave 2: HTTP recipient plumbing, Telegram manual caching/plumbing, cross-flow re
 
   **Commit**: NO | Message: `n/a` | Files: `crypto_news_analyzer/execution_coordinator.py`, `tests/test_main_controller.py`
 
-- [ ] 4. Add explicit historical outdated-title injection to LLM prompt building
+- [x] 4. Add explicit historical outdated-title injection to LLM prompt building
 
   **What to do**: Extend analyzer prompt-building APIs so manual callers can pass `historical_outdated_titles: List[str]` directly instead of relying on `is_scheduled=True`. Merge these titles into the existing `[Outdated News]` section using deterministic ordering, preserving the scheduled/global branch exactly as-is. Write failing tests first to verify manual prompt rendering with supplied titles, empty manual state rendering, and duplicate collapsing when the same title appears multiple times in historical input.
   **Must NOT do**: Do not force manual flows through the scheduled cache-reader branch; do not change prompt template sections outside the `[Outdated News]` contents.
@@ -276,7 +276,7 @@ Wave 2: HTTP recipient plumbing, Telegram manual caching/plumbing, cross-flow re
 
   **Commit**: NO | Message: `n/a` | Files: `crypto_news_analyzer/analyzers/llm_analyzer.py`, `tests/test_llm_analyzer_cache_integration.py`
 
-- [ ] 5. Propagate prior-batch result titles into later batch prompts
+- [x] 5. Propagate prior-batch result titles into later batch prompts
 
   **What to do**: In the structured batch-analysis loop, maintain a rolling ordered set of final result titles returned by completed earlier batches in the same run. For batch N>1, merge that rolling set with task 4’s `historical_outdated_titles` before rendering `[Outdated News]`. Only titles from actual emitted final results count; batches returning no new items must leave the rolling set unchanged. Write failing tests first for 2-batch and 3-batch cases, no-new-title middle batch behavior, and exact prompt content passed into later batches.
   **Must NOT do**: Do not use raw input source titles for rolling propagation; do not reset the rolling set between batches of the same run.
@@ -317,7 +317,7 @@ Wave 2: HTTP recipient plumbing, Telegram manual caching/plumbing, cross-flow re
 
   **Commit**: YES | Message: `update batch analysis to carry forward prior titles` | Files: `crypto_news_analyzer/analyzers/llm_analyzer.py`, `tests/test_llm_analyzer.py`, `tests/test_multi_step_analysis_unit.py`
 
-- [ ] 6. Require HTTP `user_id` and wire recipient-scoped manual dedup through the API job path
+- [x] 6. Require HTTP `user_id` and wire recipient-scoped manual dedup through the API job path
 
   **What to do**: Update `AnalyzeRequest` to require a non-empty trimmed `user_id` matching `^[A-Za-z0-9_-]{1,128}$`, persist it through `AnalyzeJobRecord`, and pass `recipient_key='api:{user_id}'` through the queued analyze job into the coordinator. After the job reaches `completed` with a generated report payload, cache the final filtered report titles derived from the structured analysis items used to render that report (do not parse Markdown) under that recipient and then write the manual success record so the next request can reuse them. Write failing tests first for request validation, missing/invalid `user_id`, recipient-key propagation, and same-user second-run historical injection.
   **Must NOT do**: Do not keep using the hardcoded `chat_id='api'` for manual dedup; do not write history/cache for failed jobs.
@@ -360,7 +360,7 @@ Wave 2: HTTP recipient plumbing, Telegram manual caching/plumbing, cross-flow re
 
   **Commit**: YES | Message: `add user-scoped dedup context to analyze api` | Files: `crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/execution_coordinator.py`, `tests/test_api_server.py`
 
-- [ ] 7. Wire Telegram manual analyze into recipient-scoped dedup and success caching
+- [x] 7. Wire Telegram manual analyze into recipient-scoped dedup and success caching
 
   **What to do**: Use `recipient_key='telegram:{chat_id}'` for Telegram manual analyze, pass that key through the manual analyze path, and on `send_report_to_chat()` success cache the delivered report titles derived from the same filtered structured analysis items used to render the outgoing report, then write the successful manual history row. Add failing tests first for chat-scoped history reuse, group-chat semantics keyed by `chat_id`, send-failure no-write behavior, and parity with the HTTP recipient-key contract.
   **Must NOT do**: Do not use Telegram `user_id` as the dedup identity; do not write manual success/cache rows before `send_result.success` is true.
@@ -403,7 +403,7 @@ Wave 2: HTTP recipient plumbing, Telegram manual caching/plumbing, cross-flow re
 
   **Commit**: YES | Message: `wire telegram manual analyze into recipient dedup flow` | Files: `crypto_news_analyzer/reporters/telegram_command_handler.py`, `crypto_news_analyzer/execution_coordinator.py`, `tests/test_main_controller.py`
 
-- [ ] 8. Lock in regression coverage for scheduled behavior and full manual dedup path
+- [x] 8. Lock in regression coverage for scheduled behavior and full manual dedup path
 
   **What to do**: Add/adjust regression tests proving scheduled/global outdated-news behavior still follows the existing cache path unchanged, while manual HTTP/Telegram paths use the new recipient-scoped path. Run the focused feature suite first, then the broader analyzer/controller/API suite listed in Definition of Done. Fix any failures without broadening scope beyond this plan.
   **Must NOT do**: Do not silently change scheduled cache semantics to recipient-scoped behavior; do not skip regression coverage because targeted unit tests pass.
@@ -447,10 +447,10 @@ Wave 2: HTTP recipient plumbing, Telegram manual caching/plumbing, cross-flow re
 > 4 review agents run in PARALLEL. ALL must APPROVE. Present consolidated results to user and get explicit "okay" before completing.
 > **Do NOT auto-proceed after verification. Wait for user's explicit approval before marking work complete.**
 > **Never mark F1-F4 as checked before getting user's okay.** Rejection or user feedback -> fix -> re-run -> present again -> wait for okay.
-- [ ] F1. Plan Compliance Audit — oracle
-- [ ] F2. Code Quality Review — unspecified-high
-- [ ] F3. Real Manual QA — unspecified-high (+ playwright if UI)
-- [ ] F4. Scope Fidelity Check — deep
+- [x] F1. Plan Compliance Audit — oracle
+- [x] F2. Code Quality Review — unspecified-high
+- [x] F3. Real Manual QA — unspecified-high (+ playwright if UI)
+- [x] F4. Scope Fidelity Check — deep
 
 ## Commit Strategy
 - Commit 1: `add recipient-scoped sent title lookup for manual dedup`

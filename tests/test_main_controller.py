@@ -10,15 +10,140 @@ import os
 import json
 import time
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch, MagicMock
 
+from crypto_news_analyzer.analyzers.structured_output_manager import StructuredAnalysisResult
 from crypto_news_analyzer.execution_coordinator import MainController, ExecutionStatus, ExecutionMode
-from crypto_news_analyzer.models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult
+from crypto_news_analyzer.models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult, StorageConfig
+from crypto_news_analyzer.storage.cache_manager import SentMessageCacheManager
+from crypto_news_analyzer.storage.data_manager import DataManager
 
 
 class TestMainController:
     """主控制器测试类"""
+
+    @pytest.fixture
+    def manual_history_controller(self, temp_config_file, tmp_path):
+        controller = MainController(temp_config_file)
+        controller._initialized = True
+
+        controller.config_manager = Mock()
+        controller.config_manager.get_time_window_hours.return_value = 24
+        controller.config_manager.config_data = {"llm_config": {"min_weight_score": 50}}
+
+        database_path = tmp_path / "analysis_history.db"
+        controller.data_manager = DataManager(
+            StorageConfig(database_path=str(database_path))
+        )
+        controller.cache_manager = SentMessageCacheManager(
+            StorageConfig(database_path=str(database_path))
+        )
+
+        yield controller
+
+        controller.cache_manager.close()
+        controller.data_manager.close()
+
+    def _seed_analysis_success(
+        self,
+        controller,
+        recipient_key,
+        execution_time,
+        time_window_hours=6,
+        items_count=1,
+    ):
+        with controller.data_manager._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO analysis_execution_log
+                (chat_id, execution_time, time_window_hours, items_count, success, error_message)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    recipient_key,
+                    execution_time.isoformat(),
+                    time_window_hours,
+                    items_count,
+                    True,
+                    None,
+                ),
+            )
+            conn.commit()
+
+    def _build_content_item(self, item_id="item_1"):
+        now = datetime.now(timezone.utc)
+        return ContentItem(
+            id=item_id,
+            title=f"title_{item_id}",
+            content=f"content_{item_id}",
+            url=f"https://example.com/{item_id}",
+            publish_time=now - timedelta(hours=1),
+            source_name="test",
+            source_type="rss",
+        )
+
+    def _build_structured_analysis_result(self, item_id="item_1"):
+        return StructuredAnalysisResult(
+            time="Thu, 26 Mar 2026 04:00:00 +0000",
+            category="大户动向",
+            weight_score=80,
+            title=f"analysis_title_{item_id}",
+            body=f"analysis_body_{item_id}",
+            source=f"https://example.com/{item_id}",
+            related_sources=[],
+        )
+
+    def _seed_cached_title(
+        self,
+        controller,
+        recipient_key,
+        sent_at,
+        title,
+        body="body",
+        category="大户动向",
+        time_text="Thu, 26 Mar 2026 04:00:00 +0000",
+    ):
+        with controller.cache_manager._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO sent_message_cache
+                (title, body, category, time, sent_at, recipient_key)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    title,
+                    body,
+                    category,
+                    time_text,
+                    sent_at.isoformat(),
+                    recipient_key,
+                ),
+            )
+            conn.commit()
+
+    def _configure_manual_analysis_success(self, controller, content_item):
+        controller.llm_analyzer = Mock()
+        controller.llm_analyzer.analyze_content_batch.return_value = [
+            self._build_structured_analysis_result(content_item.id)
+        ]
+        controller._execute_reporting_stage = Mock(
+            return_value={
+                "success": True,
+                "report_content": "# Test report",
+                "errors": [],
+            }
+        )
+
+    def _fetch_analysis_rows(self, controller):
+        with controller.data_manager._get_connection() as conn:
+            return [dict(row) for row in conn.execute(
+                """
+                SELECT chat_id, time_window_hours, items_count, success, error_message
+                FROM analysis_execution_log
+                ORDER BY id ASC
+                """
+            ).fetchall()]
     
     @pytest.fixture
     def temp_config_file(self):
@@ -101,7 +226,6 @@ class TestMainController:
             controller.data_manager = Mock()
             controller.data_manager.get_content_items.return_value = []
             controller.llm_analyzer = Mock()
-            controller.content_classifier = Mock()
             controller.report_generator = Mock()
             controller.telegram_sender = Mock()
             controller.error_manager = Mock()
@@ -110,6 +234,10 @@ class TestMainController:
     
     def test_controller_initialization(self, temp_config_file):
         """测试控制器初始化"""
+        history_file = "./data/execution_history.json"
+        if os.path.exists(history_file):
+            os.remove(history_file)
+
         controller = MainController(temp_config_file)
         
         assert controller.config_path == temp_config_file
@@ -368,8 +496,10 @@ class TestMainController:
                 time="2024-01-01 12:00:00",
                 category="大户动向" if i % 2 == 0 else "利率事件",
                 weight_score=80,
-                summary=f"Test summary {i}",
-                source=f"https://example.com/{i}"
+                title=f"Test title {i}",
+                body=f"Test body {i}",
+                source=f"https://example.com/{i}",
+                related_sources=[],
             )
             mock_analysis_results.append(analysis)
         
@@ -413,8 +543,235 @@ class TestMainController:
         
         with patch.object(mock_controller, '_save_report_backup', return_value="/tmp/backup.md"):
             result = mock_controller._execute_sending_stage("Test report")
-        
+
         assert result["success"] is True  # 应该成功，因为保存了本地备份
+
+    def test_manual_recipient_key_prevents_api_and_telegram_collisions(self, manual_history_controller):
+        controller = manual_history_controller
+
+        api_recipient_key = controller._normalize_manual_recipient_key("api", "123")
+        telegram_recipient_key = controller._normalize_manual_recipient_key("telegram", "123")
+
+        controller.data_manager.log_analysis_execution(
+            chat_id=api_recipient_key,
+            time_window_hours=4,
+            items_count=2,
+            success=True,
+        )
+
+        assert api_recipient_key == "api:123"
+        assert telegram_recipient_key == "telegram:123"
+        assert controller.data_manager.get_last_successful_analysis_time(api_recipient_key) is not None
+        assert controller.data_manager.get_last_successful_analysis_time(telegram_recipient_key) is None
+
+    def test_failed_manual_last_success_does_not_advance_on_api_report_failure(self, manual_history_controller):
+        controller = manual_history_controller
+        recipient_key = controller._normalize_manual_recipient_key("api", "123")
+        prior_success = datetime.now(timezone.utc) - timedelta(hours=12)
+        content_item = self._build_content_item()
+
+        self._seed_analysis_success(controller, recipient_key, prior_success)
+
+        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        controller._execute_analysis_stage = Mock(
+            return_value={
+                "success": True,
+                "categorized_items": {"大户动向": [Mock()]},
+                "analysis_results": {content_item.id: Mock()},
+                "errors": [],
+            }
+        )
+        controller._execute_reporting_stage = Mock(
+            return_value={
+                "success": False,
+                "report_content": "",
+                "errors": ["report generation failed"],
+            }
+        )
+
+        result = controller.analyze_by_time_window(
+            chat_id="123",
+            time_window_hours=3,
+            manual_source="api",
+        )
+
+        assert result["success"] is False
+        assert controller.data_manager.get_last_successful_analysis_time(recipient_key) == prior_success
+
+        rows = self._fetch_analysis_rows(controller)
+        assert len(rows) == 2
+        assert rows[0]["chat_id"] == "api:123"
+        assert rows[0]["success"] == 1
+        assert rows[1]["chat_id"] == "api:123"
+        assert rows[1]["success"] == 0
+
+    def test_successful_manual_completion_writes_one_normalized_history_row(self, manual_history_controller):
+        controller = manual_history_controller
+        content_item = self._build_content_item()
+
+        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        controller._execute_analysis_stage = Mock(
+            return_value={
+                "success": True,
+                "categorized_items": {"大户动向": [Mock()]},
+                "analysis_results": {content_item.id: Mock()},
+                "errors": [],
+            }
+        )
+        controller._execute_reporting_stage = Mock(
+            return_value={
+                "success": True,
+                "report_content": "# Test report",
+                "errors": [],
+            }
+        )
+
+        report_content = controller.get_markdown_report_for_api(3, user_id="123")
+
+        assert report_content == "# Test report"
+
+        rows = self._fetch_analysis_rows(controller)
+        assert rows == [
+            {
+                "chat_id": "api:123",
+                "time_window_hours": 3,
+                "items_count": 1,
+                "success": 1,
+                "error_message": None,
+            }
+        ]
+
+    def test_no_prior_manual_outdated_history_passes_explicit_empty_titles(self, manual_history_controller):
+        controller = manual_history_controller
+        content_item = self._build_content_item()
+        recipient_key = controller._normalize_manual_recipient_key("api", "123")
+
+        self._seed_cached_title(
+            controller,
+            recipient_key=recipient_key,
+            sent_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            title="recent cached title should be ignored without anchor",
+        )
+
+        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        self._configure_manual_analysis_success(controller, content_item)
+
+        result = controller.analyze_by_time_window(
+            chat_id="123",
+            time_window_hours=3,
+            manual_source="api",
+        )
+
+        assert result["success"] is True
+        assert controller.llm_analyzer.analyze_content_batch.call_args.kwargs["historical_titles"] == []
+
+    def test_anchor_manual_outdated_history_passes_empty_titles_when_window_has_no_matches(self, manual_history_controller):
+        controller = manual_history_controller
+        content_item = self._build_content_item()
+        recipient_key = controller._normalize_manual_recipient_key("api", "123")
+        prior_success = datetime(2026, 3, 26, 12, 0, tzinfo=timezone.utc)
+
+        self._seed_analysis_success(controller, recipient_key, prior_success)
+        self._seed_cached_title(
+            controller,
+            recipient_key=recipient_key,
+            sent_at=prior_success - timedelta(hours=48, seconds=1),
+            title="too old for anchored window",
+        )
+        self._seed_cached_title(
+            controller,
+            recipient_key=recipient_key,
+            sent_at=prior_success + timedelta(minutes=5),
+            title="too new for anchored window",
+        )
+
+        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        self._configure_manual_analysis_success(controller, content_item)
+
+        result = controller.analyze_by_time_window(
+            chat_id="123",
+            time_window_hours=3,
+            manual_source="api",
+        )
+
+        assert result["success"] is True
+        assert controller.llm_analyzer.analyze_content_batch.call_args.kwargs["historical_titles"] == []
+
+    def test_anchor_manual_outdated_history_includes_titles_at_both_window_boundaries(self, manual_history_controller):
+        controller = manual_history_controller
+        content_item = self._build_content_item()
+        recipient_key = controller._normalize_manual_recipient_key("api", "123")
+        other_recipient_key = controller._normalize_manual_recipient_key("telegram", "123")
+        prior_success = datetime(2026, 3, 26, 12, 0, tzinfo=timezone.utc)
+
+        self._seed_analysis_success(controller, recipient_key, prior_success)
+        self._seed_cached_title(
+            controller,
+            recipient_key=recipient_key,
+            sent_at=prior_success - timedelta(hours=48),
+            title="window start title",
+        )
+        self._seed_cached_title(
+            controller,
+            recipient_key=other_recipient_key,
+            sent_at=prior_success - timedelta(hours=24),
+            title="other recipient title",
+        )
+        self._seed_cached_title(
+            controller,
+            recipient_key=recipient_key,
+            sent_at=prior_success,
+            title="anchor boundary title",
+        )
+
+        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        self._configure_manual_analysis_success(controller, content_item)
+
+        result = controller.analyze_by_time_window(
+            chat_id="123",
+            time_window_hours=3,
+            manual_source="api",
+        )
+
+        assert result["success"] is True
+        assert controller.llm_analyzer.analyze_content_batch.call_args.kwargs["historical_titles"] == [
+            "window start title",
+            "anchor boundary title",
+        ]
+
+    def test_anchor_manual_outdated_history_excludes_titles_after_anchor_even_if_recent_now(self, manual_history_controller):
+        controller = manual_history_controller
+        content_item = self._build_content_item()
+        recipient_key = controller._normalize_manual_recipient_key("api", "123")
+        prior_success = datetime.now(timezone.utc) - timedelta(hours=2)
+
+        self._seed_analysis_success(controller, recipient_key, prior_success)
+        self._seed_cached_title(
+            controller,
+            recipient_key=recipient_key,
+            sent_at=prior_success - timedelta(hours=1),
+            title="before anchor title",
+        )
+        self._seed_cached_title(
+            controller,
+            recipient_key=recipient_key,
+            sent_at=prior_success + timedelta(minutes=30),
+            title="after anchor title",
+        )
+
+        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        self._configure_manual_analysis_success(controller, content_item)
+
+        result = controller.analyze_by_time_window(
+            chat_id="123",
+            time_window_hours=3,
+            manual_source="api",
+        )
+
+        assert result["success"] is True
+        assert controller.llm_analyzer.analyze_content_batch.call_args.kwargs["historical_titles"] == [
+            "before anchor title",
+        ]
 
 
 @pytest.mark.integration
@@ -495,7 +852,6 @@ class TestMainControllerIntegration:
             controller.llm_analyzer.batch_analyze.return_value = []
             controller.llm_analyzer.analyze_content_batch.return_value = []
             
-            controller.content_classifier = Mock()
             controller.report_generator = Mock()
             controller.report_generator.generate_report.return_value = "Test report"
             controller.report_generator.generate_telegram_report.return_value = "Test report"

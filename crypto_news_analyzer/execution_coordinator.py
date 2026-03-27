@@ -159,8 +159,119 @@ class MainController:
         
         # 加载执行历史
         self._load_execution_history()
-        
+         
         self.logger.info("主控制器初始化完成")
+
+    @staticmethod
+    def _normalize_manual_recipient_key(manual_source: str, recipient_id: str) -> str:
+        normalized_source = str(manual_source).strip().lower()
+        normalized_recipient_id = str(recipient_id).strip()
+
+        if normalized_source not in {"api", "telegram"}:
+            raise ValueError(f"不支持的手动分析来源: {manual_source}")
+
+        if not normalized_recipient_id:
+            raise ValueError("手动分析接收者标识不能为空")
+
+        return f"{normalized_source}:{normalized_recipient_id}"
+
+    def _resolve_manual_recipient_key(self, chat_id: str, manual_source: str = "telegram") -> str:
+        normalized_chat_id = str(chat_id).strip()
+
+        if normalized_chat_id.startswith("api:") or normalized_chat_id.startswith("telegram:"):
+            return normalized_chat_id
+
+        return self._normalize_manual_recipient_key(manual_source, normalized_chat_id)
+
+    def _record_manual_analysis_success(
+        self,
+        recipient_key: str,
+        time_window_hours: int,
+        items_count: int,
+    ) -> None:
+        data_manager = self.data_manager
+        if data_manager is None:
+            raise ValueError("数据管理器未初始化")
+
+        data_manager.log_analysis_execution(
+            chat_id=recipient_key,
+            time_window_hours=time_window_hours,
+            items_count=items_count,
+            success=True,
+        )
+
+    def _build_manual_report_messages(
+        self,
+        categorized_items: Optional[Dict[str, List[Any]]],
+    ) -> List[Dict[str, str]]:
+        messages_to_cache: List[Dict[str, str]] = []
+        if not categorized_items:
+            return messages_to_cache
+
+        for items in categorized_items.values():
+            for item in items:
+                messages_to_cache.append(
+                    {
+                        "title": item.title,
+                        "body": item.body,
+                        "category": item.category,
+                        "time": item.time,
+                    }
+                )
+
+        return messages_to_cache
+
+    def _persist_manual_analysis_success(
+        self,
+        recipient_key: str,
+        time_window_hours: int,
+        items_count: int,
+        final_report_messages: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        if final_report_messages:
+            if self.cache_manager is None:
+                raise ValueError("缓存管理器未初始化")
+
+            cached_count = self.cache_manager.cache_sent_messages(
+                final_report_messages,
+                recipient_key=recipient_key,
+            )
+            self.logger.info(
+                f"手动分析成功标题已缓存，recipient_key={recipient_key}，titles={cached_count}"
+            )
+
+        self._record_manual_analysis_success(
+            recipient_key=recipient_key,
+            time_window_hours=time_window_hours,
+            items_count=items_count,
+        )
+
+    def _get_manual_historical_titles(self, recipient_key: str) -> List[str]:
+        data_manager = self.data_manager
+        if data_manager is None:
+            raise ValueError("数据管理器未初始化")
+
+        prior_success_time = data_manager.get_last_successful_analysis_time(recipient_key)
+        if prior_success_time is None:
+            self.logger.info(
+                f"手动分析无历史成功锚点，recipient_key={recipient_key}，使用空历史标题集"
+            )
+            return []
+
+        if self.cache_manager is None:
+            self.logger.info(
+                f"缓存管理器未初始化，recipient_key={recipient_key}，使用空历史标题集"
+            )
+            return []
+
+        historical_titles = self.cache_manager.get_recipient_cached_titles(
+            recipient_key=recipient_key,
+            anchor_time=prior_success_time,
+        )
+        self.logger.info(
+            f"手动分析历史标题查询完成，recipient_key={recipient_key}，anchor_time={prior_success_time.isoformat()}，titles={len(historical_titles)}"
+        )
+        return historical_titles
     
     def _setup_signal_handlers(self) -> None:
         """
@@ -761,6 +872,7 @@ class MainController:
         is_manual: bool = False,
         analysis_time_window_hours: Optional[int] = None,
         preloaded_content_items: Optional[List[ContentItem]] = None,
+        manual_historical_titles: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         执行内容分析阶段
@@ -809,7 +921,14 @@ class MainController:
             
             # 批量分析内容（仅在定时任务时包含 Outdated News）
             is_scheduled = not is_manual
-            analysis_results = self.llm_analyzer.analyze_content_batch(all_content_items, is_scheduled=is_scheduled)
+            analyzer_kwargs: Dict[str, Any] = {"is_scheduled": is_scheduled}
+            if is_manual:
+                analyzer_kwargs["historical_titles"] = list(manual_historical_titles or [])
+
+            analysis_results = self.llm_analyzer.analyze_content_batch(
+                all_content_items,
+                **analyzer_kwargs,
+            )
             
             # 分类内容 - 注意这里存储的是 StructuredAnalysisResult 而不是 ContentItem
             categorized_items = {}
@@ -1516,7 +1635,12 @@ class MainController:
             with self._execution_lock:
                 self.current_execution = None
 
-    def analyze_by_time_window(self, chat_id: str, time_window_hours: int) -> Dict[str, Any]:
+    def analyze_by_time_window(
+        self,
+        chat_id: str,
+        time_window_hours: int,
+        manual_source: str = "telegram",
+    ) -> Dict[str, Any]:
         """
         按时间窗口执行分析
 
@@ -1535,10 +1659,16 @@ class MainController:
             "report_content": "",
             "items_processed": 0,
             "execution_id": execution_id,
+            "final_report_messages": [],
             "errors": []
         }
+        recipient_key = self._resolve_manual_recipient_key(chat_id, manual_source)
+        data_manager = self.data_manager
 
         try:
+            if data_manager is None:
+                raise Exception("数据管理器未初始化")
+
             # 初始化系统（如果尚未初始化）
             if not self._initialized:
                 if not self.initialize_system():
@@ -1547,7 +1677,7 @@ class MainController:
             since_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
 
             # 从数据库获取时间窗口内的内容
-            content_items = self.data_manager.get_content_items_since(
+            content_items = data_manager.get_content_items_since(
                 since_time=since_time,
                 max_hours=time_window_hours
             )
@@ -1555,13 +1685,9 @@ class MainController:
             
             if not content_items:
                 result["success"] = True
-                self.data_manager.log_analysis_execution(
-                    chat_id=chat_id,
-                    time_window_hours=time_window_hours,
-                    items_count=0,
-                    success=True
-                )
                 return result
+
+            manual_historical_titles = self._get_manual_historical_titles(recipient_key)
             
             # 执行分析阶段
             analysis_result = self._execute_analysis_stage(
@@ -1569,11 +1695,12 @@ class MainController:
                 is_manual=True,
                 analysis_time_window_hours=time_window_hours,
                 preloaded_content_items=content_items,
+                manual_historical_titles=manual_historical_titles,
             )
             if not analysis_result["success"]:
                 result["errors"].extend(analysis_result["errors"])
-                self.data_manager.log_analysis_execution(
-                    chat_id=chat_id,
+                data_manager.log_analysis_execution(
+                    chat_id=recipient_key,
                     time_window_hours=time_window_hours,
                     items_count=len(content_items),
                     success=False,
@@ -1594,8 +1721,8 @@ class MainController:
             
             if not report_result["success"]:
                 result["errors"].extend(report_result["errors"])
-                self.data_manager.log_analysis_execution(
-                    chat_id=chat_id,
+                data_manager.log_analysis_execution(
+                    chat_id=recipient_key,
                     time_window_hours=time_window_hours,
                     items_count=len(content_items),
                     success=False,
@@ -1606,13 +1733,14 @@ class MainController:
             result["success"] = True
             result["report_content"] = report_result["report_content"]
             result["items_processed"] = len(content_items)
+            result["final_report_messages"] = self._build_manual_report_messages(categorized_items)
 
             if not result["report_content"] and len(content_items) > 0:
                 error_message = "分析未生成有效报告内容"
                 result["success"] = False
                 result["errors"].append(error_message)
-                self.data_manager.log_analysis_execution(
-                    chat_id=chat_id,
+                data_manager.log_analysis_execution(
+                    chat_id=recipient_key,
                     time_window_hours=time_window_hours,
                     items_count=len(content_items),
                     success=False,
@@ -1620,44 +1748,52 @@ class MainController:
                 )
                 return result
             
-            self.data_manager.log_analysis_execution(
-                chat_id=chat_id,
-                time_window_hours=time_window_hours,
-                items_count=len(content_items),
-                success=True
-            )
-            
         except Exception as e:
             error_msg = f"时间窗口分析失败: {str(e)}"
             self.logger.error(error_msg)
             self.logger.debug(traceback.format_exc())
             result["errors"].append(error_msg)
-            self.data_manager.log_analysis_execution(
-                chat_id=chat_id,
-                time_window_hours=time_window_hours,
-                items_count=0,
-                success=False,
-                error_message=error_msg
-            )
+            if data_manager is not None:
+                data_manager.log_analysis_execution(
+                    chat_id=recipient_key,
+                    time_window_hours=time_window_hours,
+                    items_count=0,
+                    success=False,
+                    error_message=error_msg
+                )
         
         return result
 
-    def get_markdown_report_for_api(self, time_window_hours: int) -> str:
+    def get_markdown_report_for_api(self, time_window_hours: int, user_id: Optional[str] = None) -> str:
         """
         获取API用的Markdown报告
         
         Args:
             time_window_hours: 时间窗口（小时）
+            user_id: API调用方标识，用于手动分析历史隔离
         
         Returns:
             Markdown格式的报告内容
         """
+        api_user_id = str(user_id).strip() if user_id is not None else ""
+        if not api_user_id:
+            raise ValueError("API user_id不能为空")
+
+        recipient_key = self._normalize_manual_recipient_key("api", api_user_id)
+
         analyze_result = self.analyze_by_time_window(
-            chat_id="api",
-            time_window_hours=time_window_hours
+            chat_id=api_user_id,
+            time_window_hours=time_window_hours,
+            manual_source="api",
         )
         
         if analyze_result["success"]:
+            self._persist_manual_analysis_success(
+                recipient_key=recipient_key,
+                time_window_hours=time_window_hours,
+                items_count=analyze_result.get("items_processed", 0),
+                final_report_messages=analyze_result.get("final_report_messages", []),
+            )
             return analyze_result.get("report_content", "")
         else:
             errors = analyze_result.get("errors", ["未知错误"])

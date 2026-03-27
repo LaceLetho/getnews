@@ -9,7 +9,7 @@ import logging
 from typing import Dict, Any, List, Optional, Type, Union
 from dataclasses import dataclass
 from pathlib import Path
-from pydantic import BaseModel, Field, field_validator, ValidationError
+from pydantic import BaseModel, Field, field_validator, model_validator, ValidationError
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,25 @@ class StructuredAnalysisResult(BaseModel):
     body: str = Field(..., min_length=1, description="Chinese body content")
     source: str = Field(..., description="Original URL")
     related_sources: List[str] = Field(default_factory=list, description="Related URLs")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_summary_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        summary = normalized.get("summary")
+        if isinstance(summary, str):
+            summary = summary.strip()
+
+        if summary:
+            if not str(normalized.get("title", "")).strip():
+                normalized["title"] = summary
+            if not str(normalized.get("body", "")).strip():
+                normalized["body"] = summary
+
+        return normalized
     
     @field_validator('time')
     @classmethod
@@ -122,8 +141,12 @@ class StructuredAnalysisResult(BaseModel):
                 url = url.strip()
                 if url.startswith('http://') or url.startswith('https://'):
                     validated.append(url)
-        
+
         return validated
+
+    @property
+    def summary(self) -> str:
+        return self.body
 
 
 class BatchAnalysisResult(BaseModel):
@@ -879,7 +902,11 @@ class StructuredOutputManager:
     
     def _validate_single_result(self, result: Dict[str, Any]) -> List[str]:
         """验证单个结果项"""
+        result = self._normalize_legacy_result_payload(result)
         errors = []
+
+        if "summary" not in result and "title" not in result and "body" not in result:
+            errors.append("缺少必需字段: summary")
         
         # 检查必需字段
         required_fields = ['time', 'category', 'weight_score', 'title', 'body', 'source']
@@ -930,6 +957,23 @@ class StructuredOutputManager:
                         errors.append(f"related_sources[{i}]必须是有效的URL")
         
         return errors
+
+    def _normalize_legacy_result_payload(self, result: Any) -> Dict[str, Any]:
+        if not isinstance(result, dict):
+            return {}
+
+        normalized = dict(result)
+        summary = normalized.get("summary")
+        if isinstance(summary, str):
+            summary = summary.strip()
+
+        if summary:
+            if not str(normalized.get("title", "")).strip():
+                normalized["title"] = summary
+            if not str(normalized.get("body", "")).strip():
+                normalized["body"] = summary
+
+        return normalized
     
     def handle_malformed_response(
         self,
