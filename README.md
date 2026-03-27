@@ -8,11 +8,13 @@
 - 🤖 **智能分析**: 使用 MiniMax M2.1 大语言模型进行内容分析和分类
 - 📊 **结构化报告**: 生成Markdown格式的分析报告
 - 📱 **自动发送**: 通过Telegram Bot自动发送报告
-- ⏰ **定时调度**: 支持定时自动执行
+- ⏰ **定时调度（仅爬取）**: 定时任务默认只执行数据爬取，不自动触发分析
 - 🔧 **配置驱动**: 通过配置文件管理所有信息源
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
 - 🎯 **智能分类**: 支持大户动向、利率事件、监管政策、真相揭露等多种分类
 - ☁️ **云端部署**: 支持部署到 Railway 平台
+- 🌐 **HTTP API**: 支持 Bearer Token 鉴权的异步分析接口（`POST /analyze` 创建任务，轮询获取结果）
+- 🤖 **Telegram 手动分析**: 支持 `/analyze [hours]` 按时间窗口触发分析
 
 ## 项目结构
 
@@ -76,7 +78,7 @@ uv pip install -e ".[dev]"
 
 **注意**: 项目已迁移到 `pyproject.toml` 管理依赖，不再使用 `requirements.txt`
 
-### 2. 配置系统
+### 3. 配置系统
 
 复制环境变量模板并配置必要的 API 密钥：
 
@@ -93,6 +95,9 @@ LLM_API_KEY=sk-api-your_minimax_api_key
 # Telegram Bot 配置
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHANNEL_ID=your_channel_id
+
+# API Server 鉴权（启用 --mode api-server 时必需）
+API_KEY=your_api_key
 
 # Telegram 授权用户（支持用户ID和用户名）
 # 多个用户用逗号分隔，可以混合使用用户ID和@username格式
@@ -134,19 +139,35 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - 使用用户名时，bot 必须先与该用户互动过，或者用户有公开的 profile
 - 如果用户名解析失败，系统会记录警告并跳过该用户名
 - 建议对关键用户使用用户 ID 作为备份
-- 所有授权用户都有相同的权限，可以执行所有命令（/run, /status, /help）
+- 所有授权用户都有相同的权限，可以执行所有命令（/run, /analyze, /status, /help）
 
-### 3. 运行系统
+### 4. 运行系统
+
+支持三种运行模式：
+
+- `once`：执行一次完整流程（爬取 + 分析 + 报告）
+- `schedule`：定时调度模式（仅爬取），分析通过 Telegram `/analyze` 或 HTTP API 手动触发
+- `api-server`：启动 FastAPI 服务，提供 `/health`、`/analyze` 接口，同时保留定时爬取与 Telegram 命令监听
 
 ```bash
-# 使用 uv（推荐）
-uv run python -m crypto_news_analyzer.main
+# 一次性执行
+uv run python -m crypto_news_analyzer.main --mode once
 
-# 或直接运行
-python -m crypto_news_analyzer.main
+# 定时模式（仅爬取）
+uv run python -m crypto_news_analyzer.main --mode schedule
+
+# API 服务模式（默认监听 0.0.0.0:8080）
+uv run python -m crypto_news_analyzer.main --mode api-server
 ```
 
-### 4. 运行测试
+可选 API 服务环境变量：
+
+```bash
+API_HOST=0.0.0.0
+API_PORT=8080
+```
+
+### 5. 运行测试
 
 ```bash
 # 运行所有测试
@@ -184,6 +205,7 @@ uv run pytest tests/test_minimax_llm_analyzer.py -v
 ### 可用命令
 
 - `/run` - 立即执行一次数据收集和分析任务
+- `/analyze [hours]` - 按时间窗口分析历史消息（不传参数时按“距上次成功分析时间”自动估算，最大24小时）
 - `/market` - 获取当前市场快照
 - `/status` - 查询系统运行状态
 - `/tokens` - 查看token使用统计
@@ -233,7 +255,7 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - 使用用户名时，bot 必须先与该用户互动过，或者用户有公开的 profile
 - 如果用户名解析失败，系统会记录警告并跳过该用户名
 - 建议对关键用户使用用户 ID 作为备份
-- 所有授权用户都有相同的权限，可以执行所有命令（/run, /status, /help, /market, /tokens）
+- 所有授权用户都有相同的权限，可以执行所有命令（/run, /analyze, /status, /help, /market, /tokens）
 
 ### 速率限制
 
@@ -243,6 +265,81 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 
 可在 `config.json` 的 `telegram_commands.command_rate_limit` 中调整。
 
+## HTTP API（`--mode api-server`）
+
+### 认证方式
+
+- 使用 `Authorization: Bearer <API_KEY>`
+- `API_KEY` 来自环境变量
+
+### 接口列表
+
+- `GET /health`：健康检查
+- `POST /analyze`：按小时窗口创建分析任务（返回 `202 Accepted`）
+- `GET /analyze/{job_id}`：查询分析任务状态
+- `GET /analyze/{job_id}/result`：获取分析任务最终结果
+
+### 调用示例
+
+```bash
+curl -X POST "http://localhost:8080/analyze" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"hours": 24}'
+```
+
+### `POST /analyze` 请求与返回
+
+- 请求体：`{"hours": <int>}`，`hours > 0`
+- 成功时返回 `202 Accepted`
+- 响应头：
+  - `Location`：状态查询地址
+  - `Retry-After`：建议轮询间隔（秒）
+- 返回字段：
+  - `success`：是否成功创建任务
+  - `job_id`：分析任务 ID
+  - `status`：初始状态（通常为 `queued`）
+  - `time_window_hours`：实际使用的时间窗口（上限由配置控制，默认 24）
+  - `status_url`：状态查询接口
+  - `result_url`：结果获取接口
+
+示例响应：
+
+```json
+{
+  "success": true,
+  "job_id": "analyze_job_xxx",
+  "status": "queued",
+  "time_window_hours": 24,
+  "status_url": "/analyze/analyze_job_xxx",
+  "result_url": "/analyze/analyze_job_xxx/result"
+}
+```
+
+### 轮询任务状态
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "http://localhost:8080/analyze/<job_id>"
+```
+
+状态接口返回：
+
+- `queued`：任务已入队，等待执行
+- `running`：分析进行中
+- `completed`：分析完成，可读取结果
+- `failed`：分析失败，可查看 `error`
+
+### 获取最终分析结果
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "http://localhost:8080/analyze/<job_id>/result"
+```
+
+- 若任务尚未完成，返回 `202`，提示 `Analyze job still queued/running`
+- 若任务完成，返回最终 Markdown 报告与处理条目数
+
 ## 部署
 
 ### 本地运行
@@ -251,13 +348,13 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 
 ### Railway 部署
 
-详细的 Railway 部署指南请参考 [RAILWAY_DEPLOYMENT.md](./RAILWAY_DEPLOYMENT.md)
+详细的 Railway 部署指南请参考 [docs/RAILWAY_DEPLOYMENT.md](./docs/RAILWAY_DEPLOYMENT.md)
 
 快速部署步骤：
 
 1. 访问 [Railway](https://railway.app) 并登录
 2. 选择 "Deploy from GitHub repo"
-3. 在 Variables 中配置环境变量（LLM_API_KEY、TELEGRAM_BOT_TOKEN、TELEGRAM_CHANNEL_ID）
+3. 在 Variables 中配置环境变量（LLM_API_KEY、TELEGRAM_BOT_TOKEN、TELEGRAM_CHANNEL_ID、TELEGRAM_AUTHORIZED_USERS、API_KEY）
 4. Railway 会自动检测 Dockerfile 并部署
 
 ## 开发状态

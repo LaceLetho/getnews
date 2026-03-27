@@ -6,6 +6,10 @@ Guidance for AI coding agents working on the Cryptocurrency News Analyzer projec
 
 Automated Python system collecting crypto news from RSS/X, analyzing with LLM (Grok/MiniMax), delivering reports via Telegram Bot.
 
+Assigned production domain: `news.tradao.xyz`
+
+AI agents should read `docs/AI_ANALYZE_API_GUIDE.md` before using the HTTP analyze API. It documents the required `hours` parameter, Bearer auth, and the async `POST /analyze` -> poll -> result workflow.
+
 ## Build/Lint/Test Commands
 
 ```bash

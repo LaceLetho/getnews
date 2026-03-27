@@ -138,7 +138,13 @@ class TelegramSender:
             self.logger.info("=" * 60)
             return SendResult(success=False, error_message=error_msg)
     
-    async def _send_message_part(self, message: str, part_num: int, total_parts: int, max_retries: int = None) -> SendResult:
+    async def _send_message_part(
+        self,
+        message: str,
+        part_num: int,
+        total_parts: int,
+        max_retries: Optional[int] = None,
+    ) -> SendResult:
         """发送单个消息部分
 
         Args:
@@ -150,10 +156,13 @@ class TelegramSender:
         Returns:
             发送结果
         """
-        # 如果是多部分消息，添加部分标识
-        if total_parts > 1:
+        if total_parts > 2:
             header = f"📊 *加密货币新闻分析报告 ({part_num}/{total_parts})*\n\n"
             message = header + message
+        elif total_parts == 2 and part_num == 1:
+            message = "📊 *加密货币新闻分析报告*\n\n" + message
+        elif total_parts == 2 and part_num == 2:
+            message = "📊 *加密货币新闻分析报告（续）*\n\n" + message
 
         retry_attempts = max_retries if max_retries is not None else self.config.retry_attempts
 

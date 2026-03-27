@@ -268,7 +268,7 @@ class ConfigManager:
     def get_bird_config(self) -> BirdConfig:
         """获取Bird工具配置"""
         bird_data = self.config_data.get("bird_config", {})
-        
+
         # 支持从环境变量覆盖配置
         return BirdConfig(
             executable_path=os.getenv("BIRD_EXECUTABLE_PATH", bird_data.get("executable_path", "bird")),
@@ -280,7 +280,20 @@ class ConfigManager:
             enable_auto_retry=os.getenv("BIRD_ENABLE_AUTO_RETRY", str(bird_data.get("enable_auto_retry", True))).lower() == "true",
             retry_delay_seconds=int(os.getenv("BIRD_RETRY_DELAY_SECONDS", bird_data.get("retry_delay_seconds", 60)))
         )
-    
+
+    def get_analysis_config(self) -> Dict[str, int]:
+        """
+        获取分析配置
+
+        Returns:
+            包含 max_analysis_window_hours 和 min_analysis_window_hours 的字典
+        """
+        analysis_data = self.config_data.get("analysis_config", {})
+        return {
+            "max_analysis_window_hours": analysis_data.get("max_analysis_window_hours", 24),
+            "min_analysis_window_hours": analysis_data.get("min_analysis_window_hours", 1)
+        }
+
     def validate_bird_installation(self) -> bool:
         """
         验证bird工具安装状态

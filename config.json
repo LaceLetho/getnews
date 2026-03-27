@@ -162,5 +162,9 @@
       "max_commands_per_hour": 120,
       "cooldown_minutes": 5
     }
+  },
+  "analysis_config": {
+    "max_analysis_window_hours": 24,
+    "min_analysis_window_hours": 1
   }
 }

@@ -655,6 +655,77 @@ class TestKimiIntegration:
         assert len(result.results) == 1
         assert result.results[0].category == "大户动向"
 
+    def test_handle_malformed_response_with_kimi_final_thinking_only_batch(self):
+        manager = StructuredOutputManager()
+
+        response = """
+============= Kimi Final Thinking =============
+============= End Final Thinking =============
+"""
+
+        result = manager.handle_malformed_response(response, batch_mode=True)
+        assert result is not None
+        assert isinstance(result, BatchAnalysisResult)
+        assert result.results == []
+
+    def test_handle_malformed_response_empty_batch_returns_empty(self):
+        manager = StructuredOutputManager()
+
+        result = manager.handle_malformed_response("", batch_mode=True)
+        assert result is not None
+        assert isinstance(result, BatchAnalysisResult)
+        assert result.results == []
+
+    def test_handle_malformed_response_with_prefixed_markdown_array(self):
+        manager = StructuredOutputManager()
+
+        response = """基于分析，我筛选出以下重要消息：
+
+```json
+[
+  {
+    "time": "Wed, 25 Mar 2026 17:36:34 +0800",
+    "category": "BlackSwan",
+    "weight_score": 78,
+    "title": "标题",
+    "body": "正文",
+    "source": "https://example.com"
+  }
+]
+```
+说明文字
+"""
+
+        result = manager.handle_malformed_response(response, batch_mode=True)
+        assert result is not None
+        assert isinstance(result, BatchAnalysisResult)
+        assert len(result.results) == 1
+        assert result.results[0].category == "BlackSwan"
+
+    def test_extract_json_from_raw_text_with_prefix_suffix(self):
+        manager = StructuredOutputManager()
+
+        text = "说明：请看结果\n{\"results\":[{\"time\":\"Mon, 15 Jan 2024 14:30:00 +0000\",\"category\":\"Whale\",\"weight_score\":85,\"title\":\"t\",\"body\":\"b\",\"source\":\"https://example.com\"}]}\n附加说明"
+        extracted = manager._extract_json_from_raw_text(text)
+
+        assert extracted is not None
+        parsed = json.loads(extracted)
+        assert "results" in parsed
+        assert len(parsed["results"]) == 1
+
+    def test_handle_malformed_response_prefers_schema_valid_json_candidate(self):
+        manager = StructuredOutputManager()
+
+        response = """说明文字 {"note":"not analysis payload"}
+{"results":[{"time":"Mon, 15 Jan 2024 14:30:00 +0000","category":"Whale","weight_score":85,"title":"t","body":"b","source":"https://example.com"}]}
+"""
+
+        result = manager.handle_malformed_response(response, batch_mode=True)
+        assert result is not None
+        assert isinstance(result, BatchAnalysisResult)
+        assert len(result.results) == 1
+        assert result.results[0].category == "Whale"
+
     def test_clean_grok_tags_with_empty(self):
         """测试清理Grok标签时处理空输入"""
         manager = StructuredOutputManager()
