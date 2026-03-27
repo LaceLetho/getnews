@@ -156,6 +156,8 @@ class LLMAnalyzer:
                 elif "kimi" in self.model.lower():
                     # Kimi API - 使用 OpenAI 兼容格式 (coding endpoint)
                     # 需要设置 User-Agent 为 claude-code 才能通过身份验证
+                    # Kimi 的内置 web_search 处理见：
+                    # https://platform.moonshot.ai/docs/guide/use-web-search#web_search-declaration
                     api_key_to_use = self.KIMI_API_KEY or self.api_key
                     self.client = OpenAI(
                         api_key=api_key_to_use,
@@ -462,14 +464,16 @@ class LLMAnalyzer:
 
                 # 判断是否启用 web_search 及使用哪种方式
                 # Grok 使用 responses.parse() API
-                # Kimi 使用标准 function calling
+                # Kimi 使用内置 web_search（builtin_function + $web_search）
                 is_kimi = "kimi" in self.model.lower()
                 is_grok = "grok" in self.model.lower()
                 enable_web_search = is_kimi or is_grok
 
                 if enable_web_search:
                     if is_kimi:
-                        self.logger.info("检测到 Kimi 模型，启用 web_search 工具（标准 function calling）")
+                        self.logger.info(
+                            "检测到 Kimi 模型，启用内置 web_search 工具"
+                        )
                     elif is_grok:
                         self.logger.info("检测到 Grok 模型，启用 web_search 和 x_search 工具")
 
@@ -522,11 +526,13 @@ class LLMAnalyzer:
                             base_url="https://api.x.ai/v1",
                             default_headers={"x-grok-conv-id": self.conversation_id}
                         )
-                        
+
                         # 记录使用了备用模型
-                        self._last_used_model = f"Kimi (主模型) -> Grok (备用模型)"
-                        
-                        # 为Grok调整消息格式（不使用web_search工具，因为提示词可能仍然触发过滤）
+                        self._last_used_model = (
+                            "Kimi (主模型) -> Grok (备用模型)"
+                        )
+
+                        # 为 Grok 调整消息格式
                         batch_result = self.structured_output_manager.force_structured_response(
                             llm_client=fallback_client,
                             messages=messages,
@@ -534,25 +540,34 @@ class LLMAnalyzer:
                             max_retries=2,
                             temperature=self.temperature,
                             batch_mode=True,
-                            enable_web_search=False,  # 禁用web_search以避免进一步问题
+                            enable_web_search=False,
                             conversation_id=self.conversation_id,
                             usage_callback=self._record_token_usage
                         )
-                        
+
                         # 打印LLM返回的原始数据
                         self._log_llm_response(batch_result, i // self.batch_size + 1)
-                        
+
                         # 提取结果
                         if isinstance(batch_result, BatchAnalysisResult):
                             all_results.extend(batch_result.results)
                             if not is_scheduled:
-                                rolling_historical_titles = self._deduplicate_titles_preserving_order(
-                                    rolling_historical_titles + self._extract_result_titles(batch_result.results)
+                                rolling_historical_titles = (
+                                    self._deduplicate_titles_preserving_order(
+                                        rolling_historical_titles +
+                                        self._extract_result_titles(
+                                            batch_result.results
+                                        )
+                                    )
                                 )
-                            self.logger.info(f"Grok备用模型批次返回 {len(batch_result.results)} 条结果")
+                            self.logger.info(
+                                f"Grok备用模型批次返回 {len(batch_result.results)} 条结果"
+                            )
                         else:
-                            self.logger.warning(f"Grok批次返回格式异常: {type(batch_result)}")
-                        
+                            self.logger.warning(
+                                f"Grok批次返回格式异常: {type(batch_result)}"
+                            )
+
                     except Exception as fallback_error:
                         self.logger.error(f"Grok备用模型也失败: {fallback_error}")
                         continue

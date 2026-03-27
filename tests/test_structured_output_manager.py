@@ -11,6 +11,7 @@
 import pytest
 import json
 from unittest.mock import Mock, MagicMock, patch
+from types import SimpleNamespace
 from pydantic import ValidationError
 
 from crypto_news_analyzer.analyzers.structured_output_manager import (
@@ -20,6 +21,7 @@ from crypto_news_analyzer.analyzers.structured_output_manager import (
     ValidationResult,
     StructuredOutputLibrary
 )
+from crypto_news_analyzer.utils.errors import ContentFilterError
 
 
 class TestStructuredAnalysisResult:
@@ -547,6 +549,165 @@ class TestValidationResult:
 
 class TestKimiIntegration:
     """测试Kimi模型集成相关功能"""
+
+    def test_force_with_kimi_web_search_multi_round_tool_call_flow(self):
+        manager = StructuredOutputManager()
+
+        tool_call = SimpleNamespace(
+            id="call_1",
+            function=SimpleNamespace(
+                name="$web_search",
+                arguments='{"query":"btc etf latest"}'
+            ),
+            model_dump=lambda: {
+                "id": "call_1",
+                "type": "function",
+                "function": {
+                    "name": "$web_search",
+                    "arguments": '{"query":"btc etf latest"}'
+                }
+            }
+        )
+
+        first_message = SimpleNamespace(
+            content="",
+            reasoning_content=None,
+            refusal=None,
+            tool_calls=[tool_call]
+        )
+        first_response = SimpleNamespace(
+            choices=[SimpleNamespace(message=first_message)],
+            usage=SimpleNamespace(
+                prompt_tokens=10,
+                completion_tokens=5,
+                total_tokens=15,
+                input_tokens_details={"cached_tokens": 2}
+            )
+        )
+
+        final_payload = {
+            "results": [
+                {
+                    "time": "Wed, 25 Mar 2026 17:36:34 +0800",
+                    "category": "BlackSwan",
+                    "weight_score": 78,
+                    "title": "标题",
+                    "body": "正文",
+                    "source": "https://example.com",
+                    "related_sources": ["https://example.com/detail"]
+                }
+            ]
+        }
+        second_message = SimpleNamespace(
+            content=json.dumps(final_payload, ensure_ascii=False),
+            reasoning_content=None,
+            refusal=None,
+            tool_calls=None
+        )
+        second_response = SimpleNamespace(
+            choices=[SimpleNamespace(message=second_message)],
+            usage=SimpleNamespace(
+                prompt_tokens=20,
+                completion_tokens=10,
+                total_tokens=30,
+                input_tokens_details={"cached_tokens": 3}
+            )
+        )
+
+        create_mock = Mock(side_effect=[first_response, second_response])
+        llm_client = SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(create=create_mock)
+            )
+        )
+
+        usage_records = []
+        result = manager._force_with_kimi_web_search(
+            llm_client=llm_client,
+            messages=[{"role": "user", "content": "analyze this"}],
+            model="kimi-k2.5",
+            temperature=0.1,
+            batch_mode=True,
+            usage_callback=usage_records.append
+        )
+
+        assert isinstance(result, BatchAnalysisResult)
+        assert len(result.results) == 1
+        assert result.results[0].category == "BlackSwan"
+        assert create_mock.call_count == 2
+
+        second_call_kwargs = create_mock.call_args_list[1].kwargs
+        assert second_call_kwargs["tools"][0]["function"]["name"] == "$web_search"
+        assert second_call_kwargs["messages"][-1]["role"] == "tool"
+        assert second_call_kwargs["messages"][-1]["content"] == '{"query":"btc etf latest"}'
+
+        assert len(usage_records) == 1
+        assert usage_records[0]["prompt_tokens"] == 30
+        assert usage_records[0]["completion_tokens"] == 15
+        assert usage_records[0]["total_tokens"] == 45
+        assert usage_records[0]["cached_tokens"] == 5
+
+    def test_force_with_kimi_web_search_refusal_raises_content_filter(self):
+        manager = StructuredOutputManager()
+
+        refusal_message = SimpleNamespace(
+            content="",
+            reasoning_content=None,
+            refusal="Request rejected by policy",
+            tool_calls=None
+        )
+        refusal_response = SimpleNamespace(
+            choices=[SimpleNamespace(message=refusal_message)],
+            usage=None
+        )
+        llm_client = SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(create=Mock(return_value=refusal_response))
+            )
+        )
+
+        with pytest.raises(ContentFilterError) as exc_info:
+            manager._force_with_kimi_web_search(
+                llm_client=llm_client,
+                messages=[{"role": "user", "content": "analyze this"}],
+                model="kimi-k2.5",
+                temperature=0.1,
+                batch_mode=True
+            )
+
+        assert exc_info.value.details["model"] == "kimi-k2.5"
+        assert exc_info.value.details["source"] == "message.refusal"
+
+    def test_build_kimi_web_search_tools(self):
+        manager = StructuredOutputManager()
+
+        tools = manager._build_kimi_web_search_tools()
+
+        assert len(tools) == 1
+        assert tools[0]["type"] == "builtin_function"
+        assert tools[0]["function"]["name"] == "$web_search"
+
+    def test_is_kimi_policy_refusal(self):
+        manager = StructuredOutputManager()
+
+        assert manager._is_kimi_policy_refusal("Request rejected by policy")
+        assert manager._is_kimi_policy_refusal("content_filter triggered")
+        assert manager._is_kimi_policy_refusal("considered high risk content")
+        assert not manager._is_kimi_policy_refusal("temporary network failure")
+
+    def test_raise_kimi_content_filter_error(self):
+        manager = StructuredOutputManager()
+
+        with pytest.raises(ContentFilterError) as exc_info:
+            manager._raise_kimi_content_filter_error(
+                model="kimi-k2.5",
+                error_text="Request rejected by policy",
+                details={"source": "message.refusal"}
+            )
+
+        assert exc_info.value.details["model"] == "kimi-k2.5"
+        assert exc_info.value.details["source"] == "message.refusal"
+        assert "original_error" in exc_info.value.details
 
     def test_clean_kimi_thinking(self):
         """测试清理Kimi thinking标签"""

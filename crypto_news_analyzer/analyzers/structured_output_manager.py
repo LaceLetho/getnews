@@ -457,128 +457,146 @@ class StructuredOutputManager:
         使用 Kimi 的 web_search 工具
 
         Kimi 使用标准的 OpenAI function calling API
-        参考：https://platform.moonshot.ai/docs/guide/use-web-search
+        官方文档：
+        https://platform.moonshot.ai/docs/guide/use-web-search#web_search-declaration
         """
         import json
 
         try:
             logger.info("启用 Kimi web_search 工具，使用标准 function calling")
 
-            # 选择响应模型
+            # 解析阶段仍然需要知道目标输出模型
             response_model = BatchAnalysisResult if batch_mode else StructuredAnalysisResult
 
-            # 定义 web_search 工具
-            # 注意：根据测试，Kimi 使用标准 function 类型，不是 builtin_function
-            # 参考：https://platform.moonshot.ai/docs/guide/use-web-search
-            tools = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "web_search",
-                        "description": "Search the internet for real-time information to verify news, get background details, or find latest updates about crypto projects, regulations, and market events",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {
-                                    "type": "string",
-                                    "description": "The search query to find relevant information"
-                                }
-                            },
-                            "required": ["query"]
-                        }
-                    }
-                }
-            ]
+            # Kimi 内置 web_search 需要使用 builtin_function 声明，不需要传参数 schema
+            # 官方说明见：
+            # https://platform.moonshot.ai/docs/guide/use-web-search#web_search-declaration
+            tools = self._build_kimi_web_search_tools()
 
             # 构建调用参数
             call_params = {
                 "model": model,
                 "messages": messages,
                 "tools": tools,
-                "temperature": temperature
+                "temperature": temperature,
+                "extra_body": {
+                    "thinking": {"type": "disabled"}
+                }
             }
 
             logger.info(f"调用 Kimi chat.completions.create，model={model}, tools=[web_search]")
 
-            # 第一次调用：让模型决定是否使用 web_search
             response = llm_client.chat.completions.create(**call_params)
 
-            # 检查是否有 tool calls
-            message = response.choices[0].message
-
-            # 捕获 thinking/reasoning_content（kimi k2.5 默认开启）
-            reasoning_content = getattr(message, 'reasoning_content', None)
-            if reasoning_content:
-                logger.info(f"============= Kimi Thinking =============")
-                logger.info(reasoning_content[:500] + "..." if len(reasoning_content) > 500 else reasoning_content)
-                logger.info(f"============= End Thinking =============")
-
-            final_reasoning = None
+            extended_messages = messages.copy()
+            current_response = response
             final_message = None
+            final_reasoning = None
+            max_tool_rounds = 3
+            usage_accumulator = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "cached_tokens": 0,
+            }
 
-            # 如果模型调用了 web_search 工具
-            if hasattr(message, 'tool_calls') and message.tool_calls:
-                logger.info(f"Kimi 决定使用 web_search 工具，调用次数: {len(message.tool_calls)}")
+            def accumulate_usage(resp: Any) -> None:
+                usage = getattr(resp, "usage", None)
+                if not usage:
+                    return
 
-                # 构建包含工具结果的消息历史
-                extended_messages = messages.copy()
-                assistant_msg = {
-                    "role": "assistant",
-                    "content": message.content or "",
-                    "tool_calls": [tc.model_dump() for tc in message.tool_calls],
-                    # kimi k2.5 强制启用 thinking，必须包含 reasoning_content 字段
-                    "reasoning_content": reasoning_content if reasoning_content else ""
-                }
-                extended_messages.append(assistant_msg)
+                usage_accumulator["prompt_tokens"] += getattr(usage, "prompt_tokens", 0)
+                usage_accumulator["completion_tokens"] += getattr(usage, "completion_tokens", 0)
+                usage_accumulator["total_tokens"] += getattr(usage, "total_tokens", 0)
 
-                    # 为每个 tool call 添加结果
-                    # 注意：对于标准 function 类型，客户端需要实际执行搜索并返回结果
-                    # 这里我们返回空结果，实际项目中应该调用搜索引擎 API
-                for tool_call in message.tool_calls:
-                    extended_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": "{}"  # 实际项目中应该返回搜索结果
-                    })
+                cached_tokens = getattr(usage, "cached_tokens", None)
+                if cached_tokens is None:
+                    input_tokens_details = getattr(usage, "input_tokens_details", None)
+                    if isinstance(input_tokens_details, dict):
+                        cached_tokens = input_tokens_details.get("cached_tokens", 0)
+                    else:
+                        cached_tokens = getattr(input_tokens_details, "cached_tokens", 0)
+                usage_accumulator["cached_tokens"] += cached_tokens or 0
 
-                # 第二次调用：获取最终响应
-                # 注意：使用 tools 后，不能同时使用 response_format
-                final_params = {
-                    "model": model,
-                    "messages": extended_messages,
-                    "temperature": temperature
-                    # 移除 response_format，因为与 tool calling 不兼容
-                }
+            accumulate_usage(response)
 
-                final_response = llm_client.chat.completions.create(**final_params)
-                final_message = final_response.choices[0].message
-                content = final_message.content or ""  # 确保不为 None
+            for round_index in range(max_tool_rounds):
+                message = current_response.choices[0].message
 
-                # 捕获第二次调用的 reasoning_content
-                final_reasoning = getattr(final_message, 'reasoning_content', None)
-                if final_reasoning:
-                    logger.info(f"============= Kimi Final Thinking =============")
-                    logger.info(final_reasoning[:500] + "..." if len(final_reasoning) > 500 else final_reasoning)
-                    logger.info(f"============= End Final Thinking =============")
+                refusal_text = getattr(message, "refusal", None)
+                if refusal_text:
+                    self._raise_kimi_content_filter_error(
+                        model=model,
+                        error_text=str(refusal_text),
+                        details={
+                            "source": "message.refusal",
+                            "round": round_index + 1,
+                        }
+                    )
 
-            else:
-                # 模型没有调用工具，直接使用响应
-                content = message.content or ""
+                reasoning_content = getattr(message, "reasoning_content", None)
+                if reasoning_content:
+                    preview = reasoning_content[:500]
+                    logger.info("============= Kimi Thinking =============")
+                    logger.info(preview + "..." if len(reasoning_content) > 500 else preview)
+                    logger.info("============= End Thinking =============")
 
-                # 如果 content 为空但 reasoning_content 有内容，尝试从 reasoning_content 中提取 JSON
-                if not content and reasoning_content:
-                    logger.warning("Kimi content 为空，尝试从 reasoning_content 中提取 JSON")
-                    content = reasoning_content
+                tool_calls = getattr(message, "tool_calls", None)
+                if tool_calls:
+                    logger.info(f"Kimi 决定使用 web_search 工具，调用次数: {len(tool_calls)}")
+
+                    assistant_msg = {
+                        "role": "assistant",
+                        "content": message.content or "",
+                        "tool_calls": [tc.model_dump() for tc in tool_calls],
+                        "reasoning_content": reasoning_content or ""
+                    }
+                    extended_messages.append(assistant_msg)
+
+                    for tool_call in tool_calls:
+                        function_obj = getattr(tool_call, "function", None)
+                        arguments = getattr(function_obj, "arguments", "")
+                        tool_name = getattr(function_obj, "name", "$web_search")
+
+                        if not isinstance(arguments, str):
+                            arguments = json.dumps(arguments, ensure_ascii=False)
+
+                        extended_messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "name": tool_name,
+                            "content": arguments
+                        })
+
+                    current_response = llm_client.chat.completions.create(
+                        model=model,
+                        messages=extended_messages,
+                        tools=tools,
+                        temperature=temperature,
+                        extra_body={
+                            "thinking": {"type": "disabled"}
+                        }
+                    )
+                    accumulate_usage(current_response)
+                    continue
+
+                final_message = message
+                final_reasoning = reasoning_content
+                break
+
+            if final_message is None:
+                final_message = current_response.choices[0].message
+                final_reasoning = getattr(final_message, "reasoning_content", None)
+
+            content = final_message.content or ""
+
+            if not content and final_reasoning:
+                logger.warning("Kimi content 为空，尝试从 reasoning_content 中提取 JSON")
+                content = final_reasoning
 
             # 提取token使用情况
-            if usage_callback and hasattr(response, 'usage') and response.usage:
-                usage_data = {
-                    'model': model,
-                    'prompt_tokens': getattr(response.usage, 'prompt_tokens', 0),
-                    'completion_tokens': getattr(response.usage, 'completion_tokens', 0),
-                    'total_tokens': getattr(response.usage, 'total_tokens', 0),
-                    'cached_tokens': 0
-                }
+            if usage_callback and any(usage_accumulator.values()):
+                usage_data = {"model": model, **usage_accumulator}
                 usage_callback(usage_data)
 
             parse_candidates: List[str] = []
@@ -591,7 +609,7 @@ class StructuredOutputManager:
             add_candidate(final_reasoning)
             add_candidate(reasoning_content)
 
-            parse_message = final_message if final_message is not None else message
+            parse_message = final_message if final_message is not None else current_response.choices[0].message
             tool_calls = getattr(parse_message, 'tool_calls', None)
             if tool_calls:
                 for tool_call in tool_calls:
@@ -640,19 +658,89 @@ class StructuredOutputManager:
             raise ValueError("Kimi 响应无法解析为有效 JSON")
 
         except Exception as e:
+            from ..utils.errors import ContentFilterError
+
+            if isinstance(e, ContentFilterError):
+                raise
+
             error_msg = str(e)
-            # 检查是否是内容过滤错误
-            if "content_filter" in error_msg.lower() or "high risk" in error_msg.lower() or "considered high risk" in error_msg.lower():
-                logger.error(f"Kimi 内容过滤触发，无法完成分析: {e}")
-                # 抛出特定的内容过滤错误，让上层处理模型切换
-                from ..utils.errors import ContentFilterError
-                raise ContentFilterError(
-                    message=f"Kimi API 内容过滤触发: {e}",
-                    model=model,
-                    details={"original_error": error_msg}
-                )
+            if self._is_kimi_policy_refusal(error_msg):
+                logger.error(f"Kimi 内容过滤或策略拒答触发，无法完成分析: {e}")
+                self._raise_kimi_content_filter_error(model=model, error_text=error_msg)
             logger.error(f"使用 Kimi web_search 失败: {e}")
             raise
+
+    def _build_kimi_web_search_tools(self) -> List[Dict[str, Any]]:
+        """
+        构建 Kimi 内置 web_search 工具声明。
+
+        参考官方文档：
+        https://platform.moonshot.ai/docs/guide/use-web-search#web_search-declaration
+
+        Returns:
+            Kimi tool declaration list
+        """
+        return [
+            {
+                "type": "builtin_function",
+                "function": {
+                    "name": "$web_search",
+                },
+            }
+        ]
+
+    def _is_kimi_policy_refusal(self, error_text: Optional[str]) -> bool:
+        """
+        判断是否属于 Kimi 的内容过滤或策略拒答。
+
+        Args:
+            error_text: 错误文本
+
+        Returns:
+            是否属于拒答类错误
+        """
+        if not error_text:
+            return False
+
+        normalized = error_text.lower()
+        refusal_markers = [
+            "content_filter",
+            "high risk",
+            "considered high risk",
+            "policy",
+            "refusal",
+            "refused",
+            "rejected",
+            "unsafe",
+            "safety",
+        ]
+        return any(marker in normalized for marker in refusal_markers)
+
+    def _raise_kimi_content_filter_error(
+        self,
+        model: str,
+        error_text: str,
+        details: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        统一抛出 Kimi 内容过滤异常，方便上层做模型切换。
+
+        Args:
+            model: 模型名称
+            error_text: 原始错误文本
+            details: 额外细节
+        """
+        from ..utils.errors import ContentFilterError
+
+        payload = {"original_error": error_text}
+        if details:
+            payload.update(details)
+
+        raise ContentFilterError(
+            message=f"Kimi API 内容过滤或策略拒答触发: {error_text}",
+            model=model,
+            details=payload
+        )
 
     def _force_with_instructor(
         self,
