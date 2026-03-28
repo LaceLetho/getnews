@@ -637,6 +637,9 @@ class TestKimiIntegration:
         assert create_mock.call_count == 2
 
         second_call_kwargs = create_mock.call_args_list[1].kwargs
+        first_call_kwargs = create_mock.call_args_list[0].kwargs
+        assert first_call_kwargs["response_format"] == {"type": "json_object"}
+        assert second_call_kwargs["response_format"] == {"type": "json_object"}
         assert second_call_kwargs["tools"][0]["function"]["name"] == "$web_search"
         assert second_call_kwargs["messages"][-1]["role"] == "tool"
         assert second_call_kwargs["messages"][-1]["content"] == '{"query":"btc etf latest"}'

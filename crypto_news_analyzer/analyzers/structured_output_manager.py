@@ -456,7 +456,8 @@ class StructuredOutputManager:
         """
         使用 Kimi 的 web_search 工具
 
-        Kimi 使用标准的 OpenAI function calling API
+        Kimi 使用 OpenAI 兼容的 tool use 接口，并通过 response_format
+        启用 JSON mode，以提高最终结构化输出的可解析性。
         官方文档：
         https://platform.moonshot.ai/docs/guide/use-web-search#web_search-declaration
         """
@@ -473,12 +474,13 @@ class StructuredOutputManager:
             # https://platform.moonshot.ai/docs/guide/use-web-search#web_search-declaration
             tools = self._build_kimi_web_search_tools()
 
-            # 构建调用参数
+            # 构建调用参数。response_format 使用 Moonshot JSON Mode。
             call_params = {
                 "model": model,
                 "messages": messages,
                 "tools": tools,
                 "temperature": temperature,
+                "response_format": {"type": "json_object"},
                 "extra_body": {
                     "thinking": {"type": "disabled"}
                 }
@@ -573,6 +575,7 @@ class StructuredOutputManager:
                         messages=extended_messages,
                         tools=tools,
                         temperature=temperature,
+                        response_format={"type": "json_object"},
                         extra_body={
                             "thinking": {"type": "disabled"}
                         }
