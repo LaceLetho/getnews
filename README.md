@@ -16,6 +16,8 @@
 - 🌐 **HTTP API**: 支持 Bearer Token 鉴权的异步分析接口（`POST /analyze` 创建任务，轮询获取结果）
 - 🤖 **Telegram 手动分析**: 支持 `/analyze [hours]` 按时间窗口触发分析
 
+如果你要通过 HTTP API 调用新闻分析接口，或你是一个需要自动调用接口的 AI，请先阅读 [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)。该文档包含最新的请求体要求、鉴权方式、异步轮询流程和生产环境验证结果。
+
 ## 项目结构
 
 ```
@@ -177,26 +179,6 @@ uv run pytest tests/
 uv run pytest tests/test_minimax_llm_analyzer.py -v
 ```
 
-## MiniMax M2.1 集成
-
-本系统集成了 MiniMax M2.1 大语言模型进行智能内容分析：
-
-### 支持的分类类别
-
-- **大户动向**: 巨鲸资金流动和态度变化
-- **利率事件**: 美联储相关的利率政策事件  
-- **美国政府监管政策**: 美国政府对加密货币的监管政策变化
-- **真相**: 揭露行业内幕、利益关系和不为人知的真相
-- **新产品**: KOL提及的真正创新产品
-- **市场新现象**: 重要的市场新趋势和变化
-
-### API 配置
-
-1. 访问 [MiniMax 平台](https://platform.minimax.io)
-2. 创建账户并生成 API Key
-3. 将 API Key 添加到 `.env` 文件中
-
-详细的集成文档请参考 `docs/integration/minimax_integration_summary.md`
 
 ## Telegram 命令功能
 
@@ -244,18 +226,8 @@ TELEGRAM_AUTHORIZED_USERS=@user1,@user2,@user3
 TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 ```
 
-#### 如何获取 Telegram 用户 ID
 
-1. 在 Telegram 中搜索 `@userinfobot`
-2. 发送 `/start` 命令
-3. Bot 会返回你的用户 ID
 
-#### 用户名解析说明
-
-- 使用用户名时，bot 必须先与该用户互动过，或者用户有公开的 profile
-- 如果用户名解析失败，系统会记录警告并跳过该用户名
-- 建议对关键用户使用用户 ID 作为备份
-- 所有授权用户都有相同的权限，可以执行所有命令（/run, /analyze, /status, /help, /market, /tokens）
 
 ### 速率限制
 
@@ -266,6 +238,9 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 可在 `config.json` 的 `telegram_commands.command_rate_limit` 中调整。
 
 ## HTTP API（`--mode api-server`）
+
+调用 `POST /analyze` 前，建议先阅读 [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)。
+对 AI 代理尤其重要：该文档说明了真实必填参数、错误响应样例，以及正确的 `POST /analyze -> 轮询状态 -> 获取结果` 工作流。
 
 ### 认证方式
 
@@ -356,23 +331,6 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 2. 选择 "Deploy from GitHub repo"
 3. 在 Variables 中配置环境变量（LLM_API_KEY、TELEGRAM_BOT_TOKEN、TELEGRAM_CHANNEL_ID、TELEGRAM_AUTHORIZED_USERS、API_KEY）
 4. Railway 会自动检测 Dockerfile 并部署
-
-## 开发状态
-
-当前项目处于开发阶段，已完成：
-
-✅ 项目结构搭建  
-✅ 配置管理系统  
-✅ 日志系统  
-✅ 错误处理框架  
-✅ RSS 爬取器  
-✅ X/Twitter 爬取器  
-✅ MiniMax M2.1 LLM 分析器  
-✅ 数据存储管理  
-✅ 完整的测试套件  
-✅ Railway 部署支持  
-
-待开发功能请参考 `.kiro/specs/crypto-news-analyzer/tasks.md`
 
 ## 许可证
 
