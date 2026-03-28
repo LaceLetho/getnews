@@ -437,6 +437,30 @@ class TestLLMAnalyzer:
 
         assert formatted == raw_prompt
 
+    def test_format_user_prompt_for_logging_truncates_long_text(self):
+        analyzer = LLMAnalyzer(mock_mode=True)
+
+        raw_prompt = "A" * 5000 + "B" * 5000
+
+        formatted = analyzer._format_user_prompt_for_logging(raw_prompt)
+
+        assert "... [日志截断，省略 2000 字符] ..." in formatted
+        assert formatted.startswith("A" * 4000)
+        assert formatted.endswith("B" * 4000)
+        assert len(formatted) > 8000
+
+    def test_format_user_prompt_for_logging_keeps_full_text_when_debug_enabled(self):
+        analyzer = LLMAnalyzer(
+            mock_mode=True,
+            config={"llm_config": {"enable_debug_logging": True}},
+        )
+
+        raw_prompt = "A" * 5000 + "B" * 5000
+
+        formatted = analyzer._format_user_prompt_for_logging(raw_prompt)
+
+        assert formatted == raw_prompt
+
     @patch("crypto_news_analyzer.analyzers.llm_analyzer.OpenAI")
     def test_kimi_content_filter_fallback_uses_configured_grok_with_search(
         self,

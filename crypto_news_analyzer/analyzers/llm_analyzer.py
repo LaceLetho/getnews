@@ -657,6 +657,7 @@ class LLMAnalyzer:
 
         当 user_prompt 是包含 message 字段的 JSON 字符串时，只输出
         message 的内容，并保留换行等可读格式；否则返回原始内容。
+        对超长提示词进行截断，避免生产日志因单条消息过大而难以阅读。
         """
         if not user_prompt:
             return user_prompt
@@ -664,13 +665,42 @@ class LLMAnalyzer:
         try:
             prompt_payload = json.loads(user_prompt)
         except (TypeError, json.JSONDecodeError):
-            return user_prompt
+            return self._truncate_text_for_logging(user_prompt)
 
         if not isinstance(prompt_payload, dict):
-            return user_prompt
+            return self._truncate_text_for_logging(user_prompt)
 
         message = prompt_payload.get("message")
-        return message if isinstance(message, str) else user_prompt
+        raw_text = message if isinstance(message, str) else user_prompt
+        return self._truncate_text_for_logging(raw_text)
+
+    def _truncate_text_for_logging(self, text: str, max_length: int = 8000) -> str:
+        """
+        截断过长日志文本，保留首尾上下文。
+
+        Args:
+            text: 待输出文本
+            max_length: 允许输出的最大字符数
+
+        Returns:
+            适合日志输出的文本
+        """
+        enable_debug = self.config.get("llm_config", {}).get("enable_debug_logging", False)
+        if enable_debug:
+            return text
+
+        if not text or len(text) <= max_length:
+            return text
+
+        head_length = max_length // 2
+        tail_length = max_length - head_length
+        omitted_chars = len(text) - max_length
+
+        return (
+            f"{text[:head_length]}\n\n"
+            f"... [日志截断，省略 {omitted_chars} 字符] ...\n\n"
+            f"{text[-tail_length:]}"
+        )
 
     def _log_final_prompt(self, system_prompt: str, user_prompt: str, batch_number: int) -> None:
         """
