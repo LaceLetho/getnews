@@ -650,6 +650,28 @@ class LLMAnalyzer:
         prompt_parts.append("\n\n请按照要求输出JSON格式的分析结果。")
         
         return "\n".join(prompt_parts)
+
+    def _format_user_prompt_for_logging(self, user_prompt: str) -> str:
+        """
+        格式化用户提示词日志输出。
+
+        当 user_prompt 是包含 message 字段的 JSON 字符串时，只输出
+        message 的内容，并保留换行等可读格式；否则返回原始内容。
+        """
+        if not user_prompt:
+            return user_prompt
+
+        try:
+            prompt_payload = json.loads(user_prompt)
+        except (TypeError, json.JSONDecodeError):
+            return user_prompt
+
+        if not isinstance(prompt_payload, dict):
+            return user_prompt
+
+        message = prompt_payload.get("message")
+        return message if isinstance(message, str) else user_prompt
+
     def _log_final_prompt(self, system_prompt: str, user_prompt: str, batch_number: int) -> None:
         """
         以用户友好的方式打印最终发送给LLM的完整提示词
@@ -674,7 +696,7 @@ class LLMAnalyzer:
         # 打印用户提示词
         self.logger.info("👤 用户提示词 (User Prompt):")
         self.logger.info(f"{'-' * 80}")
-        self.logger.info(user_prompt)
+        self.logger.info(self._format_user_prompt_for_logging(user_prompt))
         self.logger.info(f"{'-' * 80}\n")
 
         # 打印统计信息

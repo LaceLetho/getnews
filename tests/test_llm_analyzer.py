@@ -415,6 +415,28 @@ class TestLLMAnalyzer:
         assert "- 第一批实际输出标题" in captured_user_prompts[1]
         assert "第一批原始输入标题" not in captured_user_prompts[1]
 
+    def test_format_user_prompt_for_logging_extracts_message_from_json(self):
+        analyzer = LLMAnalyzer(mock_mode=True)
+
+        raw_prompt = (
+            '{"timestamp": "2026-03-28T04:15:17.%fZ", '
+            '"level": "INFO", '
+            '"message": "第一行\\n\\n--- 消息 1 ---\\n内容: 示例内容"}'
+        )
+
+        formatted = analyzer._format_user_prompt_for_logging(raw_prompt)
+
+        assert formatted == "第一行\n\n--- 消息 1 ---\n内容: 示例内容"
+
+    def test_format_user_prompt_for_logging_keeps_plain_text(self):
+        analyzer = LLMAnalyzer(mock_mode=True)
+
+        raw_prompt = "# News\n内容: 普通提示词"
+
+        formatted = analyzer._format_user_prompt_for_logging(raw_prompt)
+
+        assert formatted == raw_prompt
+
     @patch("crypto_news_analyzer.analyzers.llm_analyzer.OpenAI")
     def test_kimi_content_filter_fallback_uses_configured_grok_with_search(
         self,
