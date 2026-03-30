@@ -58,3 +58,7 @@ DEBUG.md
 # opencode configuration
 opencode.json
 .opencode/
+
+# local workflow metadata
+.worktrees/
+.sisyphus/boulder.json
