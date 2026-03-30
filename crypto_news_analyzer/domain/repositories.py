@@ -1,0 +1,320 @@
+"""
+Repository Interfaces - Shared Domain Contracts
+
+Abstract base classes defining the storage operations that can be implemented
+by different backends (SQLite, PostgreSQL, etc.).
+
+Version: 1.0.0
+"""
+
+from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import List, Optional, Dict, Any
+
+from .models import AnalysisRequest, IngestionJob
+
+
+class AnalysisRepository(ABC):
+    """
+    Abstract repository for AnalysisRequest entities.
+    
+    Implementations must handle:
+    - Job persistence with status transitions
+    - Querying jobs by recipient, status, time range
+    - Concurrent access (if applicable)
+    """
+    
+    @abstractmethod
+    def save(self, request: AnalysisRequest) -> None:
+        """Save or update an AnalysisRequest"""
+        pass
+    
+    @abstractmethod
+    def get_by_id(self, request_id: str) -> Optional[AnalysisRequest]:
+        """Get AnalysisRequest by ID"""
+        pass
+    
+    @abstractmethod
+    def get_by_recipient(
+        self,
+        recipient_key: str,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[AnalysisRequest]:
+        """
+        Get AnalysisRequests for a recipient
+        
+        Args:
+            recipient_key: The recipient identifier
+            status: Filter by status (optional)
+            limit: Maximum results to return
+        """
+        pass
+    
+    @abstractmethod
+    def get_pending_jobs(
+        self,
+        limit: int = 10,
+        min_priority: int = 1,
+    ) -> List[AnalysisRequest]:
+        """
+        Get pending jobs sorted by priority and creation time
+        
+        Args:
+            limit: Maximum jobs to return
+            min_priority: Minimum priority level
+        """
+        pass
+    
+    @abstractmethod
+    def update_status(
+        self,
+        request_id: str,
+        status: str,
+        error_message: Optional[str] = None,
+    ) -> bool:
+        """
+        Update job status
+        
+        Args:
+            request_id: Job ID
+            status: New status value
+            error_message: Error message (for failed status)
+        
+        Returns:
+            True if update succeeded
+        """
+        pass
+    
+    @abstractmethod
+    def complete_job(
+        self,
+        request_id: str,
+        result: Dict[str, Any],
+    ) -> bool:
+        """
+        Mark job as completed with result
+        
+        Args:
+            request_id: Job ID
+            result: Analysis result data
+        
+        Returns:
+            True if update succeeded
+        """
+        pass
+    
+    @abstractmethod
+    def get_last_successful_analysis(
+        self,
+        recipient_key: str,
+    ) -> Optional[datetime]:
+        """
+        Get timestamp of last successful analysis for recipient
+        
+        Used for calculating time windows in subsequent analyses.
+        """
+        pass
+
+
+class IngestionRepository(ABC):
+    """
+    Abstract repository for IngestionJob entities.
+    
+    Implementations must handle:
+    - Job persistence with status transitions
+    - Querying jobs by source, status, time range
+    - Aggregation for statistics
+    """
+    
+    @abstractmethod
+    def save(self, job: IngestionJob) -> None:
+        """Save or update an IngestionJob"""
+        pass
+    
+    @abstractmethod
+    def get_by_id(self, job_id: str) -> Optional[IngestionJob]:
+        """Get IngestionJob by ID"""
+        pass
+    
+    @abstractmethod
+    def get_by_source(
+        self,
+        source_type: str,
+        source_name: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[IngestionJob]:
+        """
+        Get IngestionJobs for a source
+        
+        Args:
+            source_type: Source type ("rss", "x", "api")
+            source_name: Specific source name (optional)
+            status: Filter by status (optional)
+            limit: Maximum results to return
+        """
+        pass
+    
+    @abstractmethod
+    def get_pending_jobs(self, limit: int = 10) -> List[IngestionJob]:
+        """Get pending ingestion jobs"""
+        pass
+    
+    @abstractmethod
+    def update_status(
+        self,
+        job_id: str,
+        status: str,
+        error_message: Optional[str] = None,
+    ) -> bool:
+        """Update job status"""
+        pass
+    
+    @abstractmethod
+    def complete_job(
+        self,
+        job_id: str,
+        items_crawled: int,
+        items_new: int,
+    ) -> bool:
+        """
+        Mark job as completed with statistics
+        
+        Args:
+            job_id: Job ID
+            items_crawled: Total items crawled
+            items_new: New (non-duplicate) items
+        """
+        pass
+    
+    @abstractmethod
+    def get_statistics(
+        self,
+        since: datetime,
+        source_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get ingestion statistics
+        
+        Args:
+            since: Start time for statistics
+            source_type: Filter by source type (optional)
+        
+        Returns:
+            Dictionary with statistics:
+            - total_jobs
+            - completed_jobs
+            - failed_jobs
+            - total_items_crawled
+            - total_items_new
+        """
+        pass
+
+
+class ContentRepository(ABC):
+    """
+    Abstract repository for content items.
+    
+    Implementations must handle:
+    - Content deduplication (by hash)
+    - Time-range queries for analysis
+    - Source filtering
+    """
+    
+    @abstractmethod
+    def save(self, content: Dict[str, Any]) -> bool:
+        """
+        Save content item if not duplicate
+        
+        Returns:
+            True if saved (not duplicate), False if duplicate
+        """
+        pass
+    
+    @abstractmethod
+    def get_by_time_range(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        source_type: Optional[str] = None,
+        source_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get content items within time range
+        
+        Args:
+            start_time: Start of time range (inclusive)
+            end_time: End of time range (inclusive)
+            source_type: Filter by source type (optional)
+            source_name: Filter by source name (optional)
+        """
+        pass
+    
+    @abstractmethod
+    def exists_by_hash(self, content_hash: str) -> bool:
+        """Check if content with given hash already exists"""
+        pass
+    
+    @abstractmethod
+    def get_count_since(
+        self,
+        since: datetime,
+        source_type: Optional[str] = None,
+    ) -> int:
+        """Get count of items since timestamp"""
+        pass
+
+
+class CacheRepository(ABC):
+    """
+    Abstract repository for cached sent messages.
+    
+    Used for deduplication across analysis runs.
+    """
+    
+    @abstractmethod
+    def save_sent_message(
+        self,
+        recipient_key: str,
+        title: str,
+        body: str,
+        category: str,
+        sent_at: datetime,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Record a sent message for deduplication"""
+        pass
+    
+    @abstractmethod
+    def get_titles_since(
+        self,
+        recipient_key: str,
+        since: datetime,
+    ) -> List[str]:
+        """
+        Get titles of messages sent since timestamp
+        
+        Used to build historical_titles for deduplication.
+        """
+        pass
+    
+    @abstractmethod
+    def exists_by_title(
+        self,
+        recipient_key: str,
+        title: str,
+        since: datetime,
+    ) -> bool:
+        """Check if message with title was already sent since timestamp"""
+        pass
+    
+    @abstractmethod
+    def cleanup_expired(self, before: datetime) -> int:
+        """
+        Remove cache entries older than timestamp
+        
+        Returns:
+            Number of entries removed
+        """
+        pass
