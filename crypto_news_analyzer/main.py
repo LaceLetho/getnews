@@ -9,6 +9,8 @@ import sys
 import os
 import argparse
 import logging
+import threading
+import signal
 from pathlib import Path
 
 from .execution_coordinator import MainController, run_one_time_execution, run_scheduled_mode
@@ -24,8 +26,8 @@ def main():
     
     # 解析命令行参数
     parser = argparse.ArgumentParser(description="加密货币新闻分析工具")
-    parser.add_argument("--mode", choices=["once", "schedule", "api-server"], default="once",
-                       help="运行模式: once=一次性执行, schedule=定时调度, api-server=API服务器模式")
+    parser.add_argument("--mode", choices=["once", "schedule", "api-server", "scheduler", "api-only", "ingestion"], default="once",
+                       help="运行模式: once=一次性执行, schedule=定时调度, api-server=API服务器模式(向后兼容), scheduler=仅启动调度器, api-only=仅API服务(无调度器), ingestion=仅数据摄取服务")
     parser.add_argument("--config", default="./config.json",
                        help="配置文件路径")
     
@@ -38,11 +40,20 @@ def main():
             # 一次性执行模式
             exit_code = run_one_time_execution(args.config)
         elif args.mode == "schedule":
-            # 定时调度模式
+            # 定时调度模式（向后兼容）
             exit_code = run_scheduled_mode(args.config)
+        elif args.mode == "scheduler":
+            # 仅启动调度器（Railway拆分架构：ingestion服务）
+            exit_code = run_scheduler_only(args.config)
         elif args.mode == "api-server":
-            # API服务器模式
+            # API服务器模式（向后兼容，包含调度器和Telegram监听）
             exit_code = run_api_server(args.config)
+        elif args.mode == "api-only":
+            # 仅API服务模式（Railway拆分架构：analysis服务，无调度器/监听）
+            exit_code = run_api_server_isolated(args.config)
+        elif args.mode == "ingestion":
+            # 仅数据摄取服务（Railway拆分架构：ingestion服务）
+            exit_code = run_ingestion_service(args.config)
         else:
             logger.error(f"未知的运行模式: {args.mode}")
             exit_code = 1
@@ -60,34 +71,134 @@ def main():
 
 def run_api_server(config_path: str = "./config.json") -> int:
     """
-    运行HTTP API服务器
-    
+    运行HTTP API服务器（向后兼容模式，包含调度器和Telegram监听）
+
     Args:
         config_path: 配置文件路径
-        
+
     Returns:
         退出状态码
     """
     import uvicorn
     from .api_server import create_api_server
-    
+
     logger = logging.getLogger(__name__)
-    logger.info("启动API服务器模式")
-    
+    logger.info("启动API服务器模式（向后兼容，包含调度器和Telegram监听）")
+
     try:
-        app = create_api_server(config_path)
-        
+        app = create_api_server(config_path, start_services=True)
+
         # 从环境变量获取配置，或使用默认值
         host = os.environ.get("API_HOST", "0.0.0.0")
         port = int(os.environ.get("API_PORT", "8080"))
-        
+
         logger.info(f"API服务器启动在 {host}:{port}")
         uvicorn.run(app, host=host, port=port)
-        
+
         return 0
     except Exception as e:
         logger.error(f"API服务器启动失败: {e}")
         return 1
+
+
+def run_api_server_isolated(config_path: str = "./config.json") -> int:
+    """
+    运行隔离的HTTP API服务器（Railway拆分架构：analysis服务）
+
+    此模式仅提供HTTP API端点，不启动调度器或Telegram命令监听。
+    用于Railway拆分部署中的公共API服务。
+
+    Args:
+        config_path: 配置文件路径
+
+    Returns:
+        退出状态码
+    """
+    import uvicorn
+    from .api_server import create_api_server
+
+    logger = logging.getLogger(__name__)
+    logger.info("启动隔离的API服务器模式（Railway analysis服务）")
+
+    try:
+        # start_services=False 确保不启动调度器和Telegram监听
+        app = create_api_server(config_path, start_services=False)
+
+        host = os.environ.get("API_HOST", "0.0.0.0")
+        port = int(os.environ.get("API_PORT", "8080"))
+
+        logger.info(f"隔离的API服务器启动在 {host}:{port}（无调度器/监听）")
+        uvicorn.run(app, host=host, port=port)
+
+        return 0
+    except Exception as e:
+        logger.error(f"隔离的API服务器启动失败: {e}")
+        return 1
+
+
+def run_scheduler_only(config_path: str = "./config.json") -> int:
+    """
+    仅运行调度器（Railway拆分架构：ingestion服务）
+
+    此模式仅启动定时调度器，执行数据爬取任务，不提供HTTP API或Telegram监听。
+    用于Railway拆分部署中的私有ingestion服务。
+
+    Args:
+        config_path: 配置文件路径
+
+    Returns:
+        退出状态码
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("启动调度器专用模式（Railway ingestion服务）")
+
+    try:
+        controller = MainController(config_path)
+        if not controller.initialize_system():
+            logger.error("系统初始化失败")
+            return 1
+
+        # 仅启动调度器，不启动API或Telegram监听
+        controller.start_scheduler()
+        logger.info("调度器已启动，等待任务执行...")
+
+        stop_event = threading.Event()
+
+        def signal_handler(signum, frame):
+            logger.info(f"接收到信号 {signum}，正在停止调度器...")
+            stop_event.set()
+
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        # 等待停止信号
+        while not stop_event.is_set():
+            stop_event.wait(1)
+
+        logger.info("调度器已停止")
+        return 0
+    except Exception as e:
+        logger.error(f"调度器模式启动失败: {e}")
+        return 1
+
+
+def run_ingestion_service(config_path: str = "./config.json") -> int:
+    """
+    运行数据摄取服务（Railway拆分架构：ingestion服务）
+
+    此模式与scheduler模式相同，仅启动定时数据爬取，不提供分析功能。
+    语义上更清晰地表达这是专门的数据摄取服务。
+
+    Args:
+        config_path: 配置文件路径
+
+    Returns:
+        退出状态码
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("启动数据摄取服务模式（Railway ingestion服务）")
+    # ingestion模式等同于scheduler模式
+    return run_scheduler_only(config_path)
 
 
 def initialize_system(config_path: str = "./config.json") -> tuple:

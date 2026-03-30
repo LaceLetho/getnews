@@ -63,28 +63,74 @@ cleanup() {
 # 设置信号处理
 trap cleanup SIGTERM SIGINT
 
+# 验证RAILWAY_SERVICE_NAME环境变量（Railway拆分架构）
+validate_railway_service() {
+    if [[ -z "$RAILWAY_SERVICE_NAME" ]]; then
+        return 0
+    fi
+
+    log_info "检测到Railway服务部署: $RAILWAY_SERVICE_NAME"
+
+    case "$RAILWAY_SERVICE_NAME" in
+        "crypto-news-ingestion")
+            log_info "Railway服务: ingestion服务（私有）- 仅数据爬取"
+            ;;
+        "crypto-news-analysis")
+            log_info "Railway服务: analysis服务（公共）- API + Telegram"
+            ;;
+        "crypto-news-api")
+            log_info "Railway服务: API服务（公共）- 仅HTTP API"
+            ;;
+        *)
+            log_warn "未知的RAILWAY_SERVICE_NAME: $RAILWAY_SERVICE_NAME"
+            log_warn "期望的值: crypto-news-ingestion, crypto-news-analysis, crypto-news-api"
+            ;;
+    esac
+}
+
+# 根据RAILWAY_SERVICE_NAME获取对应的运行模式
+get_mode_from_railway_service() {
+    case "$RAILWAY_SERVICE_NAME" in
+        "crypto-news-ingestion")
+            echo "ingestion"
+            ;;
+        "crypto-news-analysis")
+            echo "api-server"
+            ;;
+        "crypto-news-api")
+            echo "api-only"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
 # 验证环境变量
 validate_environment() {
     log_info "验证环境变量配置..."
-    
+
     local validation_failed=false
-    
+
+    # 验证Railway服务名称（如果设置）
+    validate_railway_service
+
     # 验证数值类型的环境变量
     if [[ -n "$TIME_WINDOW_HOURS" ]] && ! [[ "$TIME_WINDOW_HOURS" =~ ^[0-9]+$ ]]; then
         log_error "TIME_WINDOW_HOURS 必须是正整数，当前值: $TIME_WINDOW_HOURS"
         validation_failed=true
     fi
-    
+
     if [[ -n "$EXECUTION_INTERVAL" ]] && ! [[ "$EXECUTION_INTERVAL" =~ ^[0-9]+$ ]]; then
         log_error "EXECUTION_INTERVAL 必须是正整数，当前值: $EXECUTION_INTERVAL"
         validation_failed=true
     fi
-    
+
     # 验证配置文件路径
     if [[ -n "$CONFIG_PATH" ]] && [[ ! -f "$CONFIG_PATH" ]]; then
         log_warn "配置文件不存在: $CONFIG_PATH，将使用默认配置"
     fi
-    
+
     # 验证必要目录
     local required_dirs=("/app/data" "/app/logs" "/app/prompts")
     for dir in "${required_dirs[@]}"; do
@@ -93,23 +139,23 @@ validate_environment() {
             mkdir -p "$dir"
         fi
     done
-    
+
     # 验证权限
     if [[ ! -w "/app/data" ]]; then
         log_error "数据目录不可写: /app/data"
         validation_failed=true
     fi
-    
+
     if [[ ! -w "/app/logs" ]]; then
         log_error "日志目录不可写: /app/logs"
         validation_failed=true
     fi
-    
+
     if [[ "$validation_failed" == "true" ]]; then
         log_error "环境验证失败，退出"
         exit 1
     fi
-    
+
     log_info "环境验证通过"
 }
 
@@ -195,36 +241,51 @@ health_check() {
 
 # 主函数
 main() {
-    local mode="${1:-once}"
-    
+    local mode="${1:-}"
+
+    # Railway服务拆分：如果设置了RAILWAY_SERVICE_NAME，优先使用它
+    if [[ -n "$RAILWAY_SERVICE_NAME" ]]; then
+        local railway_mode
+        railway_mode=$(get_mode_from_railway_service)
+        if [[ -n "$railway_mode" ]]; then
+            mode="$railway_mode"
+            log_info "使用Railway服务模式: $RAILWAY_SERVICE_NAME -> $mode"
+        fi
+    fi
+
+    # 如果仍然没有模式，使用默认值
+    if [[ -z "$mode" ]]; then
+        mode="once"
+    fi
+
     log_info "启动加密货币新闻分析工具容器"
     log_info "容器版本: 1.0.0"
-    
+
     # 记录启动状态
     log_execution_state "starting" "容器启动，模式: $mode"
-    
+
     # 验证环境
     validate_environment
-    
+
     # 显示配置
     show_configuration "$mode"
-    
+
     # 健康检查
     if ! health_check; then
         log_error "健康检查失败，退出"
         log_execution_state "failed" "健康检查失败"
         exit 1
     fi
-    
+
     # 设置配置文件路径参数
     local config_arg=""
     if [[ -n "$CONFIG_PATH" ]] && [[ -f "$CONFIG_PATH" ]]; then
         config_arg="--config $CONFIG_PATH"
     fi
-    
+
     # 记录运行状态
     log_execution_state "running" "主进程启动，模式: $mode"
-    
+
     # 根据模式执行
     case "$mode" in
         "once"|"one_time")
@@ -233,9 +294,21 @@ main() {
             MAIN_PID=$!
             ;;
         "schedule"|"scheduled")
-            log_info "启动定时调度模式"
+            log_info "启动定时调度模式（向后兼容）"
             log_info "调度间隔: ${EXECUTION_INTERVAL:-3600} 秒"
             python /app/run.py --mode schedule $config_arg &
+            MAIN_PID=$!
+            ;;
+        "scheduler")
+            log_info "启动调度器专用模式（Railway ingestion服务）"
+            log_info "调度间隔: ${EXECUTION_INTERVAL:-3600} 秒"
+            python /app/run.py --mode scheduler $config_arg &
+            MAIN_PID=$!
+            ;;
+        "ingestion")
+            log_info "启动数据摄取服务模式（Railway ingestion服务）"
+            log_info "调度间隔: ${EXECUTION_INTERVAL:-3600} 秒"
+            python /app/run.py --mode ingestion $config_arg &
             MAIN_PID=$!
             ;;
         "command")
@@ -245,14 +318,20 @@ main() {
             MAIN_PID=$!
             ;;
         "api-server"|"api")
-            log_info "启动 API 服务器模式"
+            log_info "启动 API 服务器模式（向后兼容，含调度器/监听）"
             log_info "API 监听地址: ${API_HOST:-0.0.0.0}:${API_PORT:-8080}"
             python /app/run.py --mode api-server $config_arg &
             MAIN_PID=$!
             ;;
+        "api-only")
+            log_info "启动隔离的API服务器模式（Railway analysis服务，无调度器/监听）"
+            log_info "API 监听地址: ${API_HOST:-0.0.0.0}:${API_PORT:-8080}"
+            python /app/run.py --mode api-only $config_arg &
+            MAIN_PID=$!
+            ;;
         *)
             log_error "未知的运行模式: $mode"
-            log_info "支持的模式: once, schedule, command, api-server"
+            log_info "支持的模式: once, schedule, scheduler, ingestion, api-server, api-only"
             log_execution_state "failed" "未知的运行模式: $mode"
             exit 1
             ;;

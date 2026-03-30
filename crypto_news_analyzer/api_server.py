@@ -385,18 +385,23 @@ async def health_check():
     """健康检查端点"""
     return {"status": "healthy", "initialized": controller is not None}
 
-def create_api_server(config_path: str = "./config.json") -> FastAPI:
+def create_api_server(
+    config_path: str = "./config.json",
+    start_services: bool = True,
+) -> FastAPI:
     """
     创建并初始化API服务器
-    
+
     Args:
         config_path: 配置文件路径
-        
+        start_services: 是否启动调度器和Telegram监听器（默认为True以兼容现有行为）
+                         在Railway拆分架构中，API服务应设为False以隔离副作用
+
     Returns:
         FastAPI应用实例
     """
     global controller
-    
+
     if controller is not None:
         logger.info("API server already initialized")
         return app
@@ -405,13 +410,16 @@ def create_api_server(config_path: str = "./config.json") -> FastAPI:
     if not controller.initialize_system():
         raise RuntimeError("Failed to initialize system")
 
-    controller.start_scheduler()
+    if start_services:
+        controller.start_scheduler()
 
-    if controller.command_handler:
-        controller.start_command_listener()
-        logger.info("Telegram command listener started in API mode")
+        if controller.command_handler:
+            controller.start_command_listener()
+            logger.info("Telegram command listener started in API mode")
+        else:
+            logger.warning("Telegram command handler not configured, listener not started")
     else:
-        logger.warning("Telegram command handler not configured, listener not started")
+        logger.info("API server initialized without scheduler and command listener (isolated mode)")
 
     logger.info("API server initialized")
     return app
