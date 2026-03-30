@@ -329,6 +329,15 @@ class MainController:
             self.cache_manager = SentMessageCacheManager(storage_config)
             self.logger.info("缓存管理器初始化完成")
             
+            # 初始化Repository（存储边界提取，Task 4）
+            from .storage.repositories import RepositoryFactory
+            self._repositories = RepositoryFactory.create_repositories(storage_config)
+            self.analysis_repository = self._repositories["analysis"]
+            self.ingestion_repository = self._repositories["ingestion"]
+            self.content_repository = self._repositories["content"]
+            self.cache_repository = self._repositories["cache"]
+            self.logger.info("Repository初始化完成（存储边界已提取）")
+            
             # 清理过期缓存（需求17.12: 系统启动时调用cleanup_expired_cache）
             try:
                 expired_count = self.cache_manager.cleanup_expired_cache(hours=24)
