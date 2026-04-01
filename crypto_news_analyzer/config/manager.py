@@ -102,6 +102,21 @@ class ConfigManager:
             if not isinstance(storage_config.get("retention_days"), int) or storage_config["retention_days"] <= 0:
                 self.logger.error("数据保留天数必须为正整数")
                 return False
+
+            backend = storage_config.get("backend", "sqlite")
+            if backend not in ["sqlite", "postgres"]:
+                self.logger.error(f"不支持的存储后端: {backend}")
+                return False
+
+            if backend == "postgres":
+                database_url = os.getenv("DATABASE_URL", storage_config.get("database_url", ""))
+                if not isinstance(database_url, str) or not database_url.strip():
+                    self.logger.error("PostgreSQL模式下必须提供DATABASE_URL或storage.database_url")
+                    return False
+            else:
+                storage_path = storage_config.get("database_path", "./data/crypto_news.db")
+                if not self.validate_storage_path(storage_path):
+                    return False
             
             # 验证RSS源配置
             if "rss_sources" in config:
@@ -120,11 +135,6 @@ class ConfigManager:
                 for source in config["rest_api_sources"]:
                     if not self._validate_rest_api_source(source):
                         return False
-            
-            # 验证存储路径
-            storage_path = storage_config.get("database_path", "./data/crypto_news.db")
-            if not self.validate_storage_path(storage_path):
-                return False
             
             self.logger.info("配置文件验证通过")
             return True
@@ -258,11 +268,16 @@ class ConfigManager:
     def get_storage_config(self) -> StorageConfig:
         """获取存储配置"""
         storage_data = self.config_data["storage"]
+        backend = storage_data.get("backend", "sqlite")
+        database_url = os.getenv("DATABASE_URL", storage_data.get("database_url"))
         return StorageConfig(
             retention_days=storage_data.get("retention_days", 30),
             max_storage_mb=storage_data.get("max_storage_mb", 1000),
             cleanup_frequency=storage_data.get("cleanup_frequency", "daily"),
-            database_path=storage_data.get("database_path", "./data/crypto_news.db")
+            backend=backend,
+            database_path=storage_data.get("database_path", "./data/crypto_news.db"),
+            database_url=database_url,
+            pgvector_dimensions=storage_data.get("pgvector_dimensions", 1536),
         )
     
     def get_bird_config(self) -> BirdConfig:
@@ -359,11 +374,16 @@ class ConfigManager:
     def _create_default_config(self) -> None:
         """创建默认配置文件"""
         default_config = {
+            "execution_interval": 3600,
+            "time_window_hours": 24,
             "storage": {
                 "retention_days": 30,
                 "max_storage_mb": 1000,
                 "cleanup_frequency": "daily",
-                "database_path": "./data/crypto_news.db"
+                "backend": "sqlite",
+                "database_path": "./data/crypto_news.db",
+                "database_url": "",
+                "pgvector_dimensions": 1536
             },
             "bird_config": {
                 "executable_path": "bird",

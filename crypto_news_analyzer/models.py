@@ -296,7 +296,10 @@ class StorageConfig:
     retention_days: int = 30
     max_storage_mb: int = 1000
     cleanup_frequency: str = "daily"
+    backend: str = "sqlite"
     database_path: str = "./data/crypto_news.db"
+    database_url: Optional[str] = None
+    pgvector_dimensions: int = 1536
     
     def __post_init__(self):
         """数据验证"""
@@ -312,9 +315,19 @@ class StorageConfig:
         
         if self.cleanup_frequency not in ["daily", "weekly", "monthly"]:
             raise ValueError(f"无效的清理频率: {self.cleanup_frequency}")
-        
-        if not self.database_path or not self.database_path.strip():
-            raise ValueError("数据库路径不能为空")
+
+        if self.backend not in ["sqlite", "postgres"]:
+            raise ValueError(f"不支持的存储后端: {self.backend}")
+
+        if self.backend == "sqlite":
+            if not self.database_path or not self.database_path.strip():
+                raise ValueError("SQLite数据库路径不能为空")
+        else:
+            if not self.database_url or not self.database_url.strip():
+                raise ValueError("PostgreSQL模式下database_url不能为空")
+
+        if self.pgvector_dimensions <= 0:
+            raise ValueError("pgvector_dimensions必须大于0")
     
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""

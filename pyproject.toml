@@ -18,6 +18,8 @@ dependencies = [
     
     # 数据处理
     "pandas>=2.0.0",
+    "psycopg[binary]>=3.2.0",
+    "pgvector>=0.3.0",
     
     # 日志和配置
     "pyyaml>=6.0",

@@ -1227,6 +1227,22 @@ class TelegramCommandHandler:
             响应消息
         """
         try:
+            runtime_mode = os.environ.get("CRYPTO_NEWS_RUNTIME_MODE", "").strip().lower()
+            if runtime_mode in {"api-only", "analysis-service"}:
+                response = (
+                    "🚫 当前服务为 analysis/api 公网运行模式，已禁用 /run。\n\n"
+                    "请使用 /analyze [hours] 或 HTTP /analyze 触发分析。"
+                )
+                self._log_command_execution(
+                    "/run",
+                    user_id,
+                    username,
+                    None,
+                    False,
+                    "analysis-service/api-only runtime disabled inline crawl/manual ingestion",
+                )
+                return response
+
             # 检查是否有执行正在进行
             if self.execution_coordinator.is_execution_running():
                 current_exec = self.execution_coordinator.get_execution_status()

@@ -51,7 +51,8 @@
 ### Deliverables
 - 明确的服务职责矩阵（API、Telegram、scheduler、ingestion、analysis worker、migrations）
 - 共享数据库 schema 与 ownership 规则
-- 数据与作业契约：`content_items`、`ingestion_jobs`、`ingestion_runs`、`analysis_requests`、`analysis_results`、`prompt_templates`、`content_embeddings`
+- **Phase 1 数据与作业契约**：`content_items`、`ingestion_jobs`、`analysis_jobs`（轻量作业状态表）
+- **Phase 2 扩展契约**（已预留，未实现）：`analysis_requests`、`analysis_results`、`prompt_templates`、`content_embeddings`
 - 单体到 Postgres 的迁移路径与回滚策略
 - Railway 双服务部署与私网/公网边界
 - 未来多类别、多数据源、语义搜索分析能力的兼容基础
@@ -59,9 +60,9 @@
 ### Definition of Done (verifiable conditions with commands)
 - `uv run pytest tests/ -q` 退出码为 `0`
 - `uv run mypy crypto_news_analyzer/` 退出码为 `0`
-- `curl -sS -o /tmp/analyze-create.json -w "%{http_code}" -X POST "$ANALYSIS_BASE_URL/analyze" -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" -d '{"hours":24,"category":"crypto"}'` 返回 `202`
+- `curl -sS -o /tmp/analyze-create.json -w "%{http_code}" -X POST "$ANALYSIS_BASE_URL/analyze" -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" -d '{"hours":24,"user_id":"test"}'` 返回 `202`
 - `curl -sS "$ANALYSIS_BASE_URL/analyze/$JOB_ID" -H "Authorization: Bearer $API_KEY"` 在服务重启后仍能查询同一 job
-- `psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM analysis_requests;"`、`psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM ingestion_jobs;"` 能返回非错误结果
+- `psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM analysis_jobs;"`、`psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM ingestion_jobs;"` 能返回非错误结果
 - Railway 最终只有 analysis/API service 拥有公网域名；ingestion service 与数据库仅私网访问
 
 ### Must Have
@@ -204,9 +205,10 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `refactor(runtime): isolate api and scheduler startup paths` | Files: `crypto_news_analyzer/main.py`, `crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/execution_coordinator.py`, `docker-entrypoint.sh`
 
-- [ ] 3. 锁定共享领域契约与服务职责矩阵
+- [x] 3. 锁定共享领域契约与服务职责矩阵
 
-  **What to do**: 在代码中引入可执行/可测试的共享契约层，明确类别 slug、时间窗语义、作业状态机、分析请求字段、服务 ownership；所有外部入口（HTTP、Telegram、scheduler/manual trigger）最终都要生成同一 `analysis_request` / `ingestion_job` 契约。
+  **What to do**: 在代码中引入可执行/可测试的共享契约层，明确时间窗语义、作业状态机、分析请求字段、服务 ownership；所有外部入口（HTTP、Telegram、scheduler/manual trigger）最终都要生成统一作业契约。
+  **Phase 1 实现**: 使用轻量级 `analysis_jobs` 表承载作业状态，而非完整的 `analysis_requests/results` 分离结构；请求契约包含 `hours` + `user_id` 基础字段，类别扩展留待 Phase 2。
   **Must NOT do**: 不做 prompt UI；不做多租户前端；不让不同入口各自定义不同请求结构。
 
   **Recommended Agent Profile**:
@@ -225,9 +227,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Test: `tests/test_config_persistence_properties.py` — 配置契约测试模式
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] 所有分析入口共享同一请求模型，包含 `category`、`time_window_hours`、`requested_by`、`prompt_version`、`retrieval_mode`
-  - [ ] 类别使用稳定 slug，至少覆盖 `crypto`、`ai`、`us-stocks`、`single-stock`
-  - [ ] 时间窗语义被统一为单一规则，并由测试断言
+  - [x] Phase 1: 所有分析入口共享同一基础请求模型，包含 `time_window_hours`（通过 `hours` 字段）、`requested_by`（通过 `user_id` 字段）
+  - [x] 时间窗语义被统一为单一规则，并由测试断言
+  - [ ] Phase 2 扩展: 类别 slug (`crypto`, `ai`, `us-stocks`, `single-stock`)、`prompt_version`、`retrieval_mode` 字段预留
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -237,11 +239,11 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
     Expected: tests assert both entrypaths populate the same required fields and status defaults
     Evidence: .sisyphus/evidence/task-3-request-contract.txt
 
-  Scenario: Invalid category is rejected consistently
+  Scenario: Basic request validation works consistently
     Tool: Bash
-    Steps: execute targeted tests for unsupported category slug and save output to `.sisyphus/evidence/task-3-category-edge.txt`
-    Expected: both API and command-layer validators reject unsupported category with the same error semantics
-    Evidence: .sisyphus/evidence/task-3-category-edge.txt
+    Steps: execute targeted tests for invalid hours and missing user_id, save output to `.sisyphus/evidence/task-3-validation-edge.txt`
+    Expected: both API and command-layer validators reject invalid requests with the same error semantics
+    Evidence: .sisyphus/evidence/task-3-validation-edge.txt
   ```
 
   **Commit**: YES | Message: `feat(contract): define shared request and category contracts` | Files: `crypto_news_analyzer/models.py`, `crypto_news_analyzer/config/manager.py`, `crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/reporters/telegram_command_handler.py`, `tests/`
@@ -287,9 +289,10 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `refactor(storage): introduce repository boundary before postgres cutover` | Files: `crypto_news_analyzer/storage/`, `crypto_news_analyzer/execution_coordinator.py`, `crypto_news_analyzer/models.py`, `tests/`
 
-- [ ] 5. 将主数据存储迁移到 PostgreSQL + pgvector
+- [x] 5. 将主数据存储迁移到 PostgreSQL + pgvector
 
-  **What to do**: 新建 PostgreSQL schema/migrations，承接 `content_items`、分析执行日志、发送缓存、prompt 基础表、embeddings/chunks 预留表；完成一次性 backfill/cutover 方案，并让应用在单体模式下先稳定运行在 Postgres 上。
+  **What to do**: 新建 PostgreSQL schema/migrations，承接 `content_items`、分析执行日志、发送缓存、轻量级作业表；完成一次性 backfill/cutover 方案，并让应用在单体模式下先稳定运行在 Postgres 上。
+  **Phase 1 Schema**: `analysis_jobs`、`ingestion_jobs` 作为轻量级作业状态表；`prompt_templates`、`content_embeddings` 为 Phase 2 预留，当前仅创建占位结构或不创建。
   **Must NOT do**: 不保留长期 dual-write；不在 schema 未稳定前拆 Railway 多服务；不把 embeddings 建立在最终报告文本上。
 
   **Recommended Agent Profile**:
@@ -328,9 +331,10 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `feat(db): cut monolith storage over to postgres and pgvector` | Files: `crypto_news_analyzer/storage/`, `crypto_news_analyzer/models.py`, `config.json`, `tests/`, `migrations/`
 
-- [ ] 6. 将分析异步 job 状态持久化到共享数据库
+- [x] 6. 将分析异步 job 状态持久化到共享数据库
 
-  **What to do**: 用数据库中的 `analysis_requests` / `analysis_results` / job-state 表替换 `api_server.py` 中的进程内 `analyze_jobs`；保留 `/analyze` 创建、轮询、取结果接口语义，并保证服务重启后状态不丢失。
+  **What to do**: 用数据库中的 `analysis_jobs` 表替换 `api_server.py` 中的进程内 `analyze_jobs`；保留 `/analyze` 创建、轮询、取结果接口语义，并保证服务重启后状态不丢失。
+  **Phase 1 实现说明**: 使用轻量级 `analysis_jobs` 表承载作业生命周期，而非完整的 `analysis_requests` + `analysis_results` 分离结构。后者的完整 request/result 分离、多版本 prompt 支持、语义检索等特性留待 Phase 2。
   **Must NOT do**: 不更改 `/analyze` 的异步工作流；不让 job 状态继续仅存在内存；不把结果覆盖成不可追溯的单条最新记录。
 
   **Recommended Agent Profile**:
@@ -368,9 +372,10 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `feat(api): persist analyze job lifecycle in postgres` | Files: `crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/storage/`, `crypto_news_analyzer/models.py`, `tests/test_api_server.py`
 
-- [ ] 7. 为 ingestion 建立独立作业与幂等控制
+- [x] 7. 为 ingestion 建立独立作业与幂等控制
 
-  **What to do**: 引入 `ingestion_jobs` / `ingestion_runs` / source checkpoint 与分布式锁/幂等语义；确保 scheduler 和手动触发都只是在数据库里登记作业，真正采集由 ingestion runtime 拉取并执行，避免重复抓取与重复发送。
+  **What to do**: 引入 `ingestion_jobs` 与幂等控制；确保 scheduler 和手动触发都只是在数据库里登记作业，真正采集由 ingestion runtime 拉取并执行，避免重复抓取与重复发送。
+  **Phase 1 实现**: 使用 `ingestion_jobs` 表承载采集作业状态；`ingestion_runs` 详细执行记录留待 Phase 2。
   **Must NOT do**: 不通过公网直接暴露 ingestion；不让多个 replica 同时执行同一 source run；不把 Telegram/HTTP 直接耦合到具体 crawler 实现。
 
   **Recommended Agent Profile**:
@@ -409,7 +414,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `feat(ingestion): add persisted ingestion jobs and idempotency` | Files: `crypto_news_analyzer/crawlers/`, `crypto_news_analyzer/execution_coordinator.py`, `crypto_news_analyzer/storage/`, `tests/`
 
-- [ ] 8. 落地私有 ingestion service runtime
+- [x] 8. 落地私有 ingestion service runtime
 
   **What to do**: 基于已隔离的运行入口，将 crawler 执行、scheduler 驱动、manual backfill trigger 消费、source checkpoint/lock 管理统一收敛到独立 ingestion runtime；该服务只负责 fetch/normalize/persist，不负责分析、报告、Telegram 或公网 API。
   **Must NOT do**: 不暴露公网域名；不在 ingestion 中调用 LLM；不在 ingestion 中生成报告或处理 Telegram 命令。
@@ -451,9 +456,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `feat(ingestion): extract private ingestion service runtime` | Files: `crypto_news_analyzer/main.py`, `crypto_news_analyzer/execution_coordinator.py`, `crypto_news_analyzer/crawlers/`, `docker-entrypoint.sh`, `tests/`
 
-- [ ] 9. 落地公网 analysis/API service runtime
+- [x] 9. 落地公网 analysis/API service runtime
 
-  **What to do**: 将 HTTP API、Telegram 命令、prompt 解析、时间窗检索、分析请求执行、报告生成、结果查询统一收敛到 analysis/API runtime；所有手动触发（HTTP/Telegram）必须只创建 `analysis_requests` 或 `ingestion_jobs`，不直接运行 crawler。
+  **What to do**: 将 HTTP API、Telegram 命令、prompt 解析、时间窗检索、分析请求执行、报告生成、结果查询统一收敛到 analysis/API runtime；所有手动触发（HTTP/Telegram）必须只创建 `analysis_jobs` 或 `ingestion_jobs`，不直接运行 crawler。
   **Must NOT do**: 不在 analysis/API 中直接抓取数据源；不丢失现有 `/analyze` 鉴权与异步轮询语义；不让 Telegram 路径绕过统一请求契约。
 
   **Recommended Agent Profile**:
@@ -474,7 +479,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Acceptance Criteria** (agent-executable only):
   - [ ] analysis/API service 成为唯一公网入口，并保留 Bearer 鉴权与 async analyze flow
-  - [ ] Telegram `/analyze` 与 HTTP `/analyze` 都生成统一 `analysis_request`
+  - [ ] Telegram `/analyze` 与 HTTP `/analyze` 都生成统一 `analysis_jobs` 作业
   - [ ] 手动补爬取需求通过受控入口写入 `ingestion_jobs`，不直接执行 crawler
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
@@ -494,7 +499,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `feat(api): extract public analysis service responsibilities` | Files: `crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/reporters/telegram_command_handler.py`, `crypto_news_analyzer/analyzers/`, `crypto_news_analyzer/execution_coordinator.py`, `tests/`
 
-- [ ] 10. 配置 Railway 双服务 + 单共享数据库部署
+- [x] 10. 配置 Railway 双服务 + 单共享数据库部署
 
   **What to do**: 以同仓库方式配置 Railway：一个公网 analysis/API service、一个私有 ingestion service、一个私有 PostgreSQL+pgvector；分离各自 start command、环境变量、secret、私网访问和 healthcheck，保证公网只暴露 analysis/API。
   **Must NOT do**: 不把数据库暴露公网；不让 ingestion service 挂公网域名；不让多个服务同时自动执行 migrations。
@@ -535,7 +540,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `chore(deploy): split railway into public api and private ingestion services` | Files: `railway.toml`, `Dockerfile`, `docker-entrypoint.sh`, `docs/RAILWAY_DEPLOYMENT.md`
 
-- [ ] 11. 完成切流、回滚预案与旧单体入口退役
+- [x] 11. 完成切流、回滚预案与旧单体入口退役
 
   **What to do**: 在双服务稳定后，移除旧“单进程承载 API + scheduler + Telegram + crawl + analysis”的默认路径；保留明确回滚方案（可重新指向旧入口或上一个稳定部署），并补齐最终 cutover 验证脚本与运维说明。
   **Must NOT do**: 不在未通过所有回归与部署验证前删除旧入口；不留下两套长期并行主路径；不省略 rollback 验证。
@@ -595,6 +600,43 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 - Commit 5: runtime split + service-specific config
 - Commit 6: Railway multi-service deployment + cutover
 - Commit 7: legacy monolith decommission
+
+## Phase 1 vs Phase 2 Scope Clarification
+
+### Phase 1 (Current) - Core Service Split
+**Goal**: 实现 Railway 双服务部署，保证现有功能可用
+
+**Schema Implemented** (PostgreSQL migration includes legacy + new service-split tables):
+- **Legacy tables** (migrated from SQLite): `content_items`, `crawl_status`, `analysis_execution_log`, `sent_message_cache`
+- **NEW service-split tables**: `ingestion_jobs`, `analysis_jobs`
+
+**API Contract**:
+- `hours: int` - 时间窗口
+- `user_id: str` - 请求来源标识
+
+**Phase 1 明确不实现** (移至 Phase 2):
+- `analysis_requests` / `analysis_results` 分离表结构
+- `prompt_templates` 表与版本管理
+- `content_embeddings` 与语义检索
+- 类别 slug 字段 (`crypto`, `ai`, `us-stocks`)
+- `retrieval_mode` 检索策略选择
+
+### Phase 2 (Future) - Advanced Features
+**Goal**: 多类别支持、语义搜索、Prompt 版本管理
+
+**Schema To Add**:
+- `analysis_requests` - 分析请求明细
+- `analysis_results` - 分析结果存储
+- `prompt_templates` - Prompt 模板版本
+- `content_embeddings` - 内容向量嵌入
+- `ingestion_runs` - 采集执行记录
+
+**API Contract Extension**:
+- `category: str` - 分析类别 slug
+- `prompt_version: str` - Prompt 版本
+- `retrieval_mode: str` - 检索模式
+
+---
 
 ## Success Criteria
 - 两个应用服务边界稳定：ingestion 不承接公网交互，analysis/API 不直接做采集调度

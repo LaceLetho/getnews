@@ -92,6 +92,12 @@ def valid_storage_config(draw):
 
 class TestDataStorageProperties:
     """数据存储属性测试"""
+
+    def _reset_content_items(self):
+        with self.data_manager._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM content_items")
+            conn.commit()
     
     def setup_method(self):
         """测试前设置"""
@@ -131,6 +137,8 @@ class TestDataStorageProperties:
         对于任何内容项，只有发布时间在指定时间窗口内的内容应该被包含在最终分析中
         """
         items, reference_time = items_and_time
+
+        self._reset_content_items()
         
         # 假设：有内容项需要测试
         assume(len(items) > 0)
@@ -206,6 +214,7 @@ class TestDataStorageProperties:
         验证filter_by_time_window方法正确移除超出时间窗口的项目
         """
         # 添加所有内容项
+        self._reset_content_items()
         added_count = self.data_manager.add_content_items(items)
         assume(added_count > 0)
         
@@ -279,6 +288,8 @@ class TestDataStorageProperties:
         验证较大的时间窗口应该包含较小时间窗口的所有项目
         """
         assume(time_window_hours1 < time_window_hours2)
+
+        self._reset_content_items()
         
         # 添加内容项
         added_count = self.data_manager.add_content_items(items)
@@ -325,6 +336,7 @@ class TestDataStorageProperties:
         验证多次执行相同的时间窗口过滤应该产生相同的结果
         """
         # 添加内容项
+        self._reset_content_items()
         added_count = self.data_manager.add_content_items(items)
         assume(added_count > 0)
         

@@ -17,6 +17,40 @@ from .execution_coordinator import MainController, run_one_time_execution, run_s
 from .utils.logging import setup_logging
 
 
+SUPPORTED_RUNTIME_MODES = (
+    "analysis-service",
+    "api-only",
+    "ingestion",
+    "scheduler",
+    "schedule",
+    "once",
+)
+DEPRECATED_RUNTIME_MODE_ALIASES = {
+    "api-server": "analysis-service",
+}
+DEFAULT_RUNTIME_MODE = "analysis-service"
+
+
+def normalize_runtime_mode(mode: str, logger: logging.Logger) -> str:
+    normalized_mode = (mode or DEFAULT_RUNTIME_MODE).strip().lower()
+
+    if normalized_mode in DEPRECATED_RUNTIME_MODE_ALIASES:
+        mapped_mode = DEPRECATED_RUNTIME_MODE_ALIASES[normalized_mode]
+        logger.warning(
+            "运行模式 '%s' 已退役，将按拆分服务模式 '%s' 启动",
+            normalized_mode,
+            mapped_mode,
+        )
+        return mapped_mode
+
+    if normalized_mode not in SUPPORTED_RUNTIME_MODES:
+        raise ValueError(
+            f"未知的运行模式: {normalized_mode}。支持的模式: {', '.join(SUPPORTED_RUNTIME_MODES)}"
+        )
+
+    return normalized_mode
+
+
 def main():
     """主函数"""
     # 设置日志系统
@@ -26,14 +60,23 @@ def main():
     
     # 解析命令行参数
     parser = argparse.ArgumentParser(description="加密货币新闻分析工具")
-    parser.add_argument("--mode", choices=["once", "schedule", "api-server", "scheduler", "api-only", "ingestion"], default="once",
-                       help="运行模式: once=一次性执行, schedule=定时调度, api-server=API服务器模式(向后兼容), scheduler=仅启动调度器, api-only=仅API服务(无调度器), ingestion=仅数据摄取服务")
+    parser.add_argument(
+        "--mode",
+        default=DEFAULT_RUNTIME_MODE,
+        help=(
+            "运行模式: analysis-service=公网分析服务(API+Telegram，无调度器，生产默认), "
+            "api-only=仅API服务(隔离用途), ingestion=仅数据摄取服务, "
+            "scheduler=仅启动调度器, schedule=兼容定时调度, once=一次性执行。"
+            "已退役的 api-server 会自动映射到 analysis-service"
+        ),
+    )
     parser.add_argument("--config", default="./config.json",
                        help="配置文件路径")
     
     args = parser.parse_args()
     
     try:
+        args.mode = normalize_runtime_mode(args.mode, logger)
         logger.info(f"启动加密货币新闻分析系统，模式: {args.mode}")
         
         if args.mode == "once":
@@ -45,9 +88,8 @@ def main():
         elif args.mode == "scheduler":
             # 仅启动调度器（Railway拆分架构：ingestion服务）
             exit_code = run_scheduler_only(args.config)
-        elif args.mode == "api-server":
-            # API服务器模式（向后兼容，包含调度器和Telegram监听）
-            exit_code = run_api_server(args.config)
+        elif args.mode == "analysis-service":
+            exit_code = run_analysis_service(args.config)
         elif args.mode == "api-only":
             # 仅API服务模式（Railway拆分架构：analysis服务，无调度器/监听）
             exit_code = run_api_server_isolated(args.config)
@@ -86,6 +128,7 @@ def run_api_server(config_path: str = "./config.json") -> int:
     logger.info("启动API服务器模式（向后兼容，包含调度器和Telegram监听）")
 
     try:
+        os.environ["CRYPTO_NEWS_RUNTIME_MODE"] = "api-server"
         app = create_api_server(config_path, start_services=True)
 
         # 从环境变量获取配置，或使用默认值
@@ -121,6 +164,7 @@ def run_api_server_isolated(config_path: str = "./config.json") -> int:
     logger.info("启动隔离的API服务器模式（Railway analysis服务）")
 
     try:
+        os.environ["CRYPTO_NEWS_RUNTIME_MODE"] = "api-only"
         # start_services=False 确保不启动调度器和Telegram监听
         app = create_api_server(config_path, start_services=False)
 
@@ -133,6 +177,35 @@ def run_api_server_isolated(config_path: str = "./config.json") -> int:
         return 0
     except Exception as e:
         logger.error(f"隔离的API服务器启动失败: {e}")
+        return 1
+
+
+def run_analysis_service(config_path: str = "./config.json") -> int:
+    """运行公网分析服务（API + Telegram，无调度器）。"""
+    import uvicorn
+    from .api_server import create_api_server
+
+    logger = logging.getLogger(__name__)
+    logger.info("启动公网分析服务模式（API + Telegram，无调度器）")
+
+    try:
+        os.environ["CRYPTO_NEWS_RUNTIME_MODE"] = "analysis-service"
+        app = create_api_server(
+            config_path,
+            start_services=False,
+            start_scheduler=False,
+            start_command_listener=True,
+        )
+
+        host = os.environ.get("API_HOST", "0.0.0.0")
+        port = int(os.environ.get("API_PORT", "8080"))
+
+        logger.info(f"公网分析服务启动在 {host}:{port}（无调度器）")
+        uvicorn.run(app, host=host, port=port)
+
+        return 0
+    except Exception as e:
+        logger.error(f"公网分析服务启动失败: {e}")
         return 1
 
 
@@ -153,8 +226,9 @@ def run_scheduler_only(config_path: str = "./config.json") -> int:
     logger.info("启动调度器专用模式（Railway ingestion服务）")
 
     try:
+        os.environ["CRYPTO_NEWS_RUNTIME_MODE"] = "scheduler"
         controller = MainController(config_path)
-        if not controller.initialize_system():
+        if not controller.initialize_ingestion_system():
             logger.error("系统初始化失败")
             return 1
 
@@ -197,6 +271,7 @@ def run_ingestion_service(config_path: str = "./config.json") -> int:
     """
     logger = logging.getLogger(__name__)
     logger.info("启动数据摄取服务模式（Railway ingestion服务）")
+    os.environ["CRYPTO_NEWS_RUNTIME_MODE"] = "ingestion"
     # ingestion模式等同于scheduler模式
     return run_scheduler_only(config_path)
 

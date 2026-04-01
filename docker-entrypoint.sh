@@ -29,6 +29,40 @@ log_debug() {
     fi
 }
 
+run_postgres_migrations() {
+    local migration_file="/app/migrations/postgresql/001_init.sql"
+
+    if [[ -z "${DATABASE_URL:-}" ]]; then
+        log_error "DATABASE_URL 未设置，无法执行 PostgreSQL 迁移"
+        return 1
+    fi
+
+    if [[ ! -f "$migration_file" ]]; then
+        log_error "迁移文件不存在: $migration_file"
+        return 1
+    fi
+
+    log_info "执行 PostgreSQL schema 迁移: $migration_file"
+
+    python - <<'PY'
+from pathlib import Path
+import os
+
+import psycopg
+
+migration_file = Path("/app/migrations/postgresql/001_init.sql")
+sql = migration_file.read_text(encoding="utf-8")
+
+with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+    with conn.cursor() as cur:
+        cur.execute(sql)
+
+print(f"Applied PostgreSQL migration: {migration_file}")
+PY
+
+    log_info "PostgreSQL schema 迁移执行完成"
+}
+
 # 信号处理函数
 cleanup() {
     local exit_code=$?
@@ -76,14 +110,14 @@ validate_railway_service() {
             log_info "Railway服务: ingestion服务（私有）- 仅数据爬取"
             ;;
         "crypto-news-analysis")
-            log_info "Railway服务: analysis服务（公共）- API + Telegram"
+            log_info "Railway服务: analysis服务（公共）- HTTP API + Telegram监听（无调度器）"
             ;;
         "crypto-news-api")
-            log_info "Railway服务: API服务（公共）- 仅HTTP API"
+            log_warn "Railway服务: crypto-news-api 为旧服务名兼容映射，将按 analysis-service 启动"
             ;;
         *)
             log_warn "未知的RAILWAY_SERVICE_NAME: $RAILWAY_SERVICE_NAME"
-            log_warn "期望的值: crypto-news-ingestion, crypto-news-analysis, crypto-news-api"
+            log_warn "期望的值: crypto-news-ingestion, crypto-news-analysis（或兼容旧值 crypto-news-api）"
             ;;
     esac
 }
@@ -95,10 +129,10 @@ get_mode_from_railway_service() {
             echo "ingestion"
             ;;
         "crypto-news-analysis")
-            echo "api-server"
+            echo "analysis-service"
             ;;
         "crypto-news-api")
-            echo "api-only"
+            echo "analysis-service"
             ;;
         *)
             echo ""
@@ -162,7 +196,7 @@ validate_environment() {
 # 显示配置信息
 show_configuration() {
     log_info "=== 容器配置信息 ==="
-    log_info "运行模式: ${1:-once}"
+    log_info "运行模式: ${1:-analysis-service}"
     log_info "时间窗口: ${TIME_WINDOW_HOURS:-24} 小时"
     log_info "执行间隔: ${EXECUTION_INTERVAL:-3600} 秒"
     log_info "配置文件: ${CONFIG_PATH:-/app/config.json}"
@@ -253,9 +287,14 @@ main() {
         fi
     fi
 
-    # 如果仍然没有模式，使用默认值
+    if [[ "$mode" == "api-server" || "$mode" == "api" ]]; then
+        log_warn "运行模式 '$mode' 已退役，将按拆分服务默认路径 analysis-service 启动"
+        mode="analysis-service"
+    fi
+
     if [[ -z "$mode" ]]; then
-        mode="once"
+        mode="analysis-service"
+        log_info "未显式指定模式，默认使用拆分服务运行模式: $mode"
     fi
 
     log_info "启动加密货币新闻分析工具容器"
@@ -317,10 +356,10 @@ main() {
             python /app/run.py --mode schedule $config_arg &
             MAIN_PID=$!
             ;;
-        "api-server"|"api")
-            log_info "启动 API 服务器模式（向后兼容，含调度器/监听）"
+        "analysis-service")
+            log_info "启动公网分析服务模式（Railway analysis服务，API + Telegram，无调度器）"
             log_info "API 监听地址: ${API_HOST:-0.0.0.0}:${API_PORT:-8080}"
-            python /app/run.py --mode api-server $config_arg &
+            python /app/run.py --mode analysis-service $config_arg &
             MAIN_PID=$!
             ;;
         "api-only")
@@ -329,9 +368,19 @@ main() {
             python /app/run.py --mode api-only $config_arg &
             MAIN_PID=$!
             ;;
+        "migrate-postgres")
+            log_info "启动 PostgreSQL 迁移模式（单次执行，不启动常驻服务）"
+            if run_postgres_migrations; then
+                log_execution_state "completed" "PostgreSQL schema 迁移完成"
+                return 0
+            fi
+
+            log_execution_state "failed" "PostgreSQL schema 迁移失败"
+            return 1
+            ;;
         *)
             log_error "未知的运行模式: $mode"
-            log_info "支持的模式: once, schedule, scheduler, ingestion, api-server, api-only"
+            log_info "支持的模式: analysis-service, api-only, ingestion, scheduler, schedule, once, migrate-postgres"
             log_execution_state "failed" "未知的运行模式: $mode"
             exit 1
             ;;

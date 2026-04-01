@@ -260,12 +260,12 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 curl -X POST "http://localhost:8080/analyze" \
   -H "Authorization: Bearer ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"hours": 24}'
+  -d '{"hours": 24, "user_id": "operator_01"}'
 ```
 
 ### `POST /analyze` 请求与返回
 
-- 请求体：`{"hours": <int>}`，`hours > 0`
+- 请求体：`{"hours": <int>, "user_id": <str>}`，`hours > 0`，`user_id` 只允许字母、数字、`_`、`-`
 - 成功时返回 `202 Accepted`
 - 响应头：
   - `Location`：状态查询地址

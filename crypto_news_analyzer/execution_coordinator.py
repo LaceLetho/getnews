@@ -29,6 +29,7 @@ import traceback
 import asyncio
 
 from .config.manager import ConfigManager
+from .domain.models import IngestionJob, IngestionJobStatus
 from .storage.data_manager import DataManager
 from .crawlers.data_source_factory import get_data_source_factory
 from .analyzers.llm_analyzer import LLMAnalyzer
@@ -137,6 +138,10 @@ class MainController:
         self.command_handler: Optional[Any] = None  # TelegramCommandHandler实例
         self.cache_manager: Optional[Any] = None  # SentMessageCacheManager实例
         self.market_snapshot_service: Optional[Any] = None  # MarketSnapshotService实例（可选）
+        self.analysis_repository: Optional[Any] = None
+        self.ingestion_repository: Optional[Any] = None
+        self.content_repository: Optional[Any] = None
+        self.cache_repository: Optional[Any] = None
         
         # 执行状态管理
         self.current_execution: Optional[ExecutionInfo] = None
@@ -312,44 +317,7 @@ class MainController:
         """
         try:
             self.logger.info("开始初始化系统组件")
-            
-            # 初始化配置管理器
-            self.config_manager = ConfigManager(self.config_path)
-            config_data = self.config_manager.load_config()
-            self.logger.info("配置管理器初始化完成")
-            
-            # 初始化数据管理器
-            storage_config = self.config_manager.get_storage_config()
-            self.storage_config = storage_config  # 保存为实例变量供后续使用
-            self.data_manager = DataManager(storage_config)
-            self.logger.info("数据管理器初始化完成")
-            
-            # 初始化缓存管理器
-            from .storage.cache_manager import SentMessageCacheManager
-            self.cache_manager = SentMessageCacheManager(storage_config)
-            self.logger.info("缓存管理器初始化完成")
-            
-            # 初始化Repository（存储边界提取，Task 4）
-            from .storage.repositories import RepositoryFactory
-            self._repositories = RepositoryFactory.create_repositories(storage_config)
-            self.analysis_repository = self._repositories["analysis"]
-            self.ingestion_repository = self._repositories["ingestion"]
-            self.content_repository = self._repositories["content"]
-            self.cache_repository = self._repositories["cache"]
-            self.logger.info("Repository初始化完成（存储边界已提取）")
-            
-            # 清理过期缓存（需求17.12: 系统启动时调用cleanup_expired_cache）
-            try:
-                expired_count = self.cache_manager.cleanup_expired_cache(hours=24)
-                self.logger.info(f"清理了 {expired_count} 条过期缓存记录")
-            except Exception as e:
-                self.logger.warning(f"清理过期缓存失败: {str(e)}")
-            
-            # 初始化错误恢复管理器
-            self.error_manager = ErrorRecoveryManager()
-            self.logger.info("错误恢复管理器初始化完成")
-            
-            # 内置数据源已在模块导入时自动注册（见 crawlers/__init__.py）
+            config_data = self._initialize_core_system_components()
             
             # 初始化LLM分析器
             auth_config = self.config_manager.get_auth_config()
@@ -426,6 +394,71 @@ class MainController:
             self.logger.error(f"系统初始化失败: {str(e)}")
             self.logger.debug(traceback.format_exc())
             return False
+
+    def initialize_ingestion_system(self) -> bool:
+        try:
+            self.logger.info("开始初始化摄取服务组件（ingestion-only）")
+            self._initialize_core_system_components()
+
+            self.llm_analyzer = None
+            self.report_generator = None
+            self.telegram_sender = None
+            self.command_handler = None
+            self.market_snapshot_service = None
+
+            self._initialized = True
+            self.logger.info("摄取服务组件初始化完成（ingestion-only）")
+            return True
+        except Exception as e:
+            self.logger.error(f"摄取服务初始化失败: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return False
+
+    def _initialize_core_system_components(self) -> Dict[str, Any]:
+        # 初始化配置管理器
+        self.config_manager = ConfigManager(self.config_path)
+        config_data = self.config_manager.load_config()
+        self.logger.info("配置管理器初始化完成")
+
+        # 初始化数据管理器
+        storage_config = self.config_manager.get_storage_config()
+        self.storage_config = storage_config  # 保存为实例变量供后续使用
+        self.data_manager = DataManager(storage_config)
+        self.logger.info("数据管理器初始化完成")
+
+        # 初始化缓存管理器
+        from .storage.cache_manager import SentMessageCacheManager
+
+        self.cache_manager = SentMessageCacheManager(storage_config)
+        self.logger.info("缓存管理器初始化完成")
+
+        # 初始化Repository（存储边界提取，Task 4）
+        from .storage.repositories import RepositoryFactory
+
+        self._repositories = RepositoryFactory.create_repositories(
+            storage_config,
+            data_manager=self.data_manager,
+            cache_manager=self.cache_manager,
+        )
+        self.analysis_repository = self._repositories["analysis"]
+        self.ingestion_repository = self._repositories["ingestion"]
+        self.content_repository = self._repositories["content"]
+        self.cache_repository = self._repositories["cache"]
+        self.logger.info("Repository初始化完成（存储边界已提取）")
+
+        # 清理过期缓存（需求17.12: 系统启动时调用cleanup_expired_cache）
+        try:
+            expired_count = self.cache_manager.cleanup_expired_cache(hours=24)
+            self.logger.info(f"清理了 {expired_count} 条过期缓存记录")
+        except Exception as e:
+            self.logger.warning(f"清理过期缓存失败: {str(e)}")
+
+        # 初始化错误恢复管理器
+        self.error_manager = ErrorRecoveryManager()
+        self.logger.info("错误恢复管理器初始化完成")
+
+        # 内置数据源已在模块导入时自动注册（见 crawlers/__init__.py）
+        return config_data
     
     def _get_telegram_command_config(self) -> TelegramCommandConfig:
         """
@@ -781,7 +814,13 @@ class MainController:
     
     def _execute_crawling_stage(self, time_window_hours: int) -> Dict[str, Any]:
         """执行数据爬取阶段"""
-        result = {"success": False, "content_items": [], "crawl_status": None, "errors": []}
+        result = {
+            "success": False,
+            "content_items": [],
+            "crawl_status": None,
+            "items_new": 0,
+            "errors": [],
+        }
         
         try:
             factory = get_data_source_factory()
@@ -846,6 +885,7 @@ class MainController:
                         ))
             
             # 数据去重和存储
+            added_count = 0
             if all_content_items:
                 added_count = self.data_manager.add_content_items(all_content_items)
                 self.data_manager.deduplicate_content()
@@ -865,7 +905,8 @@ class MainController:
             result.update({
                 "success": True,
                 "content_items": all_content_items,
-                "crawl_status": crawl_status
+                "crawl_status": crawl_status,
+                "items_new": added_count,
             })
             
         except Exception as e:
@@ -1432,6 +1473,13 @@ class MainController:
         Returns:
             执行结果
         """
+        runtime_mode = os.environ.get("CRYPTO_NEWS_RUNTIME_MODE", "").strip().lower()
+        if runtime_mode in {"api-only", "analysis-service"}:
+            raise RuntimeError(
+                "Manual ingestion execution is disabled in analysis-service/api-only runtime; "
+                "use /analyze or HTTP /analyze instead"
+            )
+
         # 检查并发限制
         with self._execution_lock:
             if self.current_execution and self.current_execution.status == ExecutionStatus.RUNNING:
@@ -1516,7 +1564,11 @@ class MainController:
                 self.logger.error(f"停止命令监听器失败: {str(e)}")
 
 
-    def run_crawl_only(self) -> ExecutionResult:
+    def run_crawl_only(
+        self,
+        trigger_type: str = "scheduled",
+        trigger_user: Optional[str] = None,
+    ) -> ExecutionResult:
         """
         仅执行爬取阶段，不执行分析
         
@@ -1525,12 +1577,14 @@ class MainController:
         """
         execution_id = f"crawl_{int(time.time())}"
         start_time = datetime.now()
+        source_type = "scheduler"
+        source_name = "crawl_only"
         
         # 创建执行信息
         execution_info = ExecutionInfo(
             execution_id=execution_id,
-            trigger_type="scheduled",
-            trigger_user=None,
+            trigger_type=trigger_type,
+            trigger_user=trigger_user,
             start_time=start_time,
             end_time=None,
             status=ExecutionStatus.RUNNING,
@@ -1539,8 +1593,7 @@ class MainController:
             error_message=None
         )
         
-        with self._execution_lock:
-            self.current_execution = execution_info
+        ingestion_job: Optional[IngestionJob] = None
         
         try:
             self.logger.info(f"开始爬取阶段 {execution_id}")
@@ -1554,7 +1607,98 @@ class MainController:
             if not self._initialized:
                 if not self.initialize_system():
                     raise Exception("系统初始化失败")
-            
+
+            if self.ingestion_repository is None:
+                raise Exception("IngestionRepository未初始化")
+
+            with self._execution_lock:
+                if self.current_execution and self.current_execution.status == ExecutionStatus.RUNNING:
+                    skipped_job = IngestionJob.create(source_type=source_type, source_name=source_name)
+                    skipped_job.status = IngestionJobStatus.SKIPPED.value
+                    skipped_job.error_message = "当前存在内存中的运行任务，跳过重复触发"
+                    skipped_job.metadata = {
+                        "trigger_type": trigger_type,
+                        "skip_reason": "in_memory_running_execution",
+                    }
+                    self.ingestion_repository.save(skipped_job)
+
+                    end_time = datetime.now()
+                    duration = (end_time - start_time).total_seconds()
+                    self.logger.info("检测到内存中运行任务，已持久化跳过 ingestion 作业")
+
+                    execution_result = ExecutionResult(
+                        execution_id=execution_id,
+                        success=True,
+                        start_time=start_time,
+                        end_time=end_time,
+                        duration_seconds=duration,
+                        items_processed=0,
+                        categories_found={},
+                        errors=[],
+                        trigger_user=trigger_user,
+                        trigger_type=trigger_type,
+                        trigger_chat_id=None,
+                        report_sent=False,
+                    )
+                    self.execution_history.append(execution_result)
+                    self._save_execution_history()
+                    return execution_result
+
+                running_jobs = self.ingestion_repository.get_by_source(
+                    source_type=source_type,
+                    source_name=source_name,
+                    status=IngestionJobStatus.RUNNING.value,
+                    limit=1,
+                )
+                if running_jobs:
+                    skipped_job = IngestionJob.create(source_type=source_type, source_name=source_name)
+                    skipped_job.status = IngestionJobStatus.SKIPPED.value
+                    skipped_job.error_message = "已存在运行中的 ingestion 作业，跳过重复触发"
+                    skipped_job.metadata = {
+                        "trigger_type": trigger_type,
+                        "skip_reason": "persistent_running_job",
+                        "active_job_id": running_jobs[0].id,
+                    }
+                    self.ingestion_repository.save(skipped_job)
+
+                    end_time = datetime.now()
+                    duration = (end_time - start_time).total_seconds()
+                    self.logger.info(
+                        f"检测到运行中的持久化 ingestion 作业，跳过本次触发，active_job_id={running_jobs[0].id}"
+                    )
+
+                    execution_result = ExecutionResult(
+                        execution_id=execution_id,
+                        success=True,
+                        start_time=start_time,
+                        end_time=end_time,
+                        duration_seconds=duration,
+                        items_processed=0,
+                        categories_found={},
+                        errors=[],
+                        trigger_user=trigger_user,
+                        trigger_type=trigger_type,
+                        trigger_chat_id=None,
+                        report_sent=False,
+                    )
+                    self.execution_history.append(execution_result)
+                    self._save_execution_history()
+                    return execution_result
+
+                ingestion_job = IngestionJob.create(source_type=source_type, source_name=source_name)
+                ingestion_job.metadata = {"trigger_type": trigger_type}
+                self.ingestion_repository.save(ingestion_job)
+
+                if not self.ingestion_repository.update_status(
+                    ingestion_job.id,
+                    IngestionJobStatus.RUNNING.value,
+                ):
+                    raise Exception("无法将 ingestion 作业更新为 running")
+
+                self.current_execution = execution_info
+
+            self.logger.info(f"已创建并启动 ingestion 作业: {ingestion_job.id}")
+
             # 执行爬取阶段
             time_window_hours = self.config_manager.get_time_window_hours()
             crawl_result = self._execute_crawling_stage(time_window_hours)
@@ -1581,11 +1725,18 @@ class MainController:
                     items_processed=len(crawl_result.get("content_items", [])),
                     categories_found={},
                     errors=[],
-                    trigger_user=None,
-                    trigger_type="scheduled",
+                    trigger_user=trigger_user,
+                    trigger_type=trigger_type,
                     trigger_chat_id=None,
                     report_sent=False
                 )
+
+                if ingestion_job is not None:
+                    self.ingestion_repository.complete_job(
+                        job_id=ingestion_job.id,
+                        items_crawled=len(crawl_result.get("content_items", [])),
+                        items_new=int(crawl_result.get("items_new", 0)),
+                    )
                 
                 # 记录执行历史
                 self.execution_history.append(execution_result)
@@ -1624,11 +1775,18 @@ class MainController:
                 items_processed=0,
                 categories_found={},
                 errors=[error_msg],
-                trigger_user=None,
-                trigger_type="scheduled",
+                trigger_user=trigger_user,
+                trigger_type=trigger_type,
                 trigger_chat_id=None,
                 report_sent=False
             )
+
+            if ingestion_job is not None:
+                self.ingestion_repository.update_status(
+                    job_id=ingestion_job.id,
+                    status=IngestionJobStatus.FAILED.value,
+                    error_message=error_msg,
+                )
             
             # 记录执行历史
             self.execution_history.append(execution_result)

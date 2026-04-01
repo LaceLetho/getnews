@@ -3,7 +3,10 @@
     "retention_days": 30,
     "max_storage_mb": 1000,
     "cleanup_frequency": "daily",
-    "database_path": "./data/crypto_news.db"
+    "backend": "sqlite",
+    "database_path": "./data/crypto_news.db",
+    "database_url": "",
+    "pgvector_dimensions": 1536
   },
   "bird_config": {
     "executable_path": "bird",
