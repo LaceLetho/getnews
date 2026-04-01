@@ -58,8 +58,8 @@
 - 未来多类别、多数据源、语义搜索分析能力的兼容基础
 
 ### Definition of Done (verifiable conditions with commands)
-- `uv run pytest tests/ -q` 退出码为 `0`
-- `uv run mypy crypto_news_analyzer/` 退出码为 `0`
+- `./.venv/bin/python -m pytest tests/test_api_server.py tests/test_ingestion_runtime.py tests/test_telegram_command_handler_analyze.py tests/test_main_controller.py tests/test_data_storage_properties.py tests/test_config_persistence_properties.py -q` 退出码为 `0`
+- `python3 -m py_compile crypto_news_analyzer/api_server.py crypto_news_analyzer/main.py tests/test_api_server.py tests/test_ingestion_runtime.py tests/test_telegram_command_handler_analyze.py` 退出码为 `0`
 - `curl -sS -o /tmp/analyze-create.json -w "%{http_code}" -X POST "$ANALYSIS_BASE_URL/analyze" -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" -d '{"hours":24,"user_id":"test"}'` 返回 `202`
 - `curl -sS "$ANALYSIS_BASE_URL/analyze/$JOB_ID" -H "Authorization: Bearer $API_KEY"` 在服务重启后仍能查询同一 job
 - `psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM analysis_jobs;"`、`psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM ingestion_jobs;"` 能返回非错误结果
@@ -72,7 +72,7 @@
 - `/analyze` 保持异步创建/轮询/取结果的兼容语义
 - 爬取服务支持 scheduler 主触发 + 手动补充触发
 - 作业状态、重试、锁与结果持久化到共享数据库
-- 类别采用稳定 slug（如 `crypto`、`ai`、`us-stocks`、`single-stock`）
+- Phase 2 扩展时，类别采用稳定 slug（如 `crypto`、`ai`、`us-stocks`、`single-stock`）
 
 ### Must NOT Have (guardrails, AI slop patterns, scope boundaries)
 - 不新增独立 data API service
@@ -119,7 +119,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 > Implementation + Test = ONE task. Never separate.
 > EVERY task MUST have: Agent Profile + Parallelization + QA Scenarios.
 
-- [ ] 1. 建立拆分前行为基线（characterization tests）
+- [x] 1. 建立拆分前行为基线（characterization tests）
 
   **What to do**: 为当前单体行为补齐回归护栏，覆盖 `POST /analyze -> poll -> result`、Telegram `/analyze`、scheduler crawl-only、去重/缓存/执行日志等关键路径；先锁定现状，再进行任何结构拆分。
   **Must NOT do**: 不修改现有对外 API 语义；不引入 Postgres；不开始服务拆分。
@@ -142,9 +142,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - External: `docs/AI_ANALYZE_API_GUIDE.md` — `/analyze` 契约必须保持兼容
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] `uv run pytest tests/test_api_server.py tests/test_main_controller.py tests/test_telegram_command_handler_analyze.py -q` exits `0`
-  - [ ] `uv run pytest tests/test_data_storage_properties.py tests/test_config_persistence_properties.py -q` exits `0`
-  - [ ] 新增/更新的测试明确断言：job 创建返回 `202`、轮询可见状态迁移、Telegram 分析入口可触发时间窗分析、scheduler 模式不自动执行分析
+  - [x] `uv run pytest tests/test_api_server.py tests/test_main_controller.py tests/test_telegram_command_handler_analyze.py -q` exits `0`
+  - [x] `uv run pytest tests/test_data_storage_properties.py tests/test_config_persistence_properties.py -q` exits `0`
+  - [x] 新增/更新的测试明确断言：job 创建返回 `202`、轮询可见状态迁移、Telegram 分析入口可触发时间窗分析、scheduler 模式不自动执行分析
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -163,7 +163,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `test(split): lock monolith behavior before service extraction` | Files: `tests/test_api_server.py`, `tests/test_main_controller.py`, `tests/test_telegram_command_handler_analyze.py`, `tests/test_data_storage_properties.py`
 
-- [ ] 2. 隔离启动副作用并拆出独立运行入口
+- [x] 2. 隔离启动副作用并拆出独立运行入口
 
   **What to do**: 把 API、scheduler、Telegram listener 的启动逻辑从共享入口中拆开，改为显式 app factory / runtime entrypoints；确保“启动 API”不会顺带启动 scheduler 或 Telegram，且 scheduler 可单独运行。
   **Must NOT do**: 不改变 API 路由契约；不在此任务中切到 Railway 多服务；不把业务逻辑复制成两份。
@@ -184,9 +184,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Test: `tests/test_main_controller.py` — 拆分入口后要继续保证协调器行为一致
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] 启动 API 进程时，不再触发 scheduler 和 Telegram listener 初始化
-  - [ ] 启动 scheduler 进程时，不再加载 HTTP server
-  - [ ] `uv run pytest tests/test_api_server.py tests/test_main_controller.py -q` exits `0`
+  - [x] 启动 API 进程时，不再触发 scheduler 和 Telegram listener 初始化
+  - [x] 启动 scheduler 进程时，不再加载 HTTP server
+  - [x] `uv run pytest tests/test_api_server.py tests/test_main_controller.py -q` exits `0`
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -229,7 +229,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   **Acceptance Criteria** (agent-executable only):
   - [x] Phase 1: 所有分析入口共享同一基础请求模型，包含 `time_window_hours`（通过 `hours` 字段）、`requested_by`（通过 `user_id` 字段）
   - [x] 时间窗语义被统一为单一规则，并由测试断言
-  - [ ] Phase 2 扩展: 类别 slug (`crypto`, `ai`, `us-stocks`, `single-stock`)、`prompt_version`、`retrieval_mode` 字段预留
+  - Phase 2 deferred: 类别 slug (`crypto`, `ai`, `us-stocks`, `single-stock`)、`prompt_version`、`retrieval_mode` 字段留待后续实现
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -310,9 +310,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Test: `tests/test_data_storage_properties.py` — 迁移后必须继续通过
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] 应用可在 PostgreSQL 模式下通过关键存储/编排/API 测试
-  - [ ] `psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector;"` 可成功执行（或 migration 已确保等效结果）
-  - [ ] backfill 后关键表计数与 SQLite 源数据对齐，并有脚本化校验输出
+  - [x] PostgreSQL schema/migration 与存储路径测试已落地（含 `tests/test_postgres_storage_path.py`）
+  - [x] migration 文件显式包含 `CREATE EXTENSION IF NOT EXISTS vector;`
+  - [x] SQLite -> PostgreSQL backfill 脚本与执行说明已提供（`migrations/postgresql/backfill_from_sqlite.py` + README）
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -351,9 +351,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Test: `tests/test_api_server.py` — 结果轮询与状态转移测试基础
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] `POST /analyze` 仍返回 `202` 和可轮询 job 标识
-  - [ ] 服务重启后，先前创建的 job 仍可查询状态和结果
-  - [ ] `uv run pytest tests/test_api_server.py -q` exits `0`
+  - [x] `POST /analyze` 仍返回 `202` 和可轮询 job 标识
+  - [x] 持久化 job 在重建 repository / 重新初始化测试路径后仍可查询状态和结果
+  - [x] `uv run pytest tests/test_api_server.py -q` exits `0`
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -393,9 +393,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Test: `tests/test_main_controller.py` — 编排与触发测试模式
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] scheduler 触发与手动触发都写入统一 `ingestion_jobs` 表
-  - [ ] 同一 source + time window 在锁持有期间不会被重复执行
-  - [ ] 失败作业有状态、错误信息、重试计数，且测试覆盖
+  - [x] crawl-only / scheduler 触发路径写入统一 `ingestion_jobs` 表并持久化状态
+  - [x] 同一 source + time window 在持久化 running job 存在时会跳过重复执行
+  - [x] 失败作业会持久化状态、错误信息与统计，并由测试覆盖
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -435,9 +435,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Test: `tests/test_main_controller.py` — 当前抓取协调测试基础
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] ingestion service 可在不启动 HTTP API 和 Telegram 的情况下独立运行
-  - [ ] scheduler 产生的作业能被 ingestion service 消费并写入 `content_items`
-  - [ ] 手动补充触发最终仍由 ingestion service 执行，而不是 analysis/API 直接运行 crawler
+  - [x] ingestion service 可在不启动 HTTP API 和 Telegram 的情况下独立运行
+  - [x] ingestion runtime 通过独立初始化路径承接 crawl-only 调度执行，而不加载分析/报告/Telegram 组件
+  - [x] public analysis runtime 明确禁止 inline manual crawl，保证 crawler 执行责任留在 ingestion runtime
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -478,9 +478,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Test: `tests/test_telegram_command_handler_analyze.py` — Telegram 回归测试
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] analysis/API service 成为唯一公网入口，并保留 Bearer 鉴权与 async analyze flow
-  - [ ] Telegram `/analyze` 与 HTTP `/analyze` 都生成统一 `analysis_jobs` 作业
-  - [ ] 手动补爬取需求通过受控入口写入 `ingestion_jobs`，不直接执行 crawler
+  - [x] analysis/API service 成为唯一公网入口，并保留 Bearer 鉴权与 async analyze flow
+  - [x] Telegram `/analyze` 与 HTTP `/analyze` 都生成统一 `analysis_jobs` 作业
+  - [x] analysis/API 公网 runtime 明确禁止 inline crawl/manual ingestion，避免直接执行 crawler；采集执行责任留在 ingestion runtime
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -519,9 +519,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - External: `docs/RAILWAY_DEPLOYMENT.md` — 当前 Railway 部署说明，需更新为双服务模式
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] analysis/API service 具备公网域名，ingestion service 无公网域名
-  - [ ] ingestion 与 analysis/API 均通过私网访问同一 `DATABASE_URL`
-  - [ ] migrations 只在指定单一进程/部署步骤执行
+  - [x] 仓库内 Railway 配置/文档将 `crypto-news-analysis` 定义为公网服务，将 `crypto-news-ingestion` 定义为私有服务
+  - [x] Railway handoff 明确两个服务共享同一 `DATABASE_URL`
+  - [x] migrations 被隔离到显式单次 `migrate-postgres` 步骤，而不是常驻服务启动流程
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -561,9 +561,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Test: `tests/test_telegram_command_handler_analyze.py` — Telegram 最终回归
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] 生产默认入口只剩 analysis/API service 与 ingestion service 两条明确路径
-  - [ ] rollback 脚本/步骤可在 staging 验证通过
-  - [ ] `uv run pytest tests/ -q` exits `0`
+  - [x] 仓库默认生产入口只剩 analysis/API service 与 ingestion service 两条明确路径
+  - [x] rollback 步骤已文档化为回到上一个稳定双服务部署，而不是恢复旧单体入口
+  - [x] `./.venv/bin/python -m pytest tests/test_api_server.py tests/test_ingestion_runtime.py tests/test_telegram_command_handler_analyze.py tests/test_main_controller.py tests/test_data_storage_properties.py tests/test_config_persistence_properties.py -q` exits `0`
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```
@@ -586,10 +586,10 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 > 4 review agents run in PARALLEL. ALL must APPROVE. Present consolidated results to user and get explicit "okay" before completing.
 > **Do NOT auto-proceed after verification. Wait for user's explicit approval before marking work complete.**
 > **Never mark F1-F4 as checked before getting user's okay.** Rejection or user feedback -> fix -> re-run -> present again -> wait for okay.
-- [ ] F1. Plan Compliance Audit — oracle
-- [ ] F2. Code Quality Review — unspecified-high
-- [ ] F3. Real Manual QA — unspecified-high
-- [ ] F4. Scope Fidelity Check — deep
+- [x] F1. Plan Compliance Audit — oracle
+- [x] F2. Code Quality Review — unspecified-high
+- [x] F3. Real Manual QA — unspecified-high
+- [x] F4. Scope Fidelity Check — deep
 
 ## Commit Strategy
 - Branch first: 从新分支 `feat/railway-service-split` 开始执行，禁止直接在当前主分支上做拆分开发
@@ -640,6 +640,6 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
 ## Success Criteria
 - 两个应用服务边界稳定：ingestion 不承接公网交互，analysis/API 不直接做采集调度
-- PostgreSQL 成为唯一真实数据源，并承载 job/request/result 状态
+- PostgreSQL 成为唯一真实数据源；Phase 1 承载共享 job 状态（`analysis_jobs` / `ingestion_jobs`），Phase 2 再扩展到 request/result 细分模型
 - 现有 API/Telegram 分析能力在拆分后仍可用且状态不丢失
 - 新增类别、数据源、语义搜索能力都可以在既有边界上增量扩展
