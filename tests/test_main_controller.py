@@ -507,6 +507,37 @@ class TestMainController:
         assert result["success"] is True
         assert len(result["content_items"]) > 0
         assert result["crawl_status"] is not None
+
+    @patch('crypto_news_analyzer.execution_coordinator.get_data_source_factory')
+    def test_crawling_stage_uses_x_auth_credentials_without_loading_analysis_auth(
+        self,
+        mock_factory,
+        mock_controller,
+    ):
+        mock_crawler = Mock()
+        mock_crawler.crawl.return_value = [Mock(spec=ContentItem)]
+        mock_factory.return_value.create_source.return_value = mock_crawler
+
+        mock_rss_source = Mock()
+        mock_rss_source.name = "Test RSS"
+        mock_rss_source.to_dict.return_value = {"name": "Test RSS"}
+        mock_controller.config_manager.get_rss_sources.return_value = [mock_rss_source]
+
+        mock_x_source = Mock()
+        mock_x_source.name = "Test X"
+        mock_x_source.to_dict.return_value = {"name": "Test X"}
+        mock_controller.config_manager.get_x_sources.return_value = [mock_x_source]
+        mock_controller.config_manager.get_x_auth_credentials.return_value = {
+            "X_CT0": "ct0-token",
+            "X_AUTH_TOKEN": "auth-token",
+        }
+        mock_controller.config_manager.get_auth_config.side_effect = ValueError("LLM API密钥不能为空")
+
+        result = mock_controller._execute_crawling_stage(24)
+
+        assert result["success"] is True
+        mock_controller.config_manager.get_x_auth_credentials.assert_called_once()
+        mock_controller.config_manager.get_auth_config.assert_not_called()
     
     def test_analysis_stage_success(self, mock_controller):
         """测试内容分析阶段成功"""

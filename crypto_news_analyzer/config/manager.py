@@ -218,6 +218,12 @@ class ConfigManager:
             TELEGRAM_BOT_TOKEN=os.getenv("TELEGRAM_BOT_TOKEN", ""),
             TELEGRAM_CHANNEL_ID=os.getenv("TELEGRAM_CHANNEL_ID", "")
         )
+
+    def get_x_auth_credentials(self) -> Dict[str, str]:
+        return {
+            "X_CT0": os.getenv("X_CT0", "").strip(),
+            "X_AUTH_TOKEN": os.getenv("X_AUTH_TOKEN", "").strip(),
+        }
     
     def get_execution_interval(self) -> int:
         """

@@ -1,0 +1,3 @@
+- 2026-04-02: Preflight matched the explicit cleanup manifest exactly: active keep-set paths exist, and archive targets for `two-layer-dedup-analyze-flow` and `railway-opencode-skill` are absent before any move step.
+- 2026-04-02: Move step used explicit per-file `mv` with immediate source/target assertions; only the two agreed plan files moved into `.sisyphus/archive/plans/`, while `railway-service-split.md` stayed active.
+- 2026-04-02: Task 3 archived the completed `two-layer-dedup-analyze-flow` notepad directory into `.sisyphus/archive/notepads/` and confirmed the active `railway-service-split` draft/notepad paths remained unchanged.

@@ -861,9 +861,9 @@ class MainController:
             
             # 爬取X源
             x_sources = self.config_manager.get_x_sources()
-            auth_config = self.config_manager.get_auth_config()
-            
-            if x_sources and auth_config.X_CT0 and auth_config.X_AUTH_TOKEN:
+            x_auth = self.config_manager.get_x_auth_credentials()
+
+            if x_sources and x_auth["X_CT0"] and x_auth["X_AUTH_TOKEN"]:
                 # 创建 BirdConfig（X爬取器使用bird工具，需要通过配置文件设置认证）
                 bird_config = BirdConfig()
                 

@@ -68,3 +68,15 @@ class TestConfigManager:
         }
         
         assert self.manager.validate_config(invalid_config) is False
+
+    def test_get_x_auth_credentials_does_not_depend_on_llm_auth_fields(self, monkeypatch):
+        monkeypatch.setenv("X_CT0", "x-ct0-token")
+        monkeypatch.setenv("X_AUTH_TOKEN", "x-auth-token")
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("TELEGRAM_CHANNEL_ID", raising=False)
+
+        x_auth = self.manager.get_x_auth_credentials()
+
+        assert x_auth["X_CT0"] == "x-ct0-token"
+        assert x_auth["X_AUTH_TOKEN"] == "x-auth-token"
