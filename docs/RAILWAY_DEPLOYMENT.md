@@ -161,6 +161,21 @@ X_AUTH_TOKEN=...
 
 换句话说，迁移是**单独的发布步骤**，不是 analysis/ingestion 两个服务的常规启动流程。
 
+若需要把旧 SQLite 数据回填到 PostgreSQL，不要从本地通过 Railway 公网 PostgreSQL 代理执行大批量导入。应在挂载了 SQLite volume 的 Railway 应用容器内执行：
+
+```bash
+railway ssh -s <service-with-sqlite-volume> \
+  "/opt/venv/bin/python3 /app/migrations/postgresql/remote_internal_backfill.py \
+    --sqlite-path /app/data/crypto_news.db \
+    --postgres-url \"\$DATABASE_URL\""
+```
+
+说明：
+
+- 该脚本使用 Railway 私网连接 PostgreSQL
+- 该脚本会先清空 `content_items`、`crawl_status`、`analysis_execution_log`、`sent_message_cache`
+- 执行前确认目标 PostgreSQL 已完成 `001_init.sql`
+
 ---
 
 ## 5. 验证 analysis 公网服务

@@ -6,13 +6,22 @@ PostgreSQL migration scaffolding for monolith storage cutover:
 psql "$DATABASE_URL" -f migrations/postgresql/001_init.sql
 ```
 
-2) Backfill existing SQLite data:
+2) Backfill existing SQLite data from a Railway app container on the private network:
 
 ```bash
-uv run python migrations/postgresql/backfill_from_sqlite.py \
-  --sqlite-path ./data/crypto_news.db \
-  --postgres-url "$DATABASE_URL"
+railway ssh -s <service-with-sqlite-volume> \
+  "/opt/venv/bin/python3 /app/migrations/postgresql/remote_internal_backfill.py \
+    --sqlite-path /app/data/crypto_news.db \
+    --postgres-url \"\$DATABASE_URL\""
 ```
+
+Notes:
+
+- Do not use a local machine plus Railway public PostgreSQL proxy for large backfills.
+- Run the backfill inside a Railway app service that can access both:
+  - the SQLite file, for example `/app/data/crypto_news.db`
+  - the private PostgreSQL host from `DATABASE_URL`
+- `remote_internal_backfill.py` truncates target tables before importing.
 
 3) Cutover runtime config to PostgreSQL mode:
 
