@@ -47,10 +47,6 @@ startCommand = "/app/docker-entrypoint.sh"
 ### 两个应用服务都需要
 
 ```bash
-# LLM
-LLM_API_KEY=...
-# 可按模型配置补充 GROK_API_KEY / KIMI_API_KEY
-
 # 共享 PostgreSQL/pgvector
 DATABASE_URL=postgresql://...
 
@@ -69,22 +65,58 @@ TIME_WINDOW_HOURS=24
 ### 仅 `crypto-news-analysis` 需要
 
 ```bash
+# API 服务鉴权与监听
 API_KEY=your_strong_api_key
 API_HOST=0.0.0.0
 API_PORT=8080
+
+# LLM 相关密钥（用于新闻分析和市场快照）
+# 主 LLM API 密钥（必需）
+LLM_API_KEY=...
+
+# 若使用 Kimi 为主模型，可额外配置（优先于 LLM_API_KEY 用于 Kimi 路径）
+KIMI_API_KEY=...
+
+# 市场快照：必须使用 Grok
+GROK_API_KEY=...
+
+# Telegram Bot（用于命令监听和报告推送）
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHANNEL_ID=...
+TELEGRAM_AUTHORIZED_USERS=...
 ```
 
 ### 仅 `crypto-news-ingestion` 需要
 
 ```bash
+# 调度间隔（秒）
 EXECUTION_INTERVAL=3500
 
-# 按实际抓取源配置
+# X/Twitter 抓取凭证（按实际抓取源配置）
 X_CT0=...
 X_AUTH_TOKEN=...
 ```
 
 `crypto-news-ingestion` 必须保持私有，不要为它绑定公网域名。
+
+**重要说明：**
+
+- `crypto-news-ingestion` **不**需要 `LLM_API_KEY`、`GROK_API_KEY`、`KIMI_API_KEY` 等 LLM 相关密钥，因为它不初始化 LLMAnalyzer、market snapshot service 或 Telegram 组件
+- `crypto-news-analysis` 需要完整的 LLM 和 Telegram 配置，因为它执行实际的新闻分析并响应 API/Telegram 命令
+
+### 模型密钥使用方式与 fallback 机制
+
+**市场快照（Market Snapshot）**
+
+- 仅使用 `GROK_API_KEY`
+- 内部有缓存机制，失效时重新获取
+- Grok 不可用时回退到本地 fallback 快照（非实时）
+
+**新闻分析（News Analysis）**
+
+- 主模型：Kimi（使用 `KIMI_API_KEY`，若未配置则使用 `LLM_API_KEY`）
+- 备用模型：Grok（仅在 Kimi 返回**内容过滤错误**时触发）
+- 注意：fallback 机制有限，仅在 `ContentFilterError` 时切换，其他错误不会自动切换
 
 ---
 
