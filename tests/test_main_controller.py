@@ -18,6 +18,7 @@ from crypto_news_analyzer.execution_coordinator import MainController, Execution
 from crypto_news_analyzer.models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult, StorageConfig
 from crypto_news_analyzer.storage.cache_manager import SentMessageCacheManager
 from crypto_news_analyzer.storage.data_manager import DataManager
+from crypto_news_analyzer.storage.repositories import RepositoryFactory
 
 
 class TestMainController:
@@ -39,6 +40,15 @@ class TestMainController:
         controller.cache_manager = SentMessageCacheManager(
             StorageConfig(database_path=str(database_path))
         )
+        repositories = RepositoryFactory.create_repositories(
+            StorageConfig(database_path=str(database_path)),
+            data_manager=controller.data_manager,
+            cache_manager=controller.cache_manager,
+        )
+        controller.analysis_repository = repositories["analysis"]
+        controller.ingestion_repository = repositories["ingestion"]
+        controller.content_repository = repositories["content"]
+        controller.cache_repository = repositories["cache"]
 
         yield controller
 
@@ -225,6 +235,10 @@ class TestMainController:
             
             controller.data_manager = Mock()
             controller.data_manager.get_content_items.return_value = []
+            controller.analysis_repository = Mock()
+            controller.content_repository = Mock()
+            controller.content_repository.get_recent_content_items.return_value = []
+            controller.cache_repository = Mock()
             controller.llm_analyzer = Mock()
             controller.report_generator = Mock()
             controller.telegram_sender = Mock()
@@ -486,7 +500,7 @@ class TestMainController:
             item.id = f"item_{i}"
         
         # 模拟数据管理器返回内容项
-        mock_controller.data_manager.get_content_items.return_value = content_items
+        mock_controller.content_repository.get_recent_content_items.return_value = content_items
         
         # 模拟分析结果
         from crypto_news_analyzer.analyzers.structured_output_manager import StructuredAnalysisResult
@@ -572,7 +586,7 @@ class TestMainController:
 
         self._seed_analysis_success(controller, recipient_key, prior_success)
 
-        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        controller.content_repository.get_content_items_since = Mock(return_value=[content_item])
         controller._execute_analysis_stage = Mock(
             return_value={
                 "success": True,
@@ -609,7 +623,7 @@ class TestMainController:
         controller = manual_history_controller
         content_item = self._build_content_item()
 
-        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        controller.content_repository.get_content_items_since = Mock(return_value=[content_item])
         controller._execute_analysis_stage = Mock(
             return_value={
                 "success": True,
@@ -653,7 +667,7 @@ class TestMainController:
             title="recent cached title should be ignored without anchor",
         )
 
-        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        controller.content_repository.get_content_items_since = Mock(return_value=[content_item])
         self._configure_manual_analysis_success(controller, content_item)
 
         result = controller.analyze_by_time_window(
@@ -685,7 +699,7 @@ class TestMainController:
             title="too new for anchored window",
         )
 
-        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        controller.content_repository.get_content_items_since = Mock(return_value=[content_item])
         self._configure_manual_analysis_success(controller, content_item)
 
         result = controller.analyze_by_time_window(
@@ -724,7 +738,7 @@ class TestMainController:
             title="anchor boundary title",
         )
 
-        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        controller.content_repository.get_content_items_since = Mock(return_value=[content_item])
         self._configure_manual_analysis_success(controller, content_item)
 
         result = controller.analyze_by_time_window(
@@ -759,7 +773,7 @@ class TestMainController:
             title="after anchor title",
         )
 
-        controller.data_manager.get_content_items_since = Mock(return_value=[content_item])
+        controller.content_repository.get_content_items_since = Mock(return_value=[content_item])
         self._configure_manual_analysis_success(controller, content_item)
 
         result = controller.analyze_by_time_window(
@@ -847,6 +861,13 @@ class TestMainControllerIntegration:
             controller.data_manager.add_content_items.return_value = 0
             controller.data_manager.save_crawl_status = Mock()
             controller.data_manager.get_content_items.return_value = []
+            controller.content_repository = Mock()
+            controller.content_repository.save_many.return_value = 0
+            controller.content_repository.deduplicate.return_value = 0
+            controller.content_repository.save_crawl_status = Mock()
+            controller.content_repository.get_recent_content_items.return_value = []
+            controller.analysis_repository = Mock()
+            controller.cache_repository = Mock()
             
             controller.llm_analyzer = Mock()
             controller.llm_analyzer.batch_analyze.return_value = []

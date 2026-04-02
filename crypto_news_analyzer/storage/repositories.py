@@ -17,7 +17,7 @@ from ..domain.repositories import (
 )
 from ..storage.data_manager import DataManager
 from ..storage.cache_manager import SentMessageCacheManager
-from ..models import StorageConfig
+from ..models import StorageConfig, ContentItem, CrawlStatus
 
 
 class SQLiteAnalysisRepository(AnalysisRepository):
@@ -99,6 +99,22 @@ class SQLiteAnalysisRepository(AnalysisRepository):
     ) -> Optional[datetime]:
         """Get timestamp of last successful analysis for recipient"""
         return self._data.get_last_successful_analysis_time(recipient_key)
+
+    def log_execution(
+        self,
+        recipient_key: str,
+        time_window_hours: int,
+        items_count: int,
+        success: bool,
+        error_message: Optional[str] = None,
+    ) -> None:
+        self._data.log_analysis_execution(
+            chat_id=recipient_key,
+            time_window_hours=time_window_hours,
+            items_count=items_count,
+            success=success,
+            error_message=error_message,
+        )
 
 
 class SQLiteIngestionRepository(IngestionRepository):
@@ -260,6 +276,41 @@ class SQLiteContentRepository(ContentRepository):
         )
         return len(items)
 
+    def save_many(self, items: List[ContentItem]) -> int:
+        return self._data.add_content_items(items)
+
+    def deduplicate(self) -> int:
+        return self._data.deduplicate_content()
+
+    def save_crawl_status(self, crawl_status: CrawlStatus) -> None:
+        self._data.save_crawl_status(crawl_status)
+
+    def get_recent_content_items(
+        self,
+        time_window_hours: Optional[int] = None,
+        source_types: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[ContentItem]:
+        return self._data.get_content_items(
+            time_window_hours=time_window_hours,
+            source_types=source_types,
+            limit=limit,
+        )
+
+    def get_content_items_since(
+        self,
+        since_time: datetime,
+        max_hours: Optional[int] = None,
+        source_types: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[ContentItem]:
+        return self._data.get_content_items_since(
+            since_time=since_time,
+            max_hours=max_hours,
+            source_types=source_types,
+            limit=limit,
+        )
+
 
 class SQLiteCacheRepository(CacheRepository):
     """SQLite implementation of CacheRepository"""
@@ -310,6 +361,16 @@ class SQLiteCacheRepository(CacheRepository):
         """Remove cache entries older than timestamp"""
         hours = (datetime.utcnow() - before).total_seconds() / 3600
         return self._cache.cleanup_expired_cache(hours=max(0, int(hours)))
+
+    def cache_sent_messages(
+        self,
+        messages: List[Dict[str, Any]],
+        recipient_key: Optional[str] = None,
+    ) -> int:
+        return self._cache.cache_sent_messages(messages, recipient_key=recipient_key)
+
+    def get_cache_statistics(self) -> Dict[str, Any]:
+        return self._cache.get_cache_statistics()
 
 
 class RepositoryFactory:

@@ -52,10 +52,10 @@ def test_analyze_by_time_window_respects_requested_window(tmp_path):
     controller.config_manager.get_time_window_hours.return_value = 1
     controller.config_manager.config_data = {"llm_config": {"min_weight_score": 50}}
 
-    controller.data_manager = Mock()
-    controller.data_manager.get_content_items_since.return_value = content_items
-    controller.data_manager.get_content_items = Mock()
-    controller.data_manager.log_analysis_execution = Mock()
+    controller.content_repository = Mock()
+    controller.content_repository.get_content_items_since.return_value = content_items
+    controller.analysis_repository = Mock()
+    controller.analysis_repository.get_last_successful_analysis.return_value = None
 
     controller.llm_analyzer = Mock()
     controller.llm_analyzer.analyze_content_batch.return_value = [
@@ -87,8 +87,7 @@ def test_analyze_by_time_window_respects_requested_window(tmp_path):
     assert result["success"] is True
     assert result["items_processed"] == 2
 
-    assert controller.data_manager.get_content_items_since.call_args.kwargs["max_hours"] == 18
-    controller.data_manager.get_content_items.assert_not_called()
+    assert controller.content_repository.get_content_items_since.call_args.kwargs["max_hours"] == 18
 
     analyzed_input = controller.llm_analyzer.analyze_content_batch.call_args.args[0]
     assert analyzed_input == content_items

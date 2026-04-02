@@ -248,7 +248,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
 
   **Commit**: YES | Message: `feat(contract): define shared request and category contracts` | Files: `crypto_news_analyzer/models.py`, `crypto_news_analyzer/config/manager.py`, `crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/reporters/telegram_command_handler.py`, `tests/`
 
-- [ ] 4. 提取存储边界并引入 PostgreSQL-ready repository 层
+- [x] 4. 提取存储边界并引入 PostgreSQL-ready repository 层
 
   **What to do**: 将当前 SQLite 偏实现细节从业务流程中隔离出来，建立可替换的 repository/storage adapter 边界，使 `DataManager`/cache/job/result 访问不再直接绑死 SQLite；为后续 Postgres 迁移和双服务共享做准备。
   **Must NOT do**: 不做 dual-write；不在此任务里切流到 Postgres；不让业务层同时知道 SQLite 和 Postgres 两套细节。
@@ -268,9 +268,9 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Test: `tests/test_data_storage_properties.py` — 存储行为性质测试
 
   **Acceptance Criteria** (agent-executable only):
-  - [ ] 业务层通过统一 repository interface 读写内容、作业、缓存、分析结果
-  - [ ] SQLite 仍可通过该 interface 跑通现有测试
-  - [ ] `uv run pytest tests/test_data_storage_properties.py tests/test_main_controller.py -q` exits `0`
+  - [x] 业务层通过统一 repository interface 读写内容、作业、缓存、分析结果
+  - [x] SQLite 仍可通过该 interface 跑通现有测试
+  - [x] `uv run pytest tests/test_data_storage_properties.py tests/test_main_controller.py -q` exits `0`
 
   **QA Scenarios** (MANDATORY — task incomplete without these):
   ```

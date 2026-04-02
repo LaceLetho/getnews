@@ -116,6 +116,17 @@ class AnalysisRepository(ABC):
         """
         pass
 
+    @abstractmethod
+    def log_execution(
+        self,
+        recipient_key: str,
+        time_window_hours: int,
+        items_count: int,
+        success: bool,
+        error_message: Optional[str] = None,
+    ) -> None:
+        pass
+
 
 class IngestionRepository(ABC):
     """
@@ -265,6 +276,37 @@ class ContentRepository(ABC):
         """Get count of items since timestamp"""
         pass
 
+    @abstractmethod
+    def save_many(self, items: List[Any]) -> int:
+        pass
+
+    @abstractmethod
+    def deduplicate(self) -> int:
+        pass
+
+    @abstractmethod
+    def save_crawl_status(self, crawl_status: Any) -> None:
+        pass
+
+    @abstractmethod
+    def get_recent_content_items(
+        self,
+        time_window_hours: Optional[int] = None,
+        source_types: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[Any]:
+        pass
+
+    @abstractmethod
+    def get_content_items_since(
+        self,
+        since_time: datetime,
+        max_hours: Optional[int] = None,
+        source_types: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[Any]:
+        pass
+
 
 class CacheRepository(ABC):
     """
@@ -317,4 +359,16 @@ class CacheRepository(ABC):
         Returns:
             Number of entries removed
         """
+        pass
+
+    @abstractmethod
+    def cache_sent_messages(
+        self,
+        messages: List[Dict[str, Any]],
+        recipient_key: Optional[str] = None,
+    ) -> int:
+        pass
+
+    @abstractmethod
+    def get_cache_statistics(self) -> Dict[str, Any]:
         pass

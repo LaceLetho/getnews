@@ -194,12 +194,11 @@ class MainController:
         time_window_hours: int,
         items_count: int,
     ) -> None:
-        data_manager = self.data_manager
-        if data_manager is None:
-            raise ValueError("数据管理器未初始化")
+        if self.analysis_repository is None:
+            raise ValueError("分析仓储未初始化")
 
-        data_manager.log_analysis_execution(
-            chat_id=recipient_key,
+        self.analysis_repository.log_execution(
+            recipient_key=recipient_key,
             time_window_hours=time_window_hours,
             items_count=items_count,
             success=True,
@@ -234,10 +233,10 @@ class MainController:
         final_report_messages: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         if final_report_messages:
-            if self.cache_manager is None:
-                raise ValueError("缓存管理器未初始化")
+            if self.cache_repository is None:
+                raise ValueError("缓存仓储未初始化")
 
-            cached_count = self.cache_manager.cache_sent_messages(
+            cached_count = self.cache_repository.cache_sent_messages(
                 final_report_messages,
                 recipient_key=recipient_key,
             )
@@ -252,26 +251,25 @@ class MainController:
         )
 
     def _get_manual_historical_titles(self, recipient_key: str) -> List[str]:
-        data_manager = self.data_manager
-        if data_manager is None:
-            raise ValueError("数据管理器未初始化")
+        if self.analysis_repository is None:
+            raise ValueError("分析仓储未初始化")
 
-        prior_success_time = data_manager.get_last_successful_analysis_time(recipient_key)
+        if self.cache_repository is None:
+            self.logger.info(
+                f"缓存仓储未初始化，recipient_key={recipient_key}，使用空历史标题集"
+            )
+            return []
+
+        prior_success_time = self.analysis_repository.get_last_successful_analysis(recipient_key)
         if prior_success_time is None:
             self.logger.info(
                 f"手动分析无历史成功锚点，recipient_key={recipient_key}，使用空历史标题集"
             )
             return []
 
-        if self.cache_manager is None:
-            self.logger.info(
-                f"缓存管理器未初始化，recipient_key={recipient_key}，使用空历史标题集"
-            )
-            return []
-
-        historical_titles = self.cache_manager.get_recipient_cached_titles(
-            recipient_key=recipient_key,
-            anchor_time=prior_success_time,
+        historical_titles = self.cache_repository.get_titles_since(
+            recipient_key,
+            since=prior_success_time,
         )
         self.logger.info(
             f"手动分析历史标题查询完成，recipient_key={recipient_key}，anchor_time={prior_success_time.isoformat()}，titles={len(historical_titles)}"
@@ -448,7 +446,11 @@ class MainController:
 
         # 清理过期缓存（需求17.12: 系统启动时调用cleanup_expired_cache）
         try:
-            expired_count = self.cache_manager.cleanup_expired_cache(hours=24)
+            if self.cache_repository is None:
+                raise ValueError("缓存仓储未初始化")
+            expired_count = self.cache_repository.cleanup_expired(
+                datetime.utcnow() - timedelta(hours=24)
+            )
             self.logger.info(f"清理了 {expired_count} 条过期缓存记录")
         except Exception as e:
             self.logger.warning(f"清理过期缓存失败: {str(e)}")
@@ -887,8 +889,10 @@ class MainController:
             # 数据去重和存储
             added_count = 0
             if all_content_items:
-                added_count = self.data_manager.add_content_items(all_content_items)
-                self.data_manager.deduplicate_content()
+                if self.content_repository is None:
+                    raise ValueError("内容仓储未初始化")
+                added_count = self.content_repository.save_many(all_content_items)
+                self.content_repository.deduplicate()
                 self.logger.info(f"成功存储 {added_count} 个内容项")
             
             # 创建爬取状态
@@ -900,7 +904,9 @@ class MainController:
             )
             
             # 保存爬取状态
-            self.data_manager.save_crawl_status(crawl_status)
+            if self.content_repository is None:
+                raise ValueError("内容仓储未初始化")
+            self.content_repository.save_crawl_status(crawl_status)
             
             result.update({
                 "success": True,
@@ -953,7 +959,9 @@ class MainController:
                 )
 
                 # 获取时间窗口内的所有内容项（包括之前爬取的和刚爬取的）
-                all_content_items = self.data_manager.get_content_items(
+                if self.content_repository is None:
+                    raise ValueError("内容仓储未初始化")
+                all_content_items = self.content_repository.get_recent_content_items(
                     time_window_hours=time_window_hours
                 )
             
@@ -1092,7 +1100,7 @@ class MainController:
                 
                 # 需求17.9: 报告发送成功后缓存已发送的消息
                 # 手动触发时不缓存，避免影响定时任务的去重逻辑
-                if should_cache and self.cache_manager and categorized_items:
+                if should_cache and self.cache_repository and categorized_items:
                     try:
                         messages_to_cache = []
                         for category, items in categorized_items.items():
@@ -1107,11 +1115,11 @@ class MainController:
                                 })
                         
                         if messages_to_cache:
-                            cached_count = self.cache_manager.cache_sent_messages(messages_to_cache)
+                            cached_count = self.cache_repository.cache_sent_messages(messages_to_cache)
                             self.logger.info(f"成功缓存 {cached_count} 条已发送消息")
                             
                             # 需求17.14: 实现缓存统计和监控
-                            cache_stats = self.cache_manager.get_cache_statistics()
+                            cache_stats = self.cache_repository.get_cache_statistics()
                             self.logger.info(f"缓存统计: {cache_stats}")
                     except Exception as cache_error:
                         # 需求17.15: 缓存失败不影响主流程
@@ -1830,11 +1838,12 @@ class MainController:
             "errors": []
         }
         recipient_key = self._resolve_manual_recipient_key(chat_id, manual_source)
-        data_manager = self.data_manager
 
         try:
-            if data_manager is None:
-                raise Exception("数据管理器未初始化")
+            if self.content_repository is None:
+                raise Exception("内容仓储未初始化")
+            if self.analysis_repository is None:
+                raise Exception("分析仓储未初始化")
 
             # 初始化系统（如果尚未初始化）
             if not self._initialized:
@@ -1844,7 +1853,7 @@ class MainController:
             since_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
 
             # 从数据库获取时间窗口内的内容
-            content_items = data_manager.get_content_items_since(
+            content_items = self.content_repository.get_content_items_since(
                 since_time=since_time,
                 max_hours=time_window_hours
             )
@@ -1866,8 +1875,8 @@ class MainController:
             )
             if not analysis_result["success"]:
                 result["errors"].extend(analysis_result["errors"])
-                data_manager.log_analysis_execution(
-                    chat_id=recipient_key,
+                self.analysis_repository.log_execution(
+                    recipient_key=recipient_key,
                     time_window_hours=time_window_hours,
                     items_count=len(content_items),
                     success=False,
@@ -1888,8 +1897,8 @@ class MainController:
             
             if not report_result["success"]:
                 result["errors"].extend(report_result["errors"])
-                data_manager.log_analysis_execution(
-                    chat_id=recipient_key,
+                self.analysis_repository.log_execution(
+                    recipient_key=recipient_key,
                     time_window_hours=time_window_hours,
                     items_count=len(content_items),
                     success=False,
@@ -1906,8 +1915,8 @@ class MainController:
                 error_message = "分析未生成有效报告内容"
                 result["success"] = False
                 result["errors"].append(error_message)
-                data_manager.log_analysis_execution(
-                    chat_id=recipient_key,
+                self.analysis_repository.log_execution(
+                    recipient_key=recipient_key,
                     time_window_hours=time_window_hours,
                     items_count=len(content_items),
                     success=False,
@@ -1920,9 +1929,9 @@ class MainController:
             self.logger.error(error_msg)
             self.logger.debug(traceback.format_exc())
             result["errors"].append(error_msg)
-            if data_manager is not None:
-                data_manager.log_analysis_execution(
-                    chat_id=recipient_key,
+            if self.analysis_repository is not None:
+                self.analysis_repository.log_execution(
+                    recipient_key=recipient_key,
                     time_window_hours=time_window_hours,
                     items_count=0,
                     success=False,
