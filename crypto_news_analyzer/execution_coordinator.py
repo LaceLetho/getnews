@@ -483,7 +483,7 @@ class MainController:
             })
         )
     
-    def validate_prerequisites(self) -> Dict[str, Any]:
+    def validate_prerequisites(self, validation_scope: Optional[str] = None) -> Dict[str, Any]:
         """
         验证系统运行前提条件
         
@@ -493,6 +493,9 @@ class MainController:
         Returns:
             验证结果字典
         """
+        normalized_scope = (validation_scope or os.environ.get("CRYPTO_NEWS_RUNTIME_MODE", "")).strip().lower()
+        skip_analysis_auth_validation = normalized_scope in {"ingestion", "scheduler"}
+
         validation_result = {
             "valid": True,
             "errors": [],
@@ -531,12 +534,13 @@ class MainController:
                 validation_result["valid"] = False
             
             # 验证认证配置
-            auth_config = self.config_manager.get_auth_config()
-            if not auth_config.LLM_API_KEY:
-                validation_result["warnings"].append("LLM API密钥未配置，将使用模拟模式")
-            
-            if not auth_config.TELEGRAM_BOT_TOKEN or not auth_config.TELEGRAM_CHANNEL_ID:
-                validation_result["warnings"].append("Telegram配置不完整，将跳过报告发送")
+            if not skip_analysis_auth_validation:
+                auth_config = self.config_manager.get_auth_config()
+                if not auth_config.LLM_API_KEY:
+                    validation_result["warnings"].append("LLM API密钥未配置，将使用模拟模式")
+
+                if not auth_config.TELEGRAM_BOT_TOKEN or not auth_config.TELEGRAM_CHANNEL_ID:
+                    validation_result["warnings"].append("Telegram配置不完整，将跳过报告发送")
             
             # 验证数据源配置
             rss_sources = self.config_manager.get_rss_sources()
@@ -625,7 +629,7 @@ class MainController:
             self.logger.info(f"开始执行工作流 {execution_id}")
             
             # 验证前提条件
-            validation_result = self.validate_prerequisites()
+            validation_result = self.validate_prerequisites(validation_scope="analysis-service")
             if not validation_result["valid"]:
                 raise Exception(f"前提条件验证失败: {validation_result['errors']}")
             
@@ -1607,7 +1611,7 @@ class MainController:
             self.logger.info(f"开始爬取阶段 {execution_id}")
             
             # 验证前提条件
-            validation_result = self.validate_prerequisites()
+            validation_result = self.validate_prerequisites(validation_scope="ingestion")
             if not validation_result["valid"]:
                 raise Exception(f"前提条件验证失败: {validation_result['errors']}")
             

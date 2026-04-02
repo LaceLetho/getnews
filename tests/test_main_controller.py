@@ -274,6 +274,22 @@ class TestMainController:
         
         assert result["valid"] is False
         assert any("配置文件不存在" in error for error in result["errors"])
+
+    def test_validate_prerequisites_ingestion_scope_skips_analysis_auth(self, mock_controller):
+        mock_controller.config_manager.get_auth_config.side_effect = ValueError("LLM API密钥不能为空")
+
+        result = mock_controller.validate_prerequisites(validation_scope="ingestion")
+
+        assert result["valid"] is True
+        mock_controller.config_manager.get_auth_config.assert_not_called()
+
+    def test_validate_prerequisites_analysis_scope_requires_analysis_auth(self, mock_controller):
+        mock_controller.config_manager.get_auth_config.side_effect = ValueError("LLM API密钥不能为空")
+
+        result = mock_controller.validate_prerequisites(validation_scope="analysis-service")
+
+        assert result["valid"] is False
+        assert any("LLM API密钥不能为空" in error for error in result["errors"])
     
     def test_run_once_success(self, mock_controller):
         """测试一次性执行成功"""
