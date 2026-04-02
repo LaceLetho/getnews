@@ -381,6 +381,15 @@ class DataManager:
 
         return publish_time.astimezone(timezone.utc).replace(tzinfo=None)
 
+    def _coerce_loaded_datetime(self, value: Any) -> datetime:
+        if isinstance(value, datetime):
+            return value
+
+        if isinstance(value, str):
+            return datetime.fromisoformat(value)
+
+        raise TypeError(f"Unsupported datetime value type: {type(value).__name__}")
+
     def get_content_items(
         self,
         time_window_hours: Optional[int] = None,
@@ -435,7 +444,7 @@ class DataManager:
             items = []
             for row in rows:
                 try:
-                    publish_time = datetime.fromisoformat(row["publish_time"])
+                    publish_time = self._coerce_loaded_datetime(row["publish_time"])
                     publish_time = self._normalize_loaded_publish_time(publish_time)
 
                     item = ContentItem(
@@ -706,7 +715,7 @@ class DataManager:
                     rss_results=rss_results,
                     x_results=x_results,
                     total_items=row["total_items"],
-                    execution_time=datetime.fromisoformat(row["execution_time"]),
+                    execution_time=self._coerce_loaded_datetime(row["execution_time"]),
                 )
 
             except Exception as e:
@@ -806,7 +815,7 @@ class DataManager:
 
             if row and row["latest_time"]:
                 try:
-                    latest_time = datetime.fromisoformat(row["latest_time"])
+                    latest_time = self._coerce_loaded_datetime(row["latest_time"])
                     logger.info(f"数据源 {source_name} 的最近消息时间: {latest_time}")
                     return latest_time
                 except Exception as e:
@@ -905,7 +914,7 @@ class DataManager:
             items = []
             for row in rows:
                 try:
-                    publish_time = datetime.fromisoformat(row["publish_time"])
+                    publish_time = self._coerce_loaded_datetime(row["publish_time"])
                     publish_time = self._normalize_loaded_publish_time(publish_time)
 
                     item = ContentItem(
@@ -1549,7 +1558,7 @@ class DataManager:
             row = cursor.fetchone()
             if row and row["execution_time"]:
                 try:
-                    execution_time = datetime.fromisoformat(row["execution_time"])
+                    execution_time = self._coerce_loaded_datetime(row["execution_time"])
                     logger.info(f"chat_id={recipient_key} 的上次成功分析时间: {execution_time}")
                     return execution_time
                 except Exception as e:
