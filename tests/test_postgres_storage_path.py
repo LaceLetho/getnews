@@ -189,6 +189,15 @@ class _ReadConnection:
     def cursor(self):
         return self._cursor
 
+    def commit(self):
+        return None
+
+    def rollback(self):
+        return None
+
+    def close(self):
+        return None
+
 
 @contextmanager
 def _stub_connection(cursor):
@@ -197,6 +206,39 @@ def _stub_connection(cursor):
 
 def _build_time_value(native_time: datetime, as_string: bool):
     return native_time.isoformat() if as_string else native_time
+
+
+class _DeduplicateCursor:
+    def __init__(self):
+        self.executed = []
+        self.rowcount = 0
+        self._fetchall_calls = 0
+
+    def execute(self, query, params=None):
+        self.executed.append((query, params))
+        if "DELETE FROM content_items" in query:
+            self.rowcount = 1
+        else:
+            self.rowcount = 0
+
+    def fetchall(self):
+        self._fetchall_calls += 1
+        if self._fetchall_calls == 1:
+            return [{"content_hash": "hash-1"}]
+        return []
+
+
+def test_deduplicate_content_uses_portable_having_clause():
+    manager = DataManager(StorageConfig(database_path=":memory:"))
+    cursor = _DeduplicateCursor()
+    manager._get_connection = lambda: _stub_connection(cursor)
+
+    deleted = manager.deduplicate_content()
+
+    assert deleted == 1
+    select_query, _ = cursor.executed[0]
+    assert "HAVING COUNT(*) > 1" in select_query
+    assert "HAVING count > 1" not in select_query
 
 
 @pytest.mark.parametrize("as_string", [True, False])

@@ -480,7 +480,7 @@ class DataManager:
                     SELECT content_hash, COUNT(*) as count
                     FROM content_items
                     GROUP BY content_hash
-                    HAVING count > 1
+                    HAVING COUNT(*) > 1
                 """)
 
                 duplicate_hashes = cursor.fetchall()
