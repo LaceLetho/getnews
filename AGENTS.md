@@ -4,7 +4,11 @@ Guidance for AI coding agents working on the Cryptocurrency News Analyzer projec
 
 ## Project Overview
 
-Automated Python system collecting crypto news from RSS/X, analyzing with LLM (Grok/MiniMax), delivering reports via Telegram Bot.
+Automated Python system for split-service crypto news ingestion and analysis. The retained runtime surface is:
+
+- `analysis-service` — public HTTP analyze API plus Telegram command handling
+- `api-only` — isolated HTTP analyze API without Telegram startup
+- `ingestion` — private scheduled crawling/ingestion worker
 
 Assigned production domain: `news.tradao.xyz`
 
@@ -85,15 +89,18 @@ uv run flake8 crypto_news_analyzer/
 # Install Bird CLI (required for X/Twitter crawling)
 npm install -g @laceletho/bird
 
-# Run once (uses .env file for configuration)
-uv run python -m crypto_news_analyzer.main --mode once
+# Run public analysis service (uses .env file for configuration)
+uv run python -m crypto_news_analyzer.main --mode analysis-service
 
-# Run scheduled
-uv run python -m crypto_news_analyzer.main --mode schedule
+# Run isolated API service
+uv run python -m crypto_news_analyzer.main --mode api-only
 
-# Docker build/run
+# Run private ingestion service
+uv run python -m crypto_news_analyzer.main --mode ingestion
+
+# Docker build and start
 docker build -t crypto-news-analyzer .
-docker run -e LLM_API_KEY=xxx crypto-news-analyzer once
+docker run -e LLM_API_KEY=xxx -e API_KEY=xxx crypto-news-analyzer analysis-service
 ```
 
 ## Online Debugging & Logs
@@ -114,26 +121,33 @@ This skill provides curl commands for Railway GraphQL API debugging without CLI 
 
 ## Architecture
 
+The repository is split-service-first. Railway deploys two long-lived app services that share one PostgreSQL/pgvector database:
+
+- `crypto-news-analysis` -> `analysis-service`
+- `crypto-news-ingestion` -> `ingestion`
+
+`api-only` remains available as an isolated API runtime for local or dedicated deployments.
+
 ### Module Organization
 ```
 crypto_news_analyzer/
-├── main.py                    # CLI entry point
-├── execution_coordinator.py   # MainController orchestrates workflow
-├── models.py                  # Data models (ContentItem, AnalysisResult)
-├── config/manager.py          # Configuration management
-├── crawlers/                  # Data collection (RSS, X/Twitter)
-├── analyzers/                 # LLM analysis (Grok/MiniMax)
-├── storage/                   # SQLite persistence
-├── reporters/                 # Telegram bot integration
-└── utils/                     # Logging, errors, timezone
+├── main.py                    # Retained runtime entrypoint and mode dispatch
+├── execution_coordinator.py   # MainController for analysis-service and ingestion flows
+├── api_server.py              # FastAPI app factory and analyze job endpoints
+├── models.py                  # Shared data/config/result models
+├── config/manager.py          # Env + config.json loading and normalization
+├── crawlers/                  # RSS, X/Twitter, and Bird-backed ingestion sources
+├── analyzers/                 # LLM analysis pipeline and structured outputs
+├── storage/                   # Repository layer for SQLite/Postgres backends and ingestion state
+├── reporters/                 # Telegram command/report delivery integrations
+└── utils/                     # Logging, errors, time and helper utilities
 ```
 
 ### Data Flow
-1. Crawlers → ContentItem[]
-2. Storage → deduplicate & persist
-3. Analyzers → LLM → AnalysisResult[]
-4. Reporters → Markdown report
-5. Telegram Bot → send to channel
+1. `ingestion` crawls RSS/X sources and persists normalized content into shared storage
+2. `analysis-service` / `api-only` read persisted content by time window
+3. Analyzers produce structured analysis results and markdown output
+4. `analysis-service` can deliver results via Telegram or HTTP job result endpoints
 
 ### Key Patterns
 - Factory Pattern: DataSourceFactory
@@ -146,17 +160,37 @@ crypto_news_analyzer/
 - `config.json` - App config (sources, LLM settings)
 - `.env` - Secrets (copy from `.env.template`)
 
-Required env vars:
-- LLM_API_KEY, GROK_API_KEY
-- TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID
-- TELEGRAM_AUTHORIZED_USERS
+### Shared env vars
+
+- `DATABASE_URL` - shared PostgreSQL/pgvector connection string when `storage.backend=postgres`
+- `CONFIG_PATH` - config file path override
+- `LOG_LEVEL` - runtime logging verbosity
+
+### `analysis-service` / `api-only`
+
+- `API_KEY` - required Bearer auth secret for the HTTP analyze API
+- `API_HOST`, `API_PORT` - API bind address/port
+- `LLM_API_KEY` plus optional provider-specific keys such as `GROK_API_KEY` / `KIMI_API_KEY`
+
+### `analysis-service` only
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHANNEL_ID`
+- `TELEGRAM_AUTHORIZED_USERS`
+
+### `ingestion`
+
+- `EXECUTION_INTERVAL` - crawl loop interval
+- `TIME_WINDOW_HOURS` - ingestion time window control
+- `X_CT0`, `X_AUTH_TOKEN` - X/Twitter crawl credentials when that source is enabled
 
 ## Important Notes
 
 - Always use `uv`, never raw `python` or `pip`
 - All datetimes stored in UTC
-- SQLite at `./data/crypto_news.db`
+- Production split-service deployments use a shared PostgreSQL/pgvector database as the source of truth
 - Logs in `./logs/`
 - Prompts in `./prompts/`
 - Use `__post_init__` for dataclass validation
 - X/Twitter requires Bird CLI: `npm install -g @laceletho/bird`
+- Retained runtime modes are `analysis-service`, `api-only`, and `ingestion`

@@ -38,7 +38,7 @@ class TestLogAuthorizationAttempt:
         """Test logging successful authorization at INFO level - specific example"""
         with caplog.at_level(logging.INFO):
             handler._log_authorization_attempt(
-                command="/run",
+                command="/analyze",
                 user_id="123456789",
                 username="testuser",
                 chat_type="private",
@@ -53,7 +53,7 @@ class TestLogAuthorizationAttempt:
         # Verify log message contains all required fields
         log_message = caplog.records[0].message
         assert "Authorization attempt:" in log_message
-        assert "command=/run" in log_message
+        assert "command=/analyze" in log_message
         assert "user=testuser (123456789)" in log_message
         assert "chat_type=private" in log_message
         assert "chat_id=123456789" in log_message
@@ -88,7 +88,7 @@ class TestLogAuthorizationAttempt:
         """Test logging with reason parameter included - specific example"""
         with caplog.at_level(logging.WARNING):
             handler._log_authorization_attempt(
-                command="/run",
+                command="/analyze",
                 user_id="111222333",
                 username="blocked_user",
                 chat_type="private",
@@ -140,7 +140,7 @@ class TestLogAuthorizationAttempt:
         """Test logging with supergroup chat type - specific example"""
         with caplog.at_level(logging.INFO):
             handler._log_authorization_attempt(
-                command="/run",
+                command="/analyze",
                 user_id="123456",
                 username="supergroupuser",
                 chat_type="supergroup",
@@ -188,7 +188,7 @@ class TestLogAuthorizationAttempt:
     
     def test_log_all_command_types(self, handler, caplog):
         """Test logging for all command types - specific examples"""
-        commands = ["/run", "/status", "/help"]
+        commands = ["/analyze", "/status", "/help"]
         
         for command in commands:
             caplog.clear()
@@ -210,7 +210,7 @@ class TestLogAuthorizationAttempt:
         """Test logging with negative chat_id for groups - specific example"""
         with caplog.at_level(logging.INFO):
             handler._log_authorization_attempt(
-                command="/run",
+                command="/analyze",
                 user_id="123456",
                 username="groupuser",
                 chat_type="group",
@@ -226,7 +226,7 @@ class TestLogAuthorizationAttempt:
         """Test that log message format is consistent - specific example"""
         with caplog.at_level(logging.INFO):
             handler._log_authorization_attempt(
-                command="/run",
+                command="/analyze",
                 user_id="123456",
                 username="testuser",
                 chat_type="private",
@@ -252,7 +252,7 @@ class TestLogAuthorizationAttempt:
         
         with caplog.at_level(logging.WARNING):
             handler._log_authorization_attempt(
-                command="/run",
+                command="/analyze",
                 user_id="123456",
                 username="testuser",
                 chat_type="private",
@@ -271,7 +271,7 @@ class TestLogAuthorizationAttempt:
              patch.object(handler.logger, 'warning') as mock_warning:
             
             handler._log_authorization_attempt(
-                command="/run",
+                command="/analyze",
                 user_id="123456",
                 username="testuser",
                 chat_type="private",
@@ -289,7 +289,7 @@ class TestLogAuthorizationAttempt:
              patch.object(handler.logger, 'warning') as mock_warning:
             
             handler._log_authorization_attempt(
-                command="/run",
+                command="/analyze",
                 user_id="123456",
                 username="testuser",
                 chat_type="private",
@@ -322,7 +322,7 @@ class TestLogAuthorizationAttempt:
         with caplog.at_level(logging.INFO):
             # Log multiple attempts
             handler._log_authorization_attempt(
-                command="/run",
+                command="/analyze",
                 user_id="111",
                 username="user1",
                 chat_type="private",

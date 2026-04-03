@@ -633,3 +633,23 @@ def test_create_api_server_lifespan_starts_requested_services_and_cleans_up(
     assert fake_controller.start_command_listener_called is True
     assert fake_controller.stop_scheduler_called is True
     assert fake_controller.stop_command_listener_called is True
+
+
+def test_create_api_server_lifespan_keeps_scheduler_and_listener_disabled_when_start_services_false(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fake_controller = _FakeController(command_handler=object())
+    app = _build_test_app(
+        monkeypatch,
+        fake_controller,
+        start_services=False,
+    )
+
+    with TestClient(app):
+        pass
+
+    assert fake_controller.initialize_system_called is True
+    assert fake_controller.start_scheduler_called is False
+    assert fake_controller.start_command_listener_called is False
+    assert fake_controller.stop_scheduler_called is True
+    assert fake_controller.stop_command_listener_called is True

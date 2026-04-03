@@ -112,12 +112,10 @@ validate_railway_service() {
         "crypto-news-analysis")
             log_info "Railway服务: analysis服务（公共）- HTTP API + Telegram监听（无调度器）"
             ;;
-        "crypto-news-api")
-            log_warn "Railway服务: crypto-news-api 为旧服务名兼容映射，将按 analysis-service 启动"
-            ;;
         *)
-            log_warn "未知的RAILWAY_SERVICE_NAME: $RAILWAY_SERVICE_NAME"
-            log_warn "期望的值: crypto-news-ingestion, crypto-news-analysis（或兼容旧值 crypto-news-api）"
+            log_error "不支持的RAILWAY_SERVICE_NAME: $RAILWAY_SERVICE_NAME"
+            log_error "期望的值: crypto-news-ingestion, crypto-news-analysis"
+            return 1
             ;;
     esac
 }
@@ -131,11 +129,24 @@ get_mode_from_railway_service() {
         "crypto-news-analysis")
             echo "analysis-service"
             ;;
-        "crypto-news-api")
-            echo "analysis-service"
-            ;;
         *)
             echo ""
+            ;;
+    esac
+}
+
+validate_mode() {
+    local mode=$1
+
+    case "$mode" in
+        "analysis-service"|"api-only"|"ingestion"|"migrate-postgres")
+            return 0
+            ;;
+        *)
+            log_error "未知的运行模式: $mode"
+            log_info "支持的常驻服务: analysis-service, api-only, ingestion"
+            log_info "一次性维护模式: migrate-postgres"
+            return 1
             ;;
     esac
 }
@@ -212,8 +223,11 @@ log_execution_state() {
     local state=$1
     local message=$2
     local timestamp=$(date -u '+%Y-%m-%dT%H:%M:%S.%3NZ')
+    local log_dir="/app/logs"
+
+    mkdir -p "$log_dir"
     
-    echo "{\"timestamp\":\"$timestamp\",\"state\":\"$state\",\"message\":\"$message\"}" >> /app/logs/execution_state.log
+    echo "{\"timestamp\":\"$timestamp\",\"state\":\"$state\",\"message\":\"$message\"}" >> "$log_dir/execution_state.log"
     
     case "$state" in
         "starting")
@@ -278,23 +292,28 @@ main() {
     local mode="${1:-}"
 
     # Railway服务拆分：如果设置了RAILWAY_SERVICE_NAME，优先使用它
-    if [[ -n "$RAILWAY_SERVICE_NAME" ]]; then
+    if [[ "$mode" != "migrate-postgres" && -n "$RAILWAY_SERVICE_NAME" ]]; then
         local railway_mode
         railway_mode=$(get_mode_from_railway_service)
         if [[ -n "$railway_mode" ]]; then
             mode="$railway_mode"
             log_info "使用Railway服务模式: $RAILWAY_SERVICE_NAME -> $mode"
+        else
+            log_error "不支持的RAILWAY_SERVICE_NAME: $RAILWAY_SERVICE_NAME"
+            log_info "支持的Railway服务: crypto-news-analysis, crypto-news-ingestion"
+            log_execution_state "failed" "不支持的RAILWAY_SERVICE_NAME: $RAILWAY_SERVICE_NAME"
+            exit 1
         fi
-    fi
-
-    if [[ "$mode" == "api-server" || "$mode" == "api" ]]; then
-        log_warn "运行模式 '$mode' 已退役，将按拆分服务默认路径 analysis-service 启动"
-        mode="analysis-service"
     fi
 
     if [[ -z "$mode" ]]; then
         mode="analysis-service"
         log_info "未显式指定模式，默认使用拆分服务运行模式: $mode"
+    fi
+
+    if ! validate_mode "$mode"; then
+        log_execution_state "failed" "未知的运行模式: $mode"
+        exit 1
     fi
 
     log_info "启动加密货币新闻分析工具容器"
@@ -327,45 +346,22 @@ main() {
 
     # 根据模式执行
     case "$mode" in
-        "once"|"one_time")
-            log_info "启动一次性执行模式"
-            python /app/run.py --mode once $config_arg &
-            MAIN_PID=$!
-            ;;
-        "schedule"|"scheduled")
-            log_info "启动定时调度模式（向后兼容）"
-            log_info "调度间隔: ${EXECUTION_INTERVAL:-3600} 秒"
-            python /app/run.py --mode schedule $config_arg &
-            MAIN_PID=$!
-            ;;
-        "scheduler")
-            log_info "启动调度器专用模式（Railway ingestion服务）"
-            log_info "调度间隔: ${EXECUTION_INTERVAL:-3600} 秒"
-            python /app/run.py --mode scheduler $config_arg &
-            MAIN_PID=$!
-            ;;
         "ingestion")
             log_info "启动数据摄取服务模式（Railway ingestion服务）"
             log_info "调度间隔: ${EXECUTION_INTERVAL:-3600} 秒"
-            python /app/run.py --mode ingestion $config_arg &
-            MAIN_PID=$!
-            ;;
-        "command")
-            log_info "启动命令监听模式"
-            log_warn "命令监听模式尚未实现，使用定时调度模式"
-            python /app/run.py --mode schedule $config_arg &
+            python -m crypto_news_analyzer.main --mode ingestion $config_arg &
             MAIN_PID=$!
             ;;
         "analysis-service")
             log_info "启动公网分析服务模式（Railway analysis服务，API + Telegram，无调度器）"
             log_info "API 监听地址: ${API_HOST:-0.0.0.0}:${API_PORT:-8080}"
-            python /app/run.py --mode analysis-service $config_arg &
+            python -m crypto_news_analyzer.main --mode analysis-service $config_arg &
             MAIN_PID=$!
             ;;
         "api-only")
             log_info "启动隔离的API服务器模式（Railway analysis服务，无调度器/监听）"
             log_info "API 监听地址: ${API_HOST:-0.0.0.0}:${API_PORT:-8080}"
-            python /app/run.py --mode api-only $config_arg &
+            python -m crypto_news_analyzer.main --mode api-only $config_arg &
             MAIN_PID=$!
             ;;
         "migrate-postgres")
@@ -380,7 +376,8 @@ main() {
             ;;
         *)
             log_error "未知的运行模式: $mode"
-            log_info "支持的模式: analysis-service, api-only, ingestion, scheduler, schedule, once, migrate-postgres"
+            log_info "支持的常驻服务: analysis-service, api-only, ingestion"
+            log_info "一次性维护模式: migrate-postgres"
             log_execution_state "failed" "未知的运行模式: $mode"
             exit 1
             ;;

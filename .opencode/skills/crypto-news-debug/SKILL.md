@@ -10,7 +10,7 @@ Use this skill when you need to inspect this project's Railway split deployment,
 ## What this skill covers
 
 - Read-only inspection of Railway projects, environments, services, deployments, and logs.
-- Repo-specific alias mapping for `crypto-news-analysis`, `crypto-news-ingestion`, and legacy `crypto-news-api`.
+- Repo-specific alias mapping for `crypto-news-analysis` and `crypto-news-ingestion`.
 - Explicitly scoped `restart` and `redeploy` workflows for app services only.
 - Read-only GraphQL fallback templates for cases where the preset workflows are not enough.
 
@@ -108,8 +108,6 @@ Use repo-specific naming context when matching services:
 
 - `crypto-news-analysis` maps to runtime mode `analysis-service`
 - `crypto-news-ingestion` maps to runtime mode `ingestion`
-- `crypto-news-api` is a legacy alias that should be treated like `analysis-service`
-
 When investigating split deployment behavior, remember that `crypto-news-analysis` is the public app service and `crypto-news-ingestion` is the private ingestion service.
 
 ## Read-Only Workflows

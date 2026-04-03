@@ -8,7 +8,7 @@
 - 🤖 **智能分析**: 使用 MiniMax M2.1 大语言模型进行内容分析和分类
 - 📊 **结构化报告**: 生成Markdown格式的分析报告
 - 📱 **自动发送**: 通过Telegram Bot自动发送报告
-- ⏰ **定时调度（仅爬取）**: 定时任务默认只执行数据爬取，不自动触发分析
+- 🔁 **Split-service 运行面**: 仅保留 `analysis-service`、`api-only`、`ingestion` 三种运行模式
 - 🔧 **配置驱动**: 通过配置文件管理所有信息源
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
 - 🎯 **智能分类**: 支持大户动向、利率事件、监管政策、真相揭露等多种分类
@@ -22,27 +22,28 @@
 
 ```
 crypto_news_analyzer/
-├── __init__.py                 # 包初始化
-├── main.py                     # 主程序入口
-├── models.py                   # 数据模型定义
-├── config/                     # 配置管理
-│   ├── __init__.py
-│   └── manager.py              # 配置管理器
-├── crawlers/                   # 爬取器模块
-│   ├── __init__.py
-│   ├── rss_crawler.py          # RSS爬取器
-│   └── x_crawler.py            # X/Twitter爬取器
-├── analyzers/                  # 分析器模块
-│   ├── __init__.py
-│   ├── llm_analyzer.py         # LLM分析器 (MiniMax M2.1)
+├── __init__.py
+├── main.py                     # 运行模式入口（analysis-service / api-only / ingestion）
+├── api_server.py               # FastAPI 异步分析 API
+├── execution_coordinator.py    # 分析、摄取与调度协调器
+├── models.py                   # 共享数据模型
+├── config/
+│   └── manager.py              # 配置加载与归一化
+├── domain/
+│   ├── models.py               # 领域模型
+│   └── repositories.py         # 仓储接口
+├── crawlers/
+│   ├── rss_crawler.py          # RSS 爬取器
+│   └── x_crawler.py            # X/Twitter 爬取器
+├── analyzers/
+│   ├── llm_analyzer.py         # LLM 分析器
 │   └── prompt_manager.py       # 提示词管理器
-├── storage/                    # 存储模块
-│   ├── __init__.py
+├── storage/
+│   ├── repositories.py         # SQLite/Postgres 仓储实现
 │   └── data_manager.py         # 数据管理器
-├── reporters/                  # 报告生成模块
-│   └── __init__.py
-└── utils/                      # 工具模块
-    ├── __init__.py
+├── reporters/
+│   └── telegram_command_handler.py # Telegram 命令处理
+└── utils/
     ├── logging.py              # 日志管理
     └── errors.py               # 错误处理
 ```
@@ -98,7 +99,7 @@ LLM_API_KEY=sk-api-your_minimax_api_key
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHANNEL_ID=your_channel_id
 
-# API Server 鉴权（启用 --mode api-server 时必需）
+# API 鉴权（启用 `analysis-service` 或 `api-only` 时必需）
 API_KEY=your_api_key
 
 # Telegram 授权用户（支持用户ID和用户名）
@@ -141,26 +142,28 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - 使用用户名时，bot 必须先与该用户互动过，或者用户有公开的 profile
 - 如果用户名解析失败，系统会记录警告并跳过该用户名
 - 建议对关键用户使用用户 ID 作为备份
-- 所有授权用户都有相同的权限，可以执行所有命令（/run, /analyze, /status, /help）
+- 所有授权用户都有相同的权限，可以执行所有可用命令（/analyze, /status, /help 等）
 
 ### 4. 运行系统
 
-支持三种运行模式：
+支持三种常驻运行模式：
 
-- `once`：执行一次完整流程（爬取 + 分析 + 报告）
-- `schedule`：定时调度模式（仅爬取），分析通过 Telegram `/analyze` 或 HTTP API 手动触发
-- `api-server`：启动 FastAPI 服务，提供 `/health`、`/analyze` 接口，同时保留定时爬取与 Telegram 命令监听
+- `analysis-service`：启动公网分析服务，提供 `/health`、`/analyze` 接口，并启用 Telegram `/analyze`
+- `api-only`：仅启动 FastAPI 分析接口，不启用 Telegram 命令监听
+- `ingestion`：启动私有摄取循环，按 `EXECUTION_INTERVAL` 周期抓取内容
 
 ```bash
-# 一次性执行
-uv run python -m crypto_news_analyzer.main --mode once
+# 公网分析服务（默认监听 0.0.0.0:8080）
+uv run python -m crypto_news_analyzer.main --mode analysis-service
 
-# 定时模式（仅爬取）
-uv run python -m crypto_news_analyzer.main --mode schedule
+# 隔离 API 服务（默认监听 0.0.0.0:8080）
+uv run python -m crypto_news_analyzer.main --mode api-only
 
-# API 服务模式（默认监听 0.0.0.0:8080）
-uv run python -m crypto_news_analyzer.main --mode api-server
+# 私有摄取服务
+uv run python -m crypto_news_analyzer.main --mode ingestion
 ```
+
+维护说明：`migrate-postgres` 是 `docker-entrypoint.sh` 提供的一次性 PostgreSQL 迁移入口，仅用于部署/维护场景，不属于 `crypto_news_analyzer.main` 的常驻运行模式列表。
 
 可选 API 服务环境变量：
 
@@ -186,7 +189,6 @@ uv run pytest tests/test_minimax_llm_analyzer.py -v
 
 ### 可用命令
 
-- `/run` - 立即执行一次数据收集和分析任务
 - `/analyze [hours]` - 按时间窗口分析历史消息（不传参数时按“距上次成功分析时间”自动估算，最大24小时）
 - `/market` - 获取当前市场快照
 - `/status` - 查询系统运行状态
@@ -203,8 +205,8 @@ uv run pytest tests/test_minimax_llm_analyzer.py -v
 
 ### 报告发送规则
 
-- **定时任务报告**: 自动发送到 `TELEGRAM_CHANNEL_ID` 指定的频道
-- **手动触发报告**: 发送到用户触发命令的聊天窗口（私聊或群组）
+- **默认频道报告**: 未显式指定目标聊天时，发送到 `TELEGRAM_CHANNEL_ID` 指定的频道
+- **手动分析报告**: 由 Telegram `/analyze` 触发时，发送到用户触发命令的聊天窗口（私聊或群组）
 
 ### 配置授权用户
 
@@ -237,7 +239,7 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 
 可在 `config.json` 的 `telegram_commands.command_rate_limit` 中调整。
 
-## HTTP API（`--mode api-server`）
+## HTTP API（`analysis-service` / `api-only`）
 
 调用 `POST /analyze` 前，建议先阅读 [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)。
 对 AI 代理尤其重要：该文档说明了真实必填参数、错误响应样例，以及正确的 `POST /analyze -> 轮询状态 -> 获取结果` 工作流。
