@@ -14,6 +14,10 @@ import time
 from urllib.parse import quote
 
 
+TELEGRAM_BOT_URL_RE = re.compile(r"https://api\.telegram\.org/bot[^/\s]+")
+TELEGRAM_BOT_TOKEN_RE = re.compile(r"\b\d+:[A-Za-z0-9_-]+\b")
+
+
 @dataclass
 class TelegramConfig:
     """Telegram配置"""
@@ -59,6 +63,10 @@ class TelegramSender:
         self.logger = logging.getLogger(__name__)
         self.base_url = f"https://api.telegram.org/bot{config.bot_token}"
         self._session: Optional[aiohttp.ClientSession] = None
+
+    def _redact_sensitive_info(self, text: str) -> str:
+        text = TELEGRAM_BOT_URL_RE.sub("https://api.telegram.org/bot[REDACTED]", text)
+        return TELEGRAM_BOT_TOKEN_RE.sub("[REDACTED]", text)
     
     async def __aenter__(self):
         """异步上下文管理器入口"""
@@ -132,7 +140,7 @@ class TelegramSender:
 
         except Exception as e:
             elapsed_time = time.time() - start_time
-            error_msg = f"发送报告时发生异常: {str(e)}"
+            error_msg = f"发送报告时发生异常: {self._redact_sensitive_info(str(e))}"
             self.logger.error(f"[Telegram报告发送] ✗ 异常: {error_msg}")
             self.logger.error(f"[Telegram报告发送]   - 总耗时: {elapsed_time:.2f} 秒")
             self.logger.info("=" * 60)
@@ -186,7 +194,10 @@ class TelegramSender:
                         await asyncio.sleep(self.config.retry_delay * (2 ** attempt))
 
             except Exception as e:
-                self.logger.warning(f"[TG] 发送失败 (尝试 {attempt + 1}/{retry_attempts}): {str(e)}")
+                self.logger.warning(
+                    f"[TG] 发送失败 (尝试 {attempt + 1}/{retry_attempts}): "
+                    f"{self._redact_sensitive_info(str(e))}"
+                )
                 if attempt < retry_attempts - 1:
                     await asyncio.sleep(self.config.retry_delay * (2 ** attempt))
 
@@ -206,7 +217,10 @@ class TelegramSender:
             return SendResult(success=True)
 
         except Exception as e:
-            return SendResult(success=False, error_message=f"配置验证异常: {str(e)}")
+            return SendResult(
+                success=False,
+                error_message=f"配置验证异常: {self._redact_sensitive_info(str(e))}"
+            )
     
     async def validate_bot_token(self) -> SendResult:
         """验证Bot Token有效性"""
@@ -223,7 +237,10 @@ class TelegramSender:
                 return SendResult(success=False, error_message=f"Bot Token验证失败: {error_desc}")
 
         except Exception as e:
-            return SendResult(success=False, error_message=f"Bot Token验证异常: {str(e)}")
+            return SendResult(
+                success=False,
+                error_message=f"Bot Token验证异常: {self._redact_sensitive_info(str(e))}"
+            )
     
     async def validate_channel_access(self) -> SendResult:
         """验证Channel访问权限"""
@@ -242,7 +259,10 @@ class TelegramSender:
                 return SendResult(success=False, error_message=f"Channel访问验证失败: {error_desc}")
 
         except Exception as e:
-            return SendResult(success=False, error_message=f"Channel访问验证异常: {str(e)}")
+            return SendResult(
+                success=False,
+                error_message=f"Channel访问验证异常: {self._redact_sensitive_info(str(e))}"
+            )
     
     async def _make_api_request(self, method: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """发起API请求

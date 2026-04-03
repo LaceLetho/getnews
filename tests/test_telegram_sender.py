@@ -4,6 +4,7 @@ Telegram发送器单元测试
 
 import pytest
 import asyncio
+import logging
 from unittest.mock import Mock, AsyncMock, patch
 import aiohttp
 
@@ -214,10 +215,10 @@ class TestTelegramSender:
         assert result.success is False
         assert result.error_message is not None
         assert "Network error" in result.error_message
-        
+
         # 重置mock
         mock_post.side_effect = None
-        
+
         # 模拟API错误响应
         mock_response = AsyncMock()
         mock_response.json.return_value = {
@@ -226,11 +227,51 @@ class TestTelegramSender:
             "description": "Bad Request: message is too long"
         }
         mock_post.return_value.__aenter__.return_value = mock_response
-        
+
         async with self.sender:
             result = await self.sender._send_message_part("测试消息", 1, 1)
-        
+
         assert result.success is False
+
+    @pytest.mark.asyncio
+    async def test_retry_warning_redacts_telegram_token(self, caplog):
+        token = self.config.bot_token
+
+        async def _mock_api_request(method, params=None):
+            raise aiohttp.ClientError(
+                f"POST https://api.telegram.org/bot{token}/sendMessage failed"
+            )
+
+        self.sender._make_api_request = _mock_api_request
+
+        with caplog.at_level(logging.WARNING, logger=self.sender.logger.name):
+            async with self.sender:
+                result = await self.sender._send_message_part("测试消息", 1, 1, max_retries=1)
+
+        assert result.success is False
+        assert token not in caplog.text
+        assert "https://api.telegram.org/bot[REDACTED]/sendMessage failed" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_send_report_redacts_telegram_token_from_exception(self, caplog):
+        token = self.config.bot_token
+
+        self.sender.validate_configuration = AsyncMock(return_value=SendResult(success=True))
+        self.sender._send_message_part = AsyncMock(
+            side_effect=RuntimeError(
+                f"boom https://api.telegram.org/bot{token}/sendMessage"
+            )
+        )
+
+        with caplog.at_level(logging.ERROR, logger=self.sender.logger.name):
+            async with self.sender:
+                result = await self.sender.send_report("测试消息")
+
+        assert result.success is False
+        assert token not in caplog.text
+        assert token not in (result.error_message or "")
+        assert "https://api.telegram.org/bot[REDACTED]/sendMessage" in caplog.text
+        assert "https://api.telegram.org/bot[REDACTED]/sendMessage" in (result.error_message or "")
 
 
 class TestTelegramSenderSync:

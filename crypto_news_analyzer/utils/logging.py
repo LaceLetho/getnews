@@ -7,10 +7,49 @@
 import logging
 import logging.handlers
 import os
+import re
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 from datetime import datetime
+
+
+TELEGRAM_BOT_URL_RE = re.compile(r"https://api\.telegram\.org/bot[^/\s]+")
+TELEGRAM_BOT_TOKEN_RE = re.compile(r"\b\d+:[A-Za-z0-9_-]+\b")
+
+
+_original_log_record_factory: Optional[Callable[..., logging.LogRecord]] = None
+
+
+def _redact_telegram_sensitive_text(text: str) -> str:
+    text = TELEGRAM_BOT_URL_RE.sub("https://api.telegram.org/bot[REDACTED]", text)
+    return TELEGRAM_BOT_TOKEN_RE.sub("[REDACTED]", text)
+
+
+def _install_log_record_redaction() -> None:
+    global _original_log_record_factory
+
+    if _original_log_record_factory is not None:
+        return
+
+    _original_log_record_factory = logging.getLogRecordFactory()
+
+    def redacting_log_record_factory(*args, **kwargs):
+        record = _original_log_record_factory(*args, **kwargs)
+
+        try:
+            message = record.getMessage()
+        except Exception:
+            return record
+
+        redacted_message = _redact_telegram_sensitive_text(message)
+        if redacted_message != message:
+            record.msg = redacted_message
+            record.args = None
+
+        return record
+
+    logging.setLogRecordFactory(redacting_log_record_factory)
 
 
 class LogManager:
@@ -29,6 +68,8 @@ class LogManager:
     
     def _setup_logging(self) -> None:
         """设置日志配置"""
+        _install_log_record_redaction()
+
         # 创建根日志器
         root_logger = logging.getLogger()
         
