@@ -9,6 +9,10 @@ from crypto_news_analyzer import main
 from crypto_news_analyzer import api_server
 
 
+RETAINED_RUNTIME_MODES = ("analysis-service", "api-only", "ingestion")
+INVALID_RUNTIME_MODES = ("legacy-mode", "bogus-mode", "unknown")
+
+
 class _StopImmediatelyEvent:
     def __init__(self):
         self._is_set = True
@@ -33,7 +37,7 @@ class _FakeIngestionController:
         return True
 
     def initialize_system(self):
-        raise AssertionError("run_scheduler_only should not call initialize_system in ingestion mode")
+        raise AssertionError("run_ingestion_loop should not call initialize_system in ingestion mode")
 
     def start_scheduler(self):
         self.start_scheduler_called = True
@@ -79,28 +83,28 @@ def test_initialize_ingestion_system_skips_analysis_report_and_telegram(tmp_path
     controller.cleanup_resources()
 
 
-def test_run_scheduler_only_uses_ingestion_initialization_path(monkeypatch):
+def test_run_ingestion_loop_uses_ingestion_initialization_path(monkeypatch):
     fake_controller = _FakeIngestionController()
 
     monkeypatch.setattr(main, "MainController", lambda config_path: fake_controller)
     monkeypatch.setattr(main.signal, "signal", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(main.threading, "Event", _StopImmediatelyEvent)
 
-    exit_code = main.run_scheduler_only("./config.json")
+    exit_code = main.run_ingestion_loop("./config.json")
 
     assert exit_code == 0
     assert fake_controller.initialize_ingestion_system_called is True
     assert fake_controller.start_scheduler_called is True
 
 
-def test_run_ingestion_service_delegates_to_scheduler_only(monkeypatch):
+def test_run_ingestion_service_delegates_to_ingestion_loop(monkeypatch):
     captured = {"config_path": None}
 
-    def _fake_run_scheduler_only(config_path):
+    def _fake_run_ingestion_loop(config_path):
         captured["config_path"] = config_path
         return 0
 
-    monkeypatch.setattr(main, "run_scheduler_only", _fake_run_scheduler_only)
+    monkeypatch.setattr(main, "run_ingestion_loop", _fake_run_ingestion_loop)
 
     exit_code = main.run_ingestion_service("custom-config.json")
 
@@ -108,7 +112,7 @@ def test_run_ingestion_service_delegates_to_scheduler_only(monkeypatch):
     assert captured["config_path"] == "custom-config.json"
 
 
-def test_run_api_server_isolated_sets_api_only_runtime_and_keeps_services_stopped(monkeypatch):
+def test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped(monkeypatch):
     captured = {
         "config_path": None,
         "start_services": None,
@@ -143,7 +147,7 @@ def test_run_api_server_isolated_sets_api_only_runtime_and_keeps_services_stoppe
     monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace(run=_fake_uvicorn_run))
     monkeypatch.delenv("CRYPTO_NEWS_RUNTIME_MODE", raising=False)
 
-    exit_code = main.run_api_server_isolated("./custom-config.json")
+    exit_code = main.run_api_only_service("./custom-config.json")
 
     assert exit_code == 0
     assert captured["config_path"] == "./custom-config.json"
@@ -202,6 +206,23 @@ def test_run_analysis_service_starts_telegram_without_scheduler(monkeypatch):
     assert captured["host"] == "0.0.0.0"
     assert captured["port"] == 8080
     assert main.os.environ.get("CRYPTO_NEWS_RUNTIME_MODE") == "analysis-service"
+
+
+@pytest.mark.parametrize("runtime_mode", RETAINED_RUNTIME_MODES)
+def test_normalize_runtime_mode_accepts_retained_split_service_modes(runtime_mode):
+    logger = SimpleNamespace(warning=lambda *_args, **_kwargs: None)
+
+    normalized = main.normalize_runtime_mode(runtime_mode, logger)
+
+    assert normalized == runtime_mode
+
+
+@pytest.mark.parametrize("runtime_mode", INVALID_RUNTIME_MODES)
+def test_normalize_runtime_mode_rejects_invalid_modes(runtime_mode):
+    logger = SimpleNamespace(warning=lambda *_args, **_kwargs: None)
+
+    with pytest.raises(ValueError, match=r"(unsupported|不支持|未知的运行模式)"):
+        main.normalize_runtime_mode(runtime_mode, logger)
 
 
 @pytest.mark.parametrize("runtime_mode", ["api-only", "analysis-service"])

@@ -136,7 +136,7 @@ def test_skill_documents_resolution_flow_aliases_and_backoff() -> None:
     assert "analysis-service" in aliases
     assert "crypto-news-ingestion" in aliases
     assert "ingestion" in aliases
-    assert "crypto-news-api" in aliases
+    assert "crypto-news-api" not in aliases
     assert "If no service matches, stop and report that no candidates were found" in failure_handling
     assert "If multiple services match, stop and list the candidates" in failure_handling
     assert "If logs are empty, report that the log query returned no entries" in failure_handling

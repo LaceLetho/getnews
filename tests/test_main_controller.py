@@ -410,8 +410,8 @@ class TestMainController:
         # 检查执行历史
         assert len(mock_controller.execution_history) == 1
     
-    def test_environment_config_override(self, mock_controller):
-        """测试环境变量配置覆盖"""
+    def test_environment_config_override_via_config_manager_getters(self, mock_controller):
+        """测试环境变量配置通过ConfigManager getter生效"""
         # 设置环境变量
         os.environ["TIME_WINDOW_HOURS"] = "48"
         os.environ["EXECUTION_INTERVAL"] = "7200"
@@ -427,8 +427,6 @@ class TestMainController:
                 "storage": {"database_path": ":memory:"},
                 "llm_config": {}
             }
-            
-            mock_controller.setup_environment_config()
             
             # 验证getter方法返回环境变量的值
             assert mock_controller.config_manager.get_time_window_hours() == 48

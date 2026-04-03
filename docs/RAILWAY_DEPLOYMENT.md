@@ -6,7 +6,7 @@
 - `crypto-news-ingestion`：私有服务，只执行数据摄取，运行 `ingestion`
 - PostgreSQL/pgvector：私有数据库，两个服务共用同一个 `DATABASE_URL`
 
-`api-server` 已从生产/默认路径退役；如果历史脚本仍传入该值，入口层只会把它当作 `analysis-service` 的兼容别名，不再启动旧单体运行时。
+任何历史单体模式或兼容别名现在都会被入口层直接拒绝；生产路径只保留当前双服务运行面。
 
 ---
 
@@ -38,7 +38,7 @@ startCommand = "/app/docker-entrypoint.sh"
 - `crypto-news-ingestion` -> `ingestion`
 - 发布窗口中的单次 schema 变更 -> `migrate-postgres`
 
-不要再把 `api-server` 当成独立的生产运行模式。
+不要恢复任何旧单体运行模式；生产常驻路径只保留当前双服务拓扑。
 
 ---
 
@@ -134,7 +134,7 @@ X_AUTH_TOKEN=...
 
 - `crypto-news-analysis` 的部署日志里应出现 `RAILWAY_SERVICE_NAME -> analysis-service`
 - `crypto-news-ingestion` 的部署日志里应出现 `RAILWAY_SERVICE_NAME -> ingestion`
-- `crypto-news-analysis` 不应启动 scheduler；但应可接收 Telegram `/analyze` 命令
+- `crypto-news-analysis` 不应启动摄取循环；但应可接收 Telegram `/analyze` 命令
 
 ---
 
@@ -226,13 +226,13 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 - 没有绑定公网域名
 - 使用与 `crypto-news-analysis` 相同的 `DATABASE_URL`
 
-如果部署日志出现入口把 `api-server` 当成独立运行模式，而不是映射到 `analysis-service`，说明仍残留旧的单体启动假设，需要改回当前仓库里的切流入口逻辑。
+如果部署日志显示入口仍接受 legacy 单体模式或旧 Railway 服务别名，说明仍残留兼容逻辑，需要改回当前仓库里的 split-service 入口语义。
 
 ---
 
 ## 7. 回滚预案（回到上一个稳定部署/配置）
 
-如果本次切流后的部署异常，按下面步骤回滚；**不要**把 `api-server` 重新设为常驻生产模式：
+如果本次切流后的部署异常，按下面步骤回滚；**不要**把任何旧单体模式重新设为常驻生产路径：
 
 1. 先冻结变更：暂停新的 deploy/restart 操作，并避免在故障窗口继续触发 `crypto-news-ingestion`
 2. 在 Railway 的 Deployments/Variables 页面记录两个服务当前版本，并找到各自“上一个稳定”的 deployment/configuration
@@ -288,9 +288,9 @@ curl -s -X POST https://backboard.railway.com/graphql/v2 \
 
 ## 9. 常见问题
 
-### Q: 为什么不再推荐 `api-server` 作为 Railway 默认模式？
+### Q: 为什么不再推荐旧单体模式作为 Railway 默认模式？
 
-A: 因为切流后的目标是把公网 API 与私有 ingestion 拆成两个独立服务，避免继续使用单服务混合部署假设。`api-server` 已退役为兼容别名，不再是独立的生产运行路径。
+A: 因为切流后的目标是把公网 API 与私有 ingestion 拆成两个独立服务，避免继续使用单服务混合部署假设。旧单体兼容模式已完全退役，入口层不会再把它翻译成保留模式。
 
 ### Q: 哪个服务应该公开？
 

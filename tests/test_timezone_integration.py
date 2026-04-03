@@ -147,8 +147,8 @@ class TestTimezoneIntegration(unittest.TestCase):
         # 验证初始化时间使用UTC+8
         self.assertIsNotNone(state.last_reset_time.tzinfo)
         self.assertEqual(state.last_reset_time.tzinfo, UTC_PLUS_8)
-        self.assertIsNotNone(state.last_run_command_time.tzinfo)
-        self.assertEqual(state.last_run_command_time.tzinfo, UTC_PLUS_8)
+        self.assertIsNotNone(state.last_analyze_command_time.tzinfo)
+        self.assertEqual(state.last_analyze_command_time.tzinfo, UTC_PLUS_8)
     
     @patch('crypto_news_analyzer.reporters.telegram_command_handler.now_utc8')
     def test_command_handler_check_rate_limit_with_utc8(self, mock_now_utc8):
@@ -189,7 +189,7 @@ class TestTimezoneIntegration(unittest.TestCase):
         # 验证状态使用UTC+8时区
         state = handler._rate_limit_states["123456"]
         self.assertEqual(state.last_reset_time.tzinfo, UTC_PLUS_8)
-        self.assertEqual(state.last_run_command_time.tzinfo, UTC_PLUS_8)
+        self.assertEqual(state.last_analyze_command_time.tzinfo, UTC_PLUS_8)
     
     def test_timezone_consistency_across_components(self):
         """测试各组件之间的时区一致性"""

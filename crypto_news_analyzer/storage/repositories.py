@@ -408,8 +408,5 @@ class RepositoryFactory:
             "ingestion": SQLiteIngestionRepository(data_manager),
             "content": SQLiteContentRepository(data_manager),
             "cache": SQLiteCacheRepository(cache_manager),
-            # Keep original managers for backward compatibility during transition
-            "_data_manager": data_manager,
-            "_cache_manager": cache_manager,
             "_backend": backend,
         }

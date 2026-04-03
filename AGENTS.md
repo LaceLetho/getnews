@@ -92,27 +92,18 @@ uv run flake8 crypto_news_analyzer/
 # Install Bird CLI (required for X/Twitter crawling)
 npm install -g @laceletho/bird
 
-# Run public analysis service (default production path)
+# Run public analysis service (uses .env file for configuration)
 uv run python -m crypto_news_analyzer.main --mode analysis-service
+
+# Run isolated API service
+uv run python -m crypto_news_analyzer.main --mode api-only
 
 # Run private ingestion service
 uv run python -m crypto_news_analyzer.main --mode ingestion
 
-# Run isolated API only (no Telegram listener)
-uv run python -m crypto_news_analyzer.main --mode api-only
-
-# Run once (uses .env file for configuration)
-uv run python -m crypto_news_analyzer.main --mode once
-
-# Backward-compatible scheduler mode
-uv run python -m crypto_news_analyzer.main --mode schedule
-
-# Run explicit scheduler-only mode
-uv run python -m crypto_news_analyzer.main --mode scheduler
-
-# Docker build/run
+# Docker build and start
 docker build -t crypto-news-analyzer .
-docker run -e DATABASE_URL=postgresql://... -e API_KEY=xxx crypto-news-analyzer analysis-service
+docker run -e LLM_API_KEY=xxx -e API_KEY=xxx crypto-news-analyzer analysis-service
 ```
 
 Notes:
@@ -138,33 +129,33 @@ This skill provides curl commands for Railway GraphQL API debugging without CLI 
 
 ## Architecture
 
+The repository is split-service-first. Railway deploys two long-lived app services that share one PostgreSQL/pgvector database:
+
+- `crypto-news-analysis` -> `analysis-service`
+- `crypto-news-ingestion` -> `ingestion`
+
+`api-only` remains available as an isolated API runtime for local or dedicated deployments.
+
 ### Module Organization
 ```
 crypto_news_analyzer/
-├── main.py                    # Runtime entrypoints and mode normalization
-├── api_server.py              # FastAPI app and persisted analyze job API
-├── execution_coordinator.py   # MainController orchestration
-├── domain/                    # Shared domain models + repository interfaces
-├── config/manager.py          # Configuration and env overrides
-├── crawlers/                  # RSS/X/REST ingestion
-├── analyzers/                 # LLM analysis, classification, market snapshot
-├── storage/                   # DataManager + repository adapters for sqlite/postgres path
-├── reporters/                 # Telegram commands and report delivery
-└── utils/                     # Logging, errors, timezone helpers
+├── main.py                    # Retained runtime entrypoint and mode dispatch
+├── execution_coordinator.py   # MainController for analysis-service and ingestion flows
+├── api_server.py              # FastAPI app factory and analyze job endpoints
+├── models.py                  # Shared data/config/result models
+├── config/manager.py          # Env + config.json loading and normalization
+├── crawlers/                  # RSS, X/Twitter, and Bird-backed ingestion sources
+├── analyzers/                 # LLM analysis pipeline and structured outputs
+├── storage/                   # Repository layer for SQLite/Postgres backends and ingestion state
+├── reporters/                 # Telegram command/report delivery integrations
+└── utils/                     # Logging, errors, time and helper utilities
 ```
 
 ### Data Flow
-1. `ingestion` runtime crawls sources
-2. Storage layer deduplicates and persists content to PostgreSQL
-3. Manual/API requests create persisted `analysis_jobs`
-4. `analysis-service` executes analysis and generates reports
-5. HTTP API / Telegram return or deliver results
-
-### Runtime Boundaries
-
-- `analysis-service`: public HTTP API + Telegram listener, no scheduler/crawler execution
-- `ingestion`: private scheduler and crawl execution, no public API, no Telegram, no LLM analysis
-- `api-only`: isolated API process for testing/integration scenarios
+1. `ingestion` crawls RSS/X sources and persists normalized content into shared storage
+2. `analysis-service` / `api-only` read persisted content by time window
+3. Analyzers produce structured analysis results and markdown output
+4. `analysis-service` can deliver results via Telegram or HTTP job result endpoints
 
 ### Key Patterns
 - Factory Pattern: DataSourceFactory
@@ -179,18 +170,35 @@ crypto_news_analyzer/
 - `docs/RAILWAY_DEPLOYMENT.md` - Current split-service deployment reference
 - `migrations/postgresql/README.md` - Postgres cutover/backfill reference
 
-Required env vars:
-- Shared DB: `DATABASE_URL`
-- Analysis service core: `API_KEY`, `LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`
-- Analysis service optional/feature-scoped: `GROK_API_KEY`, `KIMI_API_KEY`, `TELEGRAM_AUTHORIZED_USERS`
-- Ingestion service (as needed): `X_CT0`, `X_AUTH_TOKEN`
+### Shared env vars
+
+- `DATABASE_URL` - shared PostgreSQL/pgvector connection string when `storage.backend=postgres`
+- `CONFIG_PATH` - config file path override
+- `LOG_LEVEL` - runtime logging verbosity
+
+### `analysis-service` / `api-only`
+
+- `API_KEY` - required Bearer auth secret for the HTTP analyze API
+- `API_HOST`, `API_PORT` - API bind address/port
+- `LLM_API_KEY` plus optional provider-specific keys such as `GROK_API_KEY` / `KIMI_API_KEY`
+
+### `analysis-service` only
+
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHANNEL_ID`
+- `TELEGRAM_AUTHORIZED_USERS`
+
+### `ingestion`
+
+- `EXECUTION_INTERVAL` - crawl loop interval
+- `TIME_WINDOW_HOURS` - ingestion time window control
+- `X_CT0`, `X_AUTH_TOKEN` - X/Twitter crawl credentials when that source is enabled
 
 ## Important Notes
 
 - Always use `uv`, never raw `python` or `pip`
 - All datetimes stored in UTC
-- Current default storage backend in `config.json` is `postgres`
-- `DATABASE_URL` overrides `storage.database_url`
+- Production split-service deployments use a shared PostgreSQL/pgvector database as the source of truth
 - Logs in `./logs/`
 - Prompts in `./prompts/`
 - Use `__post_init__` for dataclass validation

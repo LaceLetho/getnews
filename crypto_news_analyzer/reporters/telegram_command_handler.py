@@ -5,7 +5,7 @@ Telegram命令处理器
 
 根据需求16实现Telegram命令触发功能：
 - 需求16.1: 支持通过Telegram Bot接收用户命令
-- 需求16.2: 实现/run命令立即触发完整工作流
+- 需求16.2: 支持/analyze命令手动触发分析
 - 需求16.3: 实现/status命令返回系统运行状态
 - 需求16.4: 实现/help命令返回可用命令列表
 - 需求16.5: 验证命令发送者的权限，只允许授权用户触发执行
@@ -29,7 +29,7 @@ from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes, filters
 from telegram.error import TelegramError
 
-from ..models import TelegramCommandConfig, CommandExecutionHistory, ExecutionResult, ChatContext
+from ..models import TelegramCommandConfig, CommandExecutionHistory, ChatContext
 from ..utils.timezone_utils import now_utc8, format_datetime_utc8
 
 
@@ -38,13 +38,13 @@ class CommandRateLimitState:
     """命令速率限制状态"""
     command_count: int = 0
     last_reset_time: datetime = None
-    last_run_command_time: datetime = None
+    last_analyze_command_time: datetime = None
     
     def __post_init__(self):
         if self.last_reset_time is None:
             self.last_reset_time = now_utc8()
-        if self.last_run_command_time is None:
-            self.last_run_command_time = now_utc8() - timedelta(minutes=10)
+        if self.last_analyze_command_time is None:
+            self.last_analyze_command_time = now_utc8() - timedelta(minutes=10)
 
 
 class TelegramCommandHandler:
@@ -304,7 +304,7 @@ class TelegramCommandHandler:
     
     def check_rate_limit(self, user_id: str) -> tuple[bool, Optional[str]]:
         """
-        检查用户是否超过速率限制（仅针对/run命令）
+        检查用户是否超过速率限制（仅针对/analyze命令）
         
         Args:
             user_id: 用户ID
@@ -327,19 +327,19 @@ class TelegramCommandHandler:
         if state.command_count >= max_per_hour:
             return False, f"已达到每小时命令限制 ({max_per_hour} 次)，请稍后再试"
         
-        # 检查冷却时间（仅针对/run命令）
+        # 检查冷却时间（仅针对/analyze命令）
         cooldown_minutes = self.config.command_rate_limit.get("cooldown_minutes", 5)
-        minutes_since_last = (now - state.last_run_command_time).total_seconds() / 60
+        minutes_since_last = (now - state.last_analyze_command_time).total_seconds() / 60
         if minutes_since_last < cooldown_minutes:
             remaining = cooldown_minutes - minutes_since_last
             return False, f"命令冷却中，请等待 {remaining:.1f} 分钟"
         
-        # 更新状态（仅更新/run命令的时间戳）
+        # 更新状态（仅更新/analyze命令的时间戳）
         state.command_count += 1
-        state.last_run_command_time = now
+        state.last_analyze_command_time = now
         
         return True, None
-        return True, None
+
     def _extract_chat_context(self, update: Update) -> ChatContext:
         """
         Extract chat context information from Telegram update
@@ -404,7 +404,7 @@ class TelegramCommandHandler:
         需求8.1, 8.2, 8.3, 8.4: 记录授权尝试的完整上下文信息
 
         Args:
-            command: Command name (e.g., "/run", "/status", "/help")
+            command: Command name (e.g., "/analyze", "/status", "/help")
             user_id: User ID
             username: Username
             chat_type: Type of chat (private/group/supergroup)
@@ -446,7 +446,6 @@ class TelegramCommandHandler:
             self.application = Application.builder().token(self.bot_token).build()
             
             # 注册命令处理器
-            self.application.add_handler(CommandHandler("run", self._handle_run_command))
             self.application.add_handler(CommandHandler("analyze", self._handle_analyze_command))
             self.application.add_handler(CommandHandler("market", self._handle_market_command))
             self.application.add_handler(CommandHandler("status", self._handle_status_command))
@@ -509,7 +508,6 @@ class TelegramCommandHandler:
         try:
             commands = [
                 BotCommand("start", "获取您的用户ID和授权状态"),
-                BotCommand("run", "立即执行数据收集和分析"),
                 BotCommand("analyze", "分析消息，可指定小时数如/analyze 24"),
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
@@ -523,80 +521,6 @@ class TelegramCommandHandler:
         except Exception as e:
             self.logger.error(f"设置Bot命令菜单失败: {str(e)}")
     
-    async def _handle_run_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-            """
-            处理/run命令
-
-            需求16.2: 实现/run命令立即触发完整工作流
-            需求1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 8.1, 8.2, 8.3, 8.4: 使用聊天上下文和授权日志
-            """
-            # Extract chat context at the start
-            try:
-                chat_context = self._extract_chat_context(update)
-            except ValueError as e:
-                self.logger.error(f"Failed to extract chat context: {e}")
-                await update.message.reply_text("❌ 处理命令时发生错误")
-                return
-
-            # Extract fields from context
-            user_id = chat_context.user_id
-            username = chat_context.username
-            chat_type = chat_context.chat_type
-            chat_id = chat_context.chat_id
-
-            self.logger.info(
-                f"收到/run命令，用户: {username} ({user_id}), "
-                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
-            )
-
-            try:
-                # 验证权限
-                if not self.is_authorized_user(user_id, username):
-                    response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
-                    await update.message.reply_text(response)
-                    # Log authorization attempt
-                    self._log_authorization_attempt(
-                        command="/run",
-                        user_id=user_id,
-                        username=username,
-                        chat_type=chat_type,
-                        chat_id=chat_id,
-                        authorized=False,
-                        reason="user not in authorized list"
-                    )
-                    self._log_command_execution("/run", user_id, username, None, False, response)
-                    return
-
-                # Log successful authorization
-                self._log_authorization_attempt(
-                    command="/run",
-                    user_id=user_id,
-                    username=username,
-                    chat_type=chat_type,
-                    chat_id=chat_id,
-                    authorized=True
-                )
-
-                # 检查速率限制
-                allowed, error_msg = self.check_rate_limit(user_id)
-                if not allowed:
-                    response = f"⏱️ 速率限制\n\n{error_msg}"
-                    await update.message.reply_text(response)
-                    self._log_command_execution("/run", user_id, username, None, False, response)
-                    return
-
-                # 触发执行，传递chat_id用于报告发送
-                response = self.handle_run_command(user_id, username, chat_id)
-                await update.message.reply_text(response, parse_mode="Markdown")
-
-            except Exception as e:
-                error_msg = f"处理/run命令时发生错误: {str(e)}"
-                self.logger.error(
-                    f"{error_msg}, 用户: {username} ({user_id}), "
-                    f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
-                )
-                await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
-
     async def _handle_analyze_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
         处理/analyze命令
@@ -653,6 +577,13 @@ class TelegramCommandHandler:
                 chat_id=chat_id,
                 authorized=True
             )
+
+            allowed, error_msg = self.check_rate_limit(user_id)
+            if not allowed:
+                response = f"⏱️ 速率限制\n\n{error_msg}"
+                await update.message.reply_text(response)
+                self._log_command_execution("/analyze", user_id, username, None, False, response)
+                return
 
             # 解析参数 - 从 context.args 获取小时数
             hours = None
@@ -1214,74 +1145,6 @@ class TelegramCommandHandler:
                 f"执行异常: {str(e)}"
             )
 
-    def handle_run_command(self, user_id: str, username: str, chat_id: str) -> str:
-        """
-        处理/run命令的业务逻辑
-        
-        Args:
-            user_id: 用户ID
-            username: 用户名
-            chat_id: 聊天ID（用于发送报告）
-            
-        Returns:
-            响应消息
-        """
-        try:
-            runtime_mode = os.environ.get("CRYPTO_NEWS_RUNTIME_MODE", "").strip().lower()
-            if runtime_mode in {"api-only", "analysis-service"}:
-                response = (
-                    "🚫 当前服务为 analysis/api 公网运行模式，已禁用 /run。\n\n"
-                    "请使用 /analyze [hours] 或 HTTP /analyze 触发分析。"
-                )
-                self._log_command_execution(
-                    "/run",
-                    user_id,
-                    username,
-                    None,
-                    False,
-                    "analysis-service/api-only runtime disabled inline crawl/manual ingestion",
-                )
-                return response
-
-            # 检查是否有执行正在进行
-            if self.execution_coordinator.is_execution_running():
-                current_exec = self.execution_coordinator.get_execution_status()
-                response = (
-                    "⏳ 执行中\n\n"
-                    f"系统正在执行任务，请稍后再试。\n\n"
-                    f"执行ID: `{current_exec.execution_id}`\n"
-                    f"当前阶段: {current_exec.current_stage}\n"
-                    f"进度: {current_exec.progress * 100:.1f}%"
-                )
-                self._log_command_execution("/run", user_id, username, None, False, "执行中，拒绝新请求")
-                return response
-            
-            # 触发手动执行
-            response_initial = (
-                "🚀 开始执行\n\n"
-                "系统已开始执行数据收集和分析任务。\n"
-                "执行完成后将自动发送报告到此聊天窗口。"
-            )
-            
-            # 在后台线程中执行
-            def execute_in_background():
-                try:
-                    result = self.trigger_manual_execution(user_id, chat_id)
-                    self._send_execution_notification(chat_id, result)
-                except Exception as e:
-                    self.logger.error(f"后台执行失败: {str(e)}")
-            
-            thread = threading.Thread(target=execute_in_background, daemon=True)
-            thread.start()
-            
-            return response_initial
-            
-        except Exception as e:
-            error_msg = f"触发执行失败: {str(e)}"
-            self.logger.error(error_msg)
-            self._log_command_execution("/run", user_id, username, None, False, error_msg)
-            return f"❌ 执行失败\n\n{str(e)}"
-    
     def handle_status_command(self, user_id: str) -> str:
         """
         处理/status命令的业务逻辑
@@ -1388,17 +1251,17 @@ class TelegramCommandHandler:
         
         # 如果没有指定权限，默认所有命令都可用
         if not user_permissions:
-            user_permissions = ["run", "status", "help"]
+            user_permissions = ["analyze", "market", "status", "help", "tokens"]
         
         help_text = [
             "🤖 *加密货币新闻分析机器人*\n",
             "*可用命令:*\n"
         ]
         
-        if "run" in user_permissions:
+        if "analyze" in user_permissions:
             help_text.append(
-                "/run - 立即执行一次数据收集和分析\n"
-                "触发完整的工作流程，包括数据爬取、内容分析和报告生成。\n"
+                "/analyze [hours] - 按时间窗口执行分析\n"
+                "不传参数时自动估算时间窗口，支持例如 /analyze 24。\n"
             )
         
         if "status" in user_permissions:
@@ -1442,7 +1305,7 @@ class TelegramCommandHandler:
         try:
             # 获取LLM分析器的token追踪器
             if not hasattr(self.execution_coordinator, 'llm_analyzer') or not self.execution_coordinator.llm_analyzer:
-                return "❌ LLM分析器未初始化\n\n请先运行 /run 命令执行一次分析。"
+                return "❌ LLM分析器未初始化\n\n请先运行 /analyze 命令执行一次分析。"
             
             tracker = self.execution_coordinator.llm_analyzer.token_tracker
             
@@ -1450,7 +1313,7 @@ class TelegramCommandHandler:
             stats = tracker.get_statistics()
             
             if stats['total_calls'] == 0:
-                return "📊 *Token使用统计*\n\n暂无记录\n\n请先运行 /run 命令执行一次分析。"
+                return "📊 *Token使用统计*\n\n暂无记录\n\n请先运行 /analyze 命令执行一次分析。"
             
             # 格式化摘要
             summary = tracker.format_summary()
@@ -1537,34 +1400,6 @@ class TelegramCommandHandler:
             self.logger.error(error_msg, exc_info=True)
             return f"❌ 命令执行失败\n\n{str(e)}"
     
-    def trigger_manual_execution(self, user_id: str, chat_id: str = None) -> ExecutionResult:
-        """
-        触发手动执行
-        
-        Args:
-            user_id: 触发用户ID
-            chat_id: 触发命令的聊天ID（用于发送报告）
-            
-        Returns:
-            执行结果
-        """
-        self.logger.info(f"用户 {user_id} 在聊天 {chat_id} 触发手动执行")
-        
-        # 调用执行协调器的trigger_manual_execution方法，传递chat_id
-        result = self.execution_coordinator.trigger_manual_execution(user_id=user_id, chat_id=chat_id)
-        
-        # 记录命令执行历史
-        self._log_command_execution(
-            "/run",
-            user_id,
-            user_id,  # 使用user_id作为username
-            result.execution_id,
-            result.success,
-            "执行完成" if result.success else f"执行失败: {'; '.join(result.errors)}"
-        )
-        
-        return result
-    
     def get_execution_status(self) -> Dict[str, Any]:
         """
         获取执行状态
@@ -1573,40 +1408,6 @@ class TelegramCommandHandler:
             执行状态字典
         """
         return self.execution_coordinator.get_system_status()
-    
-    def _send_execution_notification(self, user_id: str, result: ExecutionResult) -> None:
-        """
-        发送执行完成通知
-        
-        需求16.7: 执行完成后自动通知触发用户
-        
-        Args:
-            user_id: 用户ID
-            result: 执行结果
-        """
-        try:
-            if result.success:
-                message = (
-                    "✅ *执行完成*\n\n"
-                    f"执行ID: `{result.execution_id}`\n"
-                    f"处理项目: {result.items_processed}\n"
-                    f"耗时: {result.duration_seconds:.1f} 秒\n"
-                    f"报告发送: {'成功' if result.report_sent else '失败'}\n\n"
-                    "报告已发送到频道。"
-                )
-            else:
-                message = (
-                    "❌ *执行失败*\n\n"
-                    f"执行ID: `{result.execution_id}`\n"
-                    f"耗时: {result.duration_seconds:.1f} 秒\n\n"
-                    f"错误信息:\n{chr(10).join(result.errors)}"
-                )
-            
-            # 从后台线程安全地发送通知
-            self._send_message_sync(user_id, message)
-            
-        except Exception as e:
-            self.logger.error(f"发送执行通知失败: {str(e)}")
     
     async def _send_message_to_user(self, user_id: str, message: str) -> None:
         """

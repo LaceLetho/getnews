@@ -469,26 +469,6 @@ def test_analyze_failed_telegram_send_does_not_cache_titles_or_advance_history()
     assert coordinator.analyze_calls[1]["historical_titles"] == []
 
 
-@pytest.mark.parametrize("runtime_mode", ["api-only", "analysis-service"])
-def test_run_command_rejected_in_public_analysis_runtime(monkeypatch, runtime_mode):
-    monkeypatch.setenv("CRYPTO_NEWS_RUNTIME_MODE", runtime_mode)
-    coordinator = _CoordinatorStub(None)
-
-    handler = TelegramCommandHandler(
-        bot_token="token",
-        execution_coordinator=coordinator,
-        config=TelegramCommandConfig(),
-    )
-
-    handler._log_command_execution = Mock()
-
-    response = handler.handle_run_command("1", "tester", "chat_1")
-
-    assert "已禁用 /run" in response
-    assert "请使用 /analyze [hours] 或 HTTP /analyze" in response
-    handler._log_command_execution.assert_called_once()
-
-
 def test_analyze_command_still_available_in_public_analysis_runtime(monkeypatch):
     monkeypatch.setenv("CRYPTO_NEWS_RUNTIME_MODE", "analysis-service")
     coordinator = _CoordinatorStub(None)
