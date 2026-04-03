@@ -4,7 +4,14 @@ Guidance for AI coding agents working on the Cryptocurrency News Analyzer projec
 
 ## Project Overview
 
-Automated Python system collecting crypto news from RSS/X, analyzing with LLM (Grok/MiniMax), delivering reports via Telegram Bot.
+Automated Python system collecting crypto news from RSS/X/REST sources, persisting to PostgreSQL, and exposing analysis through a public analysis service plus Telegram Bot.
+
+Current Phase 1 state:
+
+- `analysis-service` is the default/public runtime
+- `ingestion` is the private crawler/scheduler runtime
+- PostgreSQL + pgvector is the shared source of truth
+- `api-server` is deprecated and only kept as a compatibility alias to `analysis-service`
 
 Assigned production domain: `news.tradao.xyz`
 
@@ -85,16 +92,33 @@ uv run flake8 crypto_news_analyzer/
 # Install Bird CLI (required for X/Twitter crawling)
 npm install -g @laceletho/bird
 
+# Run public analysis service (default production path)
+uv run python -m crypto_news_analyzer.main --mode analysis-service
+
+# Run private ingestion service
+uv run python -m crypto_news_analyzer.main --mode ingestion
+
+# Run isolated API only (no Telegram listener)
+uv run python -m crypto_news_analyzer.main --mode api-only
+
 # Run once (uses .env file for configuration)
 uv run python -m crypto_news_analyzer.main --mode once
 
-# Run scheduled
+# Backward-compatible scheduler mode
 uv run python -m crypto_news_analyzer.main --mode schedule
+
+# Run explicit scheduler-only mode
+uv run python -m crypto_news_analyzer.main --mode scheduler
 
 # Docker build/run
 docker build -t crypto-news-analyzer .
-docker run -e LLM_API_KEY=xxx crypto-news-analyzer once
+docker run -e DATABASE_URL=postgresql://... -e API_KEY=xxx crypto-news-analyzer analysis-service
 ```
+
+Notes:
+
+- Do not document or recommend `--mode api-server` as the primary runtime. It is deprecated.
+- Production Railway routing is service-name driven via `docker-entrypoint.sh`.
 
 ## Online Debugging & Logs
 
@@ -117,27 +141,34 @@ This skill provides curl commands for Railway GraphQL API debugging without CLI 
 ### Module Organization
 ```
 crypto_news_analyzer/
-├── main.py                    # CLI entry point
-├── execution_coordinator.py   # MainController orchestrates workflow
-├── models.py                  # Data models (ContentItem, AnalysisResult)
-├── config/manager.py          # Configuration management
-├── crawlers/                  # Data collection (RSS, X/Twitter)
-├── analyzers/                 # LLM analysis (Grok/MiniMax)
-├── storage/                   # SQLite persistence
-├── reporters/                 # Telegram bot integration
-└── utils/                     # Logging, errors, timezone
+├── main.py                    # Runtime entrypoints and mode normalization
+├── api_server.py              # FastAPI app and persisted analyze job API
+├── execution_coordinator.py   # MainController orchestration
+├── domain/                    # Shared domain models + repository interfaces
+├── config/manager.py          # Configuration and env overrides
+├── crawlers/                  # RSS/X/REST ingestion
+├── analyzers/                 # LLM analysis, classification, market snapshot
+├── storage/                   # DataManager + repository adapters for sqlite/postgres path
+├── reporters/                 # Telegram commands and report delivery
+└── utils/                     # Logging, errors, timezone helpers
 ```
 
 ### Data Flow
-1. Crawlers → ContentItem[]
-2. Storage → deduplicate & persist
-3. Analyzers → LLM → AnalysisResult[]
-4. Reporters → Markdown report
-5. Telegram Bot → send to channel
+1. `ingestion` runtime crawls sources
+2. Storage layer deduplicates and persists content to PostgreSQL
+3. Manual/API requests create persisted `analysis_jobs`
+4. `analysis-service` executes analysis and generates reports
+5. HTTP API / Telegram return or deliver results
+
+### Runtime Boundaries
+
+- `analysis-service`: public HTTP API + Telegram listener, no scheduler/crawler execution
+- `ingestion`: private scheduler and crawl execution, no public API, no Telegram, no LLM analysis
+- `api-only`: isolated API process for testing/integration scenarios
 
 ### Key Patterns
 - Factory Pattern: DataSourceFactory
-- Plugin System: Dynamic data sources
+- Repository Pattern: `domain.repositories` + `storage.repositories`
 - Structured Output: instructor + Pydantic
 - Error Recovery: ErrorRecoveryManager
 
@@ -145,18 +176,23 @@ crypto_news_analyzer/
 
 - `config.json` - App config (sources, LLM settings)
 - `.env` - Secrets (copy from `.env.template`)
+- `docs/RAILWAY_DEPLOYMENT.md` - Current split-service deployment reference
+- `migrations/postgresql/README.md` - Postgres cutover/backfill reference
 
 Required env vars:
-- LLM_API_KEY, GROK_API_KEY
-- TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID
-- TELEGRAM_AUTHORIZED_USERS
+- Shared DB: `DATABASE_URL`
+- Analysis service core: `API_KEY`, `LLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`
+- Analysis service optional/feature-scoped: `GROK_API_KEY`, `KIMI_API_KEY`, `TELEGRAM_AUTHORIZED_USERS`
+- Ingestion service (as needed): `X_CT0`, `X_AUTH_TOKEN`
 
 ## Important Notes
 
 - Always use `uv`, never raw `python` or `pip`
 - All datetimes stored in UTC
-- SQLite at `./data/crypto_news.db`
+- Current default storage backend in `config.json` is `postgres`
+- `DATABASE_URL` overrides `storage.database_url`
 - Logs in `./logs/`
 - Prompts in `./prompts/`
 - Use `__post_init__` for dataclass validation
 - X/Twitter requires Bird CLI: `npm install -g @laceletho/bird`
+- For Railway production debugging, use the `crypto-news-debug` skill instead of guessing deployment state
