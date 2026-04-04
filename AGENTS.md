@@ -19,6 +19,26 @@ AI agents should read `docs/AI_ANALYZE_API_GUIDE.md` before using the HTTP analy
 
 ## Build/Lint/Test Commands
 
+### 前置检查
+在编写代码或运行测试前，先检查以下工具是否已安装。如果缺少任何工具，请立即安装：
+
+- `uv` - Python 包管理和运行工具（必需，替代 pip/python）
+- `pytest` - 测试框架
+- `black` - 代码格式化
+- `mypy` - 类型检查
+- `flake8` - 代码风格检查
+
+安装命令示例：
+```bash
+# 安装 uv (如果未安装)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 使用 uv 安装 Python 开发依赖
+uv pip install -e ".[dev]"
+```
+
+### 常用命令
+
 ```bash
 # Install dependencies
 uv pip install -e ".[dev]"
