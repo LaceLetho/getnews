@@ -58,7 +58,7 @@ TIME_WINDOW_HOURS=24
 
 说明：
 
-- `DATABASE_URL` 会覆盖 `config.json` 中的 `storage.database_url`
+- `DATABASE_URL` 是 PostgreSQL 模式下唯一有效的连接配置来源
 - Railway 中两个应用服务必须指向**同一个**私有 Postgres 实例
 - 若使用 PostgreSQL 后端，请确保配置中的 `storage.backend=postgres`
 

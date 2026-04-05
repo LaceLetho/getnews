@@ -35,7 +35,7 @@ from .crawlers.data_source_factory import get_data_source_factory
 from .analyzers.llm_analyzer import LLMAnalyzer
 from .reporters.report_generator import ReportGenerator, create_analyzed_data
 from .reporters.telegram_sender import TelegramSenderSync, create_telegram_config
-from .models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult, BirdConfig, TelegramCommandConfig
+from .models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult, TelegramCommandConfig
 from .utils.logging import get_log_manager
 from .utils.errors import ErrorRecoveryManager
 
@@ -522,7 +522,6 @@ class MainController:
                     validation_result["errors"].append(f"缺少必需配置项: {config_key}")
                     validation_result["valid"] = False
             
-            # 验证execution_interval和time_window_hours可以获取（从环境变量或配置文件）
             try:
                 execution_interval = self.config_manager.get_execution_interval()
                 time_window_hours = self.config_manager.get_time_window_hours()
@@ -551,7 +550,7 @@ class MainController:
             
             # 验证存储路径
             storage_config = self.config_manager.get_storage_config()
-            if not self.config_manager.validate_storage_path(storage_config.database_path):
+            if storage_config.backend == "sqlite" and not self.config_manager.validate_storage_path(storage_config.database_path):
                 validation_result["errors"].append(f"存储路径无效: {storage_config.database_path}")
                 validation_result["valid"] = False
             
@@ -864,8 +863,7 @@ class MainController:
             x_auth = self.config_manager.get_x_auth_credentials()
 
             if x_sources and x_auth["X_CT0"] and x_auth["X_AUTH_TOKEN"]:
-                # 创建 BirdConfig（X爬取器使用bird工具，需要通过配置文件设置认证）
-                bird_config = BirdConfig()
+                bird_config = self.config_manager.get_bird_config()
                 
                 for x_source in x_sources:
                     try:

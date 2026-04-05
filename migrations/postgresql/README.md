@@ -29,10 +29,9 @@ Notes:
 {
   "storage": {
     "backend": "postgres",
-    "database_url": "postgresql://...",
     "pgvector_dimensions": 1536
   }
 }
 ```
 
-Environment variable `DATABASE_URL` overrides `storage.database_url`.
+Environment variable `DATABASE_URL` is the only supported PostgreSQL connection source.

@@ -441,6 +441,61 @@ class TestMainController:
             for key in ["TIME_WINDOW_HOURS", "EXECUTION_INTERVAL", "LLM_API_KEY"]:
                 if key in os.environ:
                     del os.environ[key]
+
+    def test_crawling_stage_uses_env_driven_bird_config(self, mock_controller, monkeypatch):
+        captured = {}
+
+        class FakeXCrawler:
+            def crawl(self, _source):
+                return []
+
+        class FakeFactory:
+            def create_source(self, source_type, time_window_hours, **kwargs):
+                captured["source_type"] = source_type
+                captured["time_window_hours"] = time_window_hours
+                captured["bird_config"] = kwargs.get("bird_config")
+                captured["data_manager"] = kwargs.get("data_manager")
+                return FakeXCrawler()
+
+        x_source = Mock()
+        x_source.name = "Test X"
+        x_source.to_dict.return_value = {
+            "name": "Test X",
+            "url": "https://x.com/i/lists/1234567890",
+            "type": "list",
+        }
+
+        mock_controller.config_manager.get_rss_sources.return_value = []
+        mock_controller.config_manager.get_x_sources.return_value = [x_source]
+        mock_controller.config_manager.get_x_auth_credentials.return_value = {
+            "X_CT0": "ct0",
+            "X_AUTH_TOKEN": "auth",
+        }
+
+        from crypto_news_analyzer.config.manager import ConfigManager
+
+        real_manager = ConfigManager(mock_controller.config_path)
+        real_manager.config_data = {
+            "storage": {"database_path": ":memory:", "retention_days": 30, "max_storage_mb": 1000},
+            "llm_config": {},
+        }
+        mock_controller.config_manager.get_bird_config.side_effect = real_manager.get_bird_config
+
+        monkeypatch.setenv("BIRD_MAX_PAGE", "5")
+        monkeypatch.setenv("BIRD_TIMEOUT_SECONDS", "123")
+        monkeypatch.setattr(
+            "crypto_news_analyzer.execution_coordinator.get_data_source_factory",
+            lambda: FakeFactory(),
+        )
+
+        result = mock_controller._execute_crawling_stage(time_window_hours=6)
+
+        assert result["success"] is True
+        assert captured["source_type"] == "x"
+        assert captured["time_window_hours"] == 6
+        assert captured["data_manager"] is mock_controller.data_manager
+        assert captured["bird_config"].bird_max_page == 5
+        assert captured["bird_config"].timeout_seconds == 123
     
     def test_execution_history_limit(self, mock_controller):
         """测试执行历史限制"""

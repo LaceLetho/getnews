@@ -95,9 +95,7 @@ def test_config_manager_supports_postgres_via_env_database_url(tmp_path, monkeyp
             "retention_days": 30,
             "max_storage_mb": 1000,
             "cleanup_frequency": "daily",
-            "backend": "postgres",
-            "database_path": "./ignored.db",
-            "database_url": ""
+            "backend": "postgres"
           },
           "llm_config": {"model": "gpt-4"}
         }
