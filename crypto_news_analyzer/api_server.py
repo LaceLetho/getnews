@@ -26,6 +26,7 @@ from .storage.repositories import SQLiteAnalysisRepository
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
 USER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+TELEGRAM_WEBHOOK_SECRET_HEADER = "x-telegram-bot-api-secret-token"
 
 
 class AppState:
@@ -35,6 +36,7 @@ class AppState:
         self.controller: Optional[MainController] = None
         self.analysis_repository: Optional[AnalysisRepository] = None
         self.analyze_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="api-analyze")
+        self.telegram_uses_webhook = False
 
     def cleanup(self):
         """Cleanup resources on shutdown."""
@@ -46,8 +48,11 @@ class AppState:
                 logger.warning(f"Error stopping scheduler: {e}")
 
             try:
-                self.controller.stop_command_listener()
-                logger.info("Command listener stopped during cleanup")
+                if self.telegram_uses_webhook and self.controller.command_handler:
+                    logger.info("Telegram webhook cleanup will be handled by lifespan shutdown")
+                else:
+                    self.controller.stop_command_listener()
+                    logger.info("Command listener stopped during cleanup")
             except Exception as e:
                 logger.warning(f"Error stopping command listener: {e}")
 
@@ -181,6 +186,14 @@ def _get_analysis_repository(request: Request) -> AnalysisRepository:
         return state.analysis_repository
 
     raise HTTPException(status_code=503, detail="System not initialized")
+
+
+def _get_telegram_command_handler(request: Request) -> Any:
+    controller = _get_controller(request)
+    command_handler = getattr(controller, "command_handler", None)
+    if command_handler is None:
+        raise HTTPException(status_code=404, detail="Telegram command handler not configured")
+    return command_handler
 
 
 def verify_api_key(
@@ -390,8 +403,16 @@ def create_api_server(
 
         if effective_start_command_listener:
             if controller.command_handler:
-                controller.start_command_listener()
-                logger.info("Telegram command listener started in API mode")
+                if (
+                    hasattr(controller.command_handler, "uses_webhook")
+                    and controller.command_handler.uses_webhook()
+                ):
+                    await controller.command_handler.initialize_webhook()
+                    app_state.telegram_uses_webhook = True
+                    logger.info("Telegram webhook started in API mode")
+                else:
+                    controller.start_command_listener()
+                    logger.info("Telegram command listener started in API mode")
             else:
                 logger.warning("Telegram command handler not configured, listener not started")
         else:
@@ -401,6 +422,11 @@ def create_api_server(
         yield
         # Shutdown
         logger.info("API server shutting down")
+        if app_state.telegram_uses_webhook and controller.command_handler:
+            try:
+                await controller.command_handler.shutdown_webhook()
+            except Exception as exc:
+                logger.warning(f"Error shutting down Telegram webhook: {exc}")
         app_state.cleanup()
 
     app = FastAPI(title="Crypto News Analyzer API", lifespan=lifespan)
@@ -504,5 +530,21 @@ def create_api_server(
         """健康检查端点"""
         state = _get_app_state(req)
         return {"status": "healthy", "initialized": state.controller is not None}
+
+    @app.post(os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook"))
+    async def telegram_webhook(req: Request):
+        """Telegram webhook endpoint."""
+        command_handler = _get_telegram_command_handler(req)
+        payload = await req.json()
+        secret_token = req.headers.get(TELEGRAM_WEBHOOK_SECRET_HEADER)
+
+        try:
+            await command_handler.handle_webhook_update(payload, secret_token=secret_token)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+
+        return {"ok": True}
 
     return app

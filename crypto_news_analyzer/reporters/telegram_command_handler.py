@@ -18,6 +18,7 @@ import asyncio
 import logging
 import math
 import os
+import hashlib
 import threading
 import time
 from typing import Dict, Any, List, Optional, Callable
@@ -106,6 +107,73 @@ class TelegramCommandHandler:
         self._load_authorized_users()
         
         self.logger.info("Telegram命令处理器初始化完成")
+
+    @staticmethod
+    def _normalize_webhook_base_url(base_url: str) -> str:
+        normalized = base_url.strip().rstrip("/")
+        if not normalized:
+            raise ValueError("Telegram webhook base URL不能为空")
+        if not normalized.startswith(("http://", "https://")):
+            normalized = f"https://{normalized}"
+        return normalized
+
+    def uses_webhook(self) -> bool:
+        transport_mode = os.getenv("TELEGRAM_TRANSPORT_MODE", "").strip().lower()
+        if transport_mode:
+            return transport_mode == "webhook"
+
+        return any(
+            os.getenv(env_name, "").strip()
+            for env_name in (
+                "TELEGRAM_WEBHOOK_BASE_URL",
+                "RAILWAY_PUBLIC_DOMAIN",
+                "RAILWAY_STATIC_URL",
+                "RAILWAY_SERVICE_CRYPTO_NEWS_ANALYSIS_URL",
+            )
+        )
+
+    def get_webhook_path(self) -> str:
+        path = os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook").strip()
+        if not path:
+            return "/telegram/webhook"
+        return path if path.startswith("/") else f"/{path}"
+
+    def get_webhook_secret_token(self) -> str:
+        configured_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET_TOKEN", "").strip()
+        if configured_secret:
+            return configured_secret
+
+        return hashlib.sha256(
+            f"telegram-webhook:{self.bot_token}".encode("utf-8")
+        ).hexdigest()
+
+    def get_webhook_url(self) -> str:
+        base_url = (
+            os.getenv("TELEGRAM_WEBHOOK_BASE_URL", "").strip()
+            or os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
+            or os.getenv("RAILWAY_STATIC_URL", "").strip()
+            or os.getenv("RAILWAY_SERVICE_CRYPTO_NEWS_ANALYSIS_URL", "").strip()
+        )
+        if not base_url:
+            raise ValueError(
+                "未配置Telegram webhook公网地址，请设置TELEGRAM_WEBHOOK_BASE_URL或Railway公网域名变量"
+            )
+
+        return f"{self._normalize_webhook_base_url(base_url)}{self.get_webhook_path()}"
+
+    def _build_application(self, use_updater: bool = True) -> Application:
+        builder = Application.builder().token(self.bot_token)
+        if not use_updater:
+            builder = builder.updater(None)
+
+        application = builder.build()
+        application.add_handler(CommandHandler("analyze", self._handle_analyze_command))
+        application.add_handler(CommandHandler("market", self._handle_market_command))
+        application.add_handler(CommandHandler("status", self._handle_status_command))
+        application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
+        application.add_handler(CommandHandler("help", self._handle_help_command))
+        application.add_handler(CommandHandler("start", self._handle_start_command))
+        return application
     
     def _load_authorized_users(self) -> None:
         """
@@ -443,15 +511,7 @@ class TelegramCommandHandler:
             self.logger.info("启动Telegram命令监听器")
             
             # 创建应用
-            self.application = Application.builder().token(self.bot_token).build()
-            
-            # 注册命令处理器
-            self.application.add_handler(CommandHandler("analyze", self._handle_analyze_command))
-            self.application.add_handler(CommandHandler("market", self._handle_market_command))
-            self.application.add_handler(CommandHandler("status", self._handle_status_command))
-            self.application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
-            self.application.add_handler(CommandHandler("help", self._handle_help_command))
-            self.application.add_handler(CommandHandler("start", self._handle_start_command))
+            self.application = self._build_application(use_updater=True)
             
             # 启动应用
             await self.application.initialize()
@@ -520,6 +580,63 @@ class TelegramCommandHandler:
             
         except Exception as e:
             self.logger.error(f"设置Bot命令菜单失败: {str(e)}")
+
+    async def initialize_webhook(self) -> str:
+        """初始化Telegram webhook模式。"""
+        if self.application:
+            self.logger.warning("Telegram webhook已初始化")
+            return self.get_webhook_url()
+
+        self.logger.info("初始化Telegram webhook模式")
+        self.application = self._build_application(use_updater=False)
+
+        await self.application.initialize()
+        await self.application.start()
+        await self._resolve_all_usernames()
+        await self._setup_bot_commands()
+
+        webhook_url = self.get_webhook_url()
+        secret_token = self.get_webhook_secret_token()
+
+        await self.application.bot.set_webhook(
+            url=webhook_url,
+            allowed_updates=Update.ALL_TYPES,
+            secret_token=secret_token,
+        )
+
+        self.logger.info(f"Telegram webhook已注册到: {self.get_webhook_path()}")
+        return webhook_url
+
+    async def shutdown_webhook(self) -> None:
+        """关闭Telegram webhook模式。"""
+        if not self.application:
+            return
+
+        try:
+            self.logger.info("停止Telegram webhook模式")
+            await self.application.bot.delete_webhook(drop_pending_updates=False)
+            await self.application.stop()
+            await self.application.shutdown()
+            self.application = None
+            self.logger.info("Telegram webhook模式已停止")
+        except Exception as e:
+            self.logger.error(f"停止Telegram webhook模式失败: {str(e)}")
+
+    async def handle_webhook_update(
+        self,
+        update_data: Dict[str, Any],
+        secret_token: Optional[str] = None,
+    ) -> None:
+        """处理来自Webhook的Telegram更新。"""
+        if not self.application:
+            raise RuntimeError("Telegram webhook尚未初始化")
+
+        expected_secret = self.get_webhook_secret_token()
+        if secret_token != expected_secret:
+            raise PermissionError("Invalid Telegram webhook secret token")
+
+        update = Update.de_json(data=update_data, bot=self.application.bot)
+        await self.application.update_queue.put(update)
     
     async def _handle_analyze_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
@@ -1560,6 +1677,25 @@ class TelegramCommandHandlerSync:
             self.handler._stop_event.set()
             if self._listener_thread:
                 self._listener_thread.join(timeout=10)
+
+    def uses_webhook(self) -> bool:
+        return self.handler.uses_webhook()
+
+    def get_webhook_path(self) -> str:
+        return self.handler.get_webhook_path()
+
+    async def initialize_webhook(self) -> str:
+        return await self.handler.initialize_webhook()
+
+    async def shutdown_webhook(self) -> None:
+        await self.handler.shutdown_webhook()
+
+    async def handle_webhook_update(
+        self,
+        update_data: Dict[str, Any],
+        secret_token: Optional[str] = None,
+    ) -> None:
+        await self.handler.handle_webhook_update(update_data, secret_token)
 
 
 # 工具函数
