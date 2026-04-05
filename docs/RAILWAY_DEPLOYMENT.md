@@ -2,7 +2,7 @@
 
 本文档对应 Task 11 的 Railway 切流结果：同一仓库部署为两个应用服务，并共享一个私有 PostgreSQL/pgvector 数据库。
 
-- `crypto-news-analysis`：公网服务，提供分析 API + Telegram 命令监听，运行 `analysis-service`
+- `crypto-news-analysis`：公网服务，提供分析 API + Telegram webhook 命令入口，运行 `analysis-service`
 - `crypto-news-ingestion`：私有服务，只执行数据摄取，运行 `ingestion`
 - PostgreSQL/pgvector：私有数据库，两个服务共用同一个 `DATABASE_URL`
 
@@ -14,7 +14,7 @@
 
 | Railway 服务 | 是否公网 | 启动模式 | 用途 |
 | --- | --- | --- | --- |
-| `crypto-news-analysis` | 是 | `analysis-service` | 暴露 `/health`、`/analyze`，并启用 Telegram 命令监听（禁用调度器） |
+| `crypto-news-analysis` | 是 | `analysis-service` | 暴露 `/health`、`/analyze`、Telegram webhook，并禁用调度器 |
 | `crypto-news-ingestion` | 否 | `ingestion` | 定时执行爬取/摄取任务 |
 | PostgreSQL/pgvector | 否 | N/A | 两个应用服务共享的数据库 |
 
@@ -80,10 +80,18 @@ KIMI_API_KEY=...
 # 市场快照：必须使用 Grok
 GROK_API_KEY=...
 
-# Telegram Bot（用于命令监听和报告推送）
+# Telegram Bot（用于 webhook 命令接收和报告推送）
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHANNEL_ID=...
 TELEGRAM_AUTHORIZED_USERS=...
+
+# 可选：显式覆盖 Telegram webhook 配置
+# 若未设置，analysis-service 会优先使用 Railway 提供的公网域名，
+# 路径默认 /telegram/webhook，secret 默认由 bot token 派生
+TELEGRAM_TRANSPORT_MODE=webhook
+TELEGRAM_WEBHOOK_BASE_URL=https://news.tradao.xyz
+TELEGRAM_WEBHOOK_PATH=/telegram/webhook
+TELEGRAM_WEBHOOK_SECRET_TOKEN=replace_with_random_secret
 ```
 
 ### 仅 `crypto-news-ingestion` 需要
@@ -102,7 +110,7 @@ X_AUTH_TOKEN=...
 **重要说明：**
 
 - `crypto-news-ingestion` **不**需要 `LLM_API_KEY`、`GROK_API_KEY`、`KIMI_API_KEY` 等 LLM 相关密钥，因为它不初始化 LLMAnalyzer、market snapshot service 或 Telegram 组件
-- `crypto-news-analysis` 需要完整的 LLM 和 Telegram 配置，因为它执行实际的新闻分析并响应 API/Telegram 命令
+- `crypto-news-analysis` 需要完整的 LLM 和 Telegram 配置，因为它执行实际的新闻分析并响应 API/Telegram webhook 命令
 
 ### 模型密钥使用方式与 fallback 机制
 
@@ -134,7 +142,7 @@ X_AUTH_TOKEN=...
 
 - `crypto-news-analysis` 的部署日志里应出现 `RAILWAY_SERVICE_NAME -> analysis-service`
 - `crypto-news-ingestion` 的部署日志里应出现 `RAILWAY_SERVICE_NAME -> ingestion`
-- `crypto-news-analysis` 不应启动摄取循环；但应可接收 Telegram `/analyze` 命令
+- `crypto-news-analysis` 不应启动摄取循环；但应可通过 Telegram webhook 接收 `/analyze` 命令
 
 ---
 
@@ -214,6 +222,25 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 
 - `POST /analyze` 是异步接口
 - 客户端应保存 `job_id` 并轮询状态/结果接口
+
+### 验证 Telegram webhook
+
+```bash
+# 查看当前 webhook 状态
+curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+预期：
+
+- `url` 指向 `https://<analysis-domain>/telegram/webhook`，或你自定义的 `TELEGRAM_WEBHOOK_PATH`
+- 若配置了 `TELEGRAM_WEBHOOK_SECRET_TOKEN`，Telegram 请求会带上 `X-Telegram-Bot-Api-Secret-Token`
+- `pending_update_count` 可短时非 0，但不应持续增长
+
+建议：
+
+- 在 Railway 的 `crypto-news-analysis` 中显式设置 `TELEGRAM_TRANSPORT_MODE=webhook`
+- 若使用自定义域名，显式设置 `TELEGRAM_WEBHOOK_BASE_URL=https://<analysis-domain>`
+- 若不想依赖默认派生 secret，显式设置随机的 `TELEGRAM_WEBHOOK_SECRET_TOKEN`
 
 ---
 

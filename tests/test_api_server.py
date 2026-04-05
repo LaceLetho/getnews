@@ -102,6 +102,35 @@ class _FakeCacheManager:
         ]
 
 
+class _FakeCommandHandler:
+    def __init__(self, uses_webhook: bool = False):
+        self._uses_webhook = uses_webhook
+        self.initialize_webhook_called = False
+        self.shutdown_webhook_called = False
+        self.handled_updates: list[dict[str, object]] = []
+        self.last_secret_token: Optional[str] = None
+
+    def uses_webhook(self) -> bool:
+        return self._uses_webhook
+
+    async def initialize_webhook(self) -> str:
+        self.initialize_webhook_called = True
+        return "https://example.com/telegram/webhook"
+
+    async def shutdown_webhook(self) -> None:
+        self.shutdown_webhook_called = True
+
+    async def handle_webhook_update(
+        self,
+        update_data: dict[str, object],
+        secret_token: Optional[str] = None,
+    ) -> None:
+        if secret_token != "expected-secret":
+            raise PermissionError("Invalid Telegram webhook secret token")
+        self.last_secret_token = secret_token
+        self.handled_updates.append(update_data)
+
+
 class _FakeController:
     def __init__(
         self,
@@ -616,7 +645,7 @@ def test_analyze_job_persists_across_repository_reinitialization(
 def test_create_api_server_lifespan_starts_requested_services_and_cleans_up(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    fake_controller = _FakeController(command_handler=object())
+    fake_controller = _FakeController(command_handler=_FakeCommandHandler())
     app = _build_test_app(
         monkeypatch,
         fake_controller,
@@ -638,7 +667,7 @@ def test_create_api_server_lifespan_starts_requested_services_and_cleans_up(
 def test_create_api_server_lifespan_keeps_scheduler_and_listener_disabled_when_start_services_false(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    fake_controller = _FakeController(command_handler=object())
+    fake_controller = _FakeController(command_handler=_FakeCommandHandler())
     app = _build_test_app(
         monkeypatch,
         fake_controller,
@@ -653,3 +682,66 @@ def test_create_api_server_lifespan_keeps_scheduler_and_listener_disabled_when_s
     assert fake_controller.start_command_listener_called is False
     assert fake_controller.stop_scheduler_called is True
     assert fake_controller.stop_command_listener_called is True
+
+
+def test_create_api_server_lifespan_prefers_telegram_webhook_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fake_handler = _FakeCommandHandler(uses_webhook=True)
+    fake_controller = _FakeController(command_handler=fake_handler)
+    app = _build_test_app(
+        monkeypatch,
+        fake_controller,
+        start_services=False,
+        start_scheduler=False,
+        start_command_listener=True,
+    )
+
+    with TestClient(app):
+        pass
+
+    assert fake_controller.initialize_system_called is True
+    assert fake_controller.start_command_listener_called is False
+    assert fake_handler.initialize_webhook_called is True
+    assert fake_handler.shutdown_webhook_called is True
+    assert fake_controller.stop_command_listener_called is False
+
+
+def test_telegram_webhook_endpoint_passes_update_to_handler(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fake_handler = _FakeCommandHandler(uses_webhook=True)
+    fake_controller = _FakeController(command_handler=fake_handler)
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook")
+    app = _build_test_app(monkeypatch, fake_controller)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "expected-secret"},
+            json={"update_id": 123},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert fake_handler.handled_updates == [{"update_id": 123}]
+    assert fake_handler.last_secret_token == "expected-secret"
+
+
+def test_telegram_webhook_endpoint_rejects_invalid_secret(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fake_handler = _FakeCommandHandler(uses_webhook=True)
+    fake_controller = _FakeController(command_handler=fake_handler)
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook")
+    app = _build_test_app(monkeypatch, fake_controller)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "wrong-secret"},
+            json={"update_id": 123},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid Telegram webhook secret token"}
