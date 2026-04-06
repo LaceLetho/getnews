@@ -6,17 +6,27 @@ These adapters wrap the existing DataManager and CacheManager.
 """
 
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, cast
 
-from ..domain.models import AnalysisRequest, IngestionJob, JobStatus, IngestionJobStatus
+from ..domain.models import (
+    AnalysisRequest,
+    DataSource,
+    DataSourceAlreadyExistsError,
+    DataSourceInUseError,
+    IngestionJob,
+    JobStatus,
+    IngestionJobStatus,
+)
 from ..domain.repositories import (
     AnalysisRepository,
+    DataSourceRepository,
     IngestionRepository,
     ContentRepository,
     CacheRepository,
 )
 from ..storage.data_manager import DataManager
 from ..storage.cache_manager import SentMessageCacheManager
+from ..utils.errors import StorageError
 from ..models import StorageConfig, ContentItem, CrawlStatus
 
 
@@ -306,10 +316,80 @@ class SQLiteContentRepository(ContentRepository):
     ) -> List[ContentItem]:
         return self._data.get_content_items_since(
             since_time=since_time,
-            max_hours=max_hours,
+            max_hours=cast(int, max_hours),
             source_types=source_types,
             limit=limit,
         )
+
+
+class SQLiteDataSourceRepository(DataSourceRepository):
+
+    def __init__(self, data_manager: DataManager):
+        self._data = data_manager
+
+    def save(self, datasource: DataSource) -> DataSource:
+        try:
+            self._data.upsert_datasource(
+                datasource_id=datasource.id,
+                source_type=datasource.source_type,
+                name=datasource.name,
+                config_payload=datasource.config_payload,
+                tags=datasource.tags,
+                created_at=datasource.created_at,
+            )
+        except StorageError as exc:
+            if self._is_datasource_uniqueness_error(exc):
+                raise DataSourceAlreadyExistsError(datasource.source_type, datasource.name) from exc
+            raise
+
+        loaded = self.get_by_id(datasource.id)
+        if loaded is None:
+            raise ValueError(f"datasource save failed: {datasource.id}")
+        return loaded
+
+    @staticmethod
+    def _is_datasource_uniqueness_error(error: Exception) -> bool:
+        message = str(error).lower()
+        uniqueness_tokens = (
+            "datasources.source_type, datasources.name",
+            "duplicate key value violates unique constraint",
+            "idx_datasources_source_name",
+        )
+        return any(token in message for token in uniqueness_tokens)
+
+    def get_by_id(self, datasource_id: str) -> Optional[DataSource]:
+        payload = self._data.get_datasource_by_id(datasource_id)
+        if payload is None:
+            return None
+        return DataSource.from_dict(payload)
+
+    def get_by_type_and_name(self, source_type: str, name: str) -> Optional[DataSource]:
+        payload = self._data.get_datasource_by_type_and_name(source_type=source_type, name=name)
+        if payload is None:
+            return None
+        return DataSource.from_dict(payload)
+
+    def list(self, source_type: Optional[str] = None) -> List[DataSource]:
+        rows = self._data.list_datasources(source_type=source_type)
+        return [DataSource.from_dict(row) for row in rows]
+
+    def delete(self, datasource_id: str) -> bool:
+        datasource = self.get_by_id(datasource_id)
+        if datasource is None:
+            return False
+
+        active_job_ids = self._data.get_active_ingestion_job_ids_for_source(
+            source_type=datasource.source_type,
+            source_name=datasource.name,
+        )
+        if active_job_ids:
+            raise DataSourceInUseError(
+                source_type=datasource.source_type,
+                source_name=datasource.name,
+                active_job_ids=active_job_ids,
+            )
+
+        return self._data.delete_datasource(datasource_id)
 
 
 class SQLiteCacheRepository(CacheRepository):
@@ -382,21 +462,6 @@ class RepositoryFactory:
         data_manager: Optional[DataManager] = None,
         cache_manager: Optional[SentMessageCacheManager] = None,
     ) -> Dict[str, Any]:
-        """
-        Create all repository instances with shared storage backend
-
-        Args:
-            storage_config: Storage configuration
-            data_manager: Optional existing DataManager instance to reuse
-            cache_manager: Optional existing SentMessageCacheManager instance to reuse
-
-        Returns:
-            Dictionary with repository instances:
-            - analysis: AnalysisRepository
-            - ingestion: IngestionRepository
-            - content: ContentRepository
-            - cache: CacheRepository
-        """
         backend = storage_config.backend
         if data_manager is None:
             data_manager = DataManager(storage_config)
@@ -405,6 +470,7 @@ class RepositoryFactory:
 
         return {
             "analysis": SQLiteAnalysisRepository(data_manager),
+            "datasource": SQLiteDataSourceRepository(data_manager),
             "ingestion": SQLiteIngestionRepository(data_manager),
             "content": SQLiteContentRepository(data_manager),
             "cache": SQLiteCacheRepository(cache_manager),

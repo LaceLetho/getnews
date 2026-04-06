@@ -7,10 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from crypto_news_analyzer import api_server
-from crypto_news_analyzer.domain.models import AnalysisRequest
+from crypto_news_analyzer.domain.models import AnalysisRequest, DataSource, IngestionJob
 from crypto_news_analyzer.models import StorageConfig
 from crypto_news_analyzer.storage.data_manager import DataManager
-from crypto_news_analyzer.storage.repositories import SQLiteAnalysisRepository
+from crypto_news_analyzer.storage.repositories import SQLiteAnalysisRepository, SQLiteDataSourceRepository
 
 
 class _LoggedRow(TypedDict):
@@ -37,6 +37,67 @@ def _authorized_headers() -> dict[str, str]:
 
 def _analyze_request(hours: int = 1, user_id: str = "user-123") -> dict[str, object]:
     return {"hours": hours, "user_id": user_id}
+
+
+def _rss_datasource_request(
+    name: str = "CoinDesk",
+    tags: Optional[list[str]] = None,
+    url: str = "https://www.coindesk.com/arc/outboundfeeds/rss/",
+) -> dict[str, object]:
+    return {
+        "source_type": "rss",
+        "name": name,
+        "tags": tags or [],
+        "config_payload": {
+            "name": name,
+            "url": url,
+            "description": "Industry news",
+        },
+    }
+
+
+def _x_datasource_request(
+    name: str = "Whale Watch",
+    tags: Optional[list[str]] = None,
+    url: str = "https://x.com/i/lists/1234567890",
+    source_subtype: str = "list",
+) -> dict[str, object]:
+    return {
+        "source_type": "x",
+        "tags": tags or [],
+        "config_payload": {
+            "name": name,
+            "url": url,
+            "type": source_subtype,
+        },
+    }
+
+
+def _rest_api_datasource_request(
+    name: str = "Newswire API",
+    tags: Optional[list[str]] = None,
+    endpoint: str = "https://api.example.com/news",
+    method: str = "GET",
+    headers: Optional[dict[str, object]] = None,
+    params: Optional[dict[str, object]] = None,
+) -> dict[str, object]:
+    return {
+        "source_type": "rest_api",
+        "tags": tags or [],
+        "config_payload": {
+            "name": name,
+            "endpoint": endpoint,
+            "method": method,
+            "headers": headers or {},
+            "params": params or {},
+            "response_mapping": {
+                "title_field": "title",
+                "content_field": "body",
+                "url_field": "url",
+                "time_field": "published_at",
+            },
+        },
+    }
 
 
 class _FakeDataManager:
@@ -135,9 +196,11 @@ class _FakeController:
     def __init__(
         self,
         analysis_repository: Optional[SQLiteAnalysisRepository] = None,
+        datasource_repository: Optional[SQLiteDataSourceRepository] = None,
         command_handler: Optional[object] = None,
     ):
         self.analysis_repository = analysis_repository
+        self.datasource_repository = datasource_repository
         self.command_handler = command_handler
         self.data_manager = _FakeDataManager()
         self.cache_manager = _FakeCacheManager()
@@ -277,6 +340,15 @@ def db_analysis_repository(tmp_path: Path):
     data_manager.close()
 
 
+@pytest.fixture
+def db_datasource_repository(tmp_path: Path):
+    db_path = tmp_path / "api_server_datasources.db"
+    data_manager = DataManager(StorageConfig(database_path=str(db_path)))
+    repository = SQLiteDataSourceRepository(data_manager)
+    yield {"repo": repository, "db_path": db_path, "manager": data_manager}
+    data_manager.close()
+
+
 def _build_test_app(
     monkeypatch: pytest.MonkeyPatch,
     controller: _FakeController,
@@ -293,12 +365,18 @@ def _build_test_app(
     )
 
 
+def _app_state(client: TestClient) -> api_server.AppState:
+    app = cast(object, client.app)
+    state = getattr(app, "state")
+    return cast(api_server.AppState, getattr(state, "app_state"))
+
+
 def _enqueue_and_run_job(
     client: TestClient,
     user_id: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> str:
-    app_state = client.app.state.app_state
+    app_state = _app_state(client)
     monkeypatch.setattr(app_state.analyze_executor, "submit", lambda *_args, **_kwargs: None)
     response = client.post(
         "/analyze",
@@ -336,7 +414,7 @@ def test_analyze_returns_service_unavailable_when_controller_missing(
     app = _build_test_app(monkeypatch, _FakeController())
 
     with TestClient(app) as client:
-        client.app.state.app_state.controller = None
+        _app_state(client).controller = None
         response = client.post(
             "/analyze",
             headers=_authorized_headers(),
@@ -613,7 +691,7 @@ def test_analyze_job_persists_across_repository_reinitialization(
     app = _build_test_app(monkeypatch, fake_controller)
 
     with TestClient(app) as client:
-        app_state = client.app.state.app_state
+        app_state = _app_state(client)
         monkeypatch.setattr(app_state.analyze_executor, "submit", lambda *_args, **_kwargs: None)
 
         accepted = client.post(
@@ -627,19 +705,267 @@ def test_analyze_job_persists_across_repository_reinitialization(
         db_path = cast(Path, db_analysis_repository["db_path"])
         restart_manager = DataManager(StorageConfig(database_path=str(db_path)))
         restart_repo = SQLiteAnalysisRepository(restart_manager)
-        client.app.state.app_state.analysis_repository = restart_repo
+        _app_state(client).analysis_repository = restart_repo
 
         status_response = client.get(f"/analyze/{job_id}", headers=_authorized_headers())
         assert status_response.status_code == 200
         assert status_response.json()["job_id"] == job_id
         assert status_response.json()["status"] == "queued"
 
-        api_server._run_analyze_job(job_id, client.app.state.app_state)
+        api_server._run_analyze_job(job_id, _app_state(client))
         result_response = client.get(f"/analyze/{job_id}/result", headers=_authorized_headers())
         assert result_response.status_code == 200
         assert result_response.json()["success"] is True
 
         restart_manager.close()
+
+
+def test_datasource_create_list_and_delete_round_trip(
+    monkeypatch: pytest.MonkeyPatch,
+    db_datasource_repository,
+):
+    repo = cast(SQLiteDataSourceRepository, db_datasource_repository["repo"])
+    app = _build_test_app(monkeypatch, _FakeController(datasource_repository=repo))
+
+    with TestClient(app) as client:
+        rss_response = client.post(
+            "/datasources",
+            headers=_authorized_headers(),
+            json=_rss_datasource_request(tags=[" Markets ", "markets", "Layer2"]),
+        )
+        x_response = client.post(
+            "/datasources",
+            headers=_authorized_headers(),
+            json=_x_datasource_request(tags=["Whales"]),
+        )
+        rest_response = client.post(
+            "/datasources",
+            headers=_authorized_headers(),
+            json=_rest_api_datasource_request(
+                headers={"Authorization": "Bearer super-secret"},
+                params={"api_key": "super-secret", "limit": 10},
+            ),
+        )
+
+        assert rss_response.status_code == 201
+        assert x_response.status_code == 201
+        assert rest_response.status_code == 201
+
+        rss_body = rss_response.json()
+        x_body = x_response.json()
+        rest_body = rest_response.json()
+
+        assert rss_body == {
+            "success": True,
+            "datasource": {
+                "id": rss_body["datasource"]["id"],
+                "name": "CoinDesk",
+                "source_type": "rss",
+                "tags": ["layer2", "markets"],
+                "config_summary": {
+                    "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
+                    "description": "Industry news",
+                },
+            },
+        }
+        assert x_body["datasource"]["config_summary"] == {
+            "url": "https://x.com/i/lists/1234567890",
+            "type": "list",
+        }
+        assert rest_body["datasource"]["config_summary"] == {
+            "endpoint": "https://api.example.com/news",
+            "method": "GET",
+            "response_mapping": {
+                "title_field": "title",
+                "content_field": "body",
+                "url_field": "url",
+                "time_field": "published_at",
+            },
+            "header_count": 1,
+            "param_count": 2,
+        }
+        assert "super-secret" not in rest_response.text
+        assert "Authorization" not in rest_response.text
+        assert "api_key" not in rest_response.text
+
+        list_response = client.get("/datasources", headers=_authorized_headers())
+        assert list_response.status_code == 200
+        assert list_response.json() == {
+            "success": True,
+            "datasources": [
+                {
+                    "id": rest_body["datasource"]["id"],
+                    "name": "Newswire API",
+                    "source_type": "rest_api",
+                    "tags": [],
+                    "config_summary": rest_body["datasource"]["config_summary"],
+                },
+                {
+                    "id": rss_body["datasource"]["id"],
+                    "name": "CoinDesk",
+                    "source_type": "rss",
+                    "tags": ["layer2", "markets"],
+                    "config_summary": rss_body["datasource"]["config_summary"],
+                },
+                {
+                    "id": x_body["datasource"]["id"],
+                    "name": "Whale Watch",
+                    "source_type": "x",
+                    "tags": ["whales"],
+                    "config_summary": x_body["datasource"]["config_summary"],
+                },
+            ],
+        }
+        assert "super-secret" not in list_response.text
+        assert "Authorization" not in list_response.text
+        assert "api_key" not in list_response.text
+
+        delete_response = client.delete(
+            f"/datasources/{x_body['datasource']['id']}",
+            headers=_authorized_headers(),
+        )
+        assert delete_response.status_code == 204
+        assert delete_response.text == ""
+
+        after_delete_response = client.get("/datasources", headers=_authorized_headers())
+        assert after_delete_response.status_code == 200
+        assert [item["source_type"] for item in after_delete_response.json()["datasources"]] == [
+            "rest_api",
+            "rss",
+        ]
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "payload"),
+    [
+        ("post", "/datasources", _rss_datasource_request()),
+        ("get", "/datasources", None),
+        ("delete", "/datasources/test-id", None),
+    ],
+)
+def test_datasource_endpoints_require_valid_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+    db_datasource_repository,
+    method: str,
+    path: str,
+    payload: Optional[dict[str, object]],
+):
+    repo = cast(SQLiteDataSourceRepository, db_datasource_repository["repo"])
+    app = _build_test_app(monkeypatch, _FakeController(datasource_repository=repo))
+
+    with TestClient(app) as client:
+        request_method = getattr(client, method)
+        if payload is None:
+            response = request_method(path)
+        else:
+            response = request_method(path, json=payload)
+
+    assert response.status_code == 401
+
+
+def test_datasource_create_duplicate_returns_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+    db_datasource_repository,
+):
+    repo = cast(SQLiteDataSourceRepository, db_datasource_repository["repo"])
+    app = _build_test_app(monkeypatch, _FakeController(datasource_repository=repo))
+
+    with TestClient(app) as client:
+        first_response = client.post(
+            "/datasources",
+            headers=_authorized_headers(),
+            json=_rss_datasource_request(),
+        )
+        second_response = client.post(
+            "/datasources",
+            headers=_authorized_headers(),
+            json=_rss_datasource_request(),
+        )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 409
+    assert second_response.json() == {"detail": "Datasource 'rss:CoinDesk' already exists"}
+
+
+def test_datasource_delete_returns_conflict_when_active_ingestion_job_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    db_datasource_repository,
+):
+    repo = cast(SQLiteDataSourceRepository, db_datasource_repository["repo"])
+    data_manager = cast(DataManager, db_datasource_repository["manager"])
+    datasource = repo.save(
+        DataSource.create(
+            name="CoinDesk",
+            source_type="rss",
+            config_payload={
+                "name": "CoinDesk",
+                "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
+                "description": "Industry news",
+            },
+        )
+    )
+    pending_job = IngestionJob.create(source_type="rss", source_name="CoinDesk")
+    data_manager.upsert_ingestion_job(
+        job_id=pending_job.id,
+        source_type=pending_job.source_type,
+        source_name=pending_job.source_name,
+        scheduled_at=pending_job.scheduled_at,
+        status=pending_job.status,
+        metadata=pending_job.metadata,
+    )
+
+    app = _build_test_app(monkeypatch, _FakeController(datasource_repository=repo))
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/datasources/{datasource.id}",
+            headers=_authorized_headers(),
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "Cannot delete datasource 'rss:CoinDesk' while matching ingestion jobs are active"
+    }
+    assert repo.get_by_id(datasource.id) is not None
+
+
+def test_datasource_create_invalid_semantic_payload_returns_unprocessable_entity(
+    monkeypatch: pytest.MonkeyPatch,
+    db_datasource_repository,
+):
+    repo = cast(SQLiteDataSourceRepository, db_datasource_repository["repo"])
+    app = _build_test_app(monkeypatch, _FakeController(datasource_repository=repo))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/datasources",
+            headers=_authorized_headers(),
+            json=_x_datasource_request(source_subtype="search"),
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "x.type must be one of: list, timeline"}
+
+
+def test_datasource_create_invalid_structural_payload_returns_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+    db_datasource_repository,
+):
+    repo = cast(SQLiteDataSourceRepository, db_datasource_repository["repo"])
+    app = _build_test_app(monkeypatch, _FakeController(datasource_repository=repo))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/datasources",
+            headers=_authorized_headers(),
+            json={
+                "source_type": "rss",
+                "tags": ["markets"],
+            },
+        )
+
+    assert response.status_code == 422
+    assert any(error["loc"] == ["body", "config_payload"] for error in response.json()["detail"])
 
 
 def test_create_api_server_lifespan_starts_requested_services_and_cleans_up(

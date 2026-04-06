@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-from .models import AnalysisRequest, IngestionJob
+from .models import AnalysisRequest, DataSource, IngestionJob
 
 
 class AnalysisRepository(ABC):
@@ -305,6 +305,28 @@ class ContentRepository(ABC):
         source_types: Optional[List[str]] = None,
         limit: Optional[int] = None,
     ) -> List[Any]:
+        pass
+
+
+class DataSourceRepository(ABC):
+    @abstractmethod
+    def save(self, datasource: DataSource) -> DataSource:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, datasource_id: str) -> Optional[DataSource]:
+        pass
+
+    @abstractmethod
+    def get_by_type_and_name(self, source_type: str, name: str) -> Optional[DataSource]:
+        pass
+
+    @abstractmethod
+    def list(self, source_type: Optional[str] = None) -> List[DataSource]:
+        pass
+
+    @abstractmethod
+    def delete(self, datasource_id: str) -> bool:
         pass
 
 

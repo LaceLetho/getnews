@@ -102,7 +102,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 > Implementation + Test = ONE task. Never separate.
 > EVERY task MUST have: Agent Profile + Parallelization + QA Scenarios.
 
-- [ ] 1. Define datasource domain contract and failing tests
+- [x] 1. Define datasource domain contract and failing tests
 
   **What to do**: Introduce a datasource domain model and repository contract that separate persisted datasource records from the existing crawler-facing `RSSSource` / `XSource` / `RESTAPISource` dataclasses. Lock in the v1 rules in tests first: supported `source_type` values are `rss`, `x`, and `rest_api`; tags are trimmed, lowercased, deduplicated, and sorted; tag count is capped at 16 and each tag length at 32; datasource uniqueness is enforced on `(source_type, name)`; hard delete is blocked when an `ingestion_jobs` row exists in `pending` or `running` status for the same `source_type` + `source_name` snapshot.
   **Must NOT do**: Do not add update/edit semantics, soft delete, or foreign keys from historical content/job tables to datasource IDs.
@@ -144,7 +144,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
   **Commit**: YES | Message: `test(datasource): add repository and normalization contracts` | Files: `crypto_news_analyzer/domain/*`, `tests/test_datasource_repository.py`
 
-- [ ] 2. Add datasource schema for Postgres and SQLite-backed test/runtime parity
+- [x] 2. Add datasource schema for Postgres and SQLite-backed test/runtime parity
 
   **What to do**: Add a new PostgreSQL migration after `001_init.sql` that creates `datasources` and `datasource_tags` tables. Use `datasources.id` as immutable primary key, store `source_type`, `name`, normalized config payload, created timestamp, and unique `(source_type, name)` constraint. Store tags in a separate `datasource_tags` table with one row per normalized tag so the design remains portable across PostgreSQL and SQLite-backed local/test runs. Mirror the same schema in the SQLite initialization path used by the storage layer so local tests and non-Postgres runtime do not regress.
   **Must NOT do**: Do not alter historical tables to add datasource foreign keys; do not use PostgreSQL-only array storage for tags.
@@ -185,7 +185,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
   **Commit**: YES | Message: `feat(storage): add datasource schema and tag tables` | Files: `migrations/postgresql/*`, `crypto_news_analyzer/storage/*`, `tests/test_datasource_bootstrap.py`
 
-- [ ] 3. Implement datasource repositories and bootstrap import logic
+- [x] 3. Implement datasource repositories and bootstrap import logic
 
   **What to do**: Add datasource CRUD methods behind a dedicated repository abstraction and wire concrete storage implementations. Implement create/list/delete plus lookup helpers and active-job delete guard checks. Add bootstrap import logic that runs transactionally only when datasource storage is empty; it must read datasource arrays from `config.json`, convert them into datasource records, import them once, and then leave the database as the only runtime datasource source of truth. If datasource rows already exist, bootstrap must skip import and log a no-op outcome; it must not overwrite operator-managed rows.
   **Must NOT do**: Do not implement dual-write between `config.json` and database. Do not overwrite non-empty datasource tables from config.
@@ -227,7 +227,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
   **Commit**: YES | Message: `feat(storage): implement datasource repository and bootstrap` | Files: `crypto_news_analyzer/domain/*`, `crypto_news_analyzer/storage/*`, `tests/test_datasource_*`
 
-- [ ] 4. Add shared datasource validation and payload translation layer
+- [x] 4. Add shared datasource validation and payload translation layer
 
   **What to do**: Create one shared validation/translation module used by both REST and Telegram surfaces. It must accept create payloads for `rss`, `x`, and `rest_api`; validate required fields by type; normalize tags; reject unsupported types; and convert validated datasource records into the existing crawler-facing dataclasses used by the crawl stage. For Telegram, define exactly one accepted add-command payload format: JSON following the command text, e.g. `/datasource_add { ... }`. For security, reject Telegram `rest_api` payloads containing obvious secret-bearing auth fields (for example authorization headers, bearer tokens, cookies, or API keys in inline payloads); those belong in REST-only or server-managed config paths.
   **Must NOT do**: Do not create separate validation stacks for REST and Telegram. Do not accept multiple Telegram payload syntaxes.
@@ -268,7 +268,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
   **Commit**: YES | Message: `feat(datasource): add shared validation and translation layer` | Files: `crypto_news_analyzer/domain/*`, `crypto_news_analyzer/reporters/*`, `crypto_news_analyzer/api_server.py`, `tests/test_datasource_*`, `tests/test_telegram_command_handler_datasource.py`
 
-- [ ] 5. Switch runtime datasource loading from config arrays to repository-backed provider
+- [x] 5. Switch runtime datasource loading from config arrays to repository-backed provider
 
   **What to do**: Preserve current call sites by keeping `ConfigManager` responsible for non-datasource settings while moving datasource retrieval behind a repository-backed provider. `ConfigManager.get_rss_sources()`, `get_x_sources()`, and `get_rest_api_sources()` must continue returning the existing typed source objects, but they should now read through the datasource repository/provider after optional bootstrap. Update the ingestion path so `_execute_crawling_stage()` continues to use `DataSourceFactory` and existing crawler adapters without needing to know whether sources came from JSON or database. Add regression tests proving ingestion can run when datasource arrays are absent or empty in `config.json` after bootstrap/database seeding.
   **Must NOT do**: Do not redesign the crawler factory or coordinator flow beyond the datasource loading seam.
@@ -309,7 +309,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
   **Commit**: YES | Message: `refactor(ingestion): load datasources from repository` | Files: `crypto_news_analyzer/config/*`, `crypto_news_analyzer/execution_coordinator.py`, `tests/test_datasource_bootstrap.py`, `tests/test_execution_coordinator.py`
 
-- [ ] 6. Add synchronous REST datasource create/list/delete endpoints
+- [x] 6. Add synchronous REST datasource create/list/delete endpoints
 
   **What to do**: Extend the FastAPI app with `POST /datasources`, `GET /datasources`, and `DELETE /datasources/{datasource_id}` under the existing Bearer-auth dependency. Use shared datasource validation from Task 4, repository-backed persistence from Task 3, and synchronous HTTP semantics: create returns `201`, list returns `200`, delete returns `204`. Return `409` for duplicate `(source_type, name)` creation or active-job delete conflicts, and `422` for invalid payloads. List responses must include datasource `id`, `name`, `source_type`, normalized `tags`, and a safe config summary that does not leak prohibited secret-bearing fields.
   **Must NOT do**: Do not implement async job-style CRUD for datasources. Do not add update/filter endpoints beyond create/list/delete.
@@ -351,7 +351,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
   **Commit**: YES | Message: `feat(api): add datasource CRUD endpoints` | Files: `crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/domain/*`, `tests/test_api_server.py`
 
-- [ ] 7. Register Telegram datasource commands and implement datasource listing
+- [x] 7. Register Telegram datasource commands and implement datasource listing
 
   **What to do**: Register new Telegram commands `/datasource_list`, `/datasource_add`, and `/datasource_delete` in the existing command handler while preserving current auth and rate-limit patterns. Implement `/datasource_list` first so operators can inspect seeded/created datasource records. The list response must include datasource ID, name, type, and normalized tags on each row so subsequent delete operations can target IDs unambiguously. Reuse existing authorization flow and async command handler structure already used for `/analyze`.
   **Must NOT do**: Do not introduce a separate admin-role framework. Do not omit datasource IDs from list output.
@@ -392,7 +392,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
   **Commit**: YES | Message: `feat(telegram): register datasource commands and list handler` | Files: `crypto_news_analyzer/reporters/telegram_command_handler.py`, `tests/test_telegram_command_handler_datasource.py`
 
-- [ ] 8. Implement Telegram hard-delete command with active-job conflict handling
+- [x] 8. Implement Telegram hard-delete command with active-job conflict handling
 
   **What to do**: Implement `/datasource_delete <datasource_id>` using repository-backed hard delete. The command must delete by immutable datasource ID only, confirm success with a clear response, and surface a conflict message when delete is blocked by a matching active ingestion job. Reuse authorization and error-handling style from existing commands and keep the handler non-interactive; no multi-step confirmation flow is introduced in v1.
   **Must NOT do**: Do not allow delete-by-name. Do not silently succeed on blocked deletes.
@@ -432,7 +432,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
   **Commit**: YES | Message: `feat(telegram): add datasource delete command` | Files: `crypto_news_analyzer/reporters/telegram_command_handler.py`, `tests/test_telegram_command_handler_datasource.py`
 
-- [ ] 9. Implement Telegram add command for `rss` and `x` datasource payloads
+- [x] 9. Implement Telegram add command for `rss` and `x` datasource payloads
 
   **What to do**: Implement `/datasource_add {json}` for `rss` and `x` payloads using the shared validator from Task 4. The command must parse the full JSON body from the message text after the command token, create the datasource through the repository/service layer, and respond with created ID, type, name, and normalized tags. Support only the single JSON-after-command syntax. Reject malformed JSON, unsupported types, duplicate names within the same type, and invalid type-specific config.
   **Must NOT do**: Do not add positional-argument variants. Do not special-case `rss` and `x` outside the shared validator.
@@ -473,7 +473,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
   **Commit**: YES | Message: `feat(telegram): add datasource create command for rss and x` | Files: `crypto_news_analyzer/reporters/telegram_command_handler.py`, `tests/test_telegram_command_handler_datasource.py`
 
-- [ ] 10. Implement Telegram `rest_api` add flow and finalize cross-surface datasource UX
+- [x] 10. Implement Telegram `rest_api` add flow and finalize cross-surface datasource UX
 
   **What to do**: Extend `/datasource_add {json}` to support `rest_api` payloads with the same single JSON-after-command syntax. Validate required `rest_api` fields using the shared validator, reject inline secret-bearing auth material, and make success/error messaging consistent with REST responses. Finalize datasource command help text so operators can discover the exact JSON format for `rss`, `x`, and `rest_api`, including an explicit example payload for `rest_api`. Add end-to-end regression coverage proving Telegram-created datasource records show up in `/datasource_list` and in REST `GET /datasources`.
   **Must NOT do**: Do not introduce a conversational multi-step form for Telegram creation. Do not allow inline bearer tokens, cookies, or API keys in Telegram `rest_api` payloads.
@@ -519,10 +519,10 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 > 4 review agents run in PARALLEL. ALL must APPROVE. Present consolidated results to user and get explicit "okay" before completing.
 > **Do NOT auto-proceed after verification. Wait for user's explicit approval before marking work complete.**
 > **Never mark F1-F4 as checked before getting user's okay.** Rejection or user feedback -> fix -> re-run -> present again -> wait for okay.
-- [ ] F1. Plan Compliance Audit — oracle
-- [ ] F2. Code Quality Review — unspecified-high
-- [ ] F3. Real Manual QA — unspecified-high (+ playwright if UI)
-- [ ] F4. Scope Fidelity Check — deep
+- [x] F1. Plan Compliance Audit — oracle
+- [x] F2. Code Quality Review — unspecified-high
+- [x] F3. Real Manual QA — unspecified-high (+ playwright if UI)
+- [x] F4. Scope Fidelity Check — deep
 
 ## Commit Strategy
 - Commit 1: `test(datasource): add repository and bootstrap contracts`

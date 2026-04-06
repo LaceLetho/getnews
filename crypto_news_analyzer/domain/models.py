@@ -10,7 +10,7 @@ Compatibility: Backward compatible within major version
 
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, cast
 from dataclasses import dataclass, field
 import uuid
 
@@ -40,6 +40,115 @@ class Priority(int, Enum):
     NORMAL = 5
     HIGH = 10
     CRITICAL = 20
+
+
+class DataSourceType(str, Enum):
+    RSS = "rss"
+    X = "x"
+    REST_API = "rest_api"
+
+
+ACTIVE_INGESTION_JOB_STATUSES = frozenset({"pending", "running"})
+
+
+class DataSourceInUseError(ValueError):
+    def __init__(self, source_type: str, source_name: str, active_job_ids: Optional[List[str]] = None):
+        self.source_type = source_type
+        self.source_name = source_name
+        self.active_job_ids = list(active_job_ids or [])
+        super().__init__(
+            f"Cannot delete datasource '{source_type}:{source_name}' while matching ingestion jobs are active"
+        )
+
+
+class DataSourceAlreadyExistsError(ValueError):
+    def __init__(self, source_type: str, source_name: str):
+        self.source_type = source_type
+        self.source_name = source_name
+        super().__init__(f"Datasource '{source_type}:{source_name}' already exists")
+
+
+def _normalize_datasource_tags(tags: Optional[List[str]]) -> List[str]:
+    normalized_tags = {
+        str(tag).strip().lower()
+        for tag in (tags or [])
+        if str(tag).strip()
+    }
+    return sorted(normalized_tags)
+
+
+@dataclass
+class DataSource:
+    id: str
+    source_type: str
+    name: str
+    tags: List[str] = field(default_factory=list)
+    config_payload: Dict[str, Any] = field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        if not self.id:
+            raise ValueError("id is required")
+
+        normalized_source_type = str(self.source_type).strip().lower()
+        if normalized_source_type not in {item.value for item in DataSourceType}:
+            raise ValueError("source_type must be one of: rss, x, rest_api")
+
+        normalized_name = str(self.name).strip()
+        if not normalized_name:
+            raise ValueError("name is required")
+
+        self.source_type = normalized_source_type
+        self.name = normalized_name
+        self.tags = _normalize_datasource_tags(self.tags)
+        self.config_payload = dict(self.config_payload or {})
+
+    @property
+    def unique_key(self) -> tuple[str, str]:
+        return (self.source_type, self.name)
+
+    @classmethod
+    def create(
+        cls,
+        name: str,
+        source_type: str,
+        tags: Optional[List[str]] = None,
+        config_payload: Optional[Dict[str, Any]] = None,
+    ) -> "DataSource":
+        now = datetime.utcnow()
+        return cls(
+            id=str(uuid.uuid4()),
+            source_type=source_type,
+            name=name,
+            tags=tags or [],
+            config_payload=config_payload or {},
+            created_at=now,
+            updated_at=now,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "source_type": self.source_type,
+            "name": self.name,
+            "tags": list(self.tags),
+            "config_payload": dict(self.config_payload),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DataSource":
+        return cls(
+            id=data["id"],
+            source_type=data["source_type"],
+            name=data["name"],
+            tags=data.get("tags", []),
+            config_payload=data.get("config_payload", {}),
+            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
+            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else None,
+        )
 
 
 @dataclass
@@ -135,7 +244,10 @@ class AnalysisRequest:
             id=data["id"],
             recipient_key=data["recipient_key"],
             time_window_hours=data["time_window_hours"],
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
+            created_at=cast(
+                datetime,
+                datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
+            ),
             status=data.get("status", JobStatus.PENDING.value),
             priority=data.get("priority", Priority.NORMAL.value),
             started_at=datetime.fromisoformat(data["started_at"]) if data.get("started_at") else None,
@@ -239,7 +351,10 @@ class IngestionJob:
             id=data["id"],
             source_type=data["source_type"],
             source_name=data["source_name"],
-            scheduled_at=datetime.fromisoformat(data["scheduled_at"]) if data.get("scheduled_at") else None,
+            scheduled_at=cast(
+                datetime,
+                datetime.fromisoformat(data["scheduled_at"]) if data.get("scheduled_at") else None,
+            ),
             status=data.get("status", IngestionJobStatus.PENDING.value),
             started_at=datetime.fromisoformat(data["started_at"]) if data.get("started_at") else None,
             completed_at=datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None,

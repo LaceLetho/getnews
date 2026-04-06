@@ -30,6 +30,13 @@ from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes, filters
 from telegram.error import TelegramError
 
+from ..datasource_payloads import (
+    DataSourcePayloadValidationError,
+    TelegramDataSourceInputError,
+    parse_telegram_datasource_command_json,
+    validate_telegram_datasource_create_payload,
+)
+from ..domain.models import DataSourceAlreadyExistsError, DataSourceInUseError
 from ..models import TelegramCommandConfig, CommandExecutionHistory, ChatContext
 from ..utils.timezone_utils import now_utc8, format_datetime_utc8
 
@@ -171,6 +178,9 @@ class TelegramCommandHandler:
         application.add_handler(CommandHandler("market", self._handle_market_command))
         application.add_handler(CommandHandler("status", self._handle_status_command))
         application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
+        application.add_handler(CommandHandler("datasource_list", self._handle_datasource_list_command))
+        application.add_handler(CommandHandler("datasource_add", self._handle_datasource_add_command))
+        application.add_handler(CommandHandler("datasource_delete", self._handle_datasource_delete_command))
         application.add_handler(CommandHandler("help", self._handle_help_command))
         application.add_handler(CommandHandler("start", self._handle_start_command))
         return application
@@ -572,6 +582,9 @@ class TelegramCommandHandler:
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
                 BotCommand("tokens", "查看LLM token使用统计"),
+                BotCommand("datasource_list", "查看数据源列表"),
+                BotCommand("datasource_add", "添加数据源"),
+                BotCommand("datasource_delete", "删除数据源"),
                 BotCommand("help", "显示帮助信息")
             ]
             
@@ -980,6 +993,337 @@ class TelegramCommandHandler:
                 f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_datasource_list_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+
+        self.logger.info(
+            f"收到/datasource_list命令，用户: {username} ({user_id}), "
+            f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+        )
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await update.message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/datasource_list",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list"
+                )
+                self._log_command_execution(
+                    "/datasource_list",
+                    user_id,
+                    username,
+                    None,
+                    False,
+                    response,
+                )
+                return
+
+            self._log_authorization_attempt(
+                command="/datasource_list",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True
+            )
+
+            response = self.handle_datasource_list_command()
+            await update.message.reply_text(response)
+            self._log_command_execution(
+                "/datasource_list",
+                user_id,
+                username,
+                None,
+                True,
+                "数据源列表查询成功",
+            )
+
+        except Exception as e:
+            error_msg = f"处理/datasource_list命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_datasource_add_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+
+        command_text = str(getattr(update.message, "text", "") or "").strip()
+        self.logger.info(
+            f"收到/datasource_add命令，用户: {username} ({user_id}), "
+            f"聊天类型: {chat_type}, 聊天ID: {chat_id}, 文本: {command_text}"
+        )
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await update.message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/datasource_add",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list",
+                )
+                self._log_command_execution(
+                    "/datasource_add",
+                    user_id,
+                    username,
+                    None,
+                    False,
+                    response,
+                )
+                return
+
+            self._log_authorization_attempt(
+                command="/datasource_add",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True,
+            )
+
+            payload = parse_telegram_datasource_command_json(command_text, "/datasource_add")
+            validated_payload = validate_telegram_datasource_create_payload(payload)
+
+            repository = getattr(self.execution_coordinator, "datasource_repository", None)
+            if repository is None:
+                raise ValueError("数据源仓储未初始化")
+
+            try:
+                saved_datasource = repository.save(validated_payload.to_domain_datasource())
+            except DataSourceAlreadyExistsError:
+                response = (
+                    "⚠️ 数据源已存在\n\n"
+                    f"数据源 '{validated_payload.source_type}:{validated_payload.name}' 已存在，不能重复创建。"
+                )
+                await update.message.reply_text(response)
+                self._log_command_execution(
+                    "/datasource_add",
+                    user_id,
+                    username,
+                    None,
+                    False,
+                    response,
+                )
+                return
+            except ValueError as exc:
+                if "uniqueness" in str(exc).lower():
+                    response = (
+                        "⚠️ 数据源已存在\n\n"
+                        f"数据源 '{validated_payload.source_type}:{validated_payload.name}' 已存在，不能重复创建。"
+                    )
+                    await update.message.reply_text(response)
+                    self._log_command_execution(
+                        "/datasource_add",
+                        user_id,
+                        username,
+                        None,
+                        False,
+                        response,
+                    )
+                    return
+                raise
+
+            tags_text = ", ".join(saved_datasource.tags) if saved_datasource.tags else "（无标签）"
+            response = (
+                "✅ 数据源创建成功\n\n"
+                f"ID: {saved_datasource.id}\n"
+                f"类型: {saved_datasource.source_type}\n"
+                f"名称: {saved_datasource.name}\n"
+                f"标签: {tags_text}"
+            )
+            await update.message.reply_text(response)
+            self._log_command_execution(
+                "/datasource_add",
+                user_id,
+                username,
+                None,
+                True,
+                response,
+            )
+
+        except (TelegramDataSourceInputError, DataSourcePayloadValidationError) as exc:
+            response = str(exc)
+            await update.message.reply_text(response)
+            self._log_command_execution(
+                "/datasource_add",
+                user_id,
+                username,
+                None,
+                False,
+                response,
+            )
+        except Exception as e:
+            error_msg = f"处理/datasource_add命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_datasource_delete_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+
+        self.logger.info(
+            f"收到/datasource_delete命令，用户: {username} ({user_id}), "
+            f"聊天类型: {chat_type}, 聊天ID: {chat_id}, 参数: {context.args}"
+        )
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await update.message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/datasource_delete",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list",
+                )
+                self._log_command_execution(
+                    "/datasource_delete",
+                    user_id,
+                    username,
+                    None,
+                    False,
+                    response,
+                )
+                return
+
+            self._log_authorization_attempt(
+                command="/datasource_delete",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True,
+            )
+
+            if not context.args or not str(context.args[0]).strip():
+                response = "❌ 参数错误\n\n请输入数据源ID，例如：/datasource_delete ds-123"
+                await update.message.reply_text(response)
+                self._log_command_execution(
+                    "/datasource_delete",
+                    user_id,
+                    username,
+                    None,
+                    False,
+                    response,
+                )
+                return
+
+            datasource_id = str(context.args[0]).strip()
+            repository = getattr(self.execution_coordinator, "datasource_repository", None)
+            if repository is None:
+                raise ValueError("数据源仓储未初始化")
+
+            try:
+                deleted = self.execution_coordinator.datasource_repository.delete(datasource_id)
+            except DataSourceInUseError as exc:
+                active_job_text = ", ".join(exc.active_job_ids) if exc.active_job_ids else "未知"
+                response = (
+                    "⚠️ 删除冲突\n\n"
+                    f"数据源 ID {datasource_id} 当前不能删除，因为匹配的入库任务仍处于活跃状态。\n"
+                    f"活跃任务: {active_job_text}"
+                )
+                await update.message.reply_text(response)
+                self._log_command_execution(
+                    "/datasource_delete",
+                    user_id,
+                    username,
+                    None,
+                    False,
+                    response,
+                )
+                return
+
+            if not deleted:
+                response = f"❌ 未找到数据源\n\n未找到 ID 为 {datasource_id} 的数据源。"
+                await update.message.reply_text(response)
+                self._log_command_execution(
+                    "/datasource_delete",
+                    user_id,
+                    username,
+                    None,
+                    False,
+                    response,
+                )
+                return
+
+            response = f"✅ 数据源删除成功\n\n已删除数据源 ID: {datasource_id}"
+            await update.message.reply_text(response)
+            self._log_command_execution(
+                "/datasource_delete",
+                user_id,
+                username,
+                None,
+                True,
+                response,
+            )
+
+        except Exception as e:
+            error_msg = f"处理/datasource_delete命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
     
     async def _handle_start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """
@@ -1368,7 +1712,7 @@ class TelegramCommandHandler:
         
         # 如果没有指定权限，默认所有命令都可用
         if not user_permissions:
-            user_permissions = ["analyze", "market", "status", "help", "tokens"]
+            user_permissions = ["analyze", "market", "status", "help", "tokens", "datasource"]
         
         help_text = [
             "🤖 *加密货币新闻分析机器人*\n",
@@ -1396,6 +1740,30 @@ class TelegramCommandHandler:
             "/tokens - 查看LLM token使用统计\n"
             "显示最近50次调用的token使用情况和缓存命中率。\n"
         )
+        
+        if "datasource" in user_permissions or not user_permissions:
+            help_text.append(
+                "/datasource_list - 查看已配置的数据源列表\n"
+                "显示所有已注册的数据源及其基本信息。\n"
+            )
+            help_text.append(
+                "/datasource_add {json} - 添加数据源\n"
+                "格式: /datasource_add {\"source_type\":\"...\",\"tags\":[\"...\"],\"config_payload\":{...}}\n"
+                "\n"
+                "示例 (RSS):\n"
+                '/datasource_add {"source_type":"rss","tags":["markets","btc"],"config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}\n'
+                "\n"
+                "示例 (X):\n"
+                '/datasource_add {"source_type":"x","tags":["whales"],"config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"list"}}\n'
+                "\n"
+                "示例 (REST API，注意：不可内联认证信息):\n"
+                '/datasource_add {"source_type":"rest_api","tags":["news"],"config_payload":{"name":"News API","endpoint":"https://api.example.com/news","method":"GET","headers":{},"params":{},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}\n'
+            )
+            help_text.append(
+                "/datasource_delete <id> - 删除数据源\n"
+                "格式: /datasource_delete ds-xxx\n"
+                "注意: 如果数据源有活跃的入库任务，将无法删除。\n"
+            )
         
         if "market" in user_permissions:
             help_text.append(
@@ -1451,6 +1819,36 @@ class TelegramCommandHandler:
         except Exception as e:
             self.logger.error(f"获取token统计失败: {e}")
             return f"❌ 获取统计信息失败\n\n{str(e)}"
+
+    def handle_datasource_list_command(self) -> str:
+        repository = getattr(self.execution_coordinator, "datasource_repository", None)
+        if repository is None:
+            raise ValueError("数据源仓储未初始化")
+
+        datasources = sorted(
+            repository.list(),
+            key=lambda datasource: (datasource.source_type, datasource.name),
+        )
+
+        if not datasources:
+            return "📚 数据源列表\n\n暂无已配置数据源。"
+
+        response_lines = ["📚 数据源列表", "", f"共 {len(datasources)} 个数据源。", ""]
+
+        for index, datasource in enumerate(datasources, start=1):
+            tags_text = ", ".join(datasource.tags) if datasource.tags else "（无标签）"
+            response_lines.extend(
+                [
+                    f"{index}. ID: {datasource.id}",
+                    f"   类型: {datasource.source_type}",
+                    f"   名称: {datasource.name}",
+                    f"   标签: {tags_text}",
+                ]
+            )
+            if index < len(datasources):
+                response_lines.append("")
+
+        return "\n".join(response_lines)
     
     def handle_market_command(self, user_id: str, username: str) -> str:
         """
@@ -1525,6 +1923,64 @@ class TelegramCommandHandler:
             执行状态字典
         """
         return self.execution_coordinator.get_system_status()
+
+    async def _handle_unimplemented_datasource_command(
+        self,
+        update: Update,
+        command_name: str,
+        response_message: str,
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+
+        self.logger.info(
+            f"收到{command_name}命令，用户: {username} ({user_id}), "
+            f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+        )
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await update.message.reply_text(response)
+                self._log_authorization_attempt(
+                    command=command_name,
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list"
+                )
+                self._log_command_execution(command_name, user_id, username, None, False, response)
+                return
+
+            self._log_authorization_attempt(
+                command=command_name,
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True
+            )
+            await update.message.reply_text(response_message)
+            self._log_command_execution(command_name, user_id, username, None, True, response_message)
+
+        except Exception as e:
+            error_msg = f"处理{command_name}命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
     
     async def _send_message_to_user(self, user_id: str, message: str) -> None:
         """

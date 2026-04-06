@@ -29,7 +29,7 @@ import traceback
 import asyncio
 
 from .config.manager import ConfigManager
-from .domain.models import IngestionJob, IngestionJobStatus
+from .domain.models import DataSource, IngestionJob, IngestionJobStatus
 from .storage.data_manager import DataManager
 from .crawlers.data_source_factory import get_data_source_factory
 from .analyzers.llm_analyzer import LLMAnalyzer
@@ -142,6 +142,7 @@ class MainController:
         self.ingestion_repository: Optional[Any] = None
         self.content_repository: Optional[Any] = None
         self.cache_repository: Optional[Any] = None
+        self.datasource_repository: Optional[Any] = None
         
         # 执行状态管理
         self.current_execution: Optional[ExecutionInfo] = None
@@ -439,10 +440,15 @@ class MainController:
             cache_manager=self.cache_manager,
         )
         self.analysis_repository = self._repositories["analysis"]
+        self.datasource_repository = self._repositories["datasource"]
         self.ingestion_repository = self._repositories["ingestion"]
         self.content_repository = self._repositories["content"]
         self.cache_repository = self._repositories["cache"]
         self.logger.info("Repository初始化完成（存储边界已提取）")
+
+        self._bootstrap_datasources_from_config_if_empty()
+        self.config_manager.set_datasource_repository(self.datasource_repository)
+        self.logger.info("运行时数据源已切换为仓储读取")
 
         # 清理过期缓存（需求17.12: 系统启动时调用cleanup_expired_cache）
         try:
@@ -461,6 +467,33 @@ class MainController:
 
         # 内置数据源已在模块导入时自动注册（见 crawlers/__init__.py）
         return config_data
+
+    def _bootstrap_datasources_from_config_if_empty(self) -> None:
+        if self.data_manager is None:
+            raise ValueError("数据管理器未初始化")
+
+        config_rows_by_type = {
+            "rss": self.config_manager.config_data.get("rss_sources", []),
+            "x": self.config_manager.config_data.get("x_sources", []),
+            "rest_api": self.config_manager.config_data.get("rest_api_sources", []),
+        }
+
+        datasource_rows: List[DataSource] = []
+        for source_type, rows in config_rows_by_type.items():
+            for row in rows:
+                datasource_rows.append(
+                    DataSource.create(
+                        name=row["name"],
+                        source_type=source_type,
+                        config_payload=dict(row),
+                    )
+                )
+
+        inserted = self.data_manager.bootstrap_datasources_if_empty(datasource_rows)
+        if inserted:
+            self.logger.info(f"数据源启动导入完成，导入 {len(datasource_rows)} 条配置数据")
+        else:
+            self.logger.info("数据源存储非空，跳过启动导入")
     
     def _get_telegram_command_config(self) -> TelegramCommandConfig:
         """
@@ -887,7 +920,17 @@ class MainController:
                             item_count=0,
                             error_message=str(e)
                         ))
-            
+
+            rest_api_sources = self.config_manager.get_rest_api_sources()
+            for rest_api_source in rest_api_sources:
+                try:
+                    crawler = factory.create_source("rest_api", time_window_hours)
+                    items = crawler.crawl(rest_api_source.to_dict())
+                    all_content_items.extend(items)
+                except Exception as e:
+                    error_msg = f"REST API源 {rest_api_source.name} 爬取失败: {str(e)}"
+                    self.logger.warning(error_msg)
+
             # 数据去重和存储
             added_count = 0
             if all_content_items:

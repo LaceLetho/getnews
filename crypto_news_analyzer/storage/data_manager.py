@@ -21,6 +21,7 @@ except ImportError:
     dict_row = None
 
 from ..models import ContentItem, CrawlStatus, StorageConfig
+from ..domain.models import ACTIVE_INGESTION_JOB_STATUSES, DataSource
 from ..utils.logging import get_log_manager
 from ..utils.errors import StorageError
 
@@ -145,6 +146,23 @@ class DataManager:
                         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
                     )
                     """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS datasources (
+                        id TEXT PRIMARY KEY,
+                        source_type TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        config_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS datasource_tags (
+                        datasource_id TEXT NOT NULL,
+                        tag TEXT NOT NULL,
+                        PRIMARY KEY (datasource_id, tag),
+                        FOREIGN KEY (datasource_id) REFERENCES datasources (id) ON DELETE CASCADE
+                    )
+                    """)
             else:
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS content_items (
@@ -212,6 +230,23 @@ class DataManager:
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS datasources (
+                        id TEXT PRIMARY KEY,
+                        source_type TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        config_payload TEXT NOT NULL DEFAULT '{}',
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS datasource_tags (
+                        datasource_id TEXT NOT NULL,
+                        tag TEXT NOT NULL,
+                        PRIMARY KEY (datasource_id, tag),
+                        FOREIGN KEY (datasource_id) REFERENCES datasources (id) ON DELETE CASCADE
+                    )
+                """)
 
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_publish_time
@@ -253,6 +288,18 @@ class DataManager:
                 CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_status
                 ON ingestion_jobs (status, scheduled_at)
             """)
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_datasources_source_name
+                ON datasources (source_type, name)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_datasources_created_at
+                ON datasources (created_at)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_datasource_tags_tag
+                ON datasource_tags (tag)
+            """)
 
             conn.commit()
             logger.info("数据库表结构初始化完成")
@@ -281,6 +328,7 @@ class DataManager:
         if thread_id not in self._connection_pool:
             conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0)
             conn.row_factory = sqlite3.Row  # 启用字典式访问
+            conn.execute("PRAGMA foreign_keys = ON")
             self._connection_pool[thread_id] = conn
 
         conn = self._connection_pool[thread_id]
@@ -1207,6 +1255,252 @@ class DataManager:
                 updated = cursor.rowcount > 0
                 conn.commit()
                 return updated
+
+    def upsert_datasource(
+        self,
+        datasource_id: str,
+        source_type: str,
+        name: str,
+        config_payload: Optional[Dict[str, Any]] = None,
+        tags: Optional[List[str]] = None,
+        created_at: Optional[datetime] = None,
+    ) -> None:
+        with self._lock:
+            with self._get_connection() as conn:
+                self._upsert_datasource_with_connection(
+                    conn=conn,
+                    datasource_id=datasource_id,
+                    source_type=source_type,
+                    name=name,
+                    config_payload=config_payload,
+                    tags=tags,
+                    created_at=created_at,
+                )
+                conn.commit()
+
+    def _upsert_datasource_with_connection(
+        self,
+        conn: Any,
+        datasource_id: str,
+        source_type: str,
+        name: str,
+        config_payload: Optional[Dict[str, Any]] = None,
+        tags: Optional[List[str]] = None,
+        created_at: Optional[datetime] = None,
+    ) -> None:
+        cursor = conn.cursor()
+        payload = dict(config_payload or {})
+        normalized_tags = sorted({str(tag).strip().lower() for tag in (tags or []) if str(tag).strip()})
+        created_at_value = (created_at or datetime.utcnow()).isoformat()
+
+        if self.backend == "postgres":
+            cursor.execute(
+                self._sql("""
+                INSERT INTO datasources (id, source_type, name, config_payload, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (id) DO UPDATE SET
+                    source_type = EXCLUDED.source_type,
+                    name = EXCLUDED.name,
+                    config_payload = EXCLUDED.config_payload,
+                    created_at = EXCLUDED.created_at
+                """),
+                (
+                    datasource_id,
+                    source_type,
+                    name,
+                    json.dumps(payload, ensure_ascii=False),
+                    created_at_value,
+                ),
+            )
+        else:
+            cursor.execute(
+                self._sql("""
+                INSERT INTO datasources (id, source_type, name, config_payload, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    source_type = excluded.source_type,
+                    name = excluded.name,
+                    config_payload = excluded.config_payload,
+                    created_at = excluded.created_at
+                """),
+                (
+                    datasource_id,
+                    source_type,
+                    name,
+                    json.dumps(payload, ensure_ascii=False),
+                    created_at_value,
+                ),
+            )
+
+        cursor.execute(
+            self._sql("DELETE FROM datasource_tags WHERE datasource_id = ?"),
+            (datasource_id,),
+        )
+        for tag in normalized_tags:
+            cursor.execute(
+                self._sql(
+                    "INSERT INTO datasource_tags (datasource_id, tag) VALUES (?, ?)"
+                ),
+                (datasource_id, tag),
+            )
+
+    def get_datasource_count(self) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) AS count FROM datasources")
+            row = cursor.fetchone()
+            if row is None:
+                return 0
+            return int(row["count"] if self.backend == "postgres" else row[0])
+
+    def get_datasource_by_id(self, datasource_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM datasources
+                WHERE id = ?
+                LIMIT 1
+                """),
+                (datasource_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._serialize_datasource_row(conn, row)
+
+    def get_datasource_by_type_and_name(
+        self,
+        source_type: str,
+        name: str,
+    ) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM datasources
+                WHERE source_type = ? AND name = ?
+                LIMIT 1
+                """),
+                (source_type, name),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._serialize_datasource_row(conn, row)
+
+    def list_datasources(self, source_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            params: List[Any] = []
+            query = "SELECT * FROM datasources"
+            if source_type is not None:
+                query += " WHERE source_type = ?"
+                params.append(source_type)
+            query += " ORDER BY source_type ASC, name ASC"
+            cursor.execute(self._sql(query), params)
+            rows = cursor.fetchall()
+            return [self._serialize_datasource_row(conn, row) for row in rows]
+
+    def delete_datasource(self, datasource_id: str) -> bool:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql("DELETE FROM datasources WHERE id = ?"),
+                    (datasource_id,),
+                )
+                deleted = cursor.rowcount > 0
+                conn.commit()
+                return deleted
+
+    def get_active_ingestion_job_ids_for_source(
+        self,
+        source_type: str,
+        source_name: str,
+    ) -> List[str]:
+        statuses = sorted(ACTIVE_INGESTION_JOB_STATUSES)
+        placeholders = ",".join(["?" for _ in statuses])
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql(
+                    f"""
+                    SELECT id FROM ingestion_jobs
+                    WHERE source_type = ?
+                      AND source_name = ?
+                      AND status IN ({placeholders})
+                    ORDER BY scheduled_at DESC
+                    """
+                ),
+                [source_type, source_name, *statuses],
+            )
+            rows = cursor.fetchall()
+            return [row["id"] if self.backend == "postgres" else row[0] for row in rows]
+
+    def bootstrap_datasources_if_empty(self, datasources: List[DataSource]) -> bool:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) AS count FROM datasources")
+                row = cursor.fetchone()
+                if row is None:
+                    existing_count = 0
+                else:
+                    existing_count = int(row["count"] if self.backend == "postgres" else row[0])
+                if existing_count > 0:
+                    return False
+
+                for datasource in datasources:
+                    self._upsert_datasource_with_connection(
+                        conn=conn,
+                        datasource_id=datasource.id,
+                        source_type=datasource.source_type,
+                        name=datasource.name,
+                        config_payload=datasource.config_payload,
+                        tags=datasource.tags,
+                        created_at=datasource.created_at,
+                    )
+
+                conn.commit()
+                return True
+
+    def _serialize_datasource_row(self, conn: Any, row: Any) -> Dict[str, Any]:
+        config_payload = row["config_payload"]
+        parsed_config_payload: Dict[str, Any] = {}
+        if isinstance(config_payload, str) and config_payload:
+            try:
+                parsed_config_payload = json.loads(config_payload)
+            except json.JSONDecodeError:
+                logger.warning("datasources.config_payload JSON解析失败")
+                parsed_config_payload = {}
+        elif isinstance(config_payload, dict):
+            parsed_config_payload = config_payload
+
+        cursor = conn.cursor()
+        cursor.execute(
+            self._sql(
+                "SELECT tag FROM datasource_tags WHERE datasource_id = ? ORDER BY tag ASC"
+            ),
+            (row["id"],),
+        )
+        tag_rows = cursor.fetchall()
+        tags = [tag_row["tag"] if self.backend == "postgres" else tag_row[0] for tag_row in tag_rows]
+
+        created_at = row["created_at"]
+        if isinstance(created_at, datetime):
+            created_at = created_at.isoformat()
+
+        return {
+            "id": row["id"],
+            "source_type": row["source_type"],
+            "name": row["name"],
+            "config_payload": parsed_config_payload,
+            "tags": tags,
+            "created_at": created_at,
+            "updated_at": None,
+        }
 
     def _serialize_analysis_job_row(self, row: Any) -> Dict[str, Any]:
         def _serialize_datetime(value: Any) -> Any:

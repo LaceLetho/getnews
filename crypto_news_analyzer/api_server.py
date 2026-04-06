@@ -19,8 +19,18 @@ import os
 import logging
 
 from .execution_coordinator import MainController
-from .domain.models import AnalysisRequest, Priority
-from .domain.repositories import AnalysisRepository
+from .datasource_payloads import (
+    DataSourcePayloadValidationError,
+    validate_datasource_create_payload,
+)
+from .domain.models import (
+    AnalysisRequest,
+    DataSource,
+    DataSourceAlreadyExistsError,
+    DataSourceInUseError,
+    Priority,
+)
+from .domain.repositories import AnalysisRepository, DataSourceRepository
 from .storage.repositories import SQLiteAnalysisRepository
 
 logger = logging.getLogger(__name__)
@@ -35,6 +45,7 @@ class AppState:
     def __init__(self):
         self.controller: Optional[MainController] = None
         self.analysis_repository: Optional[AnalysisRepository] = None
+        self.datasource_repository: Optional[DataSourceRepository] = None
         self.analyze_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="api-analyze")
         self.telegram_uses_webhook = False
 
@@ -63,6 +74,7 @@ class AppState:
         # Clear references
         self.controller = None
         self.analysis_repository = None
+        self.datasource_repository = None
 
 
 class AnalyzeRequest(BaseModel):
@@ -156,6 +168,31 @@ class AnalyzeJobRecord(BaseModel):
         )
 
 
+class DataSourceCreateRequest(BaseModel):
+    source_type: str
+    name: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    config_payload: dict[str, Any]
+
+
+class DataSourceResponseItem(BaseModel):
+    id: str
+    name: str
+    source_type: str
+    tags: list[str]
+    config_summary: dict[str, Any]
+
+
+class DataSourceCreateResponse(BaseModel):
+    success: bool
+    datasource: DataSourceResponseItem
+
+
+class DataSourceListResponse(BaseModel):
+    success: bool
+    datasources: list[DataSourceResponseItem]
+
+
 def _get_app_state(request: Request) -> AppState:
     """Get application state from request."""
     return cast(AppState, request.app.state.app_state)
@@ -179,11 +216,27 @@ def _get_analysis_repository(request: Request) -> AnalysisRepository:
     controller = state.controller
     if controller and hasattr(controller, "analysis_repository") and controller.analysis_repository is not None:
         state.analysis_repository = controller.analysis_repository
-        return state.analysis_repository
+        return cast(AnalysisRepository, state.analysis_repository)
 
     if controller and hasattr(controller, "data_manager") and controller.data_manager is not None:
         state.analysis_repository = SQLiteAnalysisRepository(controller.data_manager)
         return state.analysis_repository
+
+    raise HTTPException(status_code=503, detail="System not initialized")
+
+
+def _get_datasource_repository(request: Request) -> DataSourceRepository:
+    state = _get_app_state(request)
+
+    if state.datasource_repository is not None:
+        return state.datasource_repository
+
+    controller = state.controller
+    if controller and hasattr(controller, "datasource_repository"):
+        repository = controller.datasource_repository
+        if repository is not None:
+            state.datasource_repository = repository
+            return cast(DataSourceRepository, state.datasource_repository)
 
     raise HTTPException(status_code=503, detail="System not initialized")
 
@@ -347,6 +400,47 @@ def _persist_completed_api_job_success(job: AnalyzeJobRecord, controller: MainCo
     job.success_persisted = True
 
 
+def _build_datasource_config_summary(datasource: DataSource) -> dict[str, Any]:
+    payload = dict(datasource.config_payload or {})
+
+    if datasource.source_type == "rss":
+        return {
+            "url": payload.get("url"),
+            "description": payload.get("description", ""),
+        }
+
+    if datasource.source_type == "x":
+        return {
+            "url": payload.get("url"),
+            "type": payload.get("type"),
+        }
+
+    if datasource.source_type == "rest_api":
+        headers = payload.get("headers")
+        params = payload.get("params")
+        response_mapping = payload.get("response_mapping")
+
+        return {
+            "endpoint": payload.get("endpoint"),
+            "method": payload.get("method"),
+            "response_mapping": dict(response_mapping) if isinstance(response_mapping, dict) else {},
+            "header_count": len(headers) if isinstance(headers, dict) else 0,
+            "param_count": len(params) if isinstance(params, dict) else 0,
+        }
+
+    return {}
+
+
+def _to_datasource_response_item(datasource: DataSource) -> DataSourceResponseItem:
+    return DataSourceResponseItem(
+        id=datasource.id,
+        name=datasource.name,
+        source_type=datasource.source_type,
+        tags=list(datasource.tags),
+        config_summary=_build_datasource_config_summary(datasource),
+    )
+
+
 def enqueue_analyze_job(hours: int, user_id: str, state: AppState) -> AnalyzeJobRecord:
     """Enqueue analyze job."""
     if state.analysis_repository is None:
@@ -389,6 +483,7 @@ def create_api_server(
 
         app_state.controller = controller
         app_state.analysis_repository = controller.analysis_repository
+        app_state.datasource_repository = controller.datasource_repository
 
         effective_start_scheduler = start_services if start_scheduler is None else start_scheduler
         effective_start_command_listener = (
@@ -524,6 +619,74 @@ def create_api_server(
                 raise HTTPException(status_code=500, detail=str(exc))
 
         return job.to_result_response()
+
+    @app.post("/datasources", response_model=DataSourceCreateResponse, status_code=201)
+    async def create_datasource(
+        request: DataSourceCreateRequest,
+        _: Annotated[str, Depends(verify_api_key)],
+        req: Request,
+    ):
+        repository = _get_datasource_repository(req)
+
+        try:
+            validated_payload = validate_datasource_create_payload(
+                request.model_dump(exclude_none=True)
+            )
+        except DataSourcePayloadValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        try:
+            saved_datasource = repository.save(validated_payload.to_domain_datasource())
+        except DataSourceAlreadyExistsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to create datasource: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        return DataSourceCreateResponse(
+            success=True,
+            datasource=_to_datasource_response_item(saved_datasource),
+        )
+
+    @app.get("/datasources", response_model=DataSourceListResponse)
+    async def list_datasources(
+        _: Annotated[str, Depends(verify_api_key)],
+        req: Request,
+    ):
+        repository = _get_datasource_repository(req)
+        datasources = sorted(
+            repository.list(),
+            key=lambda datasource: (datasource.source_type, datasource.name),
+        )
+
+        return DataSourceListResponse(
+            success=True,
+            datasources=[
+                _to_datasource_response_item(datasource)
+                for datasource in datasources
+            ],
+        )
+
+    @app.delete("/datasources/{datasource_id}", status_code=204)
+    async def delete_datasource(
+        datasource_id: str,
+        _: Annotated[str, Depends(verify_api_key)],
+        req: Request,
+    ):
+        repository = _get_datasource_repository(req)
+
+        try:
+            deleted = repository.delete(datasource_id)
+        except DataSourceInUseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to delete datasource {datasource_id}: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Datasource not found")
+
+        return Response(status_code=204)
 
     @app.get("/health")
     async def health_check(req: Request):

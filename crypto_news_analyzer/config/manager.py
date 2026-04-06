@@ -4,13 +4,21 @@
 负责配置文件的读取、验证和管理。
 """
 
+import logging
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any, List
-import logging
+from typing import Any, Dict, List, Optional, Union
 from dotenv import load_dotenv
 
+from ..datasource_payloads import (
+    DataSourcePayloadValidationError,
+    RuntimeSource,
+    runtime_source_from_record,
+    validate_datasource_config_payload,
+)
+from ..domain.models import DataSource
+from ..domain.repositories import DataSourceRepository
 from ..models import RSSSource, XSource, AuthConfig, StorageConfig, RESTAPISource, BirdConfig
 
 
@@ -27,10 +35,14 @@ class ConfigManager:
         self.config_path = Path(config_path)
         self.config_data: Dict[str, Any] = {}
         self.logger = logging.getLogger(__name__)
+        self._datasource_repository: Optional[DataSourceRepository] = None
 
         # 加载环境变量
         load_dotenv()
         self.logger.info("环境变量已加载")
+
+    def set_datasource_repository(self, repository: Optional[DataSourceRepository]) -> None:
+        self._datasource_repository = repository
 
     def load_config(self) -> Dict[str, Any]:
         """
@@ -173,41 +185,44 @@ class ConfigManager:
 
     def get_rss_sources(self) -> List[RSSSource]:
         """获取RSS订阅源列表"""
-        sources = []
-        for source_data in self.config_data.get("rss_sources", []):
-            sources.append(
-                RSSSource(
-                    name=source_data["name"],
-                    url=source_data["url"],
-                    description=source_data["description"],
-                )
-            )
-        return sources
+        return [
+            source for source in self._get_runtime_sources("rss") if isinstance(source, RSSSource)
+        ]
 
     def get_x_sources(self) -> List[XSource]:
         """获取X/Twitter信息源列表"""
-        sources = []
-        for source_data in self.config_data.get("x_sources", []):
-            sources.append(
-                XSource(name=source_data["name"], url=source_data["url"], type=source_data["type"])
-            )
-        return sources
+        return [source for source in self._get_runtime_sources("x") if isinstance(source, XSource)]
 
     def get_rest_api_sources(self) -> List[RESTAPISource]:
         """获取REST API数据源列表"""
-        sources = []
-        for source_data in self.config_data.get("rest_api_sources", []):
-            sources.append(
-                RESTAPISource(
-                    name=source_data["name"],
-                    endpoint=source_data["endpoint"],
-                    method=source_data["method"],
-                    headers=source_data.get("headers", {}),
-                    params=source_data.get("params", {}),
-                    response_mapping=source_data["response_mapping"],
-                )
-            )
-        return sources
+        return [
+            source
+            for source in self._get_runtime_sources("rest_api")
+            if isinstance(source, RESTAPISource)
+        ]
+
+    def _get_runtime_sources(
+        self,
+        source_type: str,
+    ) -> List[RuntimeSource]:
+        if self._datasource_repository is not None:
+            records = list(self._datasource_repository.list(source_type=source_type))
+        else:
+            config_key_by_type = {
+                "rss": "rss_sources",
+                "x": "x_sources",
+                "rest_api": "rest_api_sources",
+            }
+            config_key = config_key_by_type[source_type]
+            records = [
+                {
+                    "source_type": source_type,
+                    "config_payload": source_data,
+                }
+                for source_data in self.config_data.get(config_key, [])
+            ]
+
+        return [runtime_source_from_record(record) for record in records]
 
     def get_auth_config(self) -> AuthConfig:
         """获取认证配置，从环境变量读取"""
@@ -412,79 +427,27 @@ class ConfigManager:
 
     def _validate_rss_source(self, source: Dict[str, Any]) -> bool:
         """验证RSS源配置"""
-        required_fields = ["name", "url", "description"]
-        for field in required_fields:
-            if field not in source or not isinstance(source[field], str):
-                self.logger.error(f"RSS源配置字段无效: {field}")
-                return False
-
-        # 简单的URL格式验证
-        url = source["url"]
-        if not (url.startswith("http://") or url.startswith("https://")) or len(url) < 10:
-            self.logger.error(f"RSS源URL格式无效: {url}")
+        try:
+            validate_datasource_config_payload("rss", source)
+        except DataSourcePayloadValidationError as exc:
+            self.logger.error(f"RSS源配置无效: {exc}")
             return False
-
         return True
 
     def _validate_x_source(self, source: Dict[str, Any]) -> bool:
         """验证X源配置"""
-        required_fields = ["name", "url", "type"]
-        for field in required_fields:
-            if field not in source or not isinstance(source[field], str):
-                self.logger.error(f"X源配置字段无效: {field}")
-                return False
-
-        # 验证类型
-        if source["type"] not in ["list", "timeline"]:
-            self.logger.error(f"X源类型无效: {source['type']}")
+        try:
+            validate_datasource_config_payload("x", source)
+        except DataSourcePayloadValidationError as exc:
+            self.logger.error(f"X源配置无效: {exc}")
             return False
-
-        # 简单的URL格式验证
-        url = source["url"]
-        if not url.startswith("https://x.com/") or len(url) < 20:
-            self.logger.error(f"X源URL格式无效: {url}")
-            return False
-
         return True
 
     def _validate_rest_api_source(self, source: Dict[str, Any]) -> bool:
         """验证REST API源配置"""
-        required_fields = ["name", "endpoint", "method", "response_mapping"]
-        for field in required_fields:
-            if field not in source:
-                self.logger.error(f"REST API源配置字段缺失: {field}")
-                return False
-
-        # 验证名称
-        if not isinstance(source["name"], str) or not source["name"].strip():
-            self.logger.error("REST API源名称无效")
+        try:
+            validate_datasource_config_payload("rest_api", source)
+        except DataSourcePayloadValidationError as exc:
+            self.logger.error(f"REST API源配置无效: {exc}")
             return False
-
-        # 验证endpoint URL格式
-        endpoint = source["endpoint"]
-        if (
-            not isinstance(endpoint, str)
-            or not (endpoint.startswith("http://") or endpoint.startswith("https://"))
-            or len(endpoint) < 10
-        ):
-            self.logger.error(f"REST API源endpoint格式无效: {endpoint}")
-            return False
-
-        # 验证HTTP方法
-        if source["method"] not in ["GET", "POST", "PUT", "DELETE"]:
-            self.logger.error(f"REST API源HTTP方法无效: {source['method']}")
-            return False
-
-        # 验证response_mapping
-        response_mapping = source["response_mapping"]
-        if not isinstance(response_mapping, dict):
-            self.logger.error("REST API源response_mapping必须是字典")
-            return False
-
-        required_mapping_fields = ["title_field", "content_field", "url_field", "time_field"]
-        for field in required_mapping_fields:
-            if field not in response_mapping or not isinstance(response_mapping[field], str):
-                self.logger.error(f"REST API源response_mapping字段无效: {field}")
-                return False
-
         return True
