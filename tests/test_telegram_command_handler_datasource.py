@@ -212,6 +212,13 @@ async def test_datasource_list_returns_stable_sorted_normalized_output_for_autho
     handler = _create_handler(
         datasources=[
             DataSource(
+                id="ds-api-1",
+                source_type="rest_api",
+                name="API Feed",
+                tags=["api"],
+                config_payload={"endpoint": "https://api.example.com/news"},
+            ),
+            DataSource(
                 id="ds-x-1",
                 source_type="x",
                 name="Whale Watch",
@@ -241,20 +248,45 @@ async def test_datasource_list_returns_stable_sorted_normalized_output_for_autho
 
     message.reply_text.assert_called_once_with(
         "📚 数据源列表\n\n"
-        "共 3 个数据源。\n\n"
-        "1. ID: ds-rss-1\n"
+        "共 4 个数据源。\n\n"
+        "1. ID: ds-api-1\n"
+        "   类型: rest_api\n"
+        "   名称: API Feed\n"
+        "   标签: api\n"
+        "   接口: https://api.example.com/news\n\n"
+        "2. ID: ds-rss-1\n"
         "   类型: rss\n"
         "   名称: Alpha Feed\n"
-        "   标签: btc, defi\n\n"
-        "2. ID: ds-rss-2\n"
+        "   标签: btc, defi\n"
+        "   链接: https://example.com/alpha.xml\n"
+        "   描述: alpha\n\n"
+        "3. ID: ds-rss-2\n"
         "   类型: rss\n"
         "   名称: Beta Feed\n"
-        "   标签: （无标签）\n\n"
-        "3. ID: ds-x-1\n"
+        "   标签: （无标签）\n"
+        "   链接: https://example.com/beta.xml\n"
+        "   描述: beta\n\n"
+        "4. ID: ds-x-1\n"
         "   类型: x\n"
         "   名称: Whale Watch\n"
-        "   标签: alpha, whales"
+        "   标签: alpha, whales\n"
+        "   链接: https://x.com/i/lists/1"
     )
+
+
+@pytest.mark.asyncio
+async def test_help_command_sends_plain_text_without_markdown_parse_mode() -> None:
+    handler = _create_handler()
+    update, message = _create_mock_update("123456789", "tester", "private", "123456789")
+    context = Mock(spec=ContextTypes.DEFAULT_TYPE)
+
+    await handler._handle_help_command(update, context)
+
+    message.reply_text.assert_called_once()
+    response = message.reply_text.call_args.args[0]
+    assert "source_type" in response
+    assert "response_mapping" in response
+    assert message.reply_text.call_args.kwargs == {}
 
 
 @pytest.mark.asyncio
@@ -466,9 +498,11 @@ async def test_datasource_add_rss_rejects_missing_json_with_single_syntax_error(
     await handler._handle_datasource_add_command(update, context)
 
     assert repository.save_calls == []
-    message.reply_text.assert_called_once_with(
-        "❌ 参数错误\n\n请输入 /datasource_add 后紧跟单个 JSON 对象。"
-    )
+    message.reply_text.assert_called_once()
+    response = message.reply_text.call_args.args[0]
+    assert response.startswith("❌ 参数错误\n\n请输入 /datasource_add 后紧跟单个 JSON 对象。")
+    assert '"source_type":"rss|x|rest_api"' in response
+    assert "输入 /help 查看示例。" in response
 
 
 @pytest.mark.asyncio
@@ -489,7 +523,9 @@ async def test_datasource_add_x_rejects_malformed_json_payload() -> None:
 
     assert repository.save_calls == []
     message.reply_text.assert_called_once()
-    assert "请输入有效的 JSON 对象" in message.reply_text.call_args.args[0]
+    response = message.reply_text.call_args.args[0]
+    assert "请输入有效的 JSON 对象" in response
+    assert "输入 /help 查看示例。" in response
 
 
 @pytest.mark.asyncio
@@ -559,9 +595,11 @@ async def test_datasource_add_x_rejects_invalid_payload_with_explicit_validation
     await handler._handle_datasource_add_command(update, context)
 
     assert repository.save_calls == []
-    message.reply_text.assert_called_once_with(
-        "x.type must be one of: list, timeline"
-    )
+    message.reply_text.assert_called_once()
+    response = message.reply_text.call_args.args[0]
+    assert response.startswith("x.type must be one of: list, timeline")
+    assert "x 的 config_payload 需要 name、url、type（list 或 timeline）。" in response
+    assert "输入 /help 查看示例。" in response
 
 
 @pytest.mark.asyncio
@@ -687,9 +725,78 @@ async def test_datasource_add_rejects_tags_over_shared_limit() -> None:
     await handler._handle_datasource_add_command(update, context)
 
     assert repository.save_calls == []
-    message.reply_text.assert_called_once_with(
-        "tags cannot contain more than 16 unique values"
-    )
+    message.reply_text.assert_called_once()
+    response = message.reply_text.call_args.args[0]
+    assert response.startswith("tags cannot contain more than 16 unique values")
+    assert "rss 的 config_payload 需要 name、url，可选 description。" in response
+    assert "输入 /help 查看示例。" in response
+
+
+@pytest.mark.asyncio
+async def test_expected_datasource_add_errors_do_not_log_as_generic_command_failures() -> None:
+    cases: list[tuple[str, _DataSourceRepositoryStub]] = [
+        ("/datasource_add name=CoinDesk", _DataSourceRepositoryStub([])),
+        (
+            '/datasource_add {"source_type":"x","config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"search"}}',
+            _DataSourceRepositoryStub([]),
+        ),
+        (
+            '/datasource_add {"source_type":"rss","config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
+            _DataSourceRepositoryStub([], save_error=DataSourceAlreadyExistsError("rss", "CoinDesk")),
+        ),
+    ]
+
+    for text, repository in cases:
+        handler = _create_handler()
+        handler.execution_coordinator.datasource_repository = repository
+        update, message = _create_mock_update(
+            "123456789",
+            "tester",
+            "private",
+            "123456789",
+            text=text,
+        )
+        context = Mock(spec=ContextTypes.DEFAULT_TYPE)
+
+        with patch.object(handler.logger, "error") as mock_error:
+            await handler._handle_datasource_add_command(update, context)
+
+        mock_error.assert_not_called()
+        message.reply_text.assert_called_once()
+        assert "命令执行失败" not in message.reply_text.call_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_expected_datasource_delete_errors_do_not_log_as_generic_command_failures() -> None:
+    cases: list[tuple[list[str], _DataSourceRepositoryStub]] = [
+        ([], _DataSourceRepositoryStub([])),
+        (["missing-id"], _DataSourceRepositoryStub([])),
+        (
+            ["ds-123"],
+            _DataSourceRepositoryStub(
+                [],
+                delete_error=DataSourceInUseError(
+                    source_type="rss",
+                    source_name="CoinDesk",
+                    active_job_ids=["job-1"],
+                ),
+            ),
+        ),
+    ]
+
+    for args, repository in cases:
+        handler = _create_handler()
+        handler.execution_coordinator.datasource_repository = repository
+        update, message = _create_mock_update("123456789", "tester", "private", "123456789")
+        context = Mock(spec=ContextTypes.DEFAULT_TYPE)
+        context.args = args
+
+        with patch.object(handler.logger, "error") as mock_error:
+            await handler._handle_datasource_delete_command(update, context)
+
+        mock_error.assert_not_called()
+        message.reply_text.assert_called_once()
+        assert "命令执行失败" not in message.reply_text.call_args.args[0]
 
 
 @pytest.mark.asyncio

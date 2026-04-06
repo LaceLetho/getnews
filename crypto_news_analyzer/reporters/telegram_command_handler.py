@@ -922,7 +922,7 @@ class TelegramCommandHandler:
 
             # 获取帮助信息
             response = self.handle_help_command(user_id)
-            await update.message.reply_text(response, parse_mode="Markdown")
+            await update.message.reply_text(response)
             self._log_command_execution("/help", user_id, username, None, True, "帮助信息已发送")
 
         except Exception as e:
@@ -1072,6 +1072,8 @@ class TelegramCommandHandler:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
     ) -> None:
+        payload: Optional[Dict[str, Any]] = None
+
         try:
             chat_context = self._extract_chat_context(update)
         except ValueError as e:
@@ -1136,6 +1138,14 @@ class TelegramCommandHandler:
                     "⚠️ 数据源已存在\n\n"
                     f"数据源 '{validated_payload.source_type}:{validated_payload.name}' 已存在，不能重复创建。"
                 )
+                self._log_expected_command_outcome(
+                    command="/datasource_add",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    outcome="duplicate datasource",
+                )
                 await update.message.reply_text(response)
                 self._log_command_execution(
                     "/datasource_add",
@@ -1151,6 +1161,14 @@ class TelegramCommandHandler:
                     response = (
                         "⚠️ 数据源已存在\n\n"
                         f"数据源 '{validated_payload.source_type}:{validated_payload.name}' 已存在，不能重复创建。"
+                    )
+                    self._log_expected_command_outcome(
+                        command="/datasource_add",
+                        user_id=user_id,
+                        username=username,
+                        chat_type=chat_type,
+                        chat_id=chat_id,
+                        outcome="duplicate datasource",
                     )
                     await update.message.reply_text(response)
                     self._log_command_execution(
@@ -1182,8 +1200,35 @@ class TelegramCommandHandler:
                 response,
             )
 
-        except (TelegramDataSourceInputError, DataSourcePayloadValidationError) as exc:
-            response = str(exc)
+        except TelegramDataSourceInputError as exc:
+            response = self._format_datasource_add_error_response(str(exc), payload)
+            self._log_expected_command_outcome(
+                command="/datasource_add",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                outcome="malformed datasource command payload",
+            )
+            await update.message.reply_text(response)
+            self._log_command_execution(
+                "/datasource_add",
+                user_id,
+                username,
+                None,
+                False,
+                response,
+            )
+        except DataSourcePayloadValidationError as exc:
+            response = self._format_datasource_add_error_response(str(exc), payload)
+            self._log_expected_command_outcome(
+                command="/datasource_add",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                outcome="datasource payload validation failure",
+            )
             await update.message.reply_text(response)
             self._log_command_execution(
                 "/datasource_add",
@@ -1257,6 +1302,14 @@ class TelegramCommandHandler:
 
             if not context.args or not str(context.args[0]).strip():
                 response = "❌ 参数错误\n\n请输入数据源ID，例如：/datasource_delete ds-123"
+                self._log_expected_command_outcome(
+                    command="/datasource_delete",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    outcome="missing datasource delete id",
+                )
                 await update.message.reply_text(response)
                 self._log_command_execution(
                     "/datasource_delete",
@@ -1282,6 +1335,14 @@ class TelegramCommandHandler:
                     f"数据源 ID {datasource_id} 当前不能删除，因为匹配的入库任务仍处于活跃状态。\n"
                     f"活跃任务: {active_job_text}"
                 )
+                self._log_expected_command_outcome(
+                    command="/datasource_delete",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    outcome="datasource delete blocked by active ingestion job",
+                )
                 await update.message.reply_text(response)
                 self._log_command_execution(
                     "/datasource_delete",
@@ -1295,6 +1356,14 @@ class TelegramCommandHandler:
 
             if not deleted:
                 response = f"❌ 未找到数据源\n\n未找到 ID 为 {datasource_id} 的数据源。"
+                self._log_expected_command_outcome(
+                    command="/datasource_delete",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    outcome="datasource delete target not found",
+                )
                 await update.message.reply_text(response)
                 self._log_command_execution(
                     "/datasource_delete",
@@ -1715,8 +1784,8 @@ class TelegramCommandHandler:
             user_permissions = ["analyze", "market", "status", "help", "tokens", "datasource"]
         
         help_text = [
-            "🤖 *加密货币新闻分析机器人*\n",
-            "*可用命令:*\n"
+            "🤖 加密货币新闻分析机器人\n",
+            "可用命令:\n"
         ]
         
         if "analyze" in user_permissions:
@@ -1772,7 +1841,7 @@ class TelegramCommandHandler:
             )
         
         help_text.append(
-            "\n*注意事项:*\n"
+            "\n注意事项:\n"
             "• 命令有速率限制，请勿频繁调用\n"
             "• 执行过程可能需要几分钟时间\n"
             "• 执行完成后会自动发送报告"
@@ -1836,19 +1905,104 @@ class TelegramCommandHandler:
         response_lines = ["📚 数据源列表", "", f"共 {len(datasources)} 个数据源。", ""]
 
         for index, datasource in enumerate(datasources, start=1):
-            tags_text = ", ".join(datasource.tags) if datasource.tags else "（无标签）"
-            response_lines.extend(
-                [
-                    f"{index}. ID: {datasource.id}",
-                    f"   类型: {datasource.source_type}",
-                    f"   名称: {datasource.name}",
-                    f"   标签: {tags_text}",
-                ]
-            )
+            response_lines.extend(self._build_datasource_list_lines(index, datasource))
             if index < len(datasources):
                 response_lines.append("")
 
         return "\n".join(response_lines)
+
+    @staticmethod
+    def _normalize_optional_display_text(value: Any) -> Optional[str]:
+        if not isinstance(value, str):
+            return None
+
+        normalized_value = value.strip()
+        return normalized_value or None
+
+    def _build_datasource_list_lines(self, index: int, datasource: Any) -> List[str]:
+        tags_text = ", ".join(datasource.tags) if datasource.tags else "（无标签）"
+        lines = [
+            f"{index}. ID: {datasource.id}",
+            f"   类型: {datasource.source_type}",
+            f"   名称: {datasource.name}",
+            f"   标签: {tags_text}",
+        ]
+
+        config_payload = datasource.config_payload if isinstance(datasource.config_payload, dict) else {}
+        source_type = str(datasource.source_type or "").strip().lower()
+
+        if source_type in {"rss", "x"}:
+            url = self._normalize_optional_display_text(config_payload.get("url"))
+            if url:
+                lines.append(f"   链接: {url}")
+
+        if source_type == "rss":
+            description = self._normalize_optional_display_text(config_payload.get("description"))
+            if description:
+                lines.append(f"   描述: {description}")
+
+        if source_type == "rest_api":
+            endpoint = self._normalize_optional_display_text(config_payload.get("endpoint"))
+            description = self._normalize_optional_display_text(config_payload.get("description"))
+            if endpoint:
+                lines.append(f"   接口: {endpoint}")
+            if description:
+                lines.append(f"   描述: {description}")
+
+        return lines
+
+    def _format_datasource_add_error_response(
+        self,
+        base_message: str,
+        payload: Optional[Dict[str, Any]],
+    ) -> str:
+        source_type = None
+        if isinstance(payload, dict):
+            source_type = str(payload.get("source_type") or "").strip().lower() or None
+
+        guidance = self._get_datasource_add_guidance(source_type)
+        if not guidance:
+            return base_message
+
+        return f"{base_message}\n\n{guidance}"
+
+    def _get_datasource_add_guidance(self, source_type: Optional[str]) -> str:
+        guidance_lines = ["填写提示:"]
+
+        if source_type == "rss":
+            guidance_lines.append("- rss 的 config_payload 需要 name、url，可选 description。")
+        elif source_type == "x":
+            guidance_lines.append("- x 的 config_payload 需要 name、url、type（list 或 timeline）。")
+        elif source_type == "rest_api":
+            guidance_lines.append(
+                "- rest_api 的 config_payload 需要 name、endpoint、method、response_mapping。"
+            )
+            guidance_lines.append("- rest_api 不支持在 auth、headers、params 中内联提交密钥。")
+        else:
+            guidance_lines.append(
+                '- 顶层 JSON 结构: {"source_type":"rss|x|rest_api","tags":[...],"config_payload":{...}}'
+            )
+            guidance_lines.append(
+                "- rss 需要 name/url，x 需要 name/url/type，rest_api 需要 endpoint/method/response_mapping。"
+            )
+
+        guidance_lines.append("输入 /help 查看示例。")
+        return "\n".join(guidance_lines)
+
+    def _log_expected_command_outcome(
+        self,
+        *,
+        command: str,
+        user_id: str,
+        username: str,
+        chat_type: str,
+        chat_id: str,
+        outcome: str,
+    ) -> None:
+        self.logger.info(
+            f"预期命令结果: command={command}, user={username} ({user_id}), "
+            f"chat_type={chat_type}, chat_id={chat_id}, outcome={outcome}"
+        )
     
     def handle_market_command(self, user_id: str, username: str) -> str:
         """
