@@ -27,3 +27,23 @@ def test_setup_logging_redacts_telegram_bot_urls_and_tokens(tmp_path):
         assert "Standalone bot token [REDACTED]" in output
     finally:
         root_logger.removeHandler(capture_handler)
+
+
+def test_setup_logging_keeps_uvicorn_access_record_args_intact(tmp_path):
+    setup_logging(log_level="INFO", log_dir=str(tmp_path))
+
+    factory = logging.getLogRecordFactory()
+    record = factory(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        1,
+        '%s - "%s %s HTTP/%s" %s',
+        ("127.0.0.1:1234", "POST", "/webhook", "1.1", 200),
+        None,
+        None,
+    )
+
+    assert record.args == ("127.0.0.1:1234", "POST", "/webhook", "1.1", 200)
+    assert record.getMessage() == '127.0.0.1:1234 - "POST /webhook HTTP/1.1" 200'
+    assert logging.Formatter("%(message)s").format(record) == '127.0.0.1:1234 - "POST /webhook HTTP/1.1" 200'

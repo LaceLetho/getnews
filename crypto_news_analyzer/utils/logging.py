@@ -10,7 +10,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Any, Optional, Callable
 from datetime import datetime
 
 
@@ -35,7 +35,14 @@ def _install_log_record_redaction() -> None:
     _original_log_record_factory = logging.getLogRecordFactory()
 
     def redacting_log_record_factory(*args, **kwargs):
-        record = _original_log_record_factory(*args, **kwargs)
+        original_log_record_factory = _original_log_record_factory
+        if original_log_record_factory is None:
+            return logging.LogRecord(*args, **kwargs)
+
+        record = original_log_record_factory(*args, **kwargs)
+
+        if record.name == "uvicorn.access" or record.name.startswith("uvicorn.access."):
+            return record
 
         try:
             message = record.getMessage()
@@ -169,7 +176,7 @@ class LogManager:
         """
         return logging.getLogger(name)
     
-    def log_crawl_status(self, status: dict) -> None:
+    def log_crawl_status(self, status: dict[str, Any]) -> None:
         """
         记录爬取状态
         
@@ -179,7 +186,7 @@ class LogManager:
         logger = self.get_logger("crawl_status")
         logger.info(f"爬取状态: {status}")
     
-    def log_analysis_results(self, results: list) -> None:
+    def log_analysis_results(self, results: list[Any]) -> None:
         """
         记录分析结果
         
@@ -200,7 +207,7 @@ class LogManager:
         logger = self.get_logger(component)
         logger.error(f"组件 {component} 发生错误: {str(error)}", exc_info=True)
     
-    def log_execution_summary(self, summary: dict) -> None:
+    def log_execution_summary(self, summary: dict[str, Any]) -> None:
         """
         记录执行摘要
         
