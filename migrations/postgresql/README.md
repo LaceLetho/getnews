@@ -4,6 +4,7 @@ PostgreSQL migration scaffolding for monolith storage cutover:
 
 ```bash
 psql "$DATABASE_URL" -f migrations/postgresql/001_init.sql
+psql "$DATABASE_URL" -f migrations/postgresql/002_datasource_schema.sql
 ```
 
 2) Backfill existing SQLite data from a Railway app container on the private network:
@@ -35,3 +36,9 @@ Notes:
 ```
 
 Environment variable `DATABASE_URL` is the only supported PostgreSQL connection source.
+
+4) Datasource bootstrap behavior:
+
+- On first startup, if `datasources` table is empty, the system imports from `config.json`
+- After bootstrap, runtime reads exclusively from the database
+- Use REST API (`POST /datasources`) or Telegram commands (`/datasource_add`) to manage datasources at runtime

@@ -6,7 +6,7 @@
 
 - `crypto-news-analysis`：公网服务，运行 `analysis-service`，提供 `/health`、`/analyze`、Telegram 命令监听
 - `crypto-news-ingestion`：私有服务，运行 `ingestion`，负责 scheduler 驱动的采集、去重、入库
-- PostgreSQL + pgvector：共享数据库，承载内容数据、`analysis_jobs`、`ingestion_jobs`
+- PostgreSQL + pgvector：共享数据库，承载内容数据、`analysis_jobs`、`ingestion_jobs`、数据源配置
 
 `api-server` 不再是推荐的生产模式；它只作为兼容别名映射到 `analysis-service`。
 
@@ -19,7 +19,7 @@
 - 📊 **结构化报告**: 生成Markdown格式的分析报告
 - 📱 **自动发送**: 通过Telegram Bot自动发送报告
 - 🔁 **Split-service 运行面**: 仅保留 `analysis-service`、`api-only`、`ingestion` 三种运行模式
-- 🔧 **配置驱动**: 通过配置文件管理所有信息源
+- 🔧 **数据库优先的数据源管理**: 首次启动从 `config.json` 导入，运行时通过数据库管理，支持 REST API 和 Telegram 命令操作
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
 - 🎯 **智能分类**: 支持大户动向、利率事件、监管政策、真相揭露等多种分类
 - ☁️ **云端部署**: 支持部署到 Railway 平台
@@ -283,6 +283,51 @@ curl -X POST "http://localhost:8080/analyze" \
 - [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)
 - [Railway Deployment Guide](docs/RAILWAY_DEPLOYMENT.md)
 - [PostgreSQL Migration README](migrations/postgresql/README.md)
+
+## 数据源管理
+
+系统采用**数据库优先**的数据源管理模式。首次启动时，若数据源表为空，系统会从 `config.json` 自动导入配置。此后运行时，所有数据源读写均通过数据库进行，修改 `config.json` 不会影响运行时行为。
+
+### 数据源标签约束
+
+- 每个数据源最多 16 个唯一标签
+- 单个标签最长 32 个字符
+- 标签自动转为小写并去重
+
+### REST API 数据源接口
+
+所有数据源接口需 Bearer 认证 (`Authorization: Bearer <API_KEY>`)：
+
+- `POST /datasources` - 创建数据源（成功返回 201，重复返回 409）
+- `GET /datasources` - 列出所有数据源（按类型和名称排序）
+- `DELETE /datasources/{id}` - 删除指定数据源（成功返回 204，不存在返回 404，正在使用返回 409）
+
+列表接口返回安全的摘要信息，敏感字段（如 `rest_api` 的认证信息）会被脱敏。
+
+### Telegram 数据源命令
+
+授权用户可通过 Telegram Bot 管理数据源：
+
+- `/datasource_list` - 查看已配置的数据源列表
+- `/datasource_add {json}` - 添加数据源，参数为 JSON 对象
+- `/datasource_delete <id>` - 删除指定 ID 的数据源
+
+**`rest_api` 数据源通过 Telegram 添加的限制：**
+Telegram 命令禁止内联提交认证信息。`rest_api` 的 `config_payload` 中不得包含 `headers`、`params` 或 `auth` 字段的敏感令牌。请改用服务端环境变量配置认证。
+
+#### 数据源添加示例
+
+```
+/datasource_add {"source_type":"rss","tags":["markets","btc"],"config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/rss","description":"Industry news"}}
+```
+
+```
+/datasource_add {"source_type":"x","tags":["whales"],"config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"list"}}
+```
+
+```
+/datasource_add {"source_type":"rest_api","tags":["news"],"config_payload":{"name":"News API","endpoint":"https://api.example.com/news","method":"GET","headers":{},"params":{},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}
+```
 
 ## 许可证
 

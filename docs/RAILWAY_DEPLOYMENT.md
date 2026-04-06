@@ -61,6 +61,7 @@ TIME_WINDOW_HOURS=24
 - `DATABASE_URL` 是 PostgreSQL 模式下唯一有效的连接配置来源
 - Railway 中两个应用服务必须指向**同一个**私有 Postgres 实例
 - 若使用 PostgreSQL 后端，请确保配置中的 `storage.backend=postgres`
+- 数据源配置采用**数据库优先**模式：首次启动时若 `datasources` 表为空，系统会从 `config.json` 自动导入；此后运行时读取和修改均通过数据库进行
 
 ### 仅 `crypto-news-analysis` 需要
 
@@ -160,6 +161,7 @@ X_AUTH_TOKEN=...
 
 - `DATABASE_URL`
 - `/app/migrations/postgresql/001_init.sql`
+- `/app/migrations/postgresql/002_datasource_schema.sql`
 
 推荐策略：
 
@@ -182,7 +184,7 @@ railway ssh -s <service-with-sqlite-volume> \
 
 - 该脚本使用 Railway 私网连接 PostgreSQL
 - 该脚本会先清空 `content_items`、`crawl_status`、`analysis_execution_log`、`sent_message_cache`
-- 执行前确认目标 PostgreSQL 已完成 `001_init.sql`
+- 执行前确认目标 PostgreSQL 已完成 `001_init.sql` 和 `002_datasource_schema.sql`
 
 ---
 

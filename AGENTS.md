@@ -183,6 +183,43 @@ crypto_news_analyzer/
 - Structured Output: instructor + Pydantic
 - Error Recovery: ErrorRecoveryManager
 
+## Datasource Runtime Behavior
+
+Datasource storage follows a **database-first** model:
+
+- Runtime source-of-truth is the database (`datasources` and `datasource_tags` tables)
+- On first startup (when datasource tables are empty), the system bootstraps by importing from `config.json`
+- After bootstrap, runtime reads exclusively from the database; edits to `config.json` do not affect runtime behavior
+- Use the REST API or Telegram commands to manage datasources at runtime
+
+### Tag Constraints
+
+Datasources support optional tags with the following constraints:
+- Maximum 16 unique tags per datasource
+- Each tag: maximum 32 characters
+- Tags are normalized to lowercase and deduplicated
+
+### REST Datasource Endpoints
+
+All datasource endpoints require Bearer authentication (`Authorization: Bearer <API_KEY>`):
+
+- `POST /datasources` - Create a new datasource (201 on success, 409 on duplicate)
+- `GET /datasources` - List all datasources (sorted by type and name)
+- `DELETE /datasources/{id}` - Delete a datasource by ID (204 on success, 404 if not found, 409 if datasource is in use)
+
+The list endpoint returns a safe summary that redacts sensitive `rest_api` configuration details.
+
+### Telegram Datasource Commands
+
+Authorized Telegram users can manage datasources via commands:
+
+- `/datasource_list` - Display all configured datasources with enriched metadata
+- `/datasource_add {json}` - Add a datasource via JSON payload
+- `/datasource_delete <id>` - Delete a datasource by its ID
+
+**Important restriction for `rest_api` datasources via Telegram:**
+Telegram commands reject inline authentication secrets. The `rest_api` payload cannot include sensitive tokens in `headers`, `params`, or an `auth` field. Use environment-based authentication on the server instead.
+
 ## Configuration
 
 - `config.json` - App config (sources, LLM settings)
