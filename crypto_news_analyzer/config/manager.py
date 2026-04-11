@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from dotenv import load_dotenv
 
+from .llm_registry import LLMRegistryError, validate_llm_config_payload
 from ..datasource_payloads import (
     DataSourcePayloadValidationError,
     RuntimeSource,
@@ -130,6 +131,12 @@ class ConfigManager:
                 storage_path = storage_config.get("database_path", "./data/crypto_news.db")
                 if not self.validate_storage_path(storage_path):
                     return False
+
+            try:
+                validate_llm_config_payload(config["llm_config"])
+            except LLMRegistryError as exc:
+                self.logger.error(f"LLM配置无效: {exc}")
+                return False
 
             # 验证RSS源配置
             if "rss_sources" in config:
@@ -393,13 +400,32 @@ class ConfigManager:
                 "pgvector_dimensions": 1536,
             },
             "llm_config": {
-                "model": "MiniMax-M2.1",
+                "model": {
+                    "provider": "kimi",
+                    "name": "kimi-k2.5",
+                    "options": {},
+                },
+                "fallback_models": [
+                    {
+                        "provider": "grok",
+                        "name": "grok-4-1-fast-reasoning",
+                        "options": {},
+                    }
+                ],
+                "market_model": {
+                    "provider": "grok",
+                    "name": "grok-4-1-fast-reasoning",
+                    "options": {},
+                },
                 "temperature": 0.4,
                 "max_tokens": 1000,
-                "summary_model": "grok-4-1-fast-reasoning",
                 "market_prompt_path": "./prompts/market_summary_prompt.md",
                 "analysis_prompt_path": "./prompts/analysis_prompt.md",
                 "batch_size": 10,
+                "min_weight_score": 50,
+                "cache_ttl_minutes": 240,
+                "cached_messages_hours": 24,
+                "enable_debug_logging": False,
             },
             "rss_sources": [
                 {

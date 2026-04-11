@@ -7,11 +7,26 @@
     "pgvector_dimensions": 1536
   },
   "llm_config": {
-    "model": "kimi-for-coding",
+    "model": {
+      "provider": "kimi",
+      "name": "kimi-k2.5",
+      "options": {}
+    },
+    "fallback_models": [
+      {
+        "provider": "grok",
+        "name": "grok-4-1-fast-reasoning",
+        "options": {}
+      }
+    ],
+    "market_model": {
+      "provider": "grok",
+      "name": "grok-4-1-fast-reasoning",
+      "options": {}
+    },
     "temperature": 0.5,
     "max_tokens": 150000,
     "batch_size": 500,
-    "summary_model": "grok-4-1-fast-reasoning",
     "market_prompt_path": "./prompts/market_summary_prompt.md",
     "analysis_prompt_path": "./prompts/analysis_prompt.md",
     "min_weight_score": 50,

@@ -6,12 +6,17 @@
 
 import tempfile
 import os
+from typing import cast
 
 from crypto_news_analyzer.config.manager import ConfigManager
 
 
 class TestConfigManager:
     """配置管理器测试类"""
+
+    temp_dir: str = ""
+    config_path: str = ""
+    manager: ConfigManager = cast(ConfigManager, object())
 
     def setup_method(self):
         """测试前设置"""
@@ -35,6 +40,8 @@ class TestConfigManager:
         # 验证必需字段存在
         assert "storage" in config
         assert "rss_sources" in config
+        assert config["llm_config"]["model"]["provider"] == "kimi"
+        assert config["llm_config"]["market_model"]["provider"] == "grok"
 
         # 验证默认值
         assert self.manager.get_execution_interval() == 3600
@@ -50,7 +57,17 @@ class TestConfigManager:
                 "cleanup_frequency": "daily",
                 "database_path": "./test.db",
             },
-            "llm_config": {"model": "gpt-4"},
+            "llm_config": {
+                "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+                "fallback_models": [
+                    {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+                ],
+                "market_model": {
+                    "provider": "grok",
+                    "name": "grok-4-1-fast-reasoning",
+                    "options": {},
+                },
+            },
         }
 
         assert self.manager.validate_config(valid_config) is True
