@@ -11,7 +11,7 @@ Current Phase 1 state:
 - `analysis-service` is the default/public runtime
 - `ingestion` is the private crawler/scheduler runtime
 - PostgreSQL + pgvector is the shared source of truth
-- `api-server` is deprecated and only kept as a compatibility alias to `analysis-service`
+- Legacy API server mode is deprecated and only kept as a compatibility alias to `analysis-service`
 
 Assigned production domain: `news.tradao.xyz`
 
@@ -128,7 +128,7 @@ docker run -e LLM_API_KEY=xxx -e API_KEY=xxx crypto-news-analyzer analysis-servi
 
 Notes:
 
-- Do not document or recommend `--mode api-server` as the primary runtime. It is deprecated.
+- Do not document or recommend the legacy API-server runtime mode as primary. It is deprecated.
 - Production Railway routing is service-name driven via `docker-entrypoint.sh`.
 
 ## Online Debugging & Logs

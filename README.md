@@ -8,7 +8,7 @@
 - `crypto-news-ingestion`：私有服务，运行 `ingestion`，负责 scheduler 驱动的采集、去重、入库
 - PostgreSQL + pgvector：共享数据库，承载内容数据、`analysis_jobs`、`ingestion_jobs`、数据源配置
 
-`api-server` 不再是推荐的生产模式；它只作为兼容别名映射到 `analysis-service`。
+旧版 API server 模式不再是推荐的生产模式；它只作为兼容别名映射到 `analysis-service`。
 
 如果你要通过 HTTP API 调用新闻分析接口，或你是一个需要自动调用接口的 AI，请先阅读 [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)。该文档记录了当前有效的 `POST /analyze -> 轮询 -> 取结果` 异步契约。
 

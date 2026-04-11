@@ -1,0 +1,22 @@
+ - Kept the helper surface generic: `SKILL_DIR`, `SKILL_PATH`, `_read_skill_text`, `_split_frontmatter`, and `_section` all point at the new `crypto-news-http-api` skill namespace.
+ - Chose synthetic content-based tests for frontmatter/section parsing because the target skill directory does not exist yet, which keeps task 1 passing without over-implementing later content assertions.
+ - Installed `uv` locally in the session to match the repo's required test runner and verify the new module with the documented pytest command.
+ - For task 2, anchored the required-reference checks on literal doc-path pointers and used a CJK blacklist for the English-only constraint to keep the rule deterministic.
+ - Revised the Task 2 reference assertions to target the skill-local `references/` docs, which matches the plan's later file layout.
+ - For Task 3, split the endpoint contract into a positive inventory check and a negative exclusion check so supported routes and unsupported surfaces stay independently enforced.
+ - Used the canonical live route set from `api_server.py`, including the Telegram webhook route, so the inventory test fails if the skill drifts from the runtime surface.
+ - Corrected the `Non-Goals` assertion so deprecated names may be named as exclusions there while remaining disallowed in the supported endpoint inventory.
+ - Task 4 remains sample-driven because `.opencode/skills/crypto-news-http-api/SKILL.md` still does not exist; the tests now define the expected contract language for the future file.
+ - The updating section now must state that code and tests outrank prose docs when they diverge, which keeps the skill aligned with the live API implementation and not stale narrative docs.
+ - Task 5 uses a minimal scaffold rather than full prose so later tasks can fill the reference docs without having to rewrite the contract skeleton.
+ - Kept the reference files short and English-only, with their own `## Updating` notes, to satisfy the layout requirement without introducing extra surface area.
+ - Task 9: Framed the Telegram webhook as a maintainer-only integration surface rather than a primary user path, keeping end users directed toward HTTP API routes and Telegram slash commands.
+ - Task 9: Documented the health endpoint with both its status field and the initialized flag for operational visibility into service readiness.
+- Task 9: Included a concrete self-update workflow with explicit source file references (`api_server.py`, `test_api_server.py`, `AI_ANALYZE_API_GUIDE.md`) and the verification pytest command to ensure maintainers can validate changes.
+
+- Task 10 decision: treat the standalone legacy scanner command as the source of truth for final drift-guard readiness, not just its unit tests.
+- Task 10 decision: fix the scanner scope (ignore `docs/archive/`) instead of broad doc rewrites, because archived documents are non-actionable by policy.
+- Task 10 decision: keep root docs actionable but rephrase deprecation lines to avoid false-positive banned-token matches.
+- F1 decision: delete the `_sample_skill_text()`-driven contract assertions rather than dual-maintaining sample and real-file paths, so future drift is caught against the shipped skill bundle only.
+- F1 decision: keep the existing parser helpers (`_split_frontmatter`, `_section`) but repoint every semantic assertion at `SKILL.md` and the three reference files to preserve the original contract intent with minimal code churn.
+- F1 decision: encode the planned maintenance gate in `operations-and-maintenance.md` with all four required commands and explicit before-merge language so doc guidance matches the intended verification workflow.

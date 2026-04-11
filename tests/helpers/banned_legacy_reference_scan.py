@@ -14,6 +14,7 @@ IGNORED_PATH_PREFIXES: Tuple[str, ...] = (
     ".git",
     ".venv",
     ".sisyphus/evidence",
+    "docs/archive",
 )
 
 EXACT_ACTIONABLE_PATHS: Tuple[str, ...] = (
