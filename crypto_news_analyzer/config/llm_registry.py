@@ -183,7 +183,7 @@ PROVIDERS: Dict[str, ProviderRecord] = {
     "opencode-go": ProviderRecord(
         name="opencode-go",
         env_var="OPENCODE_API_KEY",
-        base_url="https://api.opencode.ai/v1",
+        base_url="https://opencode.ai/zen/go/v1",
         default_headers={"User-Agent": "opencode-go-client/1.0"},
         client_class="openai.OpenAI",
     ),

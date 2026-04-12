@@ -8,7 +8,7 @@ This document catalogs all supported LLM providers, their available models, and 
 |----------|---------------------|----------|
 | Kimi | `KIMI_API_KEY` | `https://api.kimi.com/coding/v1` |
 | Grok | `GROK_API_KEY` | `https://api.x.ai/v1` |
-| OpenCode Go | `OPENCODE_API_KEY` | `https://api.opencode.ai/v1` |
+| OpenCode Go | `OPENCODE_API_KEY` | `https://opencode.ai/zen/go/v1` |
 
 **Important:** Set the appropriate API key in your `.env` file before using a provider. The system validates these credentials at startup.
 
@@ -41,11 +41,13 @@ This document catalogs all supported LLM providers, their available models, and 
 
 **Note:** OpenCode Go models are NOT supported for `market_model` in phase 1. Use Kimi or Grok for market snapshots.
 
+**Phase-1 scope lock:** only the OpenAI-compatible snapshot is supported here: `glm-5.1`, `kimi-k2.5`, and `mimo-v2-pro`. Models such as `glm-5`, `mimo-v2-omni`, `minimax-m2.5`, and `minimax-m2.7` are intentionally unsupported in this project.
+
 ## Model Capabilities Explained
 
 ### Web Search
 
-Enables the model to search the general web for current information beyond its training data. All supported models have web search capability.
+Enables the model to search the general web for current information beyond its training data. Kimi and Grok models support this feature; OpenCode Go models do not.
 
 ### X/Twitter Search
 
@@ -194,7 +196,7 @@ To use OpenAI models, you need an OpenAI API key with pay-as-you-go billing enab
 }
 ```
 
-**Note:** OpenCode Go models do not support advanced capabilities (web search, thinking level, etc.). For `market_model`, you must use Kimi or Grok.
+**Note:** OpenCode Go models do not support advanced capabilities (web search, x_search, thinking level, responses API, tooling, etc.). For `market_model`, you must use Kimi or Grok.
 
 ## Legacy Model Migrations
 

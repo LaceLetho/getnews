@@ -173,6 +173,7 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - **opencode-go** (环境变量: `OPENCODE_API_KEY`)
   - glm-5.1, kimi-k2.5, mimo-v2-pro
   - **注意**: OpenCode Go 模型不支持 `market_model`，请使用 Kimi 或 Grok 作为市场快照模型
+  - **Phase 1 限制**: 仅支持这 3 个固定模型；`glm-5`、`mimo-v2-omni`、`minimax-m2.5`、`minimax-m2.7` 以及 `thinking_level` / search / responses API 等能力均不支持
 
 **配置字段说明：**
 

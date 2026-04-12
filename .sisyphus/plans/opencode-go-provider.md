@@ -52,7 +52,7 @@
 
 ### Definition of Done (verifiable conditions with commands)
 - `uv run pytest tests/test_llm_registry.py::test_opencode_go_analysis_models_validate tests/test_llm_registry.py::test_opencode_go_market_model_rejected tests/test_llm_registry.py::test_opencode_go_kimi_k2_5_rejects_thinking_level tests/test_llm_registry.py::test_opencode_go_unlisted_go_models_rejected -q` 通过
-- `uv run pytest tests/test_main_controller.py::test_required_llm_provider_env_vars_include_opencode_go tests/test_main_controller.py::test_resolve_provider_credentials_maps_opencode_go_correctly tests/test_main_controller.py::test_runtime_auth_requires_opencode_api_key_when_opencode_go_configured tests/test_main_controller.py::test_runtime_auth_does_not_require_opencode_api_key_when_unused -q` 通过
+- `uv run pytest tests/test_main_controller.py::TestMainController::test_required_llm_provider_env_vars_include_opencode_go tests/test_main_controller.py::TestMainController::test_resolve_provider_credentials_maps_opencode_go_correctly tests/test_main_controller.py::TestMainController::test_runtime_auth_requires_opencode_api_key_when_opencode_go_configured tests/test_main_controller.py::TestMainController::test_runtime_auth_does_not_require_opencode_api_key_when_unused -q` 通过
 - `uv run pytest tests/test_config_manager.py -q -k "opencode_go or llm_config"` 通过
 - `uv run pytest tests/test_config_persistence_properties.py tests/test_config_file_management_properties.py -q` 通过
 - `uv run pytest tests/test_llm_analyzer.py -q -k "opencode_go or initialization"` 通过
@@ -156,10 +156,10 @@ Wave 2: defaults/docs/tests cleanup
   - Pattern: `docs/LLM_PROVIDER_REFERENCE.md` - Existing provider matrix format to mirror.
 
   **Acceptance Criteria**:
-  - [ ] `opencode-go` exists in provider registry with `OPENCODE_API_KEY`.
-  - [ ] Exactly 3 OpenCode Go models are accepted by the registry.
-  - [ ] `opencode-go/kimi-k2.5` rejects `thinking_level`.
-  - [ ] No undocumented OpenCode Go capabilities are enabled by default.
+  - [x] `opencode-go` exists in provider registry with `OPENCODE_API_KEY`.
+  - [x] Exactly 3 OpenCode Go models are accepted by the registry.
+  - [x] `opencode-go/kimi-k2.5` rejects `thinking_level`.
+  - [x] No undocumented OpenCode Go capabilities are enabled by default.
 
   **QA Scenarios**:
   ```
@@ -208,21 +208,21 @@ Wave 2: defaults/docs/tests cleanup
   - Pattern: `crypto_news_analyzer/execution_coordinator.py:664-682` - Current runtime auth validation.
 
   **Acceptance Criteria**:
-  - [ ] `OPENCODE_API_KEY` is loaded into auth config.
-  - [ ] Required provider env var resolution maps to `opencode-go`, not `opencode`.
-  - [ ] Startup requires `OPENCODE_API_KEY` only when OpenCode Go appears in `model` or `fallback_models`.
+  - [x] `OPENCODE_API_KEY` is loaded into auth config.
+  - [x] Required provider env var resolution maps to `opencode-go`, not `opencode`.
+  - [x] Startup requires `OPENCODE_API_KEY` only when OpenCode Go appears in `model` or `fallback_models`.
 
   **QA Scenarios**:
   ```
   Scenario: Startup requires OPENCODE_API_KEY when OpenCode Go is configured
     Tool: Bash
-    Steps: Run `uv run pytest tests/test_main_controller.py::test_runtime_auth_requires_opencode_api_key_when_opencode_go_configured tests/test_main_controller.py::test_resolve_provider_credentials_maps_opencode_go_correctly -q`
+    Steps: Run `uv run pytest tests/test_main_controller.py::TestMainController::test_runtime_auth_requires_opencode_api_key_when_opencode_go_configured tests/test_main_controller.py::TestMainController::test_resolve_provider_credentials_maps_opencode_go_correctly -q`
     Expected: Startup/auth validation fails or maps credentials exactly as expected, and provider key is `opencode-go`.
     Evidence: .sisyphus/evidence/task-2-opencode-go-auth.txt
 
   Scenario: OPENCODE_API_KEY is not required when unused
     Tool: Bash
-    Steps: Run `uv run pytest tests/test_main_controller.py::test_runtime_auth_does_not_require_opencode_api_key_when_unused tests/test_main_controller.py::test_required_llm_provider_env_vars_include_opencode_go -q`
+    Steps: Run `uv run pytest tests/test_main_controller.py::TestMainController::test_runtime_auth_does_not_require_opencode_api_key_when_unused tests/test_main_controller.py::TestMainController::test_required_llm_provider_env_vars_include_opencode_go -q`
     Expected: Unused OpenCode Go does not create a credential requirement, while used OpenCode Go does.
     Evidence: .sisyphus/evidence/task-2-opencode-go-auth-error.txt
   ```
@@ -257,9 +257,9 @@ Wave 2: defaults/docs/tests cleanup
   - Pattern: `docs/LLM_PROVIDER_REFERENCE.md` - Documentation target for explicit exclusion note.
 
   **Acceptance Criteria**:
-  - [ ] `market_model.provider="opencode-go"` fails at config validation time.
-  - [ ] The failure message includes `llm_config.market_model` and states phase-1 exclusion.
-  - [ ] Existing market snapshot runtime remains unchanged.
+  - [x] `market_model.provider="opencode-go"` fails at config validation time.
+  - [x] The failure message includes `llm_config.market_model` and states phase-1 exclusion.
+  - [x] Existing market snapshot runtime remains unchanged.
 
   **QA Scenarios**:
   ```
@@ -306,9 +306,9 @@ Wave 2: defaults/docs/tests cleanup
   - Pattern: `crypto_news_analyzer/config/llm_registry.py:122-139` - Model capability metadata that should drive conservative runtime behavior.
 
   **Acceptance Criteria**:
-  - [ ] OpenCode Go analysis models initialize through the existing OpenAI-compatible path.
-  - [ ] OpenCode Go models do not inherit Kimi/Grok-specific undocumented features.
-  - [ ] Runtime remains analysis-only for OpenCode Go in phase 1.
+  - [x] OpenCode Go analysis models initialize through the existing OpenAI-compatible path.
+  - [x] OpenCode Go models do not inherit Kimi/Grok-specific undocumented features.
+  - [x] Runtime remains analysis-only for OpenCode Go in phase 1.
 
   **QA Scenarios**:
   ```
@@ -357,10 +357,10 @@ Wave 2: defaults/docs/tests cleanup
   - Pattern: `docs/RAILWAY_DEPLOYMENT.md` - Deployment/runtime docs that may mention env vars.
 
   **Acceptance Criteria**:
-  - [ ] `OPENCODE_API_KEY` is documented in maintained docs/templates.
-  - [ ] OpenCode Go docs mention exactly the 3 supported models.
-  - [ ] Docs explicitly state OpenCode Go is not supported for `market_model` in phase 1.
-  - [ ] Existing defaults remain Kimi/Grok unless explicitly intended otherwise.
+  - [x] `OPENCODE_API_KEY` is documented in maintained docs/templates.
+  - [x] OpenCode Go docs mention exactly the 3 supported models.
+  - [x] Docs explicitly state OpenCode Go is not supported for `market_model` in phase 1.
+  - [x] Existing defaults remain Kimi/Grok unless explicitly intended otherwise.
 
   **QA Scenarios**:
   ```
@@ -428,15 +428,15 @@ PY`
   - Pattern: `README.md:175-177` - Current fallback wording that tests/docs should not overstate for phase 1.
 
   **Acceptance Criteria**:
-  - [ ] Tests cover all accepted and rejected OpenCode Go phase-1 cases.
-  - [ ] Property tests never emit invalid `market_model=opencode-go` as a valid config.
-  - [ ] Same-name model under different providers is tested for provider-specific capability separation.
+  - [x] Tests cover all accepted and rejected OpenCode Go phase-1 cases.
+  - [x] Property tests never emit invalid `market_model=opencode-go` as a valid config.
+  - [x] Same-name model under different providers is tested for provider-specific capability separation.
 
   **QA Scenarios**:
   ```
   Scenario: OpenCode Go registry and auth test matrix passes
     Tool: Bash
-    Steps: Run `uv run pytest tests/test_llm_registry.py::test_opencode_go_analysis_models_validate tests/test_llm_registry.py::test_opencode_go_market_model_rejected tests/test_llm_registry.py::test_opencode_go_kimi_k2_5_rejects_thinking_level tests/test_llm_registry.py::test_opencode_go_unlisted_go_models_rejected tests/test_main_controller.py::test_required_llm_provider_env_vars_include_opencode_go tests/test_main_controller.py::test_resolve_provider_credentials_maps_opencode_go_correctly tests/test_main_controller.py::test_runtime_auth_requires_opencode_api_key_when_opencode_go_configured tests/test_main_controller.py::test_runtime_auth_does_not_require_opencode_api_key_when_unused -q`
+    Steps: Run `uv run pytest tests/test_llm_registry.py::test_opencode_go_analysis_models_validate tests/test_llm_registry.py::test_opencode_go_market_model_rejected tests/test_llm_registry.py::test_opencode_go_kimi_k2_5_rejects_thinking_level tests/test_llm_registry.py::test_opencode_go_unlisted_go_models_rejected tests/test_main_controller.py::TestMainController::test_required_llm_provider_env_vars_include_opencode_go tests/test_main_controller.py::TestMainController::test_resolve_provider_credentials_maps_opencode_go_correctly tests/test_main_controller.py::TestMainController::test_runtime_auth_requires_opencode_api_key_when_opencode_go_configured tests/test_main_controller.py::TestMainController::test_runtime_auth_does_not_require_opencode_api_key_when_unused -q`
     Expected: Exact OpenCode Go validation/auth matrix passes with no live network dependency.
     Evidence: .sisyphus/evidence/task-6-opencode-go-tests.txt
 

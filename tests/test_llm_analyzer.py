@@ -149,7 +149,7 @@ class TestLLMAnalyzer:
 
         mock_openai_cls.assert_called_once_with(
             api_key="test-opencode-key",
-            base_url="https://api.opencode.ai/v1",
+            base_url="https://opencode.ai/zen/go/v1",
             default_headers={"User-Agent": "opencode-go-client/1.0"},
         )
         assert analyzer.analysis_provider == "opencode-go"
