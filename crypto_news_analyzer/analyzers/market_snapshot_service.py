@@ -22,6 +22,7 @@ except ImportError:
     OpenAI = None
 
 from crypto_news_analyzer.utils.conversation_cache import ConversationIdManager
+from ..config.llm_registry import ProviderRecord, get_provider_record
 
 
 @dataclass
@@ -70,8 +71,8 @@ class MarketSnapshotService:
     """市场快照获取服务"""
     
     def __init__(self, 
-                 GROK_API_KEY: Optional[str] = None,
-                 summary_model: str = "grok-4-1-fast-reasoning",
+                 provider_credentials: Optional[Dict[str, str]] = None,
+                 market_model_config: Optional[Dict[str, Any]] = None,
                  fallback_providers: Optional[List[str]] = None,
                  cache_ttl_minutes: int = 30,
                  cache_dir: str = "./data/cache",
@@ -83,8 +84,8 @@ class MarketSnapshotService:
         初始化市场快照服务
         
         Args:
-            GROK_API_KEY: Grok API密钥，如果为None则从环境变量读取
-            summary_model: 使用的模型名称
+            provider_credentials: 提供商凭证映射
+            market_model_config: 市场模型配置
             fallback_providers: 备用服务提供商列表
             cache_ttl_minutes: 缓存有效期（分钟）
             cache_dir: 缓存目录
@@ -93,8 +94,21 @@ class MarketSnapshotService:
             temperature: 温度参数（控制输出随机性）
             config: 配置字典（用于读取enable_debug_logging等设置）
         """
-        self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
-        self.summary_model = summary_model
+        self.provider_credentials = {
+            "grok": os.getenv("GROK_API_KEY", "").strip(),
+            "kimi": os.getenv("KIMI_API_KEY", "").strip(),
+        }
+        for provider, value in (provider_credentials or {}).items():
+            self.provider_credentials[provider] = (value or "").strip()
+
+        self.market_model_config = dict(market_model_config or {})
+        self.market_model_name = (self.market_model_config.get("name") or "").strip()
+        self.market_provider = self._resolve_market_provider()
+        self.market_provider_record: Optional[ProviderRecord] = None
+        if self.market_provider:
+            self.market_provider_record = get_provider_record(self.market_provider)
+
+        self.GROK_API_KEY = self.provider_credentials.get("grok", "")
         self.fallback_providers = fallback_providers or []
         self.cache_ttl_minutes = cache_ttl_minutes
         self.cache_dir = cache_dir
@@ -111,7 +125,12 @@ class MarketSnapshotService:
         self.grok_api_base = "https://api.x.ai/v1"
         self.client = None
         
-        if not mock_mode and self.GROK_API_KEY and OpenAI:
+        if (
+            not mock_mode
+            and self.market_provider == "grok"
+            and self.GROK_API_KEY
+            and OpenAI
+        ):
             try:
                 self.client = OpenAI(
                     api_key=self.GROK_API_KEY,
@@ -156,6 +175,9 @@ class MarketSnapshotService:
             self.logger.warning("未提供Grok API密钥，将使用备用快照")
         else:
             self.logger.info(f"使用会话ID提高缓存命中率: {self.conversation_id}")
+
+    def _resolve_market_provider(self) -> str:
+        return (self.market_model_config.get("provider") or "").strip().lower()
     
     def get_market_snapshot(self, prompt_template: str) -> MarketSnapshot:
         """
@@ -264,7 +286,7 @@ class MarketSnapshotService:
             # 打印发送给LLM的完整内容到日志
             self.logger.info("=" * 80)
             self.logger.info("发送给Grok的市场快照请求:")
-            self.logger.info(f"模型: {self.summary_model}")
+            self.logger.info(f"模型: {self.market_model_name}")
             self.logger.info(f"温度: {self.temperature}")
             self.logger.info("-" * 80)
             self.logger.info("系统提示词:")
@@ -293,7 +315,7 @@ class MarketSnapshotService:
             
             # 调用 responses API，添加 x-grok-conv-id 头以提高缓存命中率
             response = self.client.responses.create(
-                model=self.summary_model,
+                model=self.market_model_name,
                 input=messages,
                 temperature=self.temperature,
                 tools=tools,
@@ -688,7 +710,7 @@ class MarketSnapshotService:
         # 测试Grok API连接
         try:
             response = self.client.chat.completions.create(
-                model=self.summary_model,
+                model=self.market_model_name,
                 messages=[
                     {
                         "role": "user", 
@@ -735,15 +757,21 @@ class MarketSnapshotService:
         Args:
             **kwargs: 配置参数
         """
-        if "GROK_API_KEY" in kwargs:
-            self.GROK_API_KEY = kwargs["GROK_API_KEY"]
-            self.headers["Authorization"] = f"Bearer {self.GROK_API_KEY}"
-        
+        if "provider_credentials" in kwargs:
+            for provider, value in kwargs["provider_credentials"].items():
+                self.provider_credentials[provider] = (value or "").strip()
+            self.GROK_API_KEY = self.provider_credentials.get("grok", "")
+
+        if "market_model_config" in kwargs:
+            self.market_model_config = dict(kwargs["market_model_config"] or {})
+            self.market_model_name = (self.market_model_config.get("name") or "").strip()
+            self.market_provider = self._resolve_market_provider()
+            self.market_provider_record = None
+            if self.market_provider:
+                self.market_provider_record = get_provider_record(self.market_provider)
+         
         if "cache_ttl_minutes" in kwargs:
             self.cache_ttl_minutes = kwargs["cache_ttl_minutes"]
-        
-        if "summary_model" in kwargs:
-            self.summary_model = kwargs["summary_model"]
         
         if "fallback_providers" in kwargs:
             self.fallback_providers = kwargs["fallback_providers"]

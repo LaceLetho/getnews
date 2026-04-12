@@ -287,9 +287,11 @@ class StructuredOutputManager:
             ValidationError: 验证失败
             Exception: 其他错误
         """
-        # 如果启用web_search，根据模型类型选择不同的实现方式
+        # 如果启用web_search，根据provider类型选择不同的实现方式
         if enable_web_search:
-            if "kimi" in model.lower():
+            # 从llm_client的provider属性获取provider类型
+            provider = getattr(llm_client, '_provider', '')
+            if provider == 'kimi':
                 # Kimi 使用标准 function calling
                 return self._force_with_kimi_web_search(
                     llm_client, messages, model, temperature, batch_mode, conversation_id, usage_callback

@@ -80,14 +80,17 @@ cp .env.template .env
 # 共享数据库（当前默认后端为 postgres）
 DATABASE_URL=postgresql://postgres:password@host:5432/railway
 
-# Analysis 服务核心变量
+# LLM Provider 凭证（analysis-service / api-only 必需）
+# 使用 provider-specific 环境变量而非通用 LLM_API_KEY
+KIMI_API_KEY=your_kimi_api_key_here
+GROK_API_KEY=your_grok_api_key_here
+
+# API 鉴权（启用 analysis-service / api-only 时必需）
 API_KEY=your_api_key
-LLM_API_KEY=your_llm_key
+
+# Telegram 配置（analysis-service 可选）
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHANNEL_ID=-1001234567890
-
-# API 鉴权（启用 `analysis-service` 或 `api-only` 时必需）
-API_KEY=your_api_key
 
 # Telegram 授权用户（支持用户ID和用户名）
 # 多个用户用逗号分隔，可以混合使用用户ID和@username格式
@@ -130,6 +133,49 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - 如果用户名解析失败，系统会记录警告并跳过该用户名
 - 建议对关键用户使用用户 ID 作为备份
 - 所有授权用户都有相同的权限，可以执行所有可用命令（/analyze, /status, /help 等）
+
+### LLM 配置
+
+模型配置在 `config.json` 的 `llm_config` 字段中定义。环境变量仅用于提供 provider 的 API 密钥（`KIMI_API_KEY`、`GROK_API_KEY`）。
+
+**`llm_config` 结构：**
+
+```json
+{
+  "llm_config": {
+    "model": {
+      "provider": "kimi",
+      "name": "kimi-k2.5",
+      "options": {"thinking_level": "medium"}
+    },
+    "fallback_models": [
+      {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+    ],
+    "market_model": {
+      "provider": "grok",
+      "name": "grok-4-1-fast-reasoning",
+      "options": {}
+    },
+    "temperature": 0.5,
+    "max_tokens": 4000,
+    "batch_size": 10
+  }
+}
+```
+
+**支持的 Provider 和模型：**
+
+- **kimi** (环境变量: `KIMI_API_KEY`)
+  - kimi-k2.5, kimi-k2-turbo-preview, kimi-k2-thinking-turbo
+- **grok** (环境变量: `GROK_API_KEY`)
+  - grok-4-1-fast-reasoning, grok-4-1-fast-non-reasoning, grok-4.20-reasoning, grok-4.20-non-reasoning
+
+**配置字段说明：**
+
+- `model`: 主分析模型配置（必需）
+- `fallback_models`: 备用模型列表，主模型失败时按顺序尝试（必需）
+- `market_model`: 市场快照专用模型（必需，建议使用 grok）
+- `options.thinking_level`: 可选，取值：disabled, low, medium, high, xhigh
 
 ### 4. 运行系统
 

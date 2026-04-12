@@ -18,6 +18,7 @@ from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from pathlib import Path
 
+from ..config.llm_registry import ModelConfig, ResolvedModelRuntime, resolve_model_runtime
 from ..models import ContentItem, AnalysisResult, StorageConfig
 from ..utils.timezone_utils import format_datetime_utc8
 from ..utils.conversation_cache import ConversationIdManager
@@ -52,11 +53,10 @@ class LLMAnalyzer:
     
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        GROK_API_KEY: Optional[str] = None,
-        KIMI_API_KEY: Optional[str] = None,
-        model: str = "gpt-4",
-        summary_model: str = "grok-beta",
+        provider_credentials: Optional[Dict[str, str]] = None,
+        model: Optional[ResolvedModelRuntime] = None,
+        fallback_models: Optional[List[ResolvedModelRuntime]] = None,
+        market_model: Optional[ResolvedModelRuntime] = None,
         market_prompt_path: str = "./prompts/market_summary_prompt.md",
         analysis_prompt_path: str = "./prompts/analysis_prompt.md",
         temperature: float = 0.5,
@@ -74,11 +74,10 @@ class LLMAnalyzer:
         初始化LLM分析器
 
         Args:
-            api_key: LLM API密钥，如果为None则从环境变量读取
-            GROK_API_KEY: Grok API密钥，用于市场快照
-            KIMI_API_KEY: Kimi API密钥，用于新闻分析
-            model: 分析使用的模型名称
-            summary_model: 市场快照使用的模型名称
+            provider_credentials: 提供商凭证映射
+            model: 分析模型解析后的运行时元数据
+            fallback_models: 备用分析模型解析后的运行时元数据
+            market_model: 市场快照模型解析后的运行时元数据
             market_prompt_path: 市场快照提示词路径
             analysis_prompt_path: 分析提示词路径
             temperature: 温度参数
@@ -92,11 +91,25 @@ class LLMAnalyzer:
             conversation_id: 会话ID（用于提高缓存命中率，如果为None则自动生成）
             config: 完整配置字典（用于传递给子组件）
         """
-        self.api_key = api_key or os.getenv('LLM_API_KEY', '')
-        self.GROK_API_KEY = GROK_API_KEY or os.getenv('GROK_API_KEY', '')
-        self.KIMI_API_KEY = KIMI_API_KEY or os.getenv('KIMI_API_KEY', '')
-        self.model = model
-        self.summary_model = summary_model
+        self.provider_credentials = {
+            "grok": os.getenv("GROK_API_KEY", "").strip(),
+            "kimi": os.getenv("KIMI_API_KEY", "").strip(),
+        }
+        for provider, value in (provider_credentials or {}).items():
+            self.provider_credentials[provider] = (value or "").strip()
+
+        self.analysis_model_runtime = model or resolve_model_runtime(
+            ModelConfig(provider="kimi", name="kimi-k2.5", options={})
+        )
+        self.fallback_model_runtimes = list(fallback_models or [])
+        self.market_model_runtime = market_model or resolve_model_runtime(
+            ModelConfig(provider="grok", name="grok-4-1-fast-reasoning", options={})
+        )
+
+        self.GROK_API_KEY = self.provider_credentials.get("grok", "")
+        self.KIMI_API_KEY = self.provider_credentials.get("kimi", "")
+        self.model = self.analysis_model_runtime.name
+        self.market_model = self.market_model_runtime.name
         self.market_prompt_path = Path(market_prompt_path)
         self.analysis_prompt_path = Path(analysis_prompt_path)
         self.temperature = temperature
@@ -106,6 +119,9 @@ class LLMAnalyzer:
         self.mock_mode = mock_mode
         self.config = config or {}
         self.logger = logging.getLogger(__name__)
+        self.analysis_provider = self.analysis_model_runtime.provider_name
+        self.market_provider = self.market_model_runtime.provider_name
+        self.analysis_api_key = self.provider_credentials.get(self.analysis_provider, "")
 
         # 根据 max_tokens 动态计算 batch_size
         # 假设每条新闻分析约需 500 tokens 输出空间（含推理过程）
@@ -136,49 +152,16 @@ class LLMAnalyzer:
         
         # 初始化OpenAI客户端
         self.client = None
-        if not mock_mode and self.api_key and OpenAI:
+        if not mock_mode and self.analysis_api_key and OpenAI:
             try:
-                # 根据模型判断使用哪个API endpoint
-                if "minimax" in self.model.lower():
-                    # MiniMax API
-                    self.client = OpenAI(
-                        api_key=self.api_key,
-                        base_url="https://api.minimax.chat/v1"
-                    )
-                elif "grok" in self.model.lower():
-                    # xAI Grok API
-                    self.client = OpenAI(
-                        api_key=self.api_key,
-                        base_url="https://api.x.ai/v1",
-                        default_headers={"x-grok-conv-id": self.conversation_id}
-                    )
-                    self.logger.info(f"Grok客户端已设置default_headers: x-grok-conv-id={self.conversation_id}")
-                elif "kimi" in self.model.lower():
-                    # Kimi API - 使用 OpenAI 兼容格式 (coding endpoint)
-                    # 需要设置 User-Agent 为 claude-code 才能通过身份验证
-                    # Kimi 的内置 web_search 处理见：
-                    # https://platform.moonshot.ai/docs/guide/use-web-search#web_search-declaration
-                    api_key_to_use = self.KIMI_API_KEY or self.api_key
-                    self.client = OpenAI(
-                        api_key=api_key_to_use,
-                        base_url="https://api.kimi.com/coding/v1",
-                        default_headers={
-                            "User-Agent": "claude-code/1.0"
-                        }
-                    )
-                    self.logger.info(f"Kimi客户端已初始化，使用模型: {self.model}")
-                else:
-                    # 标准 OpenAI API
-                    self.client = OpenAI(
-                        api_key=self.api_key
-                    )
+                self.client = self._build_client(self.analysis_model_runtime, self.analysis_api_key)
             except Exception as e:
                 self.logger.error(f"初始化OpenAI客户端失败: {e}")
         
         # 初始化市场快照服务
         self.market_snapshot_service = MarketSnapshotService(
-            GROK_API_KEY=self.GROK_API_KEY,
-            summary_model=self.summary_model,
+            provider_credentials=self.provider_credentials,
+            market_model_config=self.market_model_runtime.to_dict(),
             cache_ttl_minutes=self.cache_ttl_minutes,
             mock_mode=mock_mode,
             conversation_id=self.conversation_id,
@@ -205,10 +188,54 @@ class LLMAnalyzer:
         
         if mock_mode:
             self.logger.info("LLM分析器运行在模拟模式")
-        elif not self.api_key:
-            self.logger.warning("未提供LLM API密钥")
+        elif not self.analysis_api_key:
+            self.logger.warning("未提供当前分析模型所需的LLM提供商密钥")
         else:
             self.logger.info(f"使用会话ID提高缓存命中率: {self.conversation_id}")
+
+    def _build_client(self, runtime: ResolvedModelRuntime, api_key: str):
+        if OpenAI is None:
+            raise RuntimeError("openai package is not installed")
+
+        default_headers = dict(runtime.provider.default_headers)
+        conversation_header_name = runtime.provider.conversation_header_name
+        if conversation_header_name:
+            default_headers[conversation_header_name] = self.conversation_id
+
+        client_kwargs: Dict[str, Any] = {
+            "api_key": api_key,
+            "base_url": runtime.provider.base_url,
+        }
+        if default_headers:
+            client_kwargs["default_headers"] = default_headers
+
+        client = OpenAI(**client_kwargs)
+        if conversation_header_name:
+            self.logger.info(
+                f"{runtime.provider.name.capitalize()}客户端已设置default_headers: "
+                f"{conversation_header_name}={self.conversation_id}"
+            )
+        else:
+            self.logger.info(f"{runtime.provider.name.capitalize()}客户端已初始化，使用模型: {runtime.name}")
+        return client
+
+    def _supports_web_search(self, runtime: ResolvedModelRuntime) -> bool:
+        return runtime.provider_name in {"kimi", "grok"}
+
+    def _display_provider_name(self, runtime: ResolvedModelRuntime) -> str:
+        if runtime.provider_name == "kimi":
+            return "Kimi"
+        if runtime.provider_name == "grok":
+            return "Grok"
+        return runtime.provider_name
+
+    def _select_content_filter_fallback_runtime(self) -> Optional[ResolvedModelRuntime]:
+        for runtime in self.fallback_model_runtimes:
+            if runtime.provider_name == "grok":
+                return runtime
+        if self.market_model_runtime.provider_name == "grok":
+            return self.market_model_runtime
+        return None
     
     def analyze_content_batch(
         self,
@@ -445,6 +472,7 @@ class LLMAnalyzer:
         
         for i in range(0, len(items), self.batch_size):
             batch = items[i:i + self.batch_size]
+            messages: List[Dict[str, str]] = []
             self.logger.info(f"处理批次 {i // self.batch_size + 1}，包含 {len(batch)} 条内容")
             
             try:
@@ -465,16 +493,14 @@ class LLMAnalyzer:
                 # 判断是否启用 web_search 及使用哪种方式
                 # Grok 使用 responses.parse() API
                 # Kimi 使用内置 web_search（builtin_function + $web_search）
-                is_kimi = "kimi" in self.model.lower()
-                is_grok = "grok" in self.model.lower()
-                enable_web_search = is_kimi or is_grok
+                enable_web_search = self._supports_web_search(self.analysis_model_runtime)
 
                 if enable_web_search:
-                    if is_kimi:
+                    if self.analysis_model_runtime.provider_name == "kimi":
                         self.logger.info(
                             "检测到 Kimi 模型，启用内置 web_search 工具"
                         )
-                    elif is_grok:
+                    elif self.analysis_model_runtime.provider_name == "grok":
                         self.logger.info("检测到 Grok 模型，启用 web_search 和 x_search 工具")
 
                 # 使用结构化输出管理器强制返回结构化数据
@@ -492,12 +518,7 @@ class LLMAnalyzer:
                 
                 # 记录主模型使用情况（如果没有使用过备用模型）
                 if self._last_used_model is None:
-                    if "kimi" in self.model.lower():
-                        self._last_used_model = "Kimi"
-                    elif "grok" in self.model.lower():
-                        self._last_used_model = "Grok"
-                    else:
-                        self._last_used_model = self.model
+                    self._last_used_model = self._display_provider_name(self.analysis_model_runtime)
                 
                 # 打印LLM返回的原始数据
                 self._log_llm_response(batch_result, i // self.batch_size + 1)
@@ -516,34 +537,35 @@ class LLMAnalyzer:
             except ContentFilterError as e:
                 self.logger.error(f"Kimi 内容过滤错误: {e}")
                 # 尝试使用 Grok 作为备用模型
-                if self.GROK_API_KEY and "kimi" in self.model.lower():
+                fallback_runtime = self._select_content_filter_fallback_runtime()
+                fallback_api_key = ""
+                if fallback_runtime is not None:
+                    fallback_api_key = self.provider_credentials.get(fallback_runtime.provider_name, "")
+
+                if (
+                    self.analysis_model_runtime.provider_name == "kimi"
+                    and fallback_runtime is not None
+                    and fallback_api_key
+                ):
                     self.logger.info("尝试切换到 Grok 模型重试...")
                     try:
-                        # 优先使用配置中的 Grok 模型作为 Kimi 的备用分析模型
-                        fallback_model = self.summary_model
-                        if "grok" not in fallback_model.lower():
-                            fallback_model = "grok-4-1-fast-reasoning"
-
-                        fallback_client = OpenAI(
-                            api_key=self.GROK_API_KEY,
-                            base_url="https://api.x.ai/v1",
-                            default_headers={"x-grok-conv-id": self.conversation_id}
-                        )
+                        fallback_client = self._build_client(fallback_runtime, fallback_api_key)
 
                         # 记录使用了备用模型
                         self._last_used_model = (
-                            "Kimi (主模型) -> Grok (备用模型)"
+                            f"{self._display_provider_name(self.analysis_model_runtime)} (主模型) -> "
+                            f"{self._display_provider_name(fallback_runtime)} (备用模型)"
                         )
 
                         # Grok 备用模型保持开启 web_search/x_search
                         batch_result = self.structured_output_manager.force_structured_response(
                             llm_client=fallback_client,
                             messages=messages,
-                            model=fallback_model,
+                            model=fallback_runtime.name,
                             max_retries=2,
                             temperature=self.temperature,
                             batch_mode=True,
-                            enable_web_search=True,
+                            enable_web_search=self._supports_web_search(fallback_runtime),
                             conversation_id=self.conversation_id,
                             usage_callback=self._record_token_usage
                         )
@@ -575,7 +597,7 @@ class LLMAnalyzer:
                         self.logger.error(f"Grok备用模型失败，停止当前分析: {fallback_error}")
                         raise
                 else:
-                    self.logger.warning("未配置 Grok API 密钥，无法使用备用模型")
+                    self.logger.warning("未配置可用的备用模型凭证，无法使用备用模型")
                     raise
                     
             except Exception as e:
@@ -784,7 +806,7 @@ class LLMAnalyzer:
             self.logger.info(f"  • 响应长度: {len(response_json)} 字符")
 
             # 如果是BatchAnalysisResult，显示结果数量
-            if hasattr(response, 'results'):
+            if isinstance(response, BatchAnalysisResult):
                 self.logger.info(f"  • 分析结果数量: {len(response.results)}")
 
         except Exception as e:
@@ -916,6 +938,9 @@ class LLMAnalyzer:
             conversation_id=self.conversation_id  # 传递会话ID提高缓存命中率
         )
         
+        if isinstance(result, BatchAnalysisResult):
+            raise TypeError("Expected StructuredAnalysisResult for single-content analysis")
+
         return result
     
     def should_ignore_content(self, content: str) -> bool:
@@ -938,7 +963,7 @@ class LLMAnalyzer:
         # 其他过滤逻辑由大模型在分析时完成
         return False
     
-    def build_system_prompt(self, market_snapshot: MarketSnapshot = None) -> str:
+    def build_system_prompt(self, market_snapshot: Optional[MarketSnapshot] = None) -> str:
         """
         构建系统提示词（便捷方法）
         
@@ -1071,12 +1096,7 @@ class LLMAnalyzer:
         """
         if self._last_used_model:
             return self._last_used_model
-        elif "kimi" in self.model.lower():
-            return "Kimi"
-        elif "grok" in self.model.lower():
-            return "Grok"
-        else:
-            return self.model
+        return self._display_provider_name(self.analysis_model_runtime)
     
     def clear_cache(self) -> None:
         """清除缓存的市场快照和系统提示词"""
@@ -1116,8 +1136,13 @@ class LLMAnalyzer:
             self.batch_size = kwargs["batch_size"]
         
         if "model" in kwargs:
-            self.model = kwargs["model"]
-        
+            runtime = kwargs["model"]
+            if isinstance(runtime, ResolvedModelRuntime):
+                self.analysis_model_runtime = runtime
+                self.model = runtime.name
+                self.analysis_provider = runtime.provider_name
+                self.analysis_api_key = self.provider_credentials.get(self.analysis_provider, "")
+
         self.logger.info("LLM分析器配置已更新")
     
     def _record_token_usage(self, usage_data: Dict[str, Any]) -> None:

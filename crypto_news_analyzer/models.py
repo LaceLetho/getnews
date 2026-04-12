@@ -231,40 +231,56 @@ class AuthConfig:
     """认证配置"""
     X_CT0: str
     X_AUTH_TOKEN: str
-    LLM_API_KEY: str
     GROK_API_KEY: str  # Grok API密钥，用于市场快照
     KIMI_API_KEY: str  # Kimi API密钥
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_CHANNEL_ID: str
     
     def __post_init__(self):
-        """数据验证"""
+        """标准化认证配置"""
         self.validate()
     
-    def validate(self) -> None:
-        """验证认证配置"""
-        if not self.LLM_API_KEY or not self.LLM_API_KEY.strip():
-            raise ValueError("LLM API密钥不能为空")
-        
-        if not self.TELEGRAM_BOT_TOKEN or not self.TELEGRAM_BOT_TOKEN.strip():
-            raise ValueError("Telegram Bot Token不能为空")
-        
-        if not self.TELEGRAM_CHANNEL_ID or not self.TELEGRAM_CHANNEL_ID.strip():
-            raise ValueError("Telegram Channel ID不能为空")
-        
+    def validate(
+        self,
+        mode: Optional[str] = None,
+        required_provider_env_vars: Optional[List[str]] = None,
+    ) -> None:
+        """验证认证配置。默认仅做标准化，按运行模式决定是否强校验。"""
         # X认证参数可以为空（如果不使用X源）
-        if self.X_CT0 and not self.X_CT0.strip():
-            self.X_CT0 = ""
-        if self.X_AUTH_TOKEN and not self.X_AUTH_TOKEN.strip():
-            self.X_AUTH_TOKEN = ""
+        self.X_CT0 = (self.X_CT0 or "").strip()
+        self.X_AUTH_TOKEN = (self.X_AUTH_TOKEN or "").strip()
         
         # Grok API密钥可以为空（如果不使用市场快照功能）
-        if self.GROK_API_KEY and not self.GROK_API_KEY.strip():
-            self.GROK_API_KEY = ""
+        self.GROK_API_KEY = (self.GROK_API_KEY or "").strip()
 
         # Kimi API密钥可以为空（如果不使用Kimi模型）
-        if self.KIMI_API_KEY and not self.KIMI_API_KEY.strip():
-            self.KIMI_API_KEY = ""
+        self.KIMI_API_KEY = (self.KIMI_API_KEY or "").strip()
+
+        self.TELEGRAM_BOT_TOKEN = (self.TELEGRAM_BOT_TOKEN or "").strip()
+        self.TELEGRAM_CHANNEL_ID = (self.TELEGRAM_CHANNEL_ID or "").strip()
+
+        normalized_mode = (mode or "").strip().lower()
+        if normalized_mode in {"analysis-service", "api-only"}:
+            missing_provider_env_vars = [
+                env_var
+                for env_var in (required_provider_env_vars or [])
+                if not getattr(self, env_var, "").strip()
+            ]
+            if missing_provider_env_vars:
+                raise ValueError(
+                    "缺少LLM提供商认证配置: " + ", ".join(sorted(missing_provider_env_vars))
+                )
+
+    def validate_telegram(self, required: bool = True) -> None:
+        """按需验证 Telegram 配置。"""
+        if not required:
+            return
+
+        if not self.TELEGRAM_BOT_TOKEN:
+            raise ValueError("Telegram Bot Token不能为空")
+
+        if not self.TELEGRAM_CHANNEL_ID:
+            raise ValueError("Telegram Channel ID不能为空")
     
     @classmethod
     def from_env(cls) -> 'AuthConfig':
@@ -273,7 +289,6 @@ class AuthConfig:
         return cls(
             X_CT0=os.getenv('X_CT0', ''),
             X_AUTH_TOKEN=os.getenv('X_AUTH_TOKEN', ''),
-            LLM_API_KEY=os.getenv('LLM_API_KEY', ''),
             GROK_API_KEY=os.getenv('GROK_API_KEY', ''),
             KIMI_API_KEY=os.getenv('KIMI_API_KEY', ''),
             TELEGRAM_BOT_TOKEN=os.getenv('TELEGRAM_BOT_TOKEN', ''),

@@ -123,7 +123,7 @@ uv run python -m crypto_news_analyzer.main --mode ingestion
 
 # Docker build and start
 docker build -t crypto-news-analyzer .
-docker run -e LLM_API_KEY=xxx -e API_KEY=xxx crypto-news-analyzer analysis-service
+docker run -e KIMI_API_KEY=xxx -e GROK_API_KEY=xxx -e API_KEY=xxx crypto-news-analyzer analysis-service
 ```
 
 Notes:
@@ -237,7 +237,7 @@ Telegram commands reject inline authentication secrets. The `rest_api` payload c
 
 - `API_KEY` - required Bearer auth secret for the HTTP analyze API
 - `API_HOST`, `API_PORT` - API bind address/port
-- `LLM_API_KEY` plus optional provider-specific keys such as `GROK_API_KEY` / `KIMI_API_KEY`
+- `KIMI_API_KEY`, `GROK_API_KEY` - LLM provider API keys (provider-specific)
 
 ### `analysis-service` only
 

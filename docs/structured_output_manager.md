@@ -182,7 +182,7 @@ from crypto_news_analyzer.analyzers.structured_output_manager import (
 manager = StructuredOutputManager(library="instructor")
 
 # 2. 创建并配置 LLM 客户端
-client = OpenAI(api_key=os.getenv("LLM_API_KEY"))
+client = OpenAI(api_key=os.getenv("KIMI_API_KEY"), base_url="https://api.kimi.com/coding/v1")
 instructor_client = manager.setup_instructor_client(client)
 
 # 3. 准备消息

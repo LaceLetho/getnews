@@ -6,13 +6,15 @@ LLM分析器测试
 
 import pytest
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
+from typing import Any, Dict
+from unittest.mock import Mock, patch
 from crypto_news_analyzer.analyzers.llm_analyzer import LLMAnalyzer
 from crypto_news_analyzer.analyzers.market_snapshot_service import MarketSnapshot
 from crypto_news_analyzer.analyzers.structured_output_manager import (
     StructuredAnalysisResult,
     BatchAnalysisResult
 )
+from crypto_news_analyzer.config.llm_registry import ModelConfig, resolve_model_runtime
 from crypto_news_analyzer.models import ContentItem
 from crypto_news_analyzer.utils.errors import ContentFilterError
 
@@ -87,6 +89,29 @@ class TestLLMAnalyzer:
             source=source,
             related_sources=[]
         )
+
+    def _make_llm_config(self) -> Dict[str, Any]:
+        return {
+            "llm_config": {
+                "model": {
+                    "provider": "kimi",
+                    "name": "kimi-k2.5",
+                    "options": {},
+                },
+                "fallback_models": [
+                    {
+                        "provider": "grok",
+                        "name": "grok-4-1-fast-reasoning",
+                        "options": {},
+                    }
+                ],
+                "market_model": {
+                    "provider": "grok",
+                    "name": "grok-4-1-fast-reasoning",
+                    "options": {},
+                },
+            }
+        }
     
     def test_initialization_mock_mode(self):
         """测试模拟模式初始化"""
@@ -99,12 +124,15 @@ class TestLLMAnalyzer:
     def test_initialization_with_api_keys(self):
         """测试使用API密钥初始化"""
         analyzer = LLMAnalyzer(
-            api_key="test_api_key",
-            GROK_API_KEY="test_grok_key",
+            provider_credentials={"kimi": "test_kimi_key", "grok": "test_grok_key"},
             mock_mode=False
         )
-        
-        assert analyzer.api_key == "test_api_key"
+
+        assert analyzer.provider_credentials == {
+            "grok": "test_grok_key",
+            "kimi": "test_kimi_key",
+        }
+        assert analyzer.KIMI_API_KEY == "test_kimi_key"
         assert analyzer.GROK_API_KEY == "test_grok_key"
     
     def test_get_market_snapshot_mock_mode(self):
@@ -467,12 +495,16 @@ class TestLLMAnalyzer:
         mock_openai_cls,
         mock_market_snapshot,
     ):
+        llm_config = self._make_llm_config()
         analyzer = LLMAnalyzer(
+            provider_credentials={"kimi": "test-kimi-key", "grok": "test-grok-key"},
             mock_mode=False,
             batch_size=1,
-            model="kimi-for-coding",
-            summary_model="grok-4-1-fast-reasoning",
-            GROK_API_KEY="test-grok-key",
+            model=resolve_model_runtime(ModelConfig(provider="kimi", name="kimi-k2.5", options={})),
+            market_model=resolve_model_runtime(
+                ModelConfig(provider="grok", name="grok-4-1-fast-reasoning", options={})
+            ),
+            config=llm_config,
         )
         analyzer.client = Mock()
         analyzer._log_final_prompt = Mock()
@@ -485,7 +517,7 @@ class TestLLMAnalyzer:
 
         analyzer.structured_output_manager.force_structured_response = Mock(
             side_effect=[
-                ContentFilterError("Kimi rejected", model="kimi-for-coding"),
+                ContentFilterError("Kimi rejected", model="kimi-k2.5"),
                 fallback_result,
             ]
         )
@@ -514,12 +546,16 @@ class TestLLMAnalyzer:
         mock_openai_cls,
         mock_market_snapshot,
     ):
+        llm_config = self._make_llm_config()
         analyzer = LLMAnalyzer(
+            provider_credentials={"kimi": "test-kimi-key", "grok": "test-grok-key"},
             mock_mode=False,
             batch_size=1,
-            model="kimi-for-coding",
-            summary_model="grok-4-1-fast-reasoning",
-            GROK_API_KEY="test-grok-key",
+            model=resolve_model_runtime(ModelConfig(provider="kimi", name="kimi-k2.5", options={})),
+            market_model=resolve_model_runtime(
+                ModelConfig(provider="grok", name="grok-4-1-fast-reasoning", options={})
+            ),
+            config=llm_config,
         )
         analyzer.client = Mock()
         analyzer._log_final_prompt = Mock()
@@ -528,7 +564,7 @@ class TestLLMAnalyzer:
         items = [self._make_content_item("batch-1", "第一批输入标题")]
         analyzer.structured_output_manager.force_structured_response = Mock(
             side_effect=[
-                ContentFilterError("Kimi rejected", model="kimi-for-coding"),
+                ContentFilterError("Kimi rejected", model="kimi-k2.5"),
                 RuntimeError("insufficient balance"),
             ]
         )

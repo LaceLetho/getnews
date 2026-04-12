@@ -130,6 +130,30 @@ class ModelRecord:
     supports_responses_api: bool
 
 
+@dataclass(frozen=True)
+class ResolvedModelRuntime:
+    """Resolved runtime metadata for a configured model."""
+
+    config: ModelConfig
+    provider: ProviderRecord
+    model: ModelRecord
+
+    @property
+    def provider_name(self) -> str:
+        return self.provider.name
+
+    @property
+    def name(self) -> str:
+        return self.model.name
+
+    @property
+    def options(self) -> Dict[str, Any]:
+        return dict(self.config.options)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return self.config.to_dict()
+
+
 THINKING_LEVEL_VALUES = tuple(level.value for level in ThinkingLevel)
 SUPPORTED_MODEL_OPTIONS = {"thinking_level"}
 
@@ -181,7 +205,7 @@ MODELS: Dict[str, Dict[str, ModelRecord]] = {
             name="kimi-k2-thinking-turbo",
             supports_web_search=True,
             supports_x_search=False,
-            supports_thinking_level=True,
+            supports_thinking_level=False,
             supports_responses_api=False,
         ),
     },
@@ -191,7 +215,7 @@ MODELS: Dict[str, Dict[str, ModelRecord]] = {
             name="grok-4-1-fast-reasoning",
             supports_web_search=True,
             supports_x_search=True,
-            supports_thinking_level=True,
+            supports_thinking_level=False,
             supports_responses_api=True,
         ),
         "grok-4-1-fast-non-reasoning": ModelRecord(
@@ -207,7 +231,7 @@ MODELS: Dict[str, Dict[str, ModelRecord]] = {
             name="grok-4.20-reasoning",
             supports_web_search=True,
             supports_x_search=True,
-            supports_thinking_level=True,
+            supports_thinking_level=False,
             supports_responses_api=True,
         ),
         "grok-4.20-non-reasoning": ModelRecord(
@@ -334,6 +358,18 @@ def validate_llm_config_payload(payload: Any) -> LLMConfig:
         cache_ttl_minutes=payload.get("cache_ttl_minutes", 240),
         cached_messages_hours=payload.get("cached_messages_hours", 24),
         enable_debug_logging=payload.get("enable_debug_logging", False),
+    )
+
+
+def resolve_model_runtime(model_config: ModelConfig) -> ResolvedModelRuntime:
+    """Resolve provider/model metadata for a validated model config."""
+
+    provider_record = get_provider_record(model_config.provider)
+    model_record = get_model_record(model_config.provider, model_config.name)
+    return ResolvedModelRuntime(
+        config=model_config,
+        provider=provider_record,
+        model=model_record,
     )
 
 

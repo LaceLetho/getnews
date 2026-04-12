@@ -32,7 +32,9 @@ def temp_config_file():
             "database_path": ":memory:"
         },
         "llm_config": {
-            "model": "gpt-4",
+            "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+            "fallback_models": [{"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}],
+            "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}},
             "temperature": 0.1,
             "max_tokens": 1000,
             "batch_size": 10
@@ -40,13 +42,13 @@ def temp_config_file():
         "rss_sources": [],
         "x_sources": []
     }
-    
+
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
         json.dump(config_data, f)
         temp_path = f.name
-    
+
     yield temp_path
-    
+
     if os.path.exists(temp_path):
         os.unlink(temp_path)
 
@@ -57,7 +59,7 @@ def test_cache_manager_initialized_on_system_startup(temp_config_file):
     
     # 初始化系统
     with patch.dict(os.environ, {
-        'LLM_API_KEY': 'test_key',
+        'KIMI_API_KEY': 'test_key',
         'TELEGRAM_BOT_TOKEN': 'test_token',
         'TELEGRAM_CHANNEL_ID': 'test_channel'
     }):
@@ -72,7 +74,7 @@ def test_cleanup_expired_cache_called_on_startup(temp_config_file):
     controller = MainController(temp_config_file)
     
     with patch.dict(os.environ, {
-        'LLM_API_KEY': 'test_key',
+        'KIMI_API_KEY': 'test_key',
         'TELEGRAM_BOT_TOKEN': 'test_token',
         'TELEGRAM_CHANNEL_ID': 'test_channel'
     }):
@@ -89,7 +91,7 @@ def test_cache_sent_messages_after_successful_send(temp_config_file):
     controller = MainController(temp_config_file)
     
     with patch.dict(os.environ, {
-        'LLM_API_KEY': 'test_key',
+        'KIMI_API_KEY': 'test_key',
         'TELEGRAM_BOT_TOKEN': 'test_token',
         'TELEGRAM_CHANNEL_ID': 'test_channel'
     }):
@@ -164,7 +166,7 @@ def test_cache_statistics_logged_after_caching(temp_config_file):
     controller = MainController(temp_config_file)
     
     with patch.dict(os.environ, {
-        'LLM_API_KEY': 'test_key',
+        'KIMI_API_KEY': 'test_key',
         'TELEGRAM_BOT_TOKEN': 'test_token',
         'TELEGRAM_CHANNEL_ID': 'test_channel'
     }):
@@ -215,7 +217,7 @@ def test_cache_failure_does_not_affect_main_flow(temp_config_file):
     controller = MainController(temp_config_file)
     
     with patch.dict(os.environ, {
-        'LLM_API_KEY': 'test_key',
+        'KIMI_API_KEY': 'test_key',
         'TELEGRAM_BOT_TOKEN': 'test_token',
         'TELEGRAM_CHANNEL_ID': 'test_channel'
     }):
@@ -258,27 +260,25 @@ def test_cache_failure_does_not_affect_main_flow(temp_config_file):
 def test_manual_execution_uses_cache(temp_config_file):
     """测试手动触发的执行也使用缓存机制（需求17.13）"""
     controller = MainController(temp_config_file)
-    
-    with patch.dict(os.environ, {
-        'LLM_API_KEY': 'test_key',
-        'TELEGRAM_BOT_TOKEN': 'test_token',
-        'TELEGRAM_CHANNEL_ID': 'test_channel'
-    }):
-        controller.initialize_system()
-    
-    # 模拟工作流各阶段
+
     with patch.object(controller, '_execute_crawling_stage') as mock_crawl, \
          patch.object(controller, '_execute_analysis_stage') as mock_analyze, \
          patch.object(controller, '_execute_reporting_stage') as mock_report, \
-         patch.object(controller, '_execute_sending_stage') as mock_send:
-        
+         patch.object(controller, '_execute_sending_stage') as mock_send, \
+         patch.dict(os.environ, {
+             'KIMI_API_KEY': 'test_key',
+             'GROK_API_KEY': 'test_grok_key',
+             'TELEGRAM_BOT_TOKEN': 'test_token',
+             'TELEGRAM_CHANNEL_ID': 'test_channel'
+         }):
+
         mock_crawl.return_value = {
             "success": True,
             "content_items": [],
             "crawl_status": Mock(),
             "errors": []
         }
-        
+
         mock_analyze.return_value = {
             "success": True,
             "categorized_items": {
@@ -297,21 +297,23 @@ def test_manual_execution_uses_cache(temp_config_file):
             "analysis_results": {},
             "errors": []
         }
-        
+
         mock_report.return_value = {
             "success": True,
             "report_content": "Test report",
             "errors": []
         }
-        
+
         mock_send.return_value = {
             "success": True,
             "errors": []
         }
-        
+
+        controller.initialize_system()
+
         # 触发手动执行
         result = controller.trigger_manual_execution(user_id="test_user", chat_id="test_chat")
-        
+
         assert result.success
         # 验证发送阶段被调用时传递了categorized_items
         mock_send.assert_called_once()
@@ -324,7 +326,7 @@ def test_cache_manager_closed_on_cleanup(temp_config_file):
     controller = MainController(temp_config_file)
     
     with patch.dict(os.environ, {
-        'LLM_API_KEY': 'test_key',
+        'KIMI_API_KEY': 'test_key',
         'TELEGRAM_BOT_TOKEN': 'test_token',
         'TELEGRAM_CHANNEL_ID': 'test_channel'
     }):

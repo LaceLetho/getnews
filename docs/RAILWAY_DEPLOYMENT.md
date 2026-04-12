@@ -71,14 +71,9 @@ API_KEY=your_strong_api_key
 API_HOST=0.0.0.0
 API_PORT=8080
 
-# LLM 相关密钥（用于新闻分析和市场快照）
-# 主 LLM API 密钥（必需）
-LLM_API_KEY=...
-
-# 若使用 Kimi 为主模型，可额外配置（优先于 LLM_API_KEY 用于 Kimi 路径）
+# LLM Provider 凭证（用于新闻分析和市场快照）
+# 使用 provider-specific 环境变量
 KIMI_API_KEY=...
-
-# 市场快照：必须使用 Grok
 GROK_API_KEY=...
 
 # Telegram Bot（用于 webhook 命令接收和报告推送）
@@ -110,22 +105,61 @@ X_AUTH_TOKEN=...
 
 **重要说明：**
 
-- `crypto-news-ingestion` **不**需要 `LLM_API_KEY`、`GROK_API_KEY`、`KIMI_API_KEY` 等 LLM 相关密钥，因为它不初始化 LLMAnalyzer、market snapshot service 或 Telegram 组件
+- `crypto-news-ingestion` **不**需要 `GROK_API_KEY`、`KIMI_API_KEY` 等 LLM 相关密钥，因为它不初始化 LLMAnalyzer、market snapshot service 或 Telegram 组件
 - `crypto-news-analysis` 需要完整的 LLM 和 Telegram 配置，因为它执行实际的新闻分析并响应 API/Telegram webhook 命令
 
-### 模型密钥使用方式与 fallback 机制
+### Provider 配置与模型选择
+
+模型配置在 `config.json` 的 `llm_config` 字段中定义，而非通过环境变量直接指定。环境变量仅用于提供各 provider 的 API 密钥。
+
+**支持的 Provider 和模型：**
+
+| Provider | 环境变量 | 可用模型 |
+|----------|----------|----------|
+| kimi | `KIMI_API_KEY` | kimi-k2.5, kimi-k2-turbo-preview, kimi-k2-thinking-turbo |
+| grok | `GROK_API_KEY` | grok-4-1-fast-reasoning, grok-4-1-fast-non-reasoning, grok-4.20-reasoning, grok-4.20-non-reasoning |
+
+**`llm_config` 结构示例：**
+
+```json
+{
+  "llm_config": {
+    "model": {
+      "provider": "kimi",
+      "name": "kimi-k2.5",
+      "options": {"thinking_level": "medium"}
+    },
+    "fallback_models": [
+      {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+    ],
+    "market_model": {
+      "provider": "grok",
+      "name": "grok-4-1-fast-reasoning",
+      "options": {}
+    },
+    "temperature": 0.5,
+    "max_tokens": 4000
+  }
+}
+```
+
+**配置说明：**
+
+- `model`: 主分析模型，用于新闻内容分析
+- `fallback_models`: 备用模型列表，当主模型不可用时按顺序尝试
+- `market_model`: 专门用于市场快照的模型（建议使用 grok，支持实时数据）
+- `options`: 可选配置，支持 `thinking_level`（取值：disabled, low, medium, high, xhigh）
 
 **市场快照（Market Snapshot）**
 
-- 仅使用 `GROK_API_KEY`
+- 使用 `llm_config.market_model` 指定的模型
 - 内部有缓存机制，失效时重新获取
 - Grok 不可用时回退到本地 fallback 快照（非实时）
 
 **新闻分析（News Analysis）**
 
-- 主模型：Kimi（使用 `KIMI_API_KEY`，若未配置则使用 `LLM_API_KEY`）
-- 备用模型：Grok（仅在 Kimi 返回**内容过滤错误**时触发）
-- 注意：fallback 机制有限，仅在 `ContentFilterError` 时切换，其他错误不会自动切换
+- 主模型：由 `llm_config.model` 指定
+- 备用模型：由 `llm_config.fallback_models` 列表指定，按顺序尝试
 
 ---
 

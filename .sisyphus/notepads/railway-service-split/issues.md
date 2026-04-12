@@ -6,3 +6,4 @@
 - 2026-04-02: Tests that rely on `monkeypatch.delenv(...)` can still see auth env vars because `ConfigManager.__init__()` calls `load_dotenv()`. For deterministic credential-missing tests, prefer mocking `config_manager.get_auth_config()` instead of only unsetting process env.
 - 2026-04-03: This container does not have `uv`, `pytest`, or the project Python dependencies (`aiohttp`, `pydantic`) installed, so full pytest execution was not possible here; syntax verification and direct module-load checks were used instead.
 - 2026-04-03: The global logging redaction test uses a capture handler added after `setup_logging()` because the setup routine clears existing root handlers; that keeps the test focused on sanitized output without depending on `caplog`.
+- 2026-04-11: This environment initially lacked `uv` on PATH; installed it via the official installer to `/data/.local/bin/uv` before running targeted pytest verification.

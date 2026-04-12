@@ -29,6 +29,11 @@ import traceback
 import asyncio
 
 from .config.manager import ConfigManager
+from .config.llm_registry import (
+    get_provider_record,
+    resolve_model_runtime,
+    validate_llm_config_payload,
+)
 from .domain.models import DataSource, IngestionJob, IngestionJobStatus
 from .storage.data_manager import DataManager
 from .crawlers.data_source_factory import get_data_source_factory
@@ -317,25 +322,36 @@ class MainController:
         try:
             self.logger.info("开始初始化系统组件")
             config_data = self._initialize_core_system_components()
+            runtime_mode = os.environ.get("CRYPTO_NEWS_RUNTIME_MODE", "analysis-service").strip().lower()
             
             # 初始化LLM分析器
             auth_config = self.config_manager.get_auth_config()
-            llm_config = config_data.get("llm_config", {})
+            llm_config = validate_llm_config_payload(config_data.get("llm_config", {}))
+            analysis_model_runtime = resolve_model_runtime(llm_config.model)
+            fallback_model_runtimes = [
+                resolve_model_runtime(model_config) for model_config in llm_config.fallback_models
+            ]
+            market_model_runtime = resolve_model_runtime(llm_config.market_model)
+            provider_credentials = self._resolve_provider_credentials(auth_config, llm_config)
+            self._validate_runtime_auth(
+                auth_config,
+                llm_config,
+                mode=runtime_mode,
+            )
             
             self.llm_analyzer = LLMAnalyzer(
-                api_key=auth_config.LLM_API_KEY,
-                GROK_API_KEY=auth_config.GROK_API_KEY,
-                KIMI_API_KEY=auth_config.KIMI_API_KEY,
-                model=llm_config.get("model", "gpt-4"),
-                summary_model=llm_config.get("summary_model", "grok-beta"),
-                market_prompt_path=llm_config.get("market_prompt_path", "./prompts/market_summary_prompt.md"),
-                analysis_prompt_path=llm_config.get("analysis_prompt_path", "./prompts/analysis_prompt.md"),
-                temperature=llm_config.get("temperature", 0.1),
-                max_tokens=llm_config.get("max_tokens", 4000),
-                batch_size=llm_config.get("batch_size", 10),
-                cache_ttl_minutes=llm_config.get("cache_ttl_minutes", 30),
-                cached_messages_hours=llm_config.get("cached_messages_hours", 24),
-                mock_mode=not auth_config.LLM_API_KEY,  # 如果没有API密钥则使用模拟模式
+                provider_credentials=provider_credentials,
+                model=analysis_model_runtime,
+                fallback_models=fallback_model_runtimes,
+                market_model=market_model_runtime,
+                market_prompt_path=llm_config.market_prompt_path,
+                analysis_prompt_path=llm_config.analysis_prompt_path,
+                temperature=llm_config.temperature,
+                max_tokens=llm_config.max_tokens,
+                batch_size=llm_config.batch_size,
+                cache_ttl_minutes=llm_config.cache_ttl_minutes,
+                cached_messages_hours=llm_config.cached_messages_hours,
+                mock_mode=False,
                 storage_config=self.storage_config,  # 传入storage_config以创建缓存管理器
                 config=config_data  # 传入完整配置
             )
@@ -568,10 +584,17 @@ class MainController:
             # 验证认证配置
             if not skip_analysis_auth_validation:
                 auth_config = self.config_manager.get_auth_config()
-                if not auth_config.LLM_API_KEY:
-                    validation_result["warnings"].append("LLM API密钥未配置，将使用模拟模式")
+                try:
+                    llm_config = validate_llm_config_payload(config_data.get("llm_config", {}))
+                    self._validate_runtime_auth(auth_config, llm_config, mode=normalized_scope or "analysis-service")
+                except Exception as e:
+                    validation_result["errors"].append(str(e))
+                    validation_result["valid"] = False
 
-                if not auth_config.TELEGRAM_BOT_TOKEN or not auth_config.TELEGRAM_CHANNEL_ID:
+                if (
+                    (normalized_scope or "analysis-service") == "analysis-service"
+                    and (not auth_config.TELEGRAM_BOT_TOKEN or not auth_config.TELEGRAM_CHANNEL_ID)
+                ):
                     validation_result["warnings"].append("Telegram配置不完整，将跳过报告发送")
             
             # 验证数据源配置
@@ -622,6 +645,27 @@ class MainController:
             self.logger.debug(traceback.format_exc())
         
         return validation_result
+
+    def _required_llm_provider_env_vars(self, llm_config: Any) -> List[str]:
+        providers = {
+            llm_config.model.provider,
+            llm_config.market_model.provider,
+            *(model.provider for model in llm_config.fallback_models),
+        }
+        return sorted({get_provider_record(provider).env_var for provider in providers})
+
+    def _resolve_provider_credentials(self, auth_config: Any, llm_config: Any) -> Dict[str, str]:
+        credentials: Dict[str, str] = {}
+        for env_var in self._required_llm_provider_env_vars(llm_config):
+            provider_record = get_provider_record(env_var.removesuffix("_API_KEY").lower())
+            credentials[provider_record.name] = getattr(auth_config, env_var, "").strip()
+        return credentials
+
+    def _validate_runtime_auth(self, auth_config: Any, llm_config: Any, mode: str) -> None:
+        auth_config.validate(
+            mode=mode,
+            required_provider_env_vars=self._required_llm_provider_env_vars(llm_config),
+        )
     
     def run_once(self, trigger_type: str = "manual", trigger_user: Optional[str] = None, trigger_chat_id: Optional[str] = None) -> ExecutionResult:
         """

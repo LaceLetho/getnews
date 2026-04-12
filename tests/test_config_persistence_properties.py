@@ -13,7 +13,15 @@ import json
 from hypothesis import given, strategies as st, assume, settings
 from typing import Dict, Any
 
+from crypto_news_analyzer.config.llm_registry import MODELS
 from crypto_news_analyzer.config.manager import ConfigManager
+
+
+VALID_MODEL_CONFIGS = [
+    {"provider": provider, "name": model_name, "options": {}}
+    for provider, models in MODELS.items()
+    for model_name in models
+]
 
 
 # 策略定义：生成有效的配置数据
@@ -103,7 +111,6 @@ def valid_auth_config(draw):
     return {
         "X_CT0": draw(st.text(max_size=100)),  # 可以为空
         "X_AUTH_TOKEN": draw(st.text(max_size=200)),  # 可以为空
-        "LLM_API_KEY": draw(st.text(min_size=1, max_size=100).filter(lambda x: x.strip())),
         "TELEGRAM_BOT_TOKEN": draw(st.text(min_size=1, max_size=100).filter(lambda x: x.strip())),
         "TELEGRAM_CHANNEL_ID": draw(st.text(min_size=1, max_size=50).filter(lambda x: x.strip())),
     }
@@ -113,11 +120,14 @@ def valid_auth_config(draw):
 def valid_llm_config(draw):
     """生成有效的LLM配置"""
     return {
-        "model": draw(st.sampled_from(["gpt-4", "gpt-3.5-turbo", "claude-3"])),
+        "model": draw(st.sampled_from(VALID_MODEL_CONFIGS)),
+        "fallback_models": draw(st.lists(st.sampled_from(VALID_MODEL_CONFIGS), min_size=0, max_size=3)),
+        "market_model": draw(st.sampled_from(VALID_MODEL_CONFIGS)),
         "temperature": draw(st.floats(min_value=0.0, max_value=2.0)),
         "max_tokens": draw(st.integers(min_value=100, max_value=4000)),
-        "prompt_config_path": "./prompts/analysis_prompt.json",
         "batch_size": draw(st.integers(min_value=1, max_value=50)),
+        "market_prompt_path": "./prompts/market_summary_prompt.md",
+        "analysis_prompt_path": "./prompts/analysis_prompt.md",
     }
 
 
@@ -135,6 +145,9 @@ def valid_config(draw):
 
 class TestConfigPersistenceProperties:
     """配置持久化一致性属性测试"""
+
+    temp_dir: str = ""
+    config_path: str = ""
 
     def setup_method(self):
         """测试前设置"""

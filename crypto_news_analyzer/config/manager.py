@@ -237,7 +237,6 @@ class ConfigManager:
         return AuthConfig(
             X_CT0=os.getenv("X_CT0", ""),
             X_AUTH_TOKEN=os.getenv("X_AUTH_TOKEN", ""),
-            LLM_API_KEY=os.getenv("LLM_API_KEY", ""),
             GROK_API_KEY=os.getenv("GROK_API_KEY", ""),
             KIMI_API_KEY=os.getenv("KIMI_API_KEY", ""),
             TELEGRAM_BOT_TOKEN=os.getenv("TELEGRAM_BOT_TOKEN", ""),

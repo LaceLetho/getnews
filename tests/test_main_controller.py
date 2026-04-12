@@ -168,10 +168,11 @@ class TestMainController:
                 "database_path": ":memory:"  # 使用内存数据库
             },
             "llm_config": {
-                "model": "MiniMax-M2.1",
+                "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+                "fallback_models": [{"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}],
+                "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}},
                 "temperature": 0.1,
                 "max_tokens": 1000,
-                "prompt_config_path": "./prompts/analysis_prompt.json",
                 "batch_size": 10
             },
             "rss_sources": [
@@ -216,13 +217,21 @@ class TestMainController:
                 "time_window_hours": 24,
                 "execution_interval": 10,
                 "storage": {"database_path": ":memory:"},
-                "llm_config": {}
+                "llm_config": {
+                    "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+                    "fallback_models": [],
+                    "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}},
+                    "temperature": 0.1,
+                    "max_tokens": 1000,
+                    "batch_size": 10
+                }
             }
             controller.config_manager.load_config.return_value = controller.config_manager.config_data
             controller.config_manager.get_rss_sources.return_value = []
             controller.config_manager.get_x_sources.return_value = []
             controller.config_manager.get_auth_config.return_value = Mock(
-                X_CT0="", X_AUTH_TOKEN="", LLM_API_KEY="test_key",
+                X_CT0="", X_AUTH_TOKEN="",
+                KIMI_API_KEY="test_kimi_key", GROK_API_KEY="test_grok_key",
                 TELEGRAM_BOT_TOKEN="test_token", TELEGRAM_CHANNEL_ID="test_channel"
             )
             controller.config_manager.get_storage_config.return_value = Mock(
@@ -415,7 +424,7 @@ class TestMainController:
         # 设置环境变量
         os.environ["TIME_WINDOW_HOURS"] = "48"
         os.environ["EXECUTION_INTERVAL"] = "7200"
-        os.environ["LLM_API_KEY"] = "env_api_key"
+        os.environ["KIMI_API_KEY"] = "env_kimi_key"
         
         try:
             # 为这个测试使用真实的配置管理器
@@ -425,7 +434,11 @@ class TestMainController:
                 "time_window_hours": 24,
                 "execution_interval": 3600,
                 "storage": {"database_path": ":memory:"},
-                "llm_config": {}
+                "llm_config": {
+                    "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+                    "fallback_models": [],
+                    "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+                }
             }
             
             # 验证getter方法返回环境变量的值
@@ -434,11 +447,11 @@ class TestMainController:
             
             # 验证认证配置从环境变量读取
             auth_config = mock_controller.config_manager.get_auth_config()
-            assert auth_config.LLM_API_KEY == "env_api_key"
+            assert auth_config.KIMI_API_KEY == "env_kimi_key"
             
         finally:
             # 清理环境变量
-            for key in ["TIME_WINDOW_HOURS", "EXECUTION_INTERVAL", "LLM_API_KEY"]:
+            for key in ["TIME_WINDOW_HOURS", "EXECUTION_INTERVAL", "KIMI_API_KEY"]:
                 if key in os.environ:
                     del os.environ[key]
 
@@ -467,6 +480,7 @@ class TestMainController:
 
         mock_controller.config_manager.get_rss_sources.return_value = []
         mock_controller.config_manager.get_x_sources.return_value = [x_source]
+        mock_controller.config_manager.get_rest_api_sources.return_value = []
         mock_controller.config_manager.get_x_auth_credentials.return_value = {
             "X_CT0": "ct0",
             "X_AUTH_TOKEN": "auth",
@@ -554,6 +568,7 @@ class TestMainController:
         mock_rss_source.name = "Test RSS"
         mock_rss_source.to_dict.return_value = {"name": "Test RSS"}
         mock_controller.config_manager.get_rss_sources.return_value = [mock_rss_source]
+        mock_controller.config_manager.get_rest_api_sources.return_value = []
         
         result = mock_controller._execute_crawling_stage(24)
         
@@ -580,6 +595,7 @@ class TestMainController:
         mock_x_source.name = "Test X"
         mock_x_source.to_dict.return_value = {"name": "Test X"}
         mock_controller.config_manager.get_x_sources.return_value = [mock_x_source]
+        mock_controller.config_manager.get_rest_api_sources.return_value = []
         mock_controller.config_manager.get_x_auth_credentials.return_value = {
             "X_CT0": "ct0-token",
             "X_AUTH_TOKEN": "auth-token",
@@ -905,10 +921,11 @@ class TestMainControllerIntegration:
                 "database_path": ":memory:"
             },
             "llm_config": {
-                "model": "MiniMax-M2.1",
+                "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+                "fallback_models": [{"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}],
+                "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}},
                 "temperature": 0.1,
                 "max_tokens": 1000,
-                "prompt_config_path": "./prompts/analysis_prompt.json",
                 "batch_size": 10
             },
             "rss_sources": [],
@@ -940,13 +957,21 @@ class TestMainControllerIntegration:
                 "time_window_hours": 24,
                 "execution_interval": 10,
                 "storage": {"database_path": ":memory:"},
-                "llm_config": {}
+                "llm_config": {
+                    "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+                    "fallback_models": [{"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}],
+                    "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}},
+                    "temperature": 0.1,
+                    "max_tokens": 1000,
+                    "batch_size": 10
+                }
             }
             controller.config_manager.load_config.return_value = controller.config_manager.config_data
             controller.config_manager.get_rss_sources.return_value = []
             controller.config_manager.get_x_sources.return_value = []
+            controller.config_manager.get_rest_api_sources.return_value = []
             controller.config_manager.get_auth_config.return_value = Mock(
-                X_CT0="", X_AUTH_TOKEN="", LLM_API_KEY="test_key",
+                X_CT0="", X_AUTH_TOKEN="", KIMI_API_KEY="test_key", GROK_API_KEY="",
                 TELEGRAM_BOT_TOKEN="", TELEGRAM_CHANNEL_ID=""
             )
             controller.config_manager.get_storage_config.return_value = Mock(

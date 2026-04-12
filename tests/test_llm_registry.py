@@ -11,6 +11,11 @@ from crypto_news_analyzer.config.llm_registry import (
 
 
 def build_valid_llm_config() -> dict[str, Any]:
+    """Build a valid config per official provider docs.
+    
+    Only kimi-k2.5 supports request-level thinking_level.
+    Grok models and kimi-k2-thinking-turbo do NOT support thinking_level.
+    """
     return {
         "model": {
             "provider": "kimi",
@@ -21,18 +26,18 @@ def build_valid_llm_config() -> dict[str, Any]:
             {
                 "provider": "grok",
                 "name": "grok-4-1-fast-reasoning",
-                "options": {"thinking_level": "low"},
+                "options": {},  # Grok models do not support thinking_level
             },
             {
                 "provider": "kimi",
                 "name": "kimi-k2-thinking-turbo",
-                "options": {"thinking_level": "high"},
+                "options": {},  # Always-on thinking, no request-level control
             },
         ],
         "market_model": {
             "provider": "grok",
             "name": "grok-4-1-fast-reasoning",
-            "options": {"thinking_level": "medium"},
+            "options": {},  # Grok models do not support thinking_level
         },
         "temperature": 0.5,
         "max_tokens": 150000,
@@ -91,16 +96,43 @@ def test_thinking_level_on_unsupported_model_fails():
 
 
 def test_thinking_level_on_supported_model_passes():
+    """Only kimi-k2.5 supports request-level thinking_level."""
     config = build_valid_llm_config()
     config["model"] = {
         "provider": "kimi",
-        "name": "kimi-k2-thinking-turbo",
+        "name": "kimi-k2.5",
         "options": {"thinking_level": "xhigh"},
     }
 
     validated = validate_llm_config_payload(config)
 
     assert validated.model.options["thinking_level"] == "xhigh"
+
+
+def test_thinking_level_on_kimi_k2_thinking_turbo_fails():
+    """kimi-k2-thinking-turbo has always-on thinking, no request-level control."""
+    config = build_valid_llm_config()
+    config["model"] = {
+        "provider": "kimi",
+        "name": "kimi-k2-thinking-turbo",
+        "options": {"thinking_level": "high"},
+    }
+
+    with pytest.raises(LLMRegistryError, match="does not support thinking_level"):
+        validate_llm_config_payload(config)
+
+
+def test_thinking_level_on_kimi_k2_turbo_preview_fails():
+    """kimi-k2-turbo-preview does not support thinking at all."""
+    config = build_valid_llm_config()
+    config["model"] = {
+        "provider": "kimi",
+        "name": "kimi-k2-turbo-preview",
+        "options": {"thinking_level": "low"},
+    }
+
+    with pytest.raises(LLMRegistryError, match="does not support thinking_level"):
+        validate_llm_config_payload(config)
 
 
 def test_unknown_option_rejected():
