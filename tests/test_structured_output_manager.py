@@ -19,14 +19,14 @@ from crypto_news_analyzer.analyzers.structured_output_manager import (
     StructuredAnalysisResult,
     BatchAnalysisResult,
     ValidationResult,
-    StructuredOutputLibrary
+    StructuredOutputLibrary,
 )
 from crypto_news_analyzer.utils.errors import ContentFilterError
 
 
 class TestStructuredAnalysisResult:
     """测试StructuredAnalysisResult数据模型"""
-    
+
     def test_valid_result_creation(self):
         """测试创建有效的结果对象"""
         result = StructuredAnalysisResult(
@@ -35,7 +35,7 @@ class TestStructuredAnalysisResult:
             weight_score=85,
             title="某巨鲸地址转移10000 ETH到交易所",
             body="某巨鲸地址转移10000 ETH到交易所",
-            source="https://example.com/news/123"
+            source="https://example.com/news/123",
         )
 
         assert result.time == "2024-01-01 12:00"
@@ -44,7 +44,7 @@ class TestStructuredAnalysisResult:
         assert result.title == "某巨鲸地址转移10000 ETH到交易所"
         assert result.body == "某巨鲸地址转移10000 ETH到交易所"
         assert result.source == "https://example.com/news/123"
-    
+
     def test_weight_score_validation(self):
         """测试weight_score的范围验证"""
         # 有效范围
@@ -53,23 +53,21 @@ class TestStructuredAnalysisResult:
             category="测试",
             weight_score=0,
             title="测试",
-
             body="测试",
-            source="https://example.com"
+            source="https://example.com",
         )
         assert result.weight_score == 0
-        
+
         result = StructuredAnalysisResult(
             time="2024-01-01 12:00",
             category="测试",
             weight_score=100,
             title="测试",
-
             body="测试",
-            source="https://example.com"
+            source="https://example.com",
         )
         assert result.weight_score == 100
-        
+
         # 无效范围
         with pytest.raises(ValidationError):
             StructuredAnalysisResult(
@@ -77,22 +75,20 @@ class TestStructuredAnalysisResult:
                 category="测试",
                 weight_score=-1,
                 title="测试",
-
                 body="测试",
-                source="https://example.com"
+                source="https://example.com",
             )
-        
+
         with pytest.raises(ValidationError):
             StructuredAnalysisResult(
                 time="2024-01-01 12:00",
                 category="测试",
                 weight_score=101,
                 title="测试",
-
                 body="测试",
-                source="https://example.com"
+                source="https://example.com",
             )
-    
+
     def test_empty_field_validation(self):
         """测试空字段验证"""
         # 空时间
@@ -102,11 +98,10 @@ class TestStructuredAnalysisResult:
                 category="测试",
                 weight_score=50,
                 title="测试",
-
                 body="测试",
-                source="https://example.com"
+                source="https://example.com",
             )
-        
+
         # 空分类
         with pytest.raises(ValidationError):
             StructuredAnalysisResult(
@@ -114,11 +109,10 @@ class TestStructuredAnalysisResult:
                 category="",
                 weight_score=50,
                 title="测试",
-
                 body="测试",
-                source="https://example.com"
+                source="https://example.com",
             )
-        
+
         # 空标题
         with pytest.raises(ValidationError):
             StructuredAnalysisResult(
@@ -127,7 +121,7 @@ class TestStructuredAnalysisResult:
                 weight_score=50,
                 title="",
                 body="测试",
-                source="https://example.com"
+                source="https://example.com",
             )
 
         # 空正文
@@ -138,9 +132,9 @@ class TestStructuredAnalysisResult:
                 weight_score=50,
                 title="测试",
                 body="",
-                source="https://example.com"
+                source="https://example.com",
             )
-    
+
     def test_source_url_validation(self):
         """测试source URL验证"""
         # 有效URL
@@ -149,23 +143,21 @@ class TestStructuredAnalysisResult:
             category="测试",
             weight_score=50,
             title="测试",
-
             body="测试",
-            source="https://example.com/news"
+            source="https://example.com/news",
         )
         assert result.source == "https://example.com/news"
-        
+
         result = StructuredAnalysisResult(
             time="2024-01-01 12:00",
             category="测试",
             weight_score=50,
             title="测试",
-
             body="测试",
-            source="http://example.com/news"
+            source="http://example.com/news",
         )
         assert result.source == "http://example.com/news"
-        
+
         # 无效URL
         with pytest.raises(ValidationError):
             StructuredAnalysisResult(
@@ -173,21 +165,20 @@ class TestStructuredAnalysisResult:
                 category="测试",
                 weight_score=50,
                 title="测试",
-
                 body="测试",
-                source="not-a-url"
+                source="not-a-url",
             )
 
 
 class TestBatchAnalysisResult:
     """测试BatchAnalysisResult数据模型"""
-    
+
     def test_empty_batch_result(self):
         """测试空批量结果（所有内容被过滤）"""
         batch = BatchAnalysisResult(results=[])
         assert batch.results == []
         assert len(batch.results) == 0
-    
+
     def test_batch_with_multiple_results(self):
         """测试包含多个结果的批量结果"""
         results = [
@@ -196,21 +187,19 @@ class TestBatchAnalysisResult:
                 category="大户动向",
                 weight_score=85,
                 title="测试1",
-
                 body="测试1",
-                source="https://example.com/1"
+                source="https://example.com/1",
             ),
             StructuredAnalysisResult(
                 time="2024-01-01 13:00",
                 category="安全事件",
                 weight_score=95,
                 title="测试2",
-
                 body="测试2",
-                source="https://example.com/2"
-            )
+                source="https://example.com/2",
+            ),
         ]
-        
+
         batch = BatchAnalysisResult(results=results)
         assert len(batch.results) == 2
         assert batch.results[0].category == "大户动向"
@@ -219,30 +208,30 @@ class TestBatchAnalysisResult:
 
 class TestStructuredOutputManager:
     """测试StructuredOutputManager类"""
-    
+
     def test_initialization(self):
         """测试初始化"""
         manager = StructuredOutputManager(library="instructor")
         assert manager.library == StructuredOutputLibrary.INSTRUCTOR
         assert manager.output_schema is not None
-    
+
     def test_unsupported_library_fallback(self):
         """测试不支持的库回退到默认库"""
         manager = StructuredOutputManager(library="unsupported")
         assert manager.library == StructuredOutputLibrary.INSTRUCTOR
-    
+
     def test_get_supported_libraries(self):
         """测试获取支持的库列表"""
         manager = StructuredOutputManager()
         libraries = manager.get_supported_libraries()
         assert "instructor" in libraries
         assert "native_json" in libraries
-    
+
     def test_get_output_schema(self):
         """测试获取输出schema"""
         manager = StructuredOutputManager()
         schema = manager.get_output_schema()
-        
+
         assert "properties" in schema
         assert "time" in schema["properties"]
         assert "category" in schema["properties"]
@@ -250,55 +239,55 @@ class TestStructuredOutputManager:
         assert "title" in schema["properties"]
         assert "body" in schema["properties"]
         assert "source" in schema["properties"]
-    
+
     def test_setup_output_schema(self):
         """测试设置自定义schema"""
         manager = StructuredOutputManager()
-        
+
         custom_schema = {"custom": "schema"}
         manager.setup_output_schema(custom_schema)
         assert manager.output_schema == custom_schema
-        
+
         # 重置为默认
         manager.setup_output_schema(None)
         assert "properties" in manager.output_schema
-    
+
     def test_validate_output_structure_single_valid(self):
         """测试验证单个有效结果"""
         manager = StructuredOutputManager()
-        
+
         response = {
             "time": "2024-01-01 12:00",
             "category": "大户动向",
             "weight_score": 85,
             "title": "测试标题",
             "body": "测试内容",
-            "source": "https://example.com/news"
+            "source": "https://example.com/news",
         }
-        
+
         result = manager.validate_output_structure(response)
         assert result.is_valid
         assert len(result.errors) == 0
-    
+
     def test_validate_output_structure_single_invalid(self):
         """测试验证单个无效结果"""
         manager = StructuredOutputManager()
-        
+
         # 缺少必需字段
         response = {
             "time": "2024-01-01 12:00",
-            "category": "大户动向"
+            "category": "大户动向",
             # 缺少其他字段
         }
-        
+
         result = manager.validate_output_structure(response)
         assert not result.is_valid
         assert len(result.errors) > 0
-    
+
     def test_validate_output_structure_batch_valid(self):
         """测试验证批量有效结果"""
         manager = StructuredOutputManager()
-        
+
         response = {
             "results": [
                 {
@@ -307,7 +296,7 @@ class TestStructuredOutputManager:
                     "weight_score": 85,
                     "title": "测试1",
                     "body": "内容1",
-                    "source": "https://example.com/1"
+                    "source": "https://example.com/1",
                 },
                 {
                     "time": "2024-01-01 13:00",
@@ -315,29 +304,29 @@ class TestStructuredOutputManager:
                     "weight_score": 95,
                     "title": "测试2",
                     "body": "内容2",
-                    "source": "https://example.com/2"
-                }
+                    "source": "https://example.com/2",
+                },
             ]
         }
-        
+
         result = manager.validate_output_structure(response)
         assert result.is_valid
         assert len(result.errors) == 0
-    
+
     def test_validate_output_structure_batch_empty(self):
         """测试验证空批量结果"""
         manager = StructuredOutputManager()
-        
+
         response = {"results": []}
-        
+
         result = manager.validate_output_structure(response)
         assert result.is_valid
         assert len(result.warnings) > 0  # 应该有警告
-    
+
     def test_validate_output_structure_batch_invalid(self):
         """测试验证批量无效结果"""
         manager = StructuredOutputManager()
-        
+
         response = {
             "results": [
                 {
@@ -345,42 +334,42 @@ class TestStructuredOutputManager:
                     "category": "大户动向",
                     "weight_score": 150,  # 超出范围
                     "title": "测试",
-    "body": "测试",
                     "body": "测试",
-                    "source": "https://example.com"
+                    "body": "测试",
+                    "source": "https://example.com",
                 }
             ]
         }
-        
+
         result = manager.validate_output_structure(response)
         assert not result.is_valid
         assert len(result.errors) > 0
-    
+
     def test_create_example_response_single(self):
         """测试创建单个示例响应"""
         manager = StructuredOutputManager()
         example = manager.create_example_response(batch_mode=False)
-        
+
         assert "time" in example
         assert "category" in example
         assert "weight_score" in example
         assert "title" in example
         assert "body" in example
         assert "source" in example
-    
+
     def test_create_example_response_batch(self):
         """测试创建批量示例响应"""
         manager = StructuredOutputManager()
         example = manager.create_example_response(batch_mode=True)
-        
+
         assert "results" in example
         assert isinstance(example["results"], list)
         assert len(example["results"]) > 0
-    
+
     def test_extract_json_from_markdown(self):
         """测试从markdown代码块提取JSON"""
         manager = StructuredOutputManager()
-        
+
         # 带json标记的代码块
         text = """
 这是一些文本
@@ -420,7 +409,7 @@ class TestStructuredOutputManager:
         assert json_str2 is not None
         data2 = json.loads(json_str2)
         assert data2["category"] == "测试2"
-    
+
     def test_handle_malformed_response_with_markdown(self):
         """测试处理包含markdown的格式错误响应"""
         manager = StructuredOutputManager()
@@ -443,77 +432,75 @@ class TestStructuredOutputManager:
         assert result is not None
         assert isinstance(result, StructuredAnalysisResult)
         assert result.category == "大户动向"
-    
+
     def test_handle_malformed_response_invalid(self):
         """测试处理无法恢复的格式错误响应"""
         manager = StructuredOutputManager()
-        
+
         response = "这不是有效的JSON"
-        
+
         result = manager.handle_malformed_response(response, batch_mode=False)
         assert result is None
-    
+
     def test_setup_instructor_client_openai(self):
         """测试设置OpenAI instructor客户端"""
         manager = StructuredOutputManager(library="instructor")
-        
+
         # 测试当instructor未安装时的错误处理
         # 由于instructor已安装，我们只测试客户端类型检测逻辑
         mock_client = Mock()
         mock_client.__class__.__name__ = "OpenAI"
-        
+
         # 这个测试验证方法存在且可以被调用
         # 实际的instructor集成将在集成测试中验证
-        assert hasattr(manager, 'setup_instructor_client')
+        assert hasattr(manager, "setup_instructor_client")
         assert callable(manager.setup_instructor_client)
-    
+
     def test_build_json_instruction_single(self):
         """测试构建单个结果的JSON指令"""
         manager = StructuredOutputManager()
         instruction = manager._build_json_instruction(batch_mode=False)
-        
+
         assert "time" in instruction
         assert "category" in instruction
         assert "weight_score" in instruction
         assert "title" in instruction
         assert "body" in instruction
         assert "source" in instruction
-    
+
     def test_build_json_instruction_batch(self):
         """测试构建批量结果的JSON指令"""
         manager = StructuredOutputManager()
         instruction = manager._build_json_instruction(batch_mode=True)
-        
+
         assert "results" in instruction
         assert "[]" in instruction  # 提到空列表
-    
+
     def test_add_json_instruction_to_messages_with_system(self):
         """测试向已有系统消息添加JSON指令"""
         manager = StructuredOutputManager()
-        
+
         messages = [
             {"role": "system", "content": "你是一个助手"},
-            {"role": "user", "content": "分析这个"}
+            {"role": "user", "content": "分析这个"},
         ]
-        
+
         instruction = "JSON格式要求"
         result = manager._add_json_instruction_to_messages(messages, instruction)
-        
+
         assert len(result) == 2
         assert "JSON格式要求" in result[0]["content"]
         assert "你是一个助手" in result[0]["content"]
-    
+
     def test_add_json_instruction_to_messages_without_system(self):
         """测试向没有系统消息的消息列表添加JSON指令"""
         manager = StructuredOutputManager()
-        
-        messages = [
-            {"role": "user", "content": "分析这个"}
-        ]
-        
+
+        messages = [{"role": "user", "content": "分析这个"}]
+
         instruction = "JSON格式要求"
         result = manager._add_json_instruction_to_messages(messages, instruction)
-        
+
         assert len(result) == 2
         assert result[0]["role"] == "system"
         assert "JSON格式要求" in result[0]["content"]
@@ -524,11 +511,7 @@ class TestValidationResult:
 
     def test_valid_result(self):
         """测试有效的验证结果"""
-        result = ValidationResult(
-            is_valid=True,
-            errors=[],
-            warnings=[]
-        )
+        result = ValidationResult(is_valid=True, errors=[], warnings=[])
 
         assert result.is_valid
         assert len(result.errors) == 0
@@ -536,11 +519,7 @@ class TestValidationResult:
 
     def test_invalid_result_with_errors(self):
         """测试包含错误的验证结果"""
-        result = ValidationResult(
-            is_valid=False,
-            errors=["错误1", "错误2"],
-            warnings=["警告1"]
-        )
+        result = ValidationResult(is_valid=False, errors=["错误1", "错误2"], warnings=["警告1"])
 
         assert not result.is_valid
         assert len(result.errors) == 2
@@ -555,25 +534,16 @@ class TestKimiIntegration:
 
         tool_call = SimpleNamespace(
             id="call_1",
-            function=SimpleNamespace(
-                name="$web_search",
-                arguments='{"query":"btc etf latest"}'
-            ),
+            function=SimpleNamespace(name="$web_search", arguments='{"query":"btc etf latest"}'),
             model_dump=lambda: {
                 "id": "call_1",
                 "type": "function",
-                "function": {
-                    "name": "$web_search",
-                    "arguments": '{"query":"btc etf latest"}'
-                }
-            }
+                "function": {"name": "$web_search", "arguments": '{"query":"btc etf latest"}'},
+            },
         )
 
         first_message = SimpleNamespace(
-            content="",
-            reasoning_content=None,
-            refusal=None,
-            tool_calls=[tool_call]
+            content="", reasoning_content=None, refusal=None, tool_calls=[tool_call]
         )
         first_response = SimpleNamespace(
             choices=[SimpleNamespace(message=first_message)],
@@ -581,8 +551,8 @@ class TestKimiIntegration:
                 prompt_tokens=10,
                 completion_tokens=5,
                 total_tokens=15,
-                input_tokens_details={"cached_tokens": 2}
-            )
+                input_tokens_details={"cached_tokens": 2},
+            ),
         )
 
         final_payload = {
@@ -594,7 +564,7 @@ class TestKimiIntegration:
                     "title": "标题",
                     "body": "正文",
                     "source": "https://example.com",
-                    "related_sources": ["https://example.com/detail"]
+                    "related_sources": ["https://example.com/detail"],
                 }
             ]
         }
@@ -602,7 +572,7 @@ class TestKimiIntegration:
             content=json.dumps(final_payload, ensure_ascii=False),
             reasoning_content=None,
             refusal=None,
-            tool_calls=None
+            tool_calls=None,
         )
         second_response = SimpleNamespace(
             choices=[SimpleNamespace(message=second_message)],
@@ -610,15 +580,13 @@ class TestKimiIntegration:
                 prompt_tokens=20,
                 completion_tokens=10,
                 total_tokens=30,
-                input_tokens_details={"cached_tokens": 3}
-            )
+                input_tokens_details={"cached_tokens": 3},
+            ),
         )
 
         create_mock = Mock(side_effect=[first_response, second_response])
         llm_client = SimpleNamespace(
-            chat=SimpleNamespace(
-                completions=SimpleNamespace(create=create_mock)
-            )
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
         )
 
         usage_records = []
@@ -628,7 +596,7 @@ class TestKimiIntegration:
             model="kimi-k2.5",
             temperature=0.1,
             batch_mode=True,
-            usage_callback=usage_records.append
+            usage_callback=usage_records.append,
         )
 
         assert isinstance(result, BatchAnalysisResult)
@@ -657,11 +625,10 @@ class TestKimiIntegration:
             content="",
             reasoning_content=None,
             refusal="Request rejected by policy",
-            tool_calls=None
+            tool_calls=None,
         )
         refusal_response = SimpleNamespace(
-            choices=[SimpleNamespace(message=refusal_message)],
-            usage=None
+            choices=[SimpleNamespace(message=refusal_message)], usage=None
         )
         llm_client = SimpleNamespace(
             chat=SimpleNamespace(
@@ -675,7 +642,7 @@ class TestKimiIntegration:
                 messages=[{"role": "user", "content": "analyze this"}],
                 model="kimi-k2.5",
                 temperature=0.1,
-                batch_mode=True
+                batch_mode=True,
             )
 
         assert exc_info.value.details["model"] == "kimi-k2.5"
@@ -705,7 +672,7 @@ class TestKimiIntegration:
             manager._raise_kimi_content_filter_error(
                 model="kimi-k2.5",
                 error_text="Request rejected by policy",
-                details={"source": "message.refusal"}
+                details={"source": "message.refusal"},
             )
 
         assert exc_info.value.details["model"] == "kimi-k2.5"
@@ -869,7 +836,7 @@ class TestKimiIntegration:
     def test_extract_json_from_raw_text_with_prefix_suffix(self):
         manager = StructuredOutputManager()
 
-        text = "说明：请看结果\n{\"results\":[{\"time\":\"Mon, 15 Jan 2024 14:30:00 +0000\",\"category\":\"Whale\",\"weight_score\":85,\"title\":\"t\",\"body\":\"b\",\"source\":\"https://example.com\"}]}\n附加说明"
+        text = '说明：请看结果\n{"results":[{"time":"Mon, 15 Jan 2024 14:30:00 +0000","category":"Whale","weight_score":85,"title":"t","body":"b","source":"https://example.com"}]}\n附加说明'
         extracted = manager._extract_json_from_raw_text(text)
 
         assert extracted is not None
@@ -916,6 +883,86 @@ class TestKimiIntegration:
         assert "<grok:render" not in result
         assert "</grok:render>" not in result
         assert '"category": "测试"' in result
+
+
+class TestOpenCodeGoIntegration:
+    """测试 OpenCode Go 兼容分支"""
+
+    def test_force_structured_response_uses_native_json_for_opencode_go(self):
+        manager = StructuredOutputManager(library="instructor")
+        llm_client = SimpleNamespace(_provider="opencode-go")
+
+        native_json_result = BatchAnalysisResult(results=[])
+        manager._force_with_native_json = Mock(return_value=native_json_result)
+        manager._force_with_instructor = Mock()
+
+        result = manager.force_structured_response(
+            llm_client=llm_client,
+            messages=[{"role": "user", "content": "analyze this"}],
+            model="kimi-k2.5",
+            batch_mode=True,
+        )
+
+        assert result is native_json_result
+        manager._force_with_native_json.assert_called_once()
+        manager._force_with_instructor.assert_not_called()
+
+    def test_force_with_native_json_reports_usage(self):
+        manager = StructuredOutputManager()
+
+        payload = {
+            "results": [
+                {
+                    "time": "Wed, 25 Mar 2026 17:36:34 +0800",
+                    "category": "BlackSwan",
+                    "weight_score": 78,
+                    "title": "标题",
+                    "body": "正文",
+                    "source": "https://example.com",
+                    "related_sources": [],
+                }
+            ]
+        }
+        response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content=json.dumps(payload, ensure_ascii=False))
+                )
+            ],
+            usage=SimpleNamespace(
+                prompt_tokens=12,
+                completion_tokens=8,
+                total_tokens=20,
+                input_tokens_details={"cached_tokens": 4},
+            ),
+        )
+        create_mock = Mock(return_value=response)
+        llm_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+        )
+
+        usage_records = []
+        result = manager._force_with_native_json(
+            llm_client=llm_client,
+            messages=[{"role": "system", "content": "Return JSON"}],
+            model="kimi-k2.5",
+            max_retries=3,
+            temperature=0.1,
+            batch_mode=True,
+            usage_callback=usage_records.append,
+        )
+
+        assert isinstance(result, BatchAnalysisResult)
+        assert len(result.results) == 1
+        assert usage_records == [
+            {
+                "model": "kimi-k2.5",
+                "prompt_tokens": 12,
+                "completion_tokens": 8,
+                "total_tokens": 20,
+                "cached_tokens": 4,
+            }
+        ]
 
 
 if __name__ == "__main__":
