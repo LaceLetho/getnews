@@ -161,11 +161,6 @@ To use OpenAI models, you need an OpenAI API key with pay-as-you-go billing enab
         "options": {"thinking_level": "high"}
       }
     ],
-    "market_model": {
-      "provider": "kimi",
-      "name": "kimi-k2-turbo-preview",
-      "options": {}
-    }
   }
 }
 ```
@@ -187,11 +182,6 @@ To use OpenAI models, you need an OpenAI API key with pay-as-you-go billing enab
         "options": {}
       }
     ],
-    "market_model": {
-      "provider": "kimi",
-      "name": "kimi-k2.5",
-      "options": {"thinking_level": "medium"}
-    }
   }
 }
 ```
