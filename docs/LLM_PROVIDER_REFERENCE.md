@@ -8,6 +8,7 @@ This document catalogs all supported LLM providers, their available models, and 
 |----------|---------------------|----------|
 | Kimi | `KIMI_API_KEY` | `https://api.kimi.com/coding/v1` |
 | Grok | `GROK_API_KEY` | `https://api.x.ai/v1` |
+| OpenCode Go | `OPENCODE_API_KEY` | `https://api.opencode.ai/v1` |
 
 **Important:** Set the appropriate API key in your `.env` file before using a provider. The system validates these credentials at startup.
 
@@ -29,6 +30,16 @@ This document catalogs all supported LLM providers, their available models, and 
 | `grok-4-1-fast-non-reasoning` | Yes | Yes | No | Yes |
 | `grok-4.20-reasoning` | Yes | Yes | No | Yes |
 | `grok-4.20-non-reasoning` | Yes | Yes | No | Yes |
+
+### OpenCode Go Models
+
+| Model | Web Search | X/Twitter Search | Thinking Level | Responses API |
+|-------|-----------|------------------|----------------|---------------|
+| `glm-5.1` | No | No | No | No |
+| `kimi-k2.5` | No | No | No | No |
+| `mimo-v2-pro` | No | No | No | No |
+
+**Note:** OpenCode Go models are NOT supported for `market_model` in phase 1. Use Kimi or Grok for market snapshots.
 
 ## Model Capabilities Explained
 
@@ -156,6 +167,34 @@ To use OpenAI models, you need an OpenAI API key with pay-as-you-go billing enab
   }
 }
 ```
+
+### Using OpenCode Go as Primary Model
+
+```json
+{
+  "llm_config": {
+    "model": {
+      "provider": "opencode-go",
+      "name": "kimi-k2.5",
+      "options": {}
+    },
+    "fallback_models": [
+      {
+        "provider": "opencode-go",
+        "name": "glm-5.1",
+        "options": {}
+      }
+    ],
+    "market_model": {
+      "provider": "kimi",
+      "name": "kimi-k2.5",
+      "options": {"thinking_level": "medium"}
+    }
+  }
+}
+```
+
+**Note:** OpenCode Go models do not support advanced capabilities (web search, thinking level, etc.). For `market_model`, you must use Kimi or Grok.
 
 ## Legacy Model Migrations
 

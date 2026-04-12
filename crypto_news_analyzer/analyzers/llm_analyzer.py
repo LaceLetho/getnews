@@ -210,6 +210,7 @@ class LLMAnalyzer:
             client_kwargs["default_headers"] = default_headers
 
         client = OpenAI(**client_kwargs)
+        setattr(client, "_provider", runtime.provider_name)
         if conversation_header_name:
             self.logger.info(
                 f"{runtime.provider.name.capitalize()}客户端已设置default_headers: "
@@ -220,7 +221,7 @@ class LLMAnalyzer:
         return client
 
     def _supports_web_search(self, runtime: ResolvedModelRuntime) -> bool:
-        return runtime.provider_name in {"kimi", "grok"}
+        return runtime.model.supports_web_search
 
     def _display_provider_name(self, runtime: ResolvedModelRuntime) -> str:
         if runtime.provider_name == "kimi":

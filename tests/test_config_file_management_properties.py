@@ -30,6 +30,13 @@ VALID_MODEL_CONFIGS = [
     for model_name in models
 ]
 
+VALID_MARKET_MODEL_CONFIGS = [
+    {"provider": provider, "name": model_name, "options": {}}
+    for provider, models in MODELS.items()
+    for model_name in models
+    if provider != "opencode-go"
+]
+
 SAFE_FIELD_NAME = st.text(
     alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_",
     min_size=1,
@@ -212,7 +219,7 @@ def valid_llm_config(draw):
     return {
         "model": draw(st.sampled_from(VALID_MODEL_CONFIGS)),
         "fallback_models": draw(st.lists(st.sampled_from(VALID_MODEL_CONFIGS), min_size=0, max_size=3)),
-        "market_model": draw(st.sampled_from(VALID_MODEL_CONFIGS)),
+        "market_model": draw(st.sampled_from(VALID_MARKET_MODEL_CONFIGS)),
         "temperature": draw(st.floats(min_value=0.0, max_value=2.0)),
         "max_tokens": draw(st.integers(min_value=100, max_value=4000)),
         "batch_size": draw(st.integers(min_value=1, max_value=50)),

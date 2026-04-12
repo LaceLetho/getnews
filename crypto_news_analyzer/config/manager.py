@@ -239,6 +239,7 @@ class ConfigManager:
             X_AUTH_TOKEN=os.getenv("X_AUTH_TOKEN", ""),
             GROK_API_KEY=os.getenv("GROK_API_KEY", ""),
             KIMI_API_KEY=os.getenv("KIMI_API_KEY", ""),
+            OPENCODE_API_KEY=os.getenv("OPENCODE_API_KEY", ""),
             TELEGRAM_BOT_TOKEN=os.getenv("TELEGRAM_BOT_TOKEN", ""),
             TELEGRAM_CHANNEL_ID=os.getenv("TELEGRAM_CHANNEL_ID", ""),
         )

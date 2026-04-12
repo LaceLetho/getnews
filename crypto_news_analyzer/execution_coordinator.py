@@ -654,11 +654,19 @@ class MainController:
         }
         return sorted({get_provider_record(provider).env_var for provider in providers})
 
+    def _required_llm_providers(self, llm_config: Any) -> List[str]:
+        providers = {
+            llm_config.model.provider,
+            llm_config.market_model.provider,
+            *(model.provider for model in llm_config.fallback_models),
+        }
+        return sorted(providers)
+
     def _resolve_provider_credentials(self, auth_config: Any, llm_config: Any) -> Dict[str, str]:
         credentials: Dict[str, str] = {}
-        for env_var in self._required_llm_provider_env_vars(llm_config):
-            provider_record = get_provider_record(env_var.removesuffix("_API_KEY").lower())
-            credentials[provider_record.name] = getattr(auth_config, env_var, "").strip()
+        for provider_name in self._required_llm_providers(llm_config):
+            provider_record = get_provider_record(provider_name)
+            credentials[provider_record.name] = getattr(auth_config, provider_record.env_var, "").strip()
         return credentials
 
     def _validate_runtime_auth(self, auth_config: Any, llm_config: Any, mode: str) -> None:

@@ -162,3 +162,60 @@ def test_market_model_validated_independently():
 
     with pytest.raises(LLMRegistryError, match="llm_config.market_model"):
         validate_llm_config_payload(config)
+
+
+def test_opencode_go_analysis_models_validate():
+    for model_name in ["glm-5.1", "kimi-k2.5", "mimo-v2-pro"]:
+        config = build_valid_llm_config()
+        config["model"] = {
+            "provider": "opencode-go",
+            "name": model_name,
+            "options": {},
+        }
+        config["fallback_models"] = []
+
+        validated = validate_llm_config_payload(config)
+
+        assert validated.model.provider == "opencode-go"
+        assert validated.model.name == model_name
+        assert validated.model.options == {}
+
+
+def test_opencode_go_market_model_rejected():
+    config = build_valid_llm_config()
+    config["market_model"] = {
+        "provider": "opencode-go",
+        "name": "kimi-k2.5",
+        "options": {},
+    }
+
+    with pytest.raises(
+        LLMRegistryError,
+        match="llm_config.market_model.*not supported for market snapshots in phase 1",
+    ):
+        validate_llm_config_payload(config)
+
+
+def test_opencode_go_unlisted_go_models_rejected():
+    for model_name in ["glm-5", "mimo-v2-omni", "minimax-m2.5", "minimax-m2.7"]:
+        config = build_valid_llm_config()
+        config["model"] = {
+            "provider": "opencode-go",
+            "name": model_name,
+            "options": {},
+        }
+
+        with pytest.raises(LLMRegistryError, match="Unsupported model"):
+            validate_llm_config_payload(config)
+
+
+def test_opencode_go_kimi_k2_5_rejects_thinking_level():
+    config = build_valid_llm_config()
+    config["model"] = {
+        "provider": "opencode-go",
+        "name": "kimi-k2.5",
+        "options": {"thinking_level": "medium"},
+    }
+
+    with pytest.raises(LLMRegistryError, match="does not support thinking_level"):
+        validate_llm_config_payload(config)

@@ -180,6 +180,13 @@ PROVIDERS: Dict[str, ProviderRecord] = {
         client_class="openai.OpenAI",
         conversation_header_name="x-grok-conv-id",
     ),
+    "opencode-go": ProviderRecord(
+        name="opencode-go",
+        env_var="OPENCODE_API_KEY",
+        base_url="https://api.opencode.ai/v1",
+        default_headers={"User-Agent": "opencode-go-client/1.0"},
+        client_class="openai.OpenAI",
+    ),
 }
 
 MODELS: Dict[str, Dict[str, ModelRecord]] = {
@@ -241,6 +248,32 @@ MODELS: Dict[str, Dict[str, ModelRecord]] = {
             supports_x_search=True,
             supports_thinking_level=False,
             supports_responses_api=True,
+        ),
+    },
+    "opencode-go": {
+        "glm-5.1": ModelRecord(
+            provider="opencode-go",
+            name="glm-5.1",
+            supports_web_search=False,
+            supports_x_search=False,
+            supports_thinking_level=False,
+            supports_responses_api=False,
+        ),
+        "kimi-k2.5": ModelRecord(
+            provider="opencode-go",
+            name="kimi-k2.5",
+            supports_web_search=False,
+            supports_x_search=False,
+            supports_thinking_level=False,
+            supports_responses_api=False,
+        ),
+        "mimo-v2-pro": ModelRecord(
+            provider="opencode-go",
+            name="mimo-v2-pro",
+            supports_web_search=False,
+            supports_x_search=False,
+            supports_thinking_level=False,
+            supports_responses_api=False,
         ),
     },
 }
@@ -342,13 +375,20 @@ def validate_llm_config_payload(payload: Any) -> LLMConfig:
     if not isinstance(fallback_payloads, list):
         raise LLMRegistryError("llm_config.fallback_models must be a list.")
 
+    validated_market_model = validate_model_config(payload.get("market_model"), "market_model")
+    if validated_market_model.provider == "opencode-go":
+        raise LLMRegistryError(
+            "llm_config.market_model: OpenCode Go provider is not supported for market snapshots in "
+            "phase 1. Use 'kimi' or 'grok' for market_model instead."
+        )
+
     return LLMConfig(
         model=validate_model_config(payload.get("model"), "model"),
         fallback_models=[
             validate_model_config(item, f"fallback_models[{index}]")
             for index, item in enumerate(fallback_payloads)
         ],
-        market_model=validate_model_config(payload.get("market_model"), "market_model"),
+        market_model=validated_market_model,
         temperature=payload.get("temperature", 0.5),
         max_tokens=payload.get("max_tokens", 4000),
         batch_size=payload.get("batch_size", 10),

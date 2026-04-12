@@ -14,8 +14,9 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch, MagicMock
 
 from crypto_news_analyzer.analyzers.structured_output_manager import StructuredAnalysisResult
+from crypto_news_analyzer.config.llm_registry import LLMConfig, ModelConfig
 from crypto_news_analyzer.execution_coordinator import MainController, ExecutionStatus, ExecutionMode
-from crypto_news_analyzer.models import ContentItem, CrawlStatus, CrawlResult, AnalysisResult, StorageConfig
+from crypto_news_analyzer.models import AuthConfig, ContentItem, CrawlStatus, CrawlResult, AnalysisResult, StorageConfig
 from crypto_news_analyzer.storage.cache_manager import SentMessageCacheManager
 from crypto_news_analyzer.storage.data_manager import DataManager
 from crypto_news_analyzer.storage.repositories import RepositoryFactory
@@ -902,6 +903,82 @@ class TestMainController:
         assert controller.llm_analyzer.analyze_content_batch.call_args.kwargs["historical_titles"] == [
             "before anchor title",
         ]
+
+    def test_required_llm_provider_env_vars_include_opencode_go(self, temp_config_file):
+        controller = MainController(temp_config_file)
+        llm_config = LLMConfig(
+            model=ModelConfig(provider="opencode-go", name="kimi-k2.5", options={}),
+            fallback_models=[ModelConfig(provider="grok", name="grok-4-1-fast-reasoning", options={})],
+            market_model=ModelConfig(provider="kimi", name="kimi-k2.5", options={}),
+        )
+
+        assert controller._required_llm_provider_env_vars(llm_config) == [
+            "GROK_API_KEY",
+            "KIMI_API_KEY",
+            "OPENCODE_API_KEY",
+        ]
+
+    def test_resolve_provider_credentials_maps_opencode_go_correctly(self, temp_config_file):
+        controller = MainController(temp_config_file)
+        llm_config = LLMConfig(
+            model=ModelConfig(provider="opencode-go", name="kimi-k2.5", options={}),
+            fallback_models=[ModelConfig(provider="grok", name="grok-4-1-fast-reasoning", options={})],
+            market_model=ModelConfig(provider="kimi", name="kimi-k2.5", options={}),
+        )
+        auth_config = AuthConfig(
+            X_CT0="",
+            X_AUTH_TOKEN="",
+            GROK_API_KEY="  grok-key  ",
+            KIMI_API_KEY=" kimi-key ",
+            OPENCODE_API_KEY=" opencode-key ",
+            TELEGRAM_BOT_TOKEN="",
+            TELEGRAM_CHANNEL_ID="",
+        )
+
+        assert controller._resolve_provider_credentials(auth_config, llm_config) == {
+            "grok": "grok-key",
+            "kimi": "kimi-key",
+            "opencode-go": "opencode-key",
+        }
+
+    def test_runtime_auth_requires_opencode_api_key_when_opencode_go_configured(self, temp_config_file):
+        controller = MainController(temp_config_file)
+        llm_config = LLMConfig(
+            model=ModelConfig(provider="opencode-go", name="kimi-k2.5", options={}),
+            fallback_models=[],
+            market_model=ModelConfig(provider="grok", name="grok-4-1-fast-reasoning", options={}),
+        )
+        auth_config = AuthConfig(
+            X_CT0="",
+            X_AUTH_TOKEN="",
+            GROK_API_KEY="grok-key",
+            KIMI_API_KEY="",
+            OPENCODE_API_KEY="",
+            TELEGRAM_BOT_TOKEN="",
+            TELEGRAM_CHANNEL_ID="",
+        )
+
+        with pytest.raises(ValueError, match="OPENCODE_API_KEY"):
+            controller._validate_runtime_auth(auth_config, llm_config, mode="analysis-service")
+
+    def test_runtime_auth_does_not_require_opencode_api_key_when_unused(self, temp_config_file):
+        controller = MainController(temp_config_file)
+        llm_config = LLMConfig(
+            model=ModelConfig(provider="kimi", name="kimi-k2.5", options={}),
+            fallback_models=[],
+            market_model=ModelConfig(provider="grok", name="grok-4-1-fast-reasoning", options={}),
+        )
+        auth_config = AuthConfig(
+            X_CT0="",
+            X_AUTH_TOKEN="",
+            GROK_API_KEY="grok-key",
+            KIMI_API_KEY="kimi-key",
+            OPENCODE_API_KEY="",
+            TELEGRAM_BOT_TOKEN="",
+            TELEGRAM_CHANNEL_ID="",
+        )
+
+        controller._validate_runtime_auth(auth_config, llm_config, mode="analysis-service")
 
 
 @pytest.mark.integration

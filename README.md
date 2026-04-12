@@ -84,6 +84,7 @@ DATABASE_URL=postgresql://postgres:password@host:5432/railway
 # 使用 provider-specific 环境变量而非通用 LLM_API_KEY
 KIMI_API_KEY=your_kimi_api_key_here
 GROK_API_KEY=your_grok_api_key_here
+OPENCODE_API_KEY=your_opencode_api_key_here
 
 # API 鉴权（启用 analysis-service / api-only 时必需）
 API_KEY=your_api_key
@@ -169,6 +170,9 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
   - kimi-k2.5, kimi-k2-turbo-preview, kimi-k2-thinking-turbo
 - **grok** (环境变量: `GROK_API_KEY`)
   - grok-4-1-fast-reasoning, grok-4-1-fast-non-reasoning, grok-4.20-reasoning, grok-4.20-non-reasoning
+- **opencode-go** (环境变量: `OPENCODE_API_KEY`)
+  - glm-5.1, kimi-k2.5, mimo-v2-pro
+  - **注意**: OpenCode Go 模型不支持 `market_model`，请使用 Kimi 或 Grok 作为市场快照模型
 
 **配置字段说明：**
 

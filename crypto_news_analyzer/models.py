@@ -233,6 +233,7 @@ class AuthConfig:
     X_AUTH_TOKEN: str
     GROK_API_KEY: str  # Grok API密钥，用于市场快照
     KIMI_API_KEY: str  # Kimi API密钥
+    OPENCODE_API_KEY: str  # OpenCode API密钥
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_CHANNEL_ID: str
     
@@ -247,17 +248,20 @@ class AuthConfig:
     ) -> None:
         """验证认证配置。默认仅做标准化，按运行模式决定是否强校验。"""
         # X认证参数可以为空（如果不使用X源）
-        self.X_CT0 = (self.X_CT0 or "").strip()
-        self.X_AUTH_TOKEN = (self.X_AUTH_TOKEN or "").strip()
+        object.__setattr__(self, "X_CT0", (self.X_CT0 or "").strip())
+        object.__setattr__(self, "X_AUTH_TOKEN", (self.X_AUTH_TOKEN or "").strip())
         
         # Grok API密钥可以为空（如果不使用市场快照功能）
-        self.GROK_API_KEY = (self.GROK_API_KEY or "").strip()
+        object.__setattr__(self, "GROK_API_KEY", (self.GROK_API_KEY or "").strip())
 
         # Kimi API密钥可以为空（如果不使用Kimi模型）
-        self.KIMI_API_KEY = (self.KIMI_API_KEY or "").strip()
+        object.__setattr__(self, "KIMI_API_KEY", (self.KIMI_API_KEY or "").strip())
 
-        self.TELEGRAM_BOT_TOKEN = (self.TELEGRAM_BOT_TOKEN or "").strip()
-        self.TELEGRAM_CHANNEL_ID = (self.TELEGRAM_CHANNEL_ID or "").strip()
+        # OpenCode API密钥可以为空（如果不使用opencode-go模型）
+        object.__setattr__(self, "OPENCODE_API_KEY", (self.OPENCODE_API_KEY or "").strip())
+
+        object.__setattr__(self, "TELEGRAM_BOT_TOKEN", (self.TELEGRAM_BOT_TOKEN or "").strip())
+        object.__setattr__(self, "TELEGRAM_CHANNEL_ID", (self.TELEGRAM_CHANNEL_ID or "").strip())
 
         normalized_mode = (mode or "").strip().lower()
         if normalized_mode in {"analysis-service", "api-only"}:
@@ -291,6 +295,7 @@ class AuthConfig:
             X_AUTH_TOKEN=os.getenv('X_AUTH_TOKEN', ''),
             GROK_API_KEY=os.getenv('GROK_API_KEY', ''),
             KIMI_API_KEY=os.getenv('KIMI_API_KEY', ''),
+            OPENCODE_API_KEY=os.getenv('OPENCODE_API_KEY', ''),
             TELEGRAM_BOT_TOKEN=os.getenv('TELEGRAM_BOT_TOKEN', ''),
             TELEGRAM_CHANNEL_ID=os.getenv('TELEGRAM_CHANNEL_ID', '')
         )

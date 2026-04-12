@@ -134,6 +134,30 @@ class TestLLMAnalyzer:
         }
         assert analyzer.KIMI_API_KEY == "test_kimi_key"
         assert analyzer.GROK_API_KEY == "test_grok_key"
+
+    @patch("crypto_news_analyzer.analyzers.llm_analyzer.OpenAI")
+    def test_opencode_go_initialization_uses_generic_openai_client_flow(self, mock_openai_cls):
+        runtime = resolve_model_runtime(
+            ModelConfig(provider="opencode-go", name="kimi-k2.5", options={})
+        )
+
+        analyzer = LLMAnalyzer(
+            provider_credentials={"opencode-go": "test-opencode-key"},
+            model=runtime,
+            mock_mode=False,
+        )
+
+        mock_openai_cls.assert_called_once_with(
+            api_key="test-opencode-key",
+            base_url="https://api.opencode.ai/v1",
+            default_headers={"User-Agent": "opencode-go-client/1.0"},
+        )
+        assert analyzer.analysis_provider == "opencode-go"
+        assert analyzer.analysis_api_key == "test-opencode-key"
+        assert analyzer.client is mock_openai_cls.return_value
+        assert analyzer.client is not None
+        assert getattr(analyzer.client, "_provider") == "opencode-go"
+        assert analyzer._supports_web_search(runtime) is False
     
     def test_get_market_snapshot_mock_mode(self):
         """测试获取市场快照（模拟模式）"""
@@ -577,6 +601,39 @@ class TestLLMAnalyzer:
                 is_scheduled=False,
                 historical_titles=[],
             )
+
+    def test_opencode_go_kimi_named_model_does_not_enable_web_search(
+        self,
+        mock_market_snapshot,
+    ):
+        runtime = resolve_model_runtime(
+            ModelConfig(provider="opencode-go", name="kimi-k2.5", options={})
+        )
+        analyzer = LLMAnalyzer(
+            provider_credentials={"opencode-go": "test-opencode-key"},
+            mock_mode=False,
+            batch_size=1,
+            model=runtime,
+        )
+        analyzer.client = Mock()
+        analyzer._log_final_prompt = Mock()
+        analyzer._log_llm_response = Mock()
+
+        analyzer.structured_output_manager.force_structured_response = Mock(
+            return_value=BatchAnalysisResult(results=[])
+        )
+
+        analyzer._analyze_batch_with_structured_output(
+            items=[self._make_content_item("batch-1", "第一批输入标题")],
+            system_prompt="system prompt",
+            market_snapshot=mock_market_snapshot,
+            is_scheduled=False,
+            historical_titles=[],
+        )
+
+        call = analyzer.structured_output_manager.force_structured_response.call_args
+        assert call.kwargs["model"] == "kimi-k2.5"
+        assert call.kwargs["enable_web_search"] is False
 
 
 class TestLLMAnalyzerIntegration:
