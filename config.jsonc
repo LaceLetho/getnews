@@ -49,9 +49,9 @@
     // LLM 最多可将一个主题拆成多少个语义子查询；原始 query 也会保留
     "max_subqueries": 4,
     // 每个子查询最多从 pgvector 召回多少条候选新闻
-    "per_subquery_limit": 50,
+    "per_subquery_limit": 200,
     // 所有子查询合并去重后，最多保留多少条新闻进入最终总结
-    "max_retained_items": 200,
+    "max_retained_items": 800,
     // 总结阶段每批送给模型处理的新闻条数；这里跟随 llm_config.batch_size
     "synthesis_batch_size": 200,
     // 生成向量所用的 OpenAI embedding 模型
