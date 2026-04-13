@@ -250,3 +250,26 @@ def test_semantic_search_background_flow_sends_no_match_message():
     assert sent_messages
     assert "暂无符合条件的新内容" in sent_messages[0]
     assert "BTC adoption" in sent_messages[0]
+
+
+def test_initialize_webhook_caches_running_event_loop():
+    handler: Any = _make_handler()
+    fake_application = SimpleNamespace(
+        initialize=AsyncMock(),
+        start=AsyncMock(),
+        bot=SimpleNamespace(
+            set_my_commands=AsyncMock(),
+            set_webhook=AsyncMock(),
+        ),
+    )
+    handler._build_application = Mock(return_value=fake_application)
+    handler._resolve_all_usernames = AsyncMock()
+    handler._setup_bot_commands = AsyncMock()
+    handler.get_webhook_url = Mock(return_value="https://example.com/telegram/webhook")
+    handler.get_webhook_path = Mock(return_value="/telegram/webhook")
+    handler.get_webhook_secret_token = Mock(return_value="secret")
+
+    asyncio.run(handler.initialize_webhook())
+
+    assert handler._event_loop is not None
+    assert handler._event_loop.is_running() is False

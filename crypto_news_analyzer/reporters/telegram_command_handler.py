@@ -158,7 +158,9 @@ class TelegramCommandHandler:
         if configured_secret:
             return configured_secret
 
-        return hashlib.sha256(f"telegram-webhook:{self.bot_token}".encode("utf-8")).hexdigest()
+        return hashlib.sha256(
+            f"telegram-webhook:{self.bot_token}".encode("utf-8")
+        ).hexdigest()
 
     def get_webhook_url(self) -> str:
         base_url = (
@@ -217,7 +219,9 @@ class TelegramCommandHandler:
 
         if not authorized_users_str:
             # 需求5.4: 环境变量为空或未设置时记录警告
-            self.logger.warning("No authorized users configured in TELEGRAM_AUTHORIZED_USERS")
+            self.logger.warning(
+                "No authorized users configured in TELEGRAM_AUTHORIZED_USERS"
+            )
             self._authorized_user_ids = set()
             self._usernames_to_resolve = []
             return
@@ -243,7 +247,9 @@ class TelegramCommandHandler:
                 self.logger.debug(f"Added username for resolution: {entry}")
             else:
                 # 需求5.9: 无效条目记录警告并跳过
-                self.logger.warning(f"Invalid entry in TELEGRAM_AUTHORIZED_USERS: {entry}")
+                self.logger.warning(
+                    f"Invalid entry in TELEGRAM_AUTHORIZED_USERS: {entry}"
+                )
 
         # 存储直接用户ID
         self._authorized_user_ids = user_ids
@@ -286,7 +292,9 @@ class TelegramCommandHandler:
                 )
                 return user_id
             else:
-                self.logger.warning(f"Could not resolve username @{username_clean}: user not found")
+                self.logger.warning(
+                    f"Could not resolve username @{username_clean}: user not found"
+                )
                 return None
 
         except Exception as e:
@@ -328,11 +336,15 @@ class TelegramCommandHandler:
                     self._username_cache[username] = user_id
 
                     # 需求6.4: 记录解析成功
-                    self.logger.info(f"Successfully resolved {username} to user_id {user_id}")
+                    self.logger.info(
+                        f"Successfully resolved {username} to user_id {user_id}"
+                    )
                     resolved_count += 1
                 else:
                     # 需求6.5: 记录解析失败
-                    self.logger.warning(f"Failed to resolve username {username}: user not found")
+                    self.logger.warning(
+                        f"Failed to resolve username {username}: user not found"
+                    )
                     failed_count += 1
 
             except Exception as e:
@@ -378,7 +390,9 @@ class TelegramCommandHandler:
 
         # 如果提供了 username，检查是否在待解析列表中
         if username:
-            username_with_at = f"@{username}" if not username.startswith("@") else username
+            username_with_at = (
+                f"@{username}" if not username.startswith("@") else username
+            )
 
             # 如果这个 username 在待解析列表中，自动学习映射
             if username_with_at in self._usernames_to_resolve:
@@ -428,7 +442,9 @@ class TelegramCommandHandler:
 
         # 检查冷却时间（仅针对/analyze命令）
         cooldown_minutes = self.config.command_rate_limit.get("cooldown_minutes", 5)
-        minutes_since_last = (now - state.last_analyze_command_time).total_seconds() / 60
+        minutes_since_last = (
+            now - state.last_analyze_command_time
+        ).total_seconds() / 60
         if minutes_since_last < cooldown_minutes:
             remaining = cooldown_minutes - minutes_since_last
             return False, f"命令冷却中，请等待 {remaining:.1f} 分钟"
@@ -598,7 +614,9 @@ class TelegramCommandHandler:
             commands = [
                 BotCommand("start", "获取您的用户ID和授权状态"),
                 BotCommand("analyze", "分析消息，可指定小时数如/analyze 24"),
-                BotCommand("semantic_search", "语义搜索，如/semantic_search 24 BTC adoption"),
+                BotCommand(
+                    "semantic_search", "语义搜索，如/semantic_search 24 BTC adoption"
+                ),
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
                 BotCommand("tokens", "查看LLM token使用统计"),
@@ -622,6 +640,7 @@ class TelegramCommandHandler:
 
         self.logger.info("初始化Telegram webhook模式")
         self.application = self._build_application(use_updater=False)
+        self._event_loop = asyncio.get_running_loop()
 
         await self.application.initialize()
         await self.application.start()
@@ -717,7 +736,9 @@ class TelegramCommandHandler:
                     authorized=False,
                     reason="user not in authorized list",
                 )
-                self._log_command_execution("/analyze", user_id, username, None, False, response)
+                self._log_command_execution(
+                    "/analyze", user_id, username, None, False, response
+                )
                 return
 
             # Log successful authorization
@@ -734,7 +755,9 @@ class TelegramCommandHandler:
             if not allowed:
                 response = f"⏱️ 速率限制\n\n{error_msg}"
                 await update.message.reply_text(response)
-                self._log_command_execution("/analyze", user_id, username, None, False, response)
+                self._log_command_execution(
+                    "/analyze", user_id, username, None, False, response
+                )
                 return
 
             # 解析参数 - 从 context.args 获取小时数
@@ -850,7 +873,9 @@ class TelegramCommandHandler:
                 return
 
             try:
-                config_manager = getattr(self.execution_coordinator, "config_manager", None)
+                config_manager = getattr(
+                    self.execution_coordinator, "config_manager", None
+                )
                 get_semantic_search_config = getattr(
                     config_manager, "get_semantic_search_config", None
                 )
@@ -864,7 +889,9 @@ class TelegramCommandHandler:
                 await message.reply_text(f"❌ 参数错误\n\n{str(e)}")
                 return
 
-            response = self.handle_semantic_search_command(user_id, username, chat_id, hours, topic)
+            response = self.handle_semantic_search_command(
+                user_id, username, chat_id, hours, topic
+            )
             await message.reply_text(response, parse_mode="Markdown")
 
         except Exception as e:
@@ -917,7 +944,9 @@ class TelegramCommandHandler:
                     authorized=False,
                     reason="user not in authorized list",
                 )
-                self._log_command_execution("/status", user_id, username, None, False, response)
+                self._log_command_execution(
+                    "/status", user_id, username, None, False, response
+                )
                 return
 
             # Log successful authorization
@@ -933,7 +962,9 @@ class TelegramCommandHandler:
             # 获取状态
             response = self.handle_status_command(user_id)
             await update.message.reply_text(response, parse_mode="Markdown")
-            self._log_command_execution("/status", user_id, username, None, True, "状态查询成功")
+            self._log_command_execution(
+                "/status", user_id, username, None, True, "状态查询成功"
+            )
 
         except Exception as e:
             error_msg = f"处理/status命令时发生错误: {str(e)}"
@@ -973,7 +1004,9 @@ class TelegramCommandHandler:
                     authorized=False,
                 )
                 await update.message.reply_text("❌ 您没有权限执行此命令")
-                self._log_command_execution("/market", user_id, username, None, False, "权限拒绝")
+                self._log_command_execution(
+                    "/market", user_id, username, None, False, "权限拒绝"
+                )
                 return
 
             # /market命令不需要速率限制检查，因为它只是读取缓存的市场快照
@@ -1053,7 +1086,9 @@ class TelegramCommandHandler:
                     authorized=False,
                     reason="user not in authorized list",
                 )
-                self._log_command_execution("/help", user_id, username, None, False, response)
+                self._log_command_execution(
+                    "/help", user_id, username, None, False, response
+                )
                 return
 
             # Log successful authorization
@@ -1069,7 +1104,9 @@ class TelegramCommandHandler:
             # 获取帮助信息
             response = self.handle_help_command(user_id)
             await update.message.reply_text(response)
-            self._log_command_execution("/help", user_id, username, None, True, "帮助信息已发送")
+            self._log_command_execution(
+                "/help", user_id, username, None, True, "帮助信息已发送"
+            )
 
         except Exception as e:
             error_msg = f"处理/help命令时发生错误: {str(e)}"
@@ -1116,7 +1153,9 @@ class TelegramCommandHandler:
                     authorized=False,
                     reason="user not in authorized list",
                 )
-                self._log_command_execution("/tokens", user_id, username, None, False, response)
+                self._log_command_execution(
+                    "/tokens", user_id, username, None, False, response
+                )
                 return
 
             # Log successful authorization
@@ -1132,7 +1171,9 @@ class TelegramCommandHandler:
             # 获取token使用统计
             response = self.handle_tokens_command()
             await update.message.reply_text(response, parse_mode="Markdown")
-            self._log_command_execution("/tokens", user_id, username, None, True, "Token统计已发送")
+            self._log_command_execution(
+                "/tokens", user_id, username, None, True, "Token统计已发送"
+            )
 
         except Exception as e:
             error_msg = f"处理/tokens命令时发生错误: {str(e)}"
@@ -1272,15 +1313,21 @@ class TelegramCommandHandler:
                 authorized=True,
             )
 
-            payload = parse_telegram_datasource_command_json(command_text, "/datasource_add")
+            payload = parse_telegram_datasource_command_json(
+                command_text, "/datasource_add"
+            )
             validated_payload = validate_telegram_datasource_create_payload(payload)
 
-            repository = getattr(self.execution_coordinator, "datasource_repository", None)
+            repository = getattr(
+                self.execution_coordinator, "datasource_repository", None
+            )
             if repository is None:
                 raise ValueError("数据源仓储未初始化")
 
             try:
-                saved_datasource = repository.save(validated_payload.to_domain_datasource())
+                saved_datasource = repository.save(
+                    validated_payload.to_domain_datasource()
+                )
             except DataSourceAlreadyExistsError:
                 response = (
                     "⚠️ 数据源已存在\n\n"
@@ -1330,7 +1377,11 @@ class TelegramCommandHandler:
                     return
                 raise
 
-            tags_text = ", ".join(saved_datasource.tags) if saved_datasource.tags else "（无标签）"
+            tags_text = (
+                ", ".join(saved_datasource.tags)
+                if saved_datasource.tags
+                else "（无标签）"
+            )
             response = (
                 "✅ 数据源创建成功\n\n"
                 f"ID: {saved_datasource.id}\n"
@@ -1449,7 +1500,9 @@ class TelegramCommandHandler:
             )
 
             if not context.args or not str(context.args[0]).strip():
-                response = "❌ 参数错误\n\n请输入数据源ID，例如：/datasource_delete ds-123"
+                response = (
+                    "❌ 参数错误\n\n请输入数据源ID，例如：/datasource_delete ds-123"
+                )
                 self._log_expected_command_outcome(
                     command="/datasource_delete",
                     user_id=user_id,
@@ -1470,14 +1523,20 @@ class TelegramCommandHandler:
                 return
 
             datasource_id = str(context.args[0]).strip()
-            repository = getattr(self.execution_coordinator, "datasource_repository", None)
+            repository = getattr(
+                self.execution_coordinator, "datasource_repository", None
+            )
             if repository is None:
                 raise ValueError("数据源仓储未初始化")
 
             try:
-                deleted = self.execution_coordinator.datasource_repository.delete(datasource_id)
+                deleted = self.execution_coordinator.datasource_repository.delete(
+                    datasource_id
+                )
             except DataSourceInUseError as exc:
-                active_job_text = ", ".join(exc.active_job_ids) if exc.active_job_ids else "未知"
+                active_job_text = (
+                    ", ".join(exc.active_job_ids) if exc.active_job_ids else "未知"
+                )
                 response = (
                     "⚠️ 删除冲突\n\n"
                     f"数据源 ID {datasource_id} 当前不能删除，因为匹配的入库任务仍处于活跃状态。\n"
@@ -1565,7 +1624,8 @@ class TelegramCommandHandler:
 
             if not is_authorized:
                 response.append(
-                    "⚠️ 您当前没有使用权限。\n" "请将您的 User ID 发送给管理员以获取访问权限。"
+                    "⚠️ 您当前没有使用权限。\n"
+                    "请将您的 User ID 发送给管理员以获取访问权限。"
                 )
             else:
                 response.append(
@@ -1611,7 +1671,9 @@ class TelegramCommandHandler:
             effective_hours = None
             window_description = None
 
-            analysis_config = self.execution_coordinator.config_manager.get_analysis_config()
+            analysis_config = (
+                self.execution_coordinator.config_manager.get_analysis_config()
+            )
             max_hours = analysis_config.get("max_analysis_window_hours", 24)
 
             if hours is not None:
@@ -1619,29 +1681,35 @@ class TelegramCommandHandler:
                 window_description = f"最近 {effective_hours} 小时"
             else:
                 try:
-                    recipient_key = self.execution_coordinator._resolve_manual_recipient_key(
-                        chat_id,
-                        manual_source="telegram",
-                    )
-                    last_analysis_time = (
-                        self.execution_coordinator.data_manager.get_last_successful_analysis_time(
-                            recipient_key
+                    recipient_key = (
+                        self.execution_coordinator._resolve_manual_recipient_key(
+                            chat_id,
+                            manual_source="telegram",
                         )
+                    )
+                    last_analysis_time = self.execution_coordinator.data_manager.get_last_successful_analysis_time(
+                        recipient_key
                     )
                     if last_analysis_time:
                         if last_analysis_time.tzinfo is None:
                             from datetime import timezone
 
-                            last_analysis_time = last_analysis_time.replace(tzinfo=timezone.utc)
+                            last_analysis_time = last_analysis_time.replace(
+                                tzinfo=timezone.utc
+                            )
 
                         now = datetime.now(last_analysis_time.tzinfo)
-                        hours_since_last = (now - last_analysis_time).total_seconds() / 3600
+                        hours_since_last = (
+                            now - last_analysis_time
+                        ).total_seconds() / 3600
                         bounded_hours = max(1, math.ceil(max(hours_since_last, 0)))
                         effective_hours = min(bounded_hours, max_hours)
                         if bounded_hours > max_hours:
                             window_description = f"最近 {effective_hours} 小时"
                         else:
-                            window_description = f"自上次成功运行以来（约 {effective_hours} 小时）"
+                            window_description = (
+                                f"自上次成功运行以来（约 {effective_hours} 小时）"
+                            )
                         self.logger.info(
                             f"上次分析时间: {last_analysis_time}, 距今 {hours_since_last:.1f} 小时, "
                             f"使用时间窗口: {effective_hours} 小时"
@@ -1649,9 +1717,13 @@ class TelegramCommandHandler:
                     else:
                         effective_hours = max_hours
                         window_description = f"最近 {effective_hours} 小时"
-                        self.logger.info(f"没有找到上次分析记录，使用默认时间窗口: {max_hours}小时")
+                        self.logger.info(
+                            f"没有找到上次分析记录，使用默认时间窗口: {max_hours}小时"
+                        )
                 except Exception as e:
-                    self.logger.warning(f"获取上次分析时间失败: {str(e)}，使用默认{max_hours}小时")
+                    self.logger.warning(
+                        f"获取上次分析时间失败: {str(e)}，使用默认{max_hours}小时"
+                    )
                     effective_hours = max_hours
                     window_description = f"最近 {effective_hours} 小时"
 
@@ -1687,7 +1759,9 @@ class TelegramCommandHandler:
         except Exception as e:
             error_msg = f"触发分析失败: {str(e)}"
             self.logger.error(error_msg)
-            self._log_command_execution("/analyze", user_id, username, None, False, error_msg)
+            self._log_command_execution(
+                "/analyze", user_id, username, None, False, error_msg
+            )
             return f"❌ 执行失败\n\n{str(e)}"
 
     def handle_semantic_search_command(
@@ -1750,7 +1824,9 @@ class TelegramCommandHandler:
     def _get_semantic_search_service(self) -> Optional[Any]:
         service = getattr(self.execution_coordinator, "semantic_search_service", None)
         if service is None:
-            getter = getattr(self.execution_coordinator, "get_semantic_search_service", None)
+            getter = getattr(
+                self.execution_coordinator, "get_semantic_search_service", None
+            )
             if callable(getter):
                 service = getter()
         return service
@@ -1772,7 +1848,9 @@ class TelegramCommandHandler:
         )
 
         try:
-            result = semantic_search_service.search(query=topic, time_window_hours=hours)
+            result = semantic_search_service.search(
+                query=topic, time_window_hours=hours
+            )
             success = result.get("success", False)
             errors = result.get("errors", [])
             report_content = result.get("report_content", "")
@@ -1780,9 +1858,11 @@ class TelegramCommandHandler:
 
             if success:
                 if report_content:
-                    send_result = self.execution_coordinator.telegram_sender.send_report_to_chat(
-                        report_content,
-                        chat_id,
+                    send_result = (
+                        self.execution_coordinator.telegram_sender.send_report_to_chat(
+                            report_content,
+                            chat_id,
+                        )
                     )
                     self._log_command_execution(
                         "/semantic_search",
@@ -1916,9 +1996,13 @@ class TelegramCommandHandler:
                 report_content = result.get("report_content", "")
 
                 if not report_content and items_processed == 0:
-                    self.logger.info(f"分析成功但无新内容: chat_id={chat_id}, 时间窗口={hours}小时")
+                    self.logger.info(
+                        f"分析成功但无新内容: chat_id={chat_id}, 时间窗口={hours}小时"
+                    )
                     notification = (
-                        "✅ *分析完成*\n\n" "暂无符合条件的新内容。\n" f"分析范围: {window_text}"
+                        "✅ *分析完成*\n\n"
+                        "暂无符合条件的新内容。\n"
+                        f"分析范围: {window_text}"
                     )
                     self._send_message_sync(chat_id, notification)
                     return
@@ -1938,17 +2022,22 @@ class TelegramCommandHandler:
                     return
 
                 self.logger.info(
-                    f"分析成功，准备发送报告到 chat_id={chat_id}, " f"处理项目数: {items_processed}"
+                    f"分析成功，准备发送报告到 chat_id={chat_id}, "
+                    f"处理项目数: {items_processed}"
                 )
 
-                send_result = self.execution_coordinator.telegram_sender.send_report_to_chat(
-                    report_content, chat_id
+                send_result = (
+                    self.execution_coordinator.telegram_sender.send_report_to_chat(
+                        report_content, chat_id
+                    )
                 )
 
                 if send_result.success:
-                    recipient_key = self.execution_coordinator._resolve_manual_recipient_key(
-                        chat_id,
-                        manual_source="telegram",
+                    recipient_key = (
+                        self.execution_coordinator._resolve_manual_recipient_key(
+                            chat_id,
+                            manual_source="telegram",
+                        )
                     )
                     self.execution_coordinator._persist_manual_analysis_success(
                         recipient_key=recipient_key,
@@ -2057,7 +2146,9 @@ class TelegramCommandHandler:
             try:
                 data_manager = self.execution_coordinator.data_manager
                 if data_manager:
-                    source_counts = data_manager.get_source_message_counts(time_window_hours=24)
+                    source_counts = data_manager.get_source_message_counts(
+                        time_window_hours=24
+                    )
 
                     if source_counts:
                         response_parts.append("\n\n*最近24小时数据源统计:*")
@@ -2130,13 +2221,15 @@ class TelegramCommandHandler:
 
         if "status" in user_permissions:
             help_text.append(
-                "/status - 查询系统运行状态\n" "显示当前执行状态、系统信息和最近执行结果。\n"
+                "/status - 查询系统运行状态\n"
+                "显示当前执行状态、系统信息和最近执行结果。\n"
             )
 
         help_text.append("/help - 显示此帮助信息\n查看所有可用命令和使用说明。\n")
 
         help_text.append(
-            "/tokens - 查看LLM token使用统计\n" "显示最近50次调用的token使用情况和缓存命中率。\n"
+            "/tokens - 查看LLM token使用统计\n"
+            "显示最近50次调用的token使用情况和缓存命中率。\n"
         )
 
         if "datasource" in user_permissions or not user_permissions:
@@ -2165,7 +2258,8 @@ class TelegramCommandHandler:
 
         if "market" in user_permissions:
             help_text.append(
-                "/market - 获取当前市场现状快照\n" "使用联网AI服务获取实时市场信息和分析。\n"
+                "/market - 获取当前市场现状快照\n"
+                "使用联网AI服务获取实时市场信息和分析。\n"
             )
 
         help_text.append(
@@ -2260,7 +2354,9 @@ class TelegramCommandHandler:
         ]
 
         config_payload = (
-            datasource.config_payload if isinstance(datasource.config_payload, dict) else {}
+            datasource.config_payload
+            if isinstance(datasource.config_payload, dict)
+            else {}
         )
         source_type = str(datasource.source_type or "").strip().lower()
 
@@ -2270,13 +2366,19 @@ class TelegramCommandHandler:
                 lines.append(f"   链接: {url}")
 
         if source_type == "rss":
-            description = self._normalize_optional_display_text(config_payload.get("description"))
+            description = self._normalize_optional_display_text(
+                config_payload.get("description")
+            )
             if description:
                 lines.append(f"   描述: {description}")
 
         if source_type == "rest_api":
-            endpoint = self._normalize_optional_display_text(config_payload.get("endpoint"))
-            description = self._normalize_optional_display_text(config_payload.get("description"))
+            endpoint = self._normalize_optional_display_text(
+                config_payload.get("endpoint")
+            )
+            description = self._normalize_optional_display_text(
+                config_payload.get("description")
+            )
             if endpoint:
                 lines.append(f"   接口: {endpoint}")
             if description:
@@ -2303,7 +2405,9 @@ class TelegramCommandHandler:
         guidance_lines = ["填写提示:"]
 
         if source_type == "rss":
-            guidance_lines.append("- rss 的 config_payload 需要 name、url，可选 description。")
+            guidance_lines.append(
+                "- rss 的 config_payload 需要 name、url，可选 description。"
+            )
         elif source_type == "x":
             guidance_lines.append(
                 "- x 的 config_payload 需要 name、url、type（list 或 timeline）。"
@@ -2312,7 +2416,9 @@ class TelegramCommandHandler:
             guidance_lines.append(
                 "- rest_api 的 config_payload 需要 name、endpoint、method、response_mapping。"
             )
-            guidance_lines.append("- rest_api 不支持在 auth、headers、params 中内联提交密钥。")
+            guidance_lines.append(
+                "- rest_api 不支持在 auth、headers、params 中内联提交密钥。"
+            )
         else:
             guidance_lines.append(
                 '- 顶层 JSON 结构: {"source_type":"rss|x|rest_api","tags":[...],"config_payload":{...}}'
@@ -2373,8 +2479,10 @@ class TelegramCommandHandler:
                     hasattr(self.execution_coordinator, "llm_analyzer")
                     and self.execution_coordinator.llm_analyzer
                 ):
-                    snapshot = self.execution_coordinator.llm_analyzer.get_market_snapshot(
-                        use_cached=True
+                    snapshot = (
+                        self.execution_coordinator.llm_analyzer.get_market_snapshot(
+                            use_cached=True
+                        )
                     )
                 else:
                     self.logger.warning("LLMAnalyzer未初始化，使用备用快照")
@@ -2454,7 +2562,9 @@ class TelegramCommandHandler:
                     authorized=False,
                     reason="user not in authorized list",
                 )
-                self._log_command_execution(command_name, user_id, username, None, False, response)
+                self._log_command_execution(
+                    command_name, user_id, username, None, False, response
+                )
                 return
 
             self._log_authorization_attempt(
@@ -2670,7 +2780,9 @@ def create_telegram_command_handler(
     Returns:
         TelegramCommandHandler实例
     """
-    return TelegramCommandHandler(bot_token, execution_coordinator, config, market_snapshot_service)
+    return TelegramCommandHandler(
+        bot_token, execution_coordinator, config, market_snapshot_service
+    )
 
 
 def create_default_command_config() -> TelegramCommandConfig:
