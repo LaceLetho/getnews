@@ -1,3 +1,4 @@
+# pyright: reportArgumentType=false, reportCallIssue=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false, reportAttributeAccessIssue=false
 """
 数据管理器
 
@@ -8,8 +9,9 @@ import sqlite3
 import os
 import json
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -23,7 +25,7 @@ except ImportError:
 from ..models import ContentItem, CrawlStatus, StorageConfig
 from ..domain.models import ACTIVE_INGESTION_JOB_STATUSES, DataSource
 from ..utils.logging import get_log_manager
-from ..utils.errors import StorageError
+from ..utils.errors import StorageError, UnsupportedBackendError
 
 logger = get_log_manager().get_logger(__name__)
 
@@ -44,6 +46,8 @@ class DataManager:
         self.database_url = storage_config.database_url
         self._lock = threading.RLock()  # 线程安全锁
         self._connection_pool = {}  # 简单的连接池
+        self._embedding_service: Optional[Any] = None
+        self._embedding_executor: Optional[ThreadPoolExecutor] = None
 
         if self.backend == "sqlite":
             self._ensure_database_directory()
@@ -66,6 +70,14 @@ class DataManager:
             f"数据管理器初始化完成，后端: {self.backend}, "
             f"数据库: {self.db_path if self.backend == 'sqlite' else 'postgres'}"
         )
+
+    def set_embedding_service(self, embedding_service: Optional[Any]) -> None:
+        self._embedding_service = embedding_service
+        if embedding_service is not None and self._embedding_executor is None:
+            self._embedding_executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="content-embedding",
+            )
 
     def _ensure_database_directory(self) -> None:
         """确保数据库目录存在"""
@@ -90,8 +102,18 @@ class DataManager:
                         source_type TEXT NOT NULL,
                         content_hash TEXT NOT NULL,
                         embedding vector({self.config.pgvector_dimensions}),
+                        embedding_model TEXT,
+                        embedding_updated_at TIMESTAMPTZ,
                         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
                     )
+                    """)
+                cursor.execute("""
+                    ALTER TABLE content_items
+                    ADD COLUMN IF NOT EXISTS embedding_model TEXT
+                    """)
+                cursor.execute("""
+                    ALTER TABLE content_items
+                    ADD COLUMN IF NOT EXISTS embedding_updated_at TIMESTAMPTZ
                     """)
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS crawl_status (
@@ -129,6 +151,61 @@ class DataManager:
                         error_message TEXT,
                         source TEXT NOT NULL DEFAULT 'api'
                     )
+                    """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS semantic_search_jobs (
+                        id TEXT PRIMARY KEY,
+                        recipient_key TEXT NOT NULL,
+                        query TEXT NOT NULL,
+                        normalized_intent TEXT NOT NULL DEFAULT '',
+                        time_window_hours INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        matched_count INTEGER NOT NULL DEFAULT 0,
+                        retained_count INTEGER NOT NULL DEFAULT 0,
+                        decomposition_json JSONB,
+                        result TEXT,
+                        error_message TEXT,
+                        created_at TIMESTAMPTZ NOT NULL,
+                        started_at TIMESTAMPTZ,
+                        completed_at TIMESTAMPTZ,
+                        source TEXT NOT NULL DEFAULT 'api'
+                    )
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS normalized_intent TEXT NOT NULL DEFAULT ''
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS matched_count INTEGER NOT NULL DEFAULT 0
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS retained_count INTEGER NOT NULL DEFAULT 0
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS decomposition_json JSONB
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS result TEXT
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS error_message TEXT
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'api'
                     """)
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS ingestion_jobs (
@@ -174,6 +251,8 @@ class DataManager:
                         source_name TEXT NOT NULL,
                         source_type TEXT NOT NULL,
                         content_hash TEXT NOT NULL,
+                        embedding_model TEXT,
+                        embedding_updated_at DATETIME,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
@@ -211,6 +290,25 @@ class DataManager:
                         completed_at DATETIME,
                         result TEXT,
                         error_message TEXT,
+                        source TEXT NOT NULL DEFAULT 'api'
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS semantic_search_jobs (
+                        id TEXT PRIMARY KEY,
+                        recipient_key TEXT NOT NULL,
+                        query TEXT NOT NULL,
+                        normalized_intent TEXT NOT NULL DEFAULT '',
+                        time_window_hours INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        matched_count INTEGER NOT NULL DEFAULT 0,
+                        retained_count INTEGER NOT NULL DEFAULT 0,
+                        decomposition_json TEXT,
+                        result TEXT,
+                        error_message TEXT,
+                        created_at DATETIME NOT NULL,
+                        started_at DATETIME,
+                        completed_at DATETIME,
                         source TEXT NOT NULL DEFAULT 'api'
                     )
                 """)
@@ -281,6 +379,14 @@ class DataManager:
                 ON analysis_jobs (status, created_at)
             """)
             cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_semantic_search_jobs_recipient
+                ON semantic_search_jobs (recipient_key, created_at)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_semantic_search_jobs_status
+                ON semantic_search_jobs (status, created_at)
+            """)
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_source
                 ON ingestion_jobs (source_type, source_name, scheduled_at)
             """)
@@ -348,6 +454,14 @@ class DataManager:
             return query.replace("?", "%s")
         return query
 
+    def _ensure_semantic_search_supported(self, feature: str) -> None:
+        if self.backend != "postgres":
+            raise UnsupportedBackendError(self.backend, feature)
+
+    @staticmethod
+    def _pgvector_literal(embedding: List[float]) -> str:
+        return "[" + ",".join(format(float(value), ".15g") for value in embedding) + "]"
+
     def add_content_items(self, items: List[ContentItem]) -> int:
         """
         添加内容项到数据库
@@ -365,6 +479,7 @@ class DataManager:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 added_count = 0
+                inserted_items: List[ContentItem] = []
 
                 for item in items:
                     try:
@@ -412,14 +527,50 @@ class DataManager:
 
                         if cursor.rowcount > 0:
                             added_count += 1
+                            inserted_items.append(item)
 
                     except Exception as e:
                         logger.warning(f"添加内容项失败 {item.id}: {e}")
                         continue
 
                 conn.commit()
+                self._schedule_incremental_embeddings(inserted_items)
                 logger.info(f"成功添加 {added_count}/{len(items)} 个内容项")
                 return added_count
+
+    def _schedule_incremental_embeddings(self, items: List[ContentItem]) -> None:
+        if not items or self.backend != "postgres":
+            return
+        if self._embedding_service is None or not self._embedding_service.enabled:
+            return
+        if self._embedding_executor is None:
+            return
+
+        try:
+            self._embedding_executor.submit(self._generate_and_persist_embeddings, list(items))
+        except Exception as e:
+            logger.warning(f"提交增量Embedding任务失败: {e}")
+
+    def _generate_and_persist_embeddings(self, items: List[ContentItem]) -> None:
+        if self._embedding_service is None:
+            return
+
+        for item in items:
+            try:
+                embedding = self._embedding_service.generate_for_content_item(item)
+                if embedding is None:
+                    logger.warning(f"内容 {item.id} 的Embedding生成失败，保留NULL embedding")
+                    continue
+
+                updated = self.update_content_embedding(
+                    content_id=item.id,
+                    embedding=embedding,
+                    model=self._embedding_service.model,
+                )
+                if not updated:
+                    logger.warning(f"内容 {item.id} 的Embedding写入失败，目标行不存在或未更新")
+            except Exception as e:
+                logger.warning(f"内容 {item.id} 的增量Embedding失败: {e}")
 
     def _normalize_loaded_publish_time(self, publish_time: datetime) -> datetime:
         if publish_time.tzinfo is None:
@@ -821,6 +972,10 @@ class DataManager:
     def close(self) -> None:
         """关闭数据管理器，清理资源"""
         with self._lock:
+            if self._embedding_executor is not None:
+                self._embedding_executor.shutdown(wait=False)
+                self._embedding_executor = None
+
             for conn in self._connection_pool.values():
                 try:
                     conn.close()
@@ -981,6 +1136,160 @@ class DataManager:
 
             logger.info(f"从 {since_time} 到 {end_time} 获取到 {len(items)} 个内容项")
             return items
+
+    def get_content_items_missing_embeddings(
+        self,
+        limit: int,
+        exclude_ids: Optional[List[str]] = None,
+    ) -> List[ContentItem]:
+        self._ensure_semantic_search_supported("semantic search embedding fetch")
+
+        bounded_limit = max(1, limit)
+        excluded_ids = [content_id for content_id in (exclude_ids or []) if content_id]
+
+        exclusion_sql = ""
+        params: List[Any] = []
+        if excluded_ids:
+            placeholders = ", ".join("?" for _ in excluded_ids)
+            exclusion_sql = f" AND id NOT IN ({placeholders})"
+            params.extend(excluded_ids)
+        params.append(bounded_limit)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT id, title, content, url, publish_time, source_name, source_type
+                FROM content_items
+                WHERE embedding IS NULL
+                {exclusion_sql}
+                ORDER BY publish_time DESC
+                LIMIT ?
+                """.format(exclusion_sql=exclusion_sql)),
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+
+            items = []
+            for row in rows:
+                publish_time = self._normalize_loaded_publish_time(
+                    self._coerce_loaded_datetime(row["publish_time"])
+                )
+                items.append(
+                    ContentItem(
+                        id=row["id"],
+                        title=row["title"],
+                        content=row["content"],
+                        url=row["url"],
+                        publish_time=publish_time,
+                        source_name=row["source_name"],
+                        source_type=row["source_type"],
+                    )
+                )
+
+            return items
+
+    def update_content_embedding(self, content_id: str, embedding: List[float], model: str) -> bool:
+        self._ensure_semantic_search_supported("semantic search embedding persistence")
+
+        if not embedding:
+            raise ValueError("embedding cannot be empty")
+        if not model or not model.strip():
+            raise ValueError("model cannot be empty")
+
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql("""
+                    UPDATE content_items
+                    SET embedding = CAST(? AS vector),
+                        embedding_model = ?,
+                        embedding_updated_at = ?
+                    WHERE id = ?
+                    """),
+                    (
+                        self._pgvector_literal(embedding),
+                        model.strip(),
+                        datetime.utcnow().isoformat(),
+                        content_id,
+                    ),
+                )
+                updated = cursor.rowcount > 0
+                conn.commit()
+                return updated
+
+    def semantic_search_similar(
+        self,
+        query_embedding: List[float],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+    ) -> List[Tuple[ContentItem, float]]:
+        self._ensure_semantic_search_supported("semantic search retrieval")
+
+        if not query_embedding:
+            raise ValueError("query_embedding cannot be empty")
+        if max_hours <= 0:
+            raise ValueError("max_hours must be positive")
+
+        from datetime import timezone
+
+        normalized_since_time = since_time
+        if normalized_since_time.tzinfo is None:
+            normalized_since_time = normalized_since_time.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        end_time = min(now, normalized_since_time + timedelta(hours=max_hours))
+        bounded_limit = min(max(1, limit), 50)
+        query_vector = self._pgvector_literal(query_embedding)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT
+                    id,
+                    title,
+                    content,
+                    url,
+                    publish_time,
+                    source_name,
+                    source_type,
+                    1 - (embedding <=> CAST(? AS vector)) AS similarity
+                FROM content_items
+                WHERE embedding IS NOT NULL
+                  AND publish_time >= ?
+                  AND publish_time <= ?
+                ORDER BY similarity DESC, publish_time DESC
+                LIMIT ?
+                """),
+                (
+                    query_vector,
+                    normalized_since_time.isoformat(),
+                    end_time.isoformat(),
+                    bounded_limit,
+                ),
+            )
+            rows = cursor.fetchall()
+
+            items_with_scores: List[Tuple[ContentItem, float]] = []
+            for row in rows:
+                publish_time = self._normalize_loaded_publish_time(
+                    self._coerce_loaded_datetime(row["publish_time"])
+                )
+                item = ContentItem(
+                    id=row["id"],
+                    title=row["title"],
+                    content=row["content"],
+                    url=row["url"],
+                    publish_time=publish_time,
+                    source_name=row["source_name"],
+                    source_type=row["source_type"],
+                )
+                items_with_scores.append((item, float(row["similarity"])))
+
+            return items_with_scores
 
     def check_content_hash_exists(self, content_hash: str) -> bool:
         with self._get_connection() as conn:
@@ -1179,7 +1488,9 @@ class DataManager:
         error_message: Optional[str] = None,
     ) -> bool:
         started_at = datetime.now().isoformat() if status == "running" else None
-        completed_at = datetime.now().isoformat() if status in {"completed", "failed", "cancelled"} else None
+        completed_at = (
+            datetime.now().isoformat() if status in {"completed", "failed", "cancelled"} else None
+        )
 
         with self._lock:
             with self._get_connection() as conn:
@@ -1256,6 +1567,145 @@ class DataManager:
                 conn.commit()
                 return updated
 
+    def upsert_semantic_search_job(
+        self,
+        job_id: str,
+        recipient_key: str,
+        query: str,
+        normalized_intent: str,
+        time_window_hours: int,
+        created_at: datetime,
+        status: str,
+        source: str,
+        matched_count: int = 0,
+        retained_count: int = 0,
+        decomposition_json: Optional[Dict[str, Any]] = None,
+        started_at: Optional[datetime] = None,
+        completed_at: Optional[datetime] = None,
+        result: Optional[Dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+    ) -> None:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+
+                decomposition_payload = (
+                    json.dumps(decomposition_json, ensure_ascii=False)
+                    if decomposition_json is not None
+                    else None
+                )
+                result_payload = (
+                    json.dumps(result, ensure_ascii=False) if result is not None else None
+                )
+
+                if self.backend == "postgres":
+                    cursor.execute(
+                        self._sql("""
+                        INSERT INTO semantic_search_jobs
+                        (id, recipient_key, query, normalized_intent, time_window_hours, status,
+                         matched_count, retained_count, decomposition_json, result,
+                         error_message, created_at, started_at, completed_at, source)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (id) DO UPDATE SET
+                            recipient_key = EXCLUDED.recipient_key,
+                            query = EXCLUDED.query,
+                            normalized_intent = EXCLUDED.normalized_intent,
+                            time_window_hours = EXCLUDED.time_window_hours,
+                            status = EXCLUDED.status,
+                            matched_count = EXCLUDED.matched_count,
+                            retained_count = EXCLUDED.retained_count,
+                            decomposition_json = EXCLUDED.decomposition_json,
+                            result = EXCLUDED.result,
+                            error_message = EXCLUDED.error_message,
+                            created_at = EXCLUDED.created_at,
+                            started_at = EXCLUDED.started_at,
+                            completed_at = EXCLUDED.completed_at,
+                            source = EXCLUDED.source
+                        """),
+                        (
+                            job_id,
+                            recipient_key,
+                            query,
+                            normalized_intent,
+                            time_window_hours,
+                            status,
+                            matched_count,
+                            retained_count,
+                            decomposition_payload,
+                            result_payload,
+                            error_message,
+                            created_at.isoformat(),
+                            started_at.isoformat() if started_at else None,
+                            completed_at.isoformat() if completed_at else None,
+                            source,
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        self._sql("""
+                        INSERT OR REPLACE INTO semantic_search_jobs
+                        (id, recipient_key, query, normalized_intent, time_window_hours, status,
+                         matched_count, retained_count, decomposition_json, result,
+                         error_message, created_at, started_at, completed_at, source)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """),
+                        (
+                            job_id,
+                            recipient_key,
+                            query,
+                            normalized_intent,
+                            time_window_hours,
+                            status,
+                            matched_count,
+                            retained_count,
+                            decomposition_payload,
+                            result_payload,
+                            error_message,
+                            created_at.isoformat(),
+                            started_at.isoformat() if started_at else None,
+                            completed_at.isoformat() if completed_at else None,
+                            source,
+                        ),
+                    )
+
+                conn.commit()
+
+    def get_semantic_search_job_by_id(self, job_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM semantic_search_jobs
+                WHERE id = ?
+                LIMIT 1
+                """),
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._serialize_semantic_search_job_row(row)
+
+    def get_semantic_search_jobs_by_recipient(
+        self,
+        recipient_key: str,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            params: List[Any] = [recipient_key]
+            query = "SELECT * FROM semantic_search_jobs WHERE recipient_key = ?"
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(self._sql(query), params)
+            rows = cursor.fetchall()
+            return [self._serialize_semantic_search_job_row(row) for row in rows]
+
     def upsert_datasource(
         self,
         datasource_id: str,
@@ -1290,7 +1740,9 @@ class DataManager:
     ) -> None:
         cursor = conn.cursor()
         payload = dict(config_payload or {})
-        normalized_tags = sorted({str(tag).strip().lower() for tag in (tags or []) if str(tag).strip()})
+        normalized_tags = sorted(
+            {str(tag).strip().lower() for tag in (tags or []) if str(tag).strip()}
+        )
         created_at_value = (created_at or datetime.utcnow()).isoformat()
 
         if self.backend == "postgres":
@@ -1338,9 +1790,7 @@ class DataManager:
         )
         for tag in normalized_tags:
             cursor.execute(
-                self._sql(
-                    "INSERT INTO datasource_tags (datasource_id, tag) VALUES (?, ?)"
-                ),
+                self._sql("INSERT INTO datasource_tags (datasource_id, tag) VALUES (?, ?)"),
                 (datasource_id, tag),
             )
 
@@ -1425,15 +1875,13 @@ class DataManager:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                self._sql(
-                    f"""
+                self._sql(f"""
                     SELECT id FROM ingestion_jobs
                     WHERE source_type = ?
                       AND source_name = ?
                       AND status IN ({placeholders})
                     ORDER BY scheduled_at DESC
-                    """
-                ),
+                    """),
                 [source_type, source_name, *statuses],
             )
             rows = cursor.fetchall()
@@ -1480,13 +1928,13 @@ class DataManager:
 
         cursor = conn.cursor()
         cursor.execute(
-            self._sql(
-                "SELECT tag FROM datasource_tags WHERE datasource_id = ? ORDER BY tag ASC"
-            ),
+            self._sql("SELECT tag FROM datasource_tags WHERE datasource_id = ? ORDER BY tag ASC"),
             (row["id"],),
         )
         tag_rows = cursor.fetchall()
-        tags = [tag_row["tag"] if self.backend == "postgres" else tag_row[0] for tag_row in tag_rows]
+        tags = [
+            tag_row["tag"] if self.backend == "postgres" else tag_row[0] for tag_row in tag_rows
+        ]
 
         created_at = row["created_at"]
         if isinstance(created_at, datetime):
@@ -1529,6 +1977,45 @@ class DataManager:
             "started_at": _serialize_datetime(row["started_at"]),
             "completed_at": _serialize_datetime(row["completed_at"]),
             "result": parsed_result,
+            "error_message": row["error_message"],
+            "source": row["source"],
+        }
+
+    def _serialize_semantic_search_job_row(self, row: Any) -> Dict[str, Any]:
+        def _serialize_datetime(value: Any) -> Any:
+            if isinstance(value, datetime):
+                return value.isoformat()
+            return value
+
+        def _parse_json_payload(payload: Any, log_key: str) -> Optional[Dict[str, Any]]:
+            if isinstance(payload, str) and payload:
+                try:
+                    parsed_payload = json.loads(payload)
+                except json.JSONDecodeError:
+                    logger.warning(f"semantic_search_jobs.{log_key} JSON解析失败")
+                    return None
+                return parsed_payload if isinstance(parsed_payload, dict) else None
+            if isinstance(payload, dict):
+                return payload
+            return None
+
+        return {
+            "id": row["id"],
+            "recipient_key": row["recipient_key"],
+            "query": row["query"],
+            "normalized_intent": row["normalized_intent"],
+            "time_window_hours": row["time_window_hours"],
+            "created_at": _serialize_datetime(row["created_at"]),
+            "status": row["status"],
+            "priority": 5,
+            "matched_count": row["matched_count"],
+            "retained_count": row["retained_count"],
+            "decomposition_json": _parse_json_payload(
+                row["decomposition_json"], "decomposition_json"
+            ),
+            "started_at": _serialize_datetime(row["started_at"]),
+            "completed_at": _serialize_datetime(row["completed_at"]),
+            "result": _parse_json_payload(row["result"], "result"),
             "error_message": row["error_message"],
             "source": row["source"],
         }
@@ -1767,8 +2254,7 @@ class DataManager:
 
             where_clause = " AND ".join(conditions)
             cursor.execute(
-                self._sql(
-                    f"""
+                self._sql(f"""
                     SELECT
                         COUNT(*) AS total_jobs,
                         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_jobs,
@@ -1777,8 +2263,7 @@ class DataManager:
                         SUM(items_new) AS total_items_new
                     FROM ingestion_jobs
                     WHERE {where_clause}
-                    """
-                ),
+                    """),
                 params,
             )
             row = cursor.fetchone()

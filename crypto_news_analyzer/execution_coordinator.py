@@ -143,6 +143,7 @@ class MainController:
         self.command_handler: Optional[Any] = None  # TelegramCommandHandler实例
         self.cache_manager: Optional[Any] = None  # SentMessageCacheManager实例
         self.market_snapshot_service: Optional[Any] = None  # MarketSnapshotService实例（可选）
+        self.embedding_service: Optional[Any] = None
         self.analysis_repository: Optional[Any] = None
         self.ingestion_repository: Optional[Any] = None
         self.content_repository: Optional[Any] = None
@@ -462,6 +463,8 @@ class MainController:
         self.cache_repository = self._repositories["cache"]
         self.logger.info("Repository初始化完成（存储边界已提取）")
 
+        self._initialize_embedding_service()
+
         self._bootstrap_datasources_from_config_if_empty()
         self.config_manager.set_datasource_repository(self.datasource_repository)
         self.logger.info("运行时数据源已切换为仓储读取")
@@ -483,6 +486,43 @@ class MainController:
 
         # 内置数据源已在模块导入时自动注册（见 crawlers/__init__.py）
         return config_data
+
+    def _initialize_embedding_service(self) -> None:
+        if self.config_manager is None or self.data_manager is None:
+            raise ValueError("配置管理器或数据管理器未初始化")
+
+        auth_config = self.config_manager.get_auth_config()
+        semantic_search_config = self.config_manager.get_semantic_search_config()
+
+        self.embedding_service = None
+        self.data_manager.set_embedding_service(None)
+
+        if not semantic_search_config.enabled:
+            self.logger.info("语义搜索未启用，跳过EmbeddingService初始化")
+            return
+
+        if self.storage_config is None or self.storage_config.backend != "postgres":
+            self.logger.info("非PostgreSQL后端，跳过EmbeddingService初始化")
+            return
+
+        if not auth_config.OPENAI_API_KEY:
+            self.logger.info("OPENAI_API_KEY未配置，新增内容将跳过增量Embedding")
+            return
+
+        from .semantic_search.embedding_service import EmbeddingService
+
+        service = EmbeddingService(
+            api_key=auth_config.OPENAI_API_KEY,
+            model=semantic_search_config.embedding_model,
+            dimensions=semantic_search_config.embedding_dimensions,
+        )
+        if not service.enabled:
+            self.logger.warning("EmbeddingService初始化后不可用，新增内容将跳过增量Embedding")
+            return
+
+        self.embedding_service = service
+        self.data_manager.set_embedding_service(service)
+        self.logger.info("EmbeddingService初始化完成")
 
     def _bootstrap_datasources_from_config_if_empty(self) -> None:
         if self.data_manager is None:

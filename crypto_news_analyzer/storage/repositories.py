@@ -5,8 +5,8 @@ Concrete implementations of domain repository interfaces.
 These adapters wrap the existing DataManager and CacheManager.
 """
 
-from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any, cast
+from datetime import datetime
+from typing import List, Optional, Dict, Any, Tuple, cast
 
 from ..domain.models import (
     AnalysisRequest,
@@ -14,8 +14,7 @@ from ..domain.models import (
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
     IngestionJob,
-    JobStatus,
-    IngestionJobStatus,
+    SemanticSearchJob,
 )
 from ..domain.repositories import (
     AnalysisRepository,
@@ -23,10 +22,11 @@ from ..domain.repositories import (
     IngestionRepository,
     ContentRepository,
     CacheRepository,
+    SemanticSearchRepository,
 )
 from ..storage.data_manager import DataManager
 from ..storage.cache_manager import SentMessageCacheManager
-from ..utils.errors import StorageError
+from ..utils.errors import StorageError, UnsupportedBackendError
 from ..models import StorageConfig, ContentItem, CrawlStatus
 
 
@@ -221,6 +221,9 @@ class SQLiteContentRepository(ContentRepository):
     def __init__(self, data_manager: DataManager):
         self._data = data_manager
 
+    def _unsupported(self, feature: str) -> UnsupportedBackendError:
+        return UnsupportedBackendError("sqlite", feature)
+
     def save(self, content: Dict[str, Any]) -> bool:
         """Save content item if not duplicate"""
         from ..models import ContentItem
@@ -320,6 +323,122 @@ class SQLiteContentRepository(ContentRepository):
             source_types=source_types,
             limit=limit,
         )
+
+    def fetch_rows_missing_embeddings(self, limit: int) -> List[ContentItem]:
+        raise self._unsupported("semantic search embedding fetch")
+
+    def persist_embedding(self, content_id: str, embedding: List[float], model: str) -> bool:
+        raise self._unsupported("semantic search embedding persistence")
+
+    def semantic_search_by_similarity(
+        self,
+        query_embedding: List[float],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+    ) -> List[Tuple[ContentItem, float]]:
+        raise self._unsupported("semantic search retrieval")
+
+
+class PostgresContentRepository(SQLiteContentRepository):
+    """PostgreSQL implementation of ContentRepository semantic APIs."""
+
+    def fetch_rows_missing_embeddings(self, limit: int) -> List[ContentItem]:
+        return self._data.get_content_items_missing_embeddings(limit=limit)
+
+    def persist_embedding(self, content_id: str, embedding: List[float], model: str) -> bool:
+        return self._data.update_content_embedding(
+            content_id=content_id,
+            embedding=embedding,
+            model=model,
+        )
+
+    def semantic_search_by_similarity(
+        self,
+        query_embedding: List[float],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+    ) -> List[Tuple[ContentItem, float]]:
+        return self._data.semantic_search_similar(
+            query_embedding=query_embedding,
+            since_time=since_time,
+            max_hours=max_hours,
+            limit=limit,
+        )
+
+
+class SQLiteSemanticSearchRepository(SemanticSearchRepository):
+    def __init__(self, data_manager: DataManager):
+        self._data = data_manager
+
+    def _unsupported(self, feature: str) -> UnsupportedBackendError:
+        return UnsupportedBackendError("sqlite", feature)
+
+    def create_semantic_search_job(self, job: SemanticSearchJob) -> None:
+        raise self._unsupported("semantic search job persistence")
+
+    def update_semantic_search_job(self, job: SemanticSearchJob) -> bool:
+        raise self._unsupported("semantic search job persistence")
+
+    def get_by_id(self, job_id: str) -> Optional[SemanticSearchJob]:
+        raise self._unsupported("semantic search job persistence")
+
+    def get_by_recipient(
+        self,
+        recipient_key: str,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[SemanticSearchJob]:
+        raise self._unsupported("semantic search job persistence")
+
+
+class PostgresSemanticSearchRepository(SQLiteSemanticSearchRepository):
+    def create_semantic_search_job(self, job: SemanticSearchJob) -> None:
+        self._data.upsert_semantic_search_job(
+            job_id=job.id,
+            recipient_key=job.recipient_key,
+            query=job.query,
+            normalized_intent=job.normalized_intent,
+            time_window_hours=job.time_window_hours,
+            created_at=job.created_at,
+            status=job.status,
+            source=job.source,
+            matched_count=job.matched_count,
+            retained_count=job.retained_count,
+            decomposition_json=job.decomposition_json,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+            result=job.result,
+            error_message=job.error_message,
+        )
+
+    def update_semantic_search_job(self, job: SemanticSearchJob) -> bool:
+        existing = self._data.get_semantic_search_job_by_id(job.id)
+        if existing is None:
+            return False
+
+        self.create_semantic_search_job(job)
+        return True
+
+    def get_by_id(self, job_id: str) -> Optional[SemanticSearchJob]:
+        payload = self._data.get_semantic_search_job_by_id(job_id)
+        if payload is None:
+            return None
+        return SemanticSearchJob.from_dict(payload)
+
+    def get_by_recipient(
+        self,
+        recipient_key: str,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[SemanticSearchJob]:
+        rows = self._data.get_semantic_search_jobs_by_recipient(
+            recipient_key=recipient_key,
+            status=status,
+            limit=limit,
+        )
+        return [SemanticSearchJob.from_dict(row) for row in rows]
 
 
 class SQLiteDataSourceRepository(DataSourceRepository):
@@ -472,7 +591,16 @@ class RepositoryFactory:
             "analysis": SQLiteAnalysisRepository(data_manager),
             "datasource": SQLiteDataSourceRepository(data_manager),
             "ingestion": SQLiteIngestionRepository(data_manager),
-            "content": SQLiteContentRepository(data_manager),
+            "content": (
+                PostgresContentRepository(data_manager)
+                if backend == "postgres"
+                else SQLiteContentRepository(data_manager)
+            ),
             "cache": SQLiteCacheRepository(cache_manager),
+            "semantic_search": (
+                PostgresSemanticSearchRepository(data_manager)
+                if backend == "postgres"
+                else SQLiteSemanticSearchRepository(data_manager)
+            ),
             "_backend": backend,
         }

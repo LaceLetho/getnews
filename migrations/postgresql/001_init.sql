@@ -10,8 +10,16 @@ CREATE TABLE IF NOT EXISTS content_items (
     source_type TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     embedding vector(1536),
+    embedding_model TEXT,
+    embedding_updated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE content_items
+ADD COLUMN IF NOT EXISTS embedding_model TEXT;
+
+ALTER TABLE content_items
+ADD COLUMN IF NOT EXISTS embedding_updated_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_publish_time ON content_items (publish_time);
 CREATE INDEX IF NOT EXISTS idx_source ON content_items (source_name, source_type);
@@ -79,6 +87,57 @@ ON analysis_jobs (recipient_key, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_analysis_jobs_status
 ON analysis_jobs (status, created_at);
+
+CREATE TABLE IF NOT EXISTS semantic_search_jobs (
+    id TEXT PRIMARY KEY,
+    recipient_key TEXT NOT NULL,
+    query TEXT NOT NULL,
+    normalized_intent TEXT NOT NULL DEFAULT '',
+    time_window_hours INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    matched_count INTEGER NOT NULL DEFAULT 0,
+    retained_count INTEGER NOT NULL DEFAULT 0,
+    decomposition_json JSONB,
+    result TEXT,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    source TEXT NOT NULL DEFAULT 'api'
+);
+
+ALTER TABLE semantic_search_jobs
+ADD COLUMN IF NOT EXISTS normalized_intent TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE semantic_search_jobs
+ADD COLUMN IF NOT EXISTS matched_count INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE semantic_search_jobs
+ADD COLUMN IF NOT EXISTS retained_count INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE semantic_search_jobs
+ADD COLUMN IF NOT EXISTS decomposition_json JSONB;
+
+ALTER TABLE semantic_search_jobs
+ADD COLUMN IF NOT EXISTS result TEXT;
+
+ALTER TABLE semantic_search_jobs
+ADD COLUMN IF NOT EXISTS error_message TEXT;
+
+ALTER TABLE semantic_search_jobs
+ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+
+ALTER TABLE semantic_search_jobs
+ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+ALTER TABLE semantic_search_jobs
+ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'api';
+
+CREATE INDEX IF NOT EXISTS idx_semantic_search_jobs_recipient
+ON semantic_search_jobs (recipient_key, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_semantic_search_jobs_status
+ON semantic_search_jobs (status, created_at);
 
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
     id TEXT PRIMARY KEY,

@@ -20,6 +20,7 @@
 - 📱 **自动发送**: 通过Telegram Bot自动发送报告
 - 🔁 **Split-service 运行面**: 仅保留 `analysis-service`、`api-only`、`ingestion` 三种运行模式
 - 🔧 **数据库优先的数据源管理**: 首次启动从 `config.json` 导入，运行时通过数据库管理，支持 REST API 和 Telegram 命令操作
+- 🔎 **语义搜索**: 支持 `POST /semantic-search` 异步语义检索与 `/semantic_search` Telegram 命令
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
 - 🎯 **智能分类**: 支持大户动向、利率事件、监管政策、真相揭露等多种分类
 - ☁️ **云端部署**: 支持部署到 Railway 平台
@@ -227,6 +228,7 @@ uv run flake8 crypto_news_analyzer/
 ### 可用命令
 
 - `/analyze [hours]` - 按时间窗口分析历史消息（不传参数时按“距上次成功分析时间”自动估算，最大24小时）
+- `/semantic_search <hours> <topic>` - 按时间窗口执行语义搜索
 - `/market` - 获取当前市场快照
 - `/status` - 查询系统运行状态
 - `/tokens` - 查看token使用统计
@@ -292,6 +294,9 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - `POST /analyze`
 - `GET /analyze/{job_id}`
 - `GET /analyze/{job_id}/result`
+- `POST /semantic-search`
+- `GET /semantic-search/{job_id}`
+- `GET /semantic-search/{job_id}/result`
 
 ### 创建分析任务
 

@@ -1,0 +1,3 @@
+- Kept `/semantic_search` separate from `/analyze` to avoid auto-inferred time windows and historical-title cache reuse.
+- Kept HTTP semantic-search job execution isolated behind a separate `api-search` executor and dedicated repository lookup path rather than sharing `enqueue_analyze_job()`/`analysis_jobs` machinery.
+- Used a request-level `query_max_chars` validator in `api_server.py` so the public ingress enforces the same semantic-search length limit consistently.

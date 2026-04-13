@@ -259,6 +259,116 @@ class AnalysisRequest:
 
 
 @dataclass
+class SemanticSearchJob:
+    """Semantic search job model - SHARED CONTRACT."""
+
+    id: str
+    recipient_key: str
+    query: str
+    normalized_intent: str
+    time_window_hours: int
+    created_at: datetime
+    status: str = field(default=JobStatus.PENDING.value)
+    priority: int = field(default=Priority.NORMAL.value)
+    matched_count: int = 0
+    retained_count: int = 0
+    decomposition_json: Optional[Dict[str, Any]] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    source: str = field(default="api")
+
+    def __post_init__(self):
+        if not self.id:
+            raise ValueError("id is required")
+        if not self.id.startswith("semantic_search_job_"):
+            raise ValueError("id must start with semantic_search_job_")
+        if not self.recipient_key:
+            raise ValueError("recipient_key is required")
+        normalized_query = str(self.query).strip()
+        if not normalized_query:
+            raise ValueError("query is required")
+        if self.time_window_hours <= 0:
+            raise ValueError("time_window_hours must be positive")
+        if not self.created_at:
+            raise ValueError("created_at is required")
+        if self.matched_count < 0:
+            raise ValueError("matched_count cannot be negative")
+        if self.retained_count < 0:
+            raise ValueError("retained_count cannot be negative")
+
+        self.query = normalized_query
+        self.normalized_intent = str(self.normalized_intent or "").strip()
+
+    @classmethod
+    def create(
+        cls,
+        recipient_key: str,
+        query: str,
+        time_window_hours: int,
+        normalized_intent: str = "",
+        source: str = "api",
+        priority: int = Priority.NORMAL.value,
+    ) -> "SemanticSearchJob":
+        return cls(
+            id=f"semantic_search_job_{uuid.uuid4().hex}",
+            recipient_key=recipient_key,
+            query=query,
+            normalized_intent=normalized_intent,
+            time_window_hours=time_window_hours,
+            created_at=datetime.utcnow(),
+            status=JobStatus.PENDING.value,
+            priority=priority,
+            source=source,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "recipient_key": self.recipient_key,
+            "query": self.query,
+            "normalized_intent": self.normalized_intent,
+            "time_window_hours": self.time_window_hours,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "status": self.status,
+            "priority": self.priority,
+            "matched_count": self.matched_count,
+            "retained_count": self.retained_count,
+            "decomposition_json": self.decomposition_json,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "result": self.result,
+            "error_message": self.error_message,
+            "source": self.source,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SemanticSearchJob":
+        return cls(
+            id=data["id"],
+            recipient_key=data["recipient_key"],
+            query=data["query"],
+            normalized_intent=data.get("normalized_intent", ""),
+            time_window_hours=data["time_window_hours"],
+            created_at=cast(
+                datetime,
+                datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
+            ),
+            status=data.get("status", JobStatus.PENDING.value),
+            priority=data.get("priority", Priority.NORMAL.value),
+            matched_count=data.get("matched_count", 0),
+            retained_count=data.get("retained_count", 0),
+            decomposition_json=data.get("decomposition_json"),
+            started_at=datetime.fromisoformat(data["started_at"]) if data.get("started_at") else None,
+            completed_at=datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None,
+            result=data.get("result"),
+            error_message=data.get("error_message"),
+            source=data.get("source", "api"),
+        )
+
+
+@dataclass
 class IngestionJob:
     """
     Ingestion job model - SHARED CONTRACT

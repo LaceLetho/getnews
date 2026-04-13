@@ -29,14 +29,28 @@ from .domain.models import (
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
     Priority,
+    SemanticSearchJob,
 )
-from .domain.repositories import AnalysisRepository, DataSourceRepository
-from .storage.repositories import SQLiteAnalysisRepository
+from .models import SemanticSearchConfig
+from .domain.repositories import (
+    AnalysisRepository,
+    DataSourceRepository,
+    SemanticSearchRepository,
+)
+from .semantic_search.service import SemanticSearchService
+from .storage.repositories import (
+    PostgresSemanticSearchRepository,
+    SQLiteAnalysisRepository,
+)
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
 USER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 TELEGRAM_WEBHOOK_SECRET_HEADER = "x-telegram-bot-api-secret-token"
+SEMANTIC_SEARCH_ROUTE_PATH = "/semantic-search"
+SEMANTIC_SEARCH_JOB_STATUS_PATH = "/semantic-search/{job_id}"
+SEMANTIC_SEARCH_JOB_RESULT_PATH = "/semantic-search/{job_id}/result"
+SEMANTIC_SEARCH_TELEGRAM_COMMAND = "/semantic_search <hours> <topic>"
 
 
 class AppState:
@@ -45,8 +59,15 @@ class AppState:
     def __init__(self):
         self.controller: Optional[MainController] = None
         self.analysis_repository: Optional[AnalysisRepository] = None
+        self.semantic_search_repository: Optional[SemanticSearchRepository] = None
         self.datasource_repository: Optional[DataSourceRepository] = None
-        self.analyze_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="api-analyze")
+        self.analyze_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="api-analyze"
+        )
+        self.semantic_search_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="api-search",
+        )
         self.telegram_uses_webhook = False
 
     def cleanup(self):
@@ -60,7 +81,9 @@ class AppState:
 
             try:
                 if self.telegram_uses_webhook and self.controller.command_handler:
-                    logger.info("Telegram webhook cleanup will be handled by lifespan shutdown")
+                    logger.info(
+                        "Telegram webhook cleanup will be handled by lifespan shutdown"
+                    )
                 else:
                     self.controller.stop_command_listener()
                     logger.info("Command listener stopped during cleanup")
@@ -70,16 +93,21 @@ class AppState:
         # Shutdown executor
         if self.analyze_executor:
             self.analyze_executor.shutdown(wait=False)
+        if self.semantic_search_executor:
+            self.semantic_search_executor.shutdown(wait=False)
 
         # Clear references
         self.controller = None
         self.analysis_repository = None
+        self.semantic_search_repository = None
         self.datasource_repository = None
 
 
 class AnalyzeRequest(BaseModel):
     hours: int = Field(..., gt=0, description="分析最近N小时的消息（必填，必须>0）")
-    user_id: str = Field(..., description="请求用户标识（必填，仅允许字母、数字、_、-）")
+    user_id: str = Field(
+        ..., description="请求用户标识（必填，仅允许字母、数字、_、-）"
+    )
 
     @field_validator("user_id")
     @classmethod
@@ -88,6 +116,28 @@ class AnalyzeRequest(BaseModel):
         if not USER_ID_PATTERN.fullmatch(normalized_value):
             raise ValueError("user_id must match ^[A-Za-z0-9_-]{1,128}$")
         return normalized_value
+
+
+class SemanticSearchRequest(BaseModel):
+    hours: int = Field(..., gt=0, description="搜索最近N小时的消息（必填，必须>0）")
+    query: str = Field(..., description="语义搜索查询（必填，非空白）")
+    user_id: str = Field(
+        ..., description="请求用户标识（必填，仅允许字母、数字、_、-）"
+    )
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: str) -> str:
+        return SemanticSearchConfig().validate_query(value)
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id(cls, value: str) -> str:
+        normalized_value = value.strip()
+        if not USER_ID_PATTERN.fullmatch(normalized_value):
+            raise ValueError("user_id must match ^[A-Za-z0-9_-]{1,128}$")
+        return normalized_value
+
 
 class AnalyzeResponse(BaseModel):
     success: bool
@@ -128,6 +178,48 @@ class AnalyzeJobResultResponse(BaseModel):
     error: Optional[str] = None
 
 
+class SemanticSearchAcceptedResponse(BaseModel):
+    success: bool
+    job_id: str
+    status: str
+    query: str
+    normalized_intent: str
+    matched_count: int
+    retained_count: int
+    time_window_hours: int
+    status_url: str
+    result_url: str
+
+
+class SemanticSearchJobStatusResponse(BaseModel):
+    success: bool
+    job_id: str
+    status: str
+    query: str
+    normalized_intent: str
+    matched_count: int
+    retained_count: int
+    time_window_hours: int
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error: Optional[str] = None
+    result_available: bool = False
+
+
+class SemanticSearchJobResultResponse(BaseModel):
+    success: bool
+    job_id: str
+    status: str
+    query: str
+    normalized_intent: str
+    matched_count: int
+    retained_count: int
+    report: str
+    time_window_hours: int
+    error: Optional[str] = None
+
+
 class AnalyzeJobRecord(BaseModel):
     job_id: str
     user_id: str
@@ -163,6 +255,53 @@ class AnalyzeJobRecord(BaseModel):
             status=self.status,
             report=self.report,
             items_processed=self.items_processed,
+            time_window_hours=self.time_window_hours,
+            error=self.error,
+        )
+
+
+class SemanticSearchJobRecord(BaseModel):
+    job_id: str
+    user_id: str
+    status: str
+    query: str
+    normalized_intent: str = ""
+    matched_count: int = 0
+    retained_count: int = 0
+    time_window_hours: int
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    report: str = ""
+    error: Optional[str] = None
+
+    def to_status_response(self) -> SemanticSearchJobStatusResponse:
+        return SemanticSearchJobStatusResponse(
+            success=self.status == "completed",
+            job_id=self.job_id,
+            status=self.status,
+            query=self.query,
+            normalized_intent=self.normalized_intent,
+            matched_count=self.matched_count,
+            retained_count=self.retained_count,
+            time_window_hours=self.time_window_hours,
+            created_at=self.created_at,
+            started_at=self.started_at,
+            completed_at=self.completed_at,
+            error=self.error,
+            result_available=self.status in {"completed", "failed"},
+        )
+
+    def to_result_response(self) -> SemanticSearchJobResultResponse:
+        return SemanticSearchJobResultResponse(
+            success=self.status == "completed",
+            job_id=self.job_id,
+            status=self.status,
+            query=self.query,
+            normalized_intent=self.normalized_intent,
+            matched_count=self.matched_count,
+            retained_count=self.retained_count,
+            report=self.report,
             time_window_hours=self.time_window_hours,
             error=self.error,
         )
@@ -214,11 +353,19 @@ def _get_analysis_repository(request: Request) -> AnalysisRepository:
         return state.analysis_repository
 
     controller = state.controller
-    if controller and hasattr(controller, "analysis_repository") and controller.analysis_repository is not None:
+    if (
+        controller
+        and hasattr(controller, "analysis_repository")
+        and controller.analysis_repository is not None
+    ):
         state.analysis_repository = controller.analysis_repository
         return cast(AnalysisRepository, state.analysis_repository)
 
-    if controller and hasattr(controller, "data_manager") and controller.data_manager is not None:
+    if (
+        controller
+        and hasattr(controller, "data_manager")
+        and controller.data_manager is not None
+    ):
         state.analysis_repository = SQLiteAnalysisRepository(controller.data_manager)
         return state.analysis_repository
 
@@ -241,16 +388,67 @@ def _get_datasource_repository(request: Request) -> DataSourceRepository:
     raise HTTPException(status_code=503, detail="System not initialized")
 
 
+def _ensure_semantic_search_http_supported(controller: MainController) -> None:
+    try:
+        ensure_semantic_search_supported(controller)
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        if exc.status_code == 503 and "unsupported" in detail.lower():
+            raise HTTPException(
+                status_code=503,
+                detail="Semantic search requires postgres backend",
+            ) from exc
+        raise
+
+
+def _get_semantic_search_repository(request: Request) -> SemanticSearchRepository:
+    state = _get_app_state(request)
+
+    if state.semantic_search_repository is not None:
+        return state.semantic_search_repository
+
+    controller = _get_controller(request)
+    _ensure_semantic_search_http_supported(controller)
+
+    if hasattr(controller, "semantic_search_repository"):
+        repository = getattr(controller, "semantic_search_repository")
+        if repository is not None:
+            state.semantic_search_repository = cast(
+                SemanticSearchRepository, repository
+            )
+            return state.semantic_search_repository
+
+    repositories = getattr(controller, "_repositories", None)
+    if isinstance(repositories, dict):
+        repository = repositories.get("semantic_search")
+        if repository is not None:
+            state.semantic_search_repository = cast(
+                SemanticSearchRepository, repository
+            )
+            return state.semantic_search_repository
+
+    data_manager = getattr(controller, "data_manager", None)
+    if data_manager is not None:
+        state.semantic_search_repository = PostgresSemanticSearchRepository(
+            data_manager
+        )
+        return state.semantic_search_repository
+
+    raise HTTPException(status_code=503, detail="System not initialized")
+
+
 def _get_telegram_command_handler(request: Request) -> Any:
     controller = _get_controller(request)
     command_handler = getattr(controller, "command_handler", None)
     if command_handler is None:
-        raise HTTPException(status_code=404, detail="Telegram command handler not configured")
+        raise HTTPException(
+            status_code=404, detail="Telegram command handler not configured"
+        )
     return command_handler
 
 
 def verify_api_key(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
 ) -> str:
     """验证API Key"""
     api_key = credentials.credentials
@@ -266,6 +464,13 @@ def _utcnow_iso() -> str:
 
 def _job_urls(job_id: str) -> tuple[str, str]:
     return (f"/analyze/{job_id}", f"/analyze/{job_id}/result")
+
+
+def _semantic_search_job_urls(job_id: str) -> tuple[str, str]:
+    return (
+        f"{SEMANTIC_SEARCH_ROUTE_PATH}/{job_id}",
+        f"{SEMANTIC_SEARCH_ROUTE_PATH}/{job_id}/result",
+    )
 
 
 def _datetime_to_iso(value: Optional[datetime]) -> Optional[str]:
@@ -300,6 +505,21 @@ def _result_error_message(result: dict[str, Any]) -> Optional[str]:
     return "; ".join(str(error) for error in errors) or "Analysis failed"
 
 
+def ensure_semantic_search_supported(controller: MainController) -> None:
+    config_manager = controller.config_manager
+    if config_manager is None:
+        raise HTTPException(status_code=503, detail="System not initialized")
+
+    semantic_search_config = config_manager.get_semantic_search_config()
+    storage_config = config_manager.get_storage_config()
+    try:
+        semantic_search_config.ensure_supported_for_storage(storage_config)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 503 if "unsupported" in message.lower() else 403
+        raise HTTPException(status_code=status_code, detail=message) from exc
+
+
 def _request_to_job_record(request: AnalysisRequest) -> AnalyzeJobRecord:
     result = request.result or {}
     error_message = request.error_message
@@ -322,7 +542,9 @@ def _request_to_job_record(request: AnalysisRequest) -> AnalyzeJobRecord:
     )
 
 
-def _build_analysis_request_from_job(job: AnalyzeJobRecord, controller: Optional[MainController]) -> AnalysisRequest:
+def _build_analysis_request_from_job(
+    job: AnalyzeJobRecord, controller: Optional[MainController]
+) -> AnalysisRequest:
     result: dict[str, Any] = {
         "success": job.status == "completed",
         "report_content": job.report,
@@ -343,6 +565,57 @@ def _build_analysis_request_from_job(job: AnalyzeJobRecord, controller: Optional
         result=result,
         error_message=job.error,
         source="api",
+    )
+
+
+def _semantic_search_request_to_job_record(
+    job: SemanticSearchJob,
+) -> SemanticSearchJobRecord:
+    result = job.result or {}
+    error_message = job.error_message
+    if error_message is None and job.status == "failed":
+        error_message = _result_error_message(result)
+
+    return SemanticSearchJobRecord(
+        job_id=job.id,
+        user_id=_to_user_id(job.recipient_key),
+        status=job.status,
+        query=job.query,
+        normalized_intent=job.normalized_intent,
+        matched_count=job.matched_count,
+        retained_count=job.retained_count,
+        time_window_hours=job.time_window_hours,
+        created_at=job.created_at.isoformat(),
+        started_at=_datetime_to_iso(job.started_at),
+        completed_at=_datetime_to_iso(job.completed_at),
+        report=str(result.get("report_content", "")),
+        error=error_message,
+    )
+
+
+def _build_semantic_search_service(controller: MainController) -> SemanticSearchService:
+    config_manager = controller.config_manager
+    content_repository = getattr(controller, "content_repository", None)
+    embedding_service = getattr(controller, "embedding_service", None)
+
+    if config_manager is None or content_repository is None:
+        raise ValueError("semantic search service is unavailable")
+    if embedding_service is None:
+        raise ValueError("embedding service is unavailable")
+
+    auth_config = config_manager.get_auth_config()
+    provider_credentials = {
+        "grok": getattr(auth_config, "GROK_API_KEY", ""),
+        "kimi": getattr(auth_config, "KIMI_API_KEY", ""),
+        "opencode-go": getattr(auth_config, "OPENCODE_API_KEY", ""),
+    }
+
+    return SemanticSearchService.from_llm_config_payload(
+        content_repository=content_repository,
+        embedding_service=embedding_service,
+        semantic_search_config=config_manager.get_semantic_search_config(),
+        llm_config_payload=dict(config_manager.config_data.get("llm_config", {})),
+        provider_credentials=provider_credentials,
     )
 
 
@@ -389,7 +662,67 @@ def _run_analyze_job(job_id: str, state: AppState) -> None:
         )
 
 
-def _persist_completed_api_job_success(job: AnalyzeJobRecord, controller: MainController) -> None:
+def _run_semantic_search_job(job_id: str, state: AppState) -> None:
+    repository = state.semantic_search_repository
+    controller = state.controller
+
+    if repository is None or controller is None:
+        logger.error("Cannot run semantic search job: system not initialized")
+        return
+
+    try:
+        job = repository.get_by_id(job_id)
+        if job is None:
+            logger.error(f"Semantic search job {job_id} not found")
+            return
+    except Exception as exc:
+        logger.error(f"Failed to get semantic search job {job_id}: {exc}")
+        return
+
+    started_at = datetime.now(timezone.utc)
+    job.status = "running"
+    job.started_at = started_at
+    _ = repository.update_semantic_search_job(job)
+
+    try:
+        service = _build_semantic_search_service(controller)
+        result = service.search(
+            query=job.query, time_window_hours=job.time_window_hours
+        )
+        job.status = "completed"
+        job.normalized_intent = str(result.get("normalized_intent") or "")
+        job.matched_count = int(result.get("matched_count", 0))
+        job.retained_count = int(result.get("retained_count", 0))
+        job.result = {
+            "success": True,
+            "report_content": str(result.get("report_content", "")),
+            "normalized_intent": job.normalized_intent,
+            "matched_count": job.matched_count,
+            "retained_count": job.retained_count,
+            "subqueries": list(result.get("subqueries") or []),
+            "errors": [],
+        }
+        job.error_message = None
+    except Exception as exc:
+        logger.error(f"Async semantic search job failed: {exc}")
+        job.status = "failed"
+        job.result = {
+            "success": False,
+            "report_content": "",
+            "normalized_intent": job.normalized_intent,
+            "matched_count": job.matched_count,
+            "retained_count": job.retained_count,
+            "errors": [str(exc)],
+        }
+        job.error_message = str(exc)
+    finally:
+        job.completed_at = datetime.now(timezone.utc)
+        _ = repository.update_semantic_search_job(job)
+
+
+def _persist_completed_api_job_success(
+    job: AnalyzeJobRecord, controller: MainController
+) -> None:
     recipient_key = controller._normalize_manual_recipient_key("api", job.user_id)
     controller._persist_manual_analysis_success(
         recipient_key=recipient_key,
@@ -423,7 +756,9 @@ def _build_datasource_config_summary(datasource: DataSource) -> dict[str, Any]:
         return {
             "endpoint": payload.get("endpoint"),
             "method": payload.get("method"),
-            "response_mapping": dict(response_mapping) if isinstance(response_mapping, dict) else {},
+            "response_mapping": dict(response_mapping)
+            if isinstance(response_mapping, dict)
+            else {},
             "header_count": len(headers) if isinstance(headers, dict) else 0,
             "param_count": len(params) if isinstance(params, dict) else 0,
         }
@@ -462,6 +797,31 @@ def enqueue_analyze_job(hours: int, user_id: str, state: AppState) -> AnalyzeJob
     return job
 
 
+def enqueue_semantic_search_job(
+    hours: int,
+    query: str,
+    user_id: str,
+    state: AppState,
+) -> SemanticSearchJobRecord:
+    if state.semantic_search_repository is None:
+        raise HTTPException(status_code=503, detail="System not initialized")
+
+    job = SemanticSearchJob(
+        id=f"semantic_search_job_{uuid.uuid4().hex}",
+        recipient_key=_to_recipient_key(user_id, state.controller),
+        query=query,
+        normalized_intent="",
+        time_window_hours=hours,
+        created_at=datetime.now(timezone.utc),
+        status="queued",
+        source="api",
+    )
+
+    state.semantic_search_repository.create_semantic_search_job(job)
+    _ = state.semantic_search_executor.submit(_run_semantic_search_job, job.id, state)
+    return _semantic_search_request_to_job_record(job)
+
+
 def create_api_server(
     config_path: str = "./config.json",
     start_services: bool = True,
@@ -484,8 +844,19 @@ def create_api_server(
         app_state.controller = controller
         app_state.analysis_repository = controller.analysis_repository
         app_state.datasource_repository = controller.datasource_repository
+        app_state.semantic_search_repository = getattr(
+            controller, "semantic_search_repository", None
+        )
+        if app_state.semantic_search_repository is None:
+            repositories = getattr(controller, "_repositories", None)
+            if isinstance(repositories, dict):
+                app_state.semantic_search_repository = repositories.get(
+                    "semantic_search"
+                )
 
-        effective_start_scheduler = start_services if start_scheduler is None else start_scheduler
+        effective_start_scheduler = (
+            start_services if start_scheduler is None else start_scheduler
+        )
         effective_start_command_listener = (
             start_services if start_command_listener is None else start_command_listener
         )
@@ -509,7 +880,9 @@ def create_api_server(
                     controller.start_command_listener()
                     logger.info("Telegram command listener started in API mode")
             else:
-                logger.warning("Telegram command handler not configured, listener not started")
+                logger.warning(
+                    "Telegram command handler not configured, listener not started"
+                )
         else:
             logger.info("Telegram command listener disabled in API runtime")
 
@@ -551,8 +924,7 @@ def create_api_server(
 
         if request.hours < min_hours:
             raise HTTPException(
-                status_code=400,
-                detail=f"Hours must be at least {min_hours}"
+                status_code=400, detail=f"Hours must be at least {min_hours}"
             )
 
         hours = min(request.hours, max_hours)
@@ -620,6 +992,93 @@ def create_api_server(
 
         return job.to_result_response()
 
+    @app.post(
+        SEMANTIC_SEARCH_ROUTE_PATH,
+        response_model=SemanticSearchAcceptedResponse,
+        status_code=202,
+    )
+    async def semantic_search(
+        request: SemanticSearchRequest,
+        response: Response,
+        _: Annotated[str, Depends(verify_api_key)],
+        req: Request,
+    ):
+        controller = _get_controller(req)
+        state = _get_app_state(req)
+
+        config_manager = controller.config_manager
+        if config_manager is None:
+            raise HTTPException(status_code=503, detail="System not initialized")
+
+        _ensure_semantic_search_http_supported(controller)
+        _get_semantic_search_repository(req)
+
+        analysis_config = config_manager.get_analysis_config()
+        max_hours = analysis_config.get("max_analysis_window_hours", 24)
+        min_hours = analysis_config.get("min_analysis_window_hours", 1)
+
+        if request.hours < min_hours:
+            raise HTTPException(
+                status_code=400, detail=f"Hours must be at least {min_hours}"
+            )
+
+        hours = min(request.hours, max_hours)
+
+        try:
+            job = enqueue_semantic_search_job(
+                hours, request.query, request.user_id, state
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to enqueue semantic search job: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        status_url, result_url = _semantic_search_job_urls(job.job_id)
+        response.headers["Location"] = status_url
+        response.headers["Retry-After"] = "5"
+
+        return SemanticSearchAcceptedResponse(
+            success=True,
+            job_id=job.job_id,
+            status=job.status,
+            query=job.query,
+            normalized_intent=job.normalized_intent,
+            matched_count=job.matched_count,
+            retained_count=job.retained_count,
+            time_window_hours=job.time_window_hours,
+            status_url=status_url,
+            result_url=result_url,
+        )
+
+    @app.get(
+        SEMANTIC_SEARCH_JOB_STATUS_PATH, response_model=SemanticSearchJobStatusResponse
+    )
+    async def get_semantic_search_job_status(
+        job_id: str,
+        _: Annotated[str, Depends(verify_api_key)],
+        req: Request,
+    ):
+        repository = _get_semantic_search_repository(req)
+        job = repository.get_by_id(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Semantic search job not found")
+        return _semantic_search_request_to_job_record(job).to_status_response()
+
+    @app.get(
+        SEMANTIC_SEARCH_JOB_RESULT_PATH, response_model=SemanticSearchJobResultResponse
+    )
+    async def get_semantic_search_job_result(
+        job_id: str,
+        _: Annotated[str, Depends(verify_api_key)],
+        req: Request,
+    ):
+        repository = _get_semantic_search_repository(req)
+        job = repository.get_by_id(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Semantic search job not found")
+        return _semantic_search_request_to_job_record(job).to_result_response()
+
     @app.post("/datasources", response_model=DataSourceCreateResponse, status_code=201)
     async def create_datasource(
         request: DataSourceCreateRequest,
@@ -662,8 +1121,7 @@ def create_api_server(
         return DataSourceListResponse(
             success=True,
             datasources=[
-                _to_datasource_response_item(datasource)
-                for datasource in datasources
+                _to_datasource_response_item(datasource) for datasource in datasources
             ],
         )
 
@@ -702,7 +1160,9 @@ def create_api_server(
         secret_token = req.headers.get(TELEGRAM_WEBHOOK_SECRET_HEADER)
 
         try:
-            await command_handler.handle_webhook_update(payload, secret_token=secret_token)
+            await command_handler.handle_webhook_update(
+                payload, secret_token=secret_token
+            )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except RuntimeError as exc:

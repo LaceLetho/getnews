@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 @dataclass
 class ContentItem:
     """内容项数据模型"""
+
     id: str
     title: str
     content: str
@@ -24,32 +25,32 @@ class ContentItem:
     publish_time: datetime
     source_name: str
     source_type: str  # "rss" or "x"
-    
+
     def __post_init__(self):
         """数据验证"""
         self.validate()
-    
+
     def validate(self) -> None:
         """验证数据完整性"""
         if not self.title or not self.title.strip():
             raise ValueError("标题不能为空")
-        
+
         if not self.content or not self.content.strip():
             raise ValueError("内容不能为空")
-        
+
         if not self.url or not self._is_valid_url(self.url):
             raise ValueError(f"无效的URL: {self.url}")
-        
+
         if not self.source_name or not self.source_name.strip():
             raise ValueError("数据源名称不能为空")
-        
+
         # 允许任何非空的数据源类型，不限制为固定列表
         if not self.source_type or not self.source_type.strip():
             raise ValueError("数据源类型不能为空")
-        
+
         if not isinstance(self.publish_time, datetime):
             raise ValueError("发布时间必须是datetime对象")
-    
+
     def _is_valid_url(self, url: str) -> bool:
         """验证URL格式"""
         try:
@@ -57,42 +58,43 @@ class ContentItem:
             return all([result.scheme, result.netloc])
         except Exception:
             return False
-    
+
     def generate_content_hash(self) -> str:
         """生成内容哈希用于去重"""
         content_str = f"{self.title}{self.content}{self.url}"
-        return hashlib.md5(content_str.encode('utf-8')).hexdigest()
-    
+        return hashlib.md5(content_str.encode("utf-8")).hexdigest()
+
     @classmethod
     def generate_id(cls, title: str, url: str, publish_time: datetime) -> str:
         """生成唯一ID"""
         id_str = f"{title}{url}{publish_time.isoformat()}"
-        return hashlib.sha256(id_str.encode('utf-8')).hexdigest()[:16]
-    
+        return hashlib.sha256(id_str.encode("utf-8")).hexdigest()[:16]
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         data = asdict(self)
-        data['publish_time'] = self.publish_time.isoformat()
+        data["publish_time"] = self.publish_time.isoformat()
         return data
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ContentItem':
+    def from_dict(cls, data: Dict[str, Any]) -> "ContentItem":
         """从字典反序列化"""
-        if isinstance(data['publish_time'], str):
-            publish_time = datetime.fromisoformat(data['publish_time'])
+        if isinstance(data["publish_time"], str):
+            publish_time = datetime.fromisoformat(data["publish_time"])
             # 确保时间有时区信息
             if publish_time.tzinfo is None:
                 from datetime import timezone
+
                 publish_time = publish_time.replace(tzinfo=timezone.utc)
-            data['publish_time'] = publish_time
+            data["publish_time"] = publish_time
         return cls(**data)
-    
+
     def to_json(self) -> str:
         """序列化为JSON字符串"""
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
-    
+
     @classmethod
-    def from_json(cls, json_str: str) -> 'ContentItem':
+    def from_json(cls, json_str: str) -> "ContentItem":
         """从JSON字符串反序列化"""
         data = json.loads(json_str)
         return cls.from_dict(data)
@@ -101,25 +103,26 @@ class ContentItem:
 @dataclass
 class RSSSource:
     """RSS订阅源配置"""
+
     name: str
     url: str
     description: str
-    
+
     def __post_init__(self):
         """数据验证"""
         self.validate()
-    
+
     def validate(self) -> None:
         """验证配置有效性"""
         if not self.name or not self.name.strip():
             raise ValueError("RSS源名称不能为空")
-        
+
         if not self.url or not self._is_valid_url(self.url):
             raise ValueError(f"无效的RSS URL: {self.url}")
-        
+
         if not self.description:
             self.description = ""  # 允许空描述
-    
+
     def _is_valid_url(self, url: str) -> bool:
         """验证URL格式"""
         try:
@@ -127,13 +130,13 @@ class RSSSource:
             return all([result.scheme, result.netloc])
         except Exception:
             return False
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'RSSSource':
+    def from_dict(cls, data: Dict[str, Any]) -> "RSSSource":
         """从字典反序列化"""
         return cls(**data)
 
@@ -141,25 +144,26 @@ class RSSSource:
 @dataclass
 class XSource:
     """X/Twitter信息源配置"""
+
     name: str
     url: str
     type: str  # "list" or "timeline"
-    
+
     def __post_init__(self):
         """数据验证"""
         self.validate()
-    
+
     def validate(self) -> None:
         """验证配置有效性"""
         if not self.name or not self.name.strip():
             raise ValueError("X源名称不能为空")
-        
+
         if not self.url or not self._is_valid_url(self.url):
             raise ValueError(f"无效的X URL: {self.url}")
-        
+
         if self.type not in ["list", "timeline"]:
             raise ValueError(f"无效的X源类型: {self.type}")
-    
+
     def _is_valid_url(self, url: str) -> bool:
         """验证URL格式"""
         try:
@@ -167,13 +171,13 @@ class XSource:
             return all([result.scheme, result.netloc])
         except Exception:
             return False
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'XSource':
+    def from_dict(cls, data: Dict[str, Any]) -> "XSource":
         """从字典反序列化"""
         return cls(**data)
 
@@ -181,33 +185,34 @@ class XSource:
 @dataclass
 class RESTAPISource:
     """REST API数据源配置"""
+
     name: str
     endpoint: str
     method: str
     headers: Dict[str, str]
     params: Dict[str, Any]
     response_mapping: Dict[str, str]  # 字段映射配置
-    
+
     def __post_init__(self):
         """数据验证"""
         self.validate()
-    
+
     def validate(self) -> None:
         """验证配置有效性"""
         if not self.name or not self.name.strip():
             raise ValueError("REST API源名称不能为空")
-        
+
         if not self.endpoint or not self._is_valid_url(self.endpoint):
             raise ValueError(f"无效的API端点: {self.endpoint}")
-        
+
         if self.method.upper() not in ["GET", "POST", "PUT", "DELETE"]:
             raise ValueError(f"无效的HTTP方法: {self.method}")
-        
+
         required_mappings = ["title_field", "content_field", "url_field", "time_field"]
         for field in required_mappings:
             if field not in self.response_mapping:
                 raise ValueError(f"缺少必需的响应映射字段: {field}")
-    
+
     def _is_valid_url(self, url: str) -> bool:
         """验证URL格式"""
         try:
@@ -215,13 +220,13 @@ class RESTAPISource:
             return all([result.scheme, result.netloc])
         except Exception:
             return False
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'RESTAPISource':
+    def from_dict(cls, data: Dict[str, Any]) -> "RESTAPISource":
         """从字典反序列化"""
         return cls(**data)
 
@@ -229,18 +234,20 @@ class RESTAPISource:
 @dataclass
 class AuthConfig:
     """认证配置"""
+
     X_CT0: str
     X_AUTH_TOKEN: str
     GROK_API_KEY: str  # Grok API密钥，用于市场快照
     KIMI_API_KEY: str  # Kimi API密钥
+    OPENAI_API_KEY: str  # OpenAI API密钥，用于Embedding
     OPENCODE_API_KEY: str  # OpenCode API密钥
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_CHANNEL_ID: str
-    
+
     def __post_init__(self):
         """标准化认证配置"""
         self.validate()
-    
+
     def validate(
         self,
         mode: Optional[str] = None,
@@ -250,18 +257,27 @@ class AuthConfig:
         # X认证参数可以为空（如果不使用X源）
         object.__setattr__(self, "X_CT0", (self.X_CT0 or "").strip())
         object.__setattr__(self, "X_AUTH_TOKEN", (self.X_AUTH_TOKEN or "").strip())
-        
+
         # Grok API密钥可以为空（如果不使用市场快照功能）
         object.__setattr__(self, "GROK_API_KEY", (self.GROK_API_KEY or "").strip())
 
         # Kimi API密钥可以为空（如果不使用Kimi模型）
         object.__setattr__(self, "KIMI_API_KEY", (self.KIMI_API_KEY or "").strip())
 
-        # OpenCode API密钥可以为空（如果不使用opencode-go模型）
-        object.__setattr__(self, "OPENCODE_API_KEY", (self.OPENCODE_API_KEY or "").strip())
+        # OpenAI API密钥可以为空（如果不使用语义搜索Embedding）
+        object.__setattr__(self, "OPENAI_API_KEY", (self.OPENAI_API_KEY or "").strip())
 
-        object.__setattr__(self, "TELEGRAM_BOT_TOKEN", (self.TELEGRAM_BOT_TOKEN or "").strip())
-        object.__setattr__(self, "TELEGRAM_CHANNEL_ID", (self.TELEGRAM_CHANNEL_ID or "").strip())
+        # OpenCode API密钥可以为空（如果不使用opencode-go模型）
+        object.__setattr__(
+            self, "OPENCODE_API_KEY", (self.OPENCODE_API_KEY or "").strip()
+        )
+
+        object.__setattr__(
+            self, "TELEGRAM_BOT_TOKEN", (self.TELEGRAM_BOT_TOKEN or "").strip()
+        )
+        object.__setattr__(
+            self, "TELEGRAM_CHANNEL_ID", (self.TELEGRAM_CHANNEL_ID or "").strip()
+        )
 
         normalized_mode = (mode or "").strip().lower()
         if normalized_mode in {"analysis-service", "api-only"}:
@@ -272,7 +288,8 @@ class AuthConfig:
             ]
             if missing_provider_env_vars:
                 raise ValueError(
-                    "缺少LLM提供商认证配置: " + ", ".join(sorted(missing_provider_env_vars))
+                    "缺少LLM提供商认证配置: "
+                    + ", ".join(sorted(missing_provider_env_vars))
                 )
 
     def validate_telegram(self, required: bool = True) -> None:
@@ -285,27 +302,29 @@ class AuthConfig:
 
         if not self.TELEGRAM_CHANNEL_ID:
             raise ValueError("Telegram Channel ID不能为空")
-    
+
     @classmethod
-    def from_env(cls) -> 'AuthConfig':
+    def from_env(cls) -> "AuthConfig":
         """从环境变量创建AuthConfig实例"""
         import os
+
         return cls(
-            X_CT0=os.getenv('X_CT0', ''),
-            X_AUTH_TOKEN=os.getenv('X_AUTH_TOKEN', ''),
-            GROK_API_KEY=os.getenv('GROK_API_KEY', ''),
-            KIMI_API_KEY=os.getenv('KIMI_API_KEY', ''),
-            OPENCODE_API_KEY=os.getenv('OPENCODE_API_KEY', ''),
-            TELEGRAM_BOT_TOKEN=os.getenv('TELEGRAM_BOT_TOKEN', ''),
-            TELEGRAM_CHANNEL_ID=os.getenv('TELEGRAM_CHANNEL_ID', '')
+            X_CT0=os.getenv("X_CT0", ""),
+            X_AUTH_TOKEN=os.getenv("X_AUTH_TOKEN", ""),
+            GROK_API_KEY=os.getenv("GROK_API_KEY", ""),
+            KIMI_API_KEY=os.getenv("KIMI_API_KEY", ""),
+            OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", ""),
+            OPENCODE_API_KEY=os.getenv("OPENCODE_API_KEY", ""),
+            TELEGRAM_BOT_TOKEN=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+            TELEGRAM_CHANNEL_ID=os.getenv("TELEGRAM_CHANNEL_ID", ""),
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'AuthConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "AuthConfig":
         """从字典反序列化"""
         return cls(**data)
 
@@ -313,6 +332,7 @@ class AuthConfig:
 @dataclass
 class StorageConfig:
     """存储配置"""
+
     retention_days: int = 30
     max_storage_mb: int = 1000
     cleanup_frequency: str = "daily"
@@ -320,19 +340,19 @@ class StorageConfig:
     database_path: str = "./data/crypto_news.db"
     database_url: Optional[str] = None
     pgvector_dimensions: int = 1536
-    
+
     def __post_init__(self):
         """数据验证"""
         self.validate()
-    
+
     def validate(self) -> None:
         """验证存储配置"""
         if self.retention_days <= 0:
             raise ValueError("数据保留天数必须大于0")
-        
+
         if self.max_storage_mb <= 0:
             raise ValueError("最大存储空间必须大于0MB")
-        
+
         if self.cleanup_frequency not in ["daily", "weekly", "monthly"]:
             raise ValueError(f"无效的清理频率: {self.cleanup_frequency}")
 
@@ -348,20 +368,79 @@ class StorageConfig:
 
         if self.pgvector_dimensions <= 0:
             raise ValueError("pgvector_dimensions必须大于0")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'StorageConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "StorageConfig":
         """从字典反序列化"""
+        return cls(**data)
+
+
+@dataclass
+class SemanticSearchConfig:
+    """Semantic search configuration."""
+
+    query_max_chars: int = 300
+    max_subqueries: int = 4
+    per_subquery_limit: int = 50
+    max_retained_items: int = 200
+    synthesis_batch_size: int = 10
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536
+    enabled: bool = True
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self) -> None:
+        if self.query_max_chars <= 0:
+            raise ValueError("query_max_chars必须大于0")
+        if self.max_subqueries <= 0:
+            raise ValueError("max_subqueries必须大于0")
+        if self.per_subquery_limit <= 0:
+            raise ValueError("per_subquery_limit必须大于0")
+        if self.max_retained_items <= 0:
+            raise ValueError("max_retained_items必须大于0")
+        if self.synthesis_batch_size <= 0:
+            raise ValueError("synthesis_batch_size必须大于0")
+        if not self.embedding_model or not self.embedding_model.strip():
+            raise ValueError("embedding_model不能为空")
+        if self.embedding_dimensions <= 0:
+            raise ValueError("embedding_dimensions必须大于0")
+        if not isinstance(self.enabled, bool):
+            raise ValueError("enabled必须是布尔值")
+
+    def validate_query(self, query: str) -> str:
+        normalized_query = str(query or "").strip()
+        if not normalized_query:
+            raise ValueError("query must not be blank")
+        if len(normalized_query) > self.query_max_chars:
+            raise ValueError(f"query must not exceed {self.query_max_chars} characters")
+        return normalized_query
+
+    def ensure_supported_for_storage(self, storage_config: "StorageConfig") -> None:
+        if storage_config.backend != "postgres":
+            raise ValueError(
+                "Semantic search requires PostgreSQL/pgvector; SQLite runtime is unsupported"
+            )
+        if not self.enabled:
+            raise ValueError("Semantic search is disabled")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SemanticSearchConfig":
         return cls(**data)
 
 
 @dataclass
 class BirdConfig:
     """Bird工具配置"""
+
     executable_path: str = "bird"
     timeout_seconds: int = 300
     max_retries: int = 3
@@ -371,40 +450,40 @@ class BirdConfig:
     enable_auto_retry: bool = True
     retry_delay_seconds: int = 60
     bird_max_page: int = 3
-    
+
     def __post_init__(self):
         """数据验证"""
         self.validate()
-    
+
     def validate(self) -> None:
         """验证配置有效性"""
         if not self.executable_path or not self.executable_path.strip():
             raise ValueError("Bird可执行文件路径不能为空")
-        
+
         if self.timeout_seconds <= 0:
             raise ValueError("超时时间必须大于0秒")
-        
+
         if self.max_retries < 0:
             raise ValueError("最大重试次数不能为负数")
-        
+
         if self.output_format not in ["json", "text", "csv"]:
             raise ValueError(f"不支持的输出格式: {self.output_format}")
-        
+
         if self.rate_limit_delay < 0:
             raise ValueError("速率限制延迟不能为负数")
-        
+
         if self.retry_delay_seconds < 0:
             raise ValueError("重试延迟不能为负数")
-        
+
         if self.bird_max_page < 1 or self.bird_max_page > 5:
             raise ValueError("bird_max_page必须在1到5之间")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'BirdConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "BirdConfig":
         """从字典反序列化"""
         return cls(**data)
 
@@ -412,27 +491,28 @@ class BirdConfig:
 @dataclass
 class BirdResult:
     """Bird工具执行结果"""
+
     success: bool
     output: str
     error: str
     exit_code: int
     execution_time: float
     command: List[str]
-    
+
     def __post_init__(self):
         """数据验证"""
         if not isinstance(self.command, list):
             raise ValueError("命令必须是列表格式")
-        
+
         if self.execution_time < 0:
             raise ValueError("执行时间不能为负数")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'BirdResult':
+    def from_dict(cls, data: Dict[str, Any]) -> "BirdResult":
         """从字典反序列化"""
         return cls(**data)
 
@@ -440,49 +520,50 @@ class BirdResult:
 @dataclass
 class AnalysisResult:
     """分析结果"""
+
     content_id: str
     category: str
     confidence: float
     reasoning: str
     should_ignore: bool
     key_points: List[str]
-    
+
     def __post_init__(self):
         """数据验证"""
         self.validate()
-    
+
     def validate(self) -> None:
         """验证分析结果"""
         if not self.content_id or not self.content_id.strip():
             raise ValueError("内容ID不能为空")
-        
+
         if not self.category or not self.category.strip():
             raise ValueError("分类不能为空")
-        
+
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError("置信度必须在0.0到1.0之间")
-        
+
         if not isinstance(self.should_ignore, bool):
             raise ValueError("should_ignore必须是布尔值")
-        
+
         if not isinstance(self.key_points, list):
             raise ValueError("key_points必须是列表")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'AnalysisResult':
+    def from_dict(cls, data: Dict[str, Any]) -> "AnalysisResult":
         """从字典反序列化"""
         return cls(**data)
-    
+
     def to_json(self) -> str:
         """序列化为JSON字符串"""
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
-    
+
     @classmethod
-    def from_json(cls, json_str: str) -> 'AnalysisResult':
+    def from_json(cls, json_str: str) -> "AnalysisResult":
         """从JSON字符串反序列化"""
         data = json.loads(json_str)
         return cls.from_dict(data)
@@ -491,35 +572,36 @@ class AnalysisResult:
 @dataclass
 class CrawlResult:
     """爬取结果"""
+
     source_name: str
     status: str  # "success" or "error"
     item_count: int
     error_message: Optional[str]
-    
+
     def __post_init__(self):
         """数据验证"""
         self.validate()
-    
+
     def validate(self) -> None:
         """验证爬取结果"""
         if not self.source_name or not self.source_name.strip():
             raise ValueError("数据源名称不能为空")
-        
+
         if self.status not in ["success", "error"]:
             raise ValueError(f"无效的状态: {self.status}")
-        
+
         if self.item_count < 0:
             raise ValueError("项目数量不能为负数")
-        
+
         if self.status == "error" and not self.error_message:
             raise ValueError("错误状态必须包含错误信息")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'CrawlResult':
+    def from_dict(cls, data: Dict[str, Any]) -> "CrawlResult":
         """从字典反序列化"""
         return cls(**data)
 
@@ -527,29 +609,30 @@ class CrawlResult:
 @dataclass
 class CrawlStatus:
     """爬取状态"""
+
     rss_results: List[CrawlResult]
     x_results: List[CrawlResult]
     total_items: int
     execution_time: datetime
-    
+
     def __post_init__(self):
         """数据验证"""
         self.validate()
-    
+
     def validate(self) -> None:
         """验证爬取状态"""
         if not isinstance(self.rss_results, list):
             raise ValueError("RSS结果必须是列表")
-        
+
         if not isinstance(self.x_results, list):
             raise ValueError("X结果必须是列表")
-        
+
         if self.total_items < 0:
             raise ValueError("总项目数不能为负数")
-        
+
         if not isinstance(self.execution_time, datetime):
             raise ValueError("执行时间必须是datetime对象")
-    
+
     def get_success_count(self) -> int:
         """获取成功的数据源数量"""
         success_count = 0
@@ -557,7 +640,7 @@ class CrawlStatus:
             if result.status == "success":
                 success_count += 1
         return success_count
-    
+
     def get_error_count(self) -> int:
         """获取失败的数据源数量"""
         error_count = 0
@@ -565,23 +648,23 @@ class CrawlStatus:
             if result.status == "error":
                 error_count += 1
         return error_count
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         data = asdict(self)
-        data['execution_time'] = self.execution_time.isoformat()
+        data["execution_time"] = self.execution_time.isoformat()
         return data
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'CrawlStatus':
+    def from_dict(cls, data: Dict[str, Any]) -> "CrawlStatus":
         """从字典反序列化"""
-        if isinstance(data['execution_time'], str):
-            data['execution_time'] = datetime.fromisoformat(data['execution_time'])
-        
+        if isinstance(data["execution_time"], str):
+            data["execution_time"] = datetime.fromisoformat(data["execution_time"])
+
         # 转换嵌套的CrawlResult对象
-        data['rss_results'] = [CrawlResult.from_dict(r) for r in data['rss_results']]
-        data['x_results'] = [CrawlResult.from_dict(r) for r in data['x_results']]
-        
+        data["rss_results"] = [CrawlResult.from_dict(r) for r in data["rss_results"]]
+        data["x_results"] = [CrawlResult.from_dict(r) for r in data["x_results"]]
+
         return cls(**data)
 
 
@@ -593,12 +676,13 @@ class CrawlStatus:
 @dataclass
 class MarketSnapshot:
     """市场快照数据模型"""
+
     content: str  # 市场快照内容
     timestamp: datetime  # 获取时间
     source: str  # 来源（grok, fallback, cached）
     quality_score: float  # 质量评分 (0.0-1.0)
     is_valid: bool  # 是否有效
-    
+
     def __post_init__(self):
         """数据验证"""
         if not isinstance(self.timestamp, datetime):
@@ -607,26 +691,26 @@ class MarketSnapshot:
             raise ValueError("质量评分必须在0.0到1.0之间")
         if not isinstance(self.is_valid, bool):
             raise ValueError("is_valid必须是布尔值")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         data = asdict(self)
-        data['timestamp'] = self.timestamp.isoformat()
+        data["timestamp"] = self.timestamp.isoformat()
         return data
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'MarketSnapshot':
+    def from_dict(cls, data: Dict[str, Any]) -> "MarketSnapshot":
         """从字典反序列化"""
-        if isinstance(data['timestamp'], str):
-            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+        if isinstance(data["timestamp"], str):
+            data["timestamp"] = datetime.fromisoformat(data["timestamp"])
         return cls(**data)
-    
+
     def to_json(self) -> str:
         """序列化为JSON字符串"""
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
-    
+
     @classmethod
-    def from_json(cls, json_str: str) -> 'MarketSnapshot':
+    def from_json(cls, json_str: str) -> "MarketSnapshot":
         """从JSON字符串反序列化"""
         data = json.loads(json_str)
         return cls.from_dict(data)
@@ -637,13 +721,14 @@ class ChatContext:
     """
     Chat context information extracted from Telegram update
     """
+
     user_id: str
     username: str
     chat_id: str
     chat_type: str  # "private", "group", or "supergroup"
     is_private: bool
     is_group: bool
-    
+
     @property
     def context_description(self) -> str:
         """Human-readable context description"""
@@ -653,11 +738,12 @@ class ChatContext:
 @dataclass
 class TelegramCommandConfig:
     """Telegram命令配置"""
+
     enabled: bool = True
-    authorized_users: List[Dict[str, Any]] = None
+    authorized_users: Optional[List[Dict[str, Any]]] = None
     execution_timeout_minutes: int = 30
     max_concurrent_executions: int = 1
-    command_rate_limit: Dict[str, int] = None
+    command_rate_limit: Optional[Dict[str, int]] = None
 
     def __post_init__(self):
         if self.authorized_users is None:
@@ -665,13 +751,14 @@ class TelegramCommandConfig:
         if self.command_rate_limit is None:
             self.command_rate_limit = {
                 "max_commands_per_hour": 10,
-                "cooldown_minutes": 5
+                "cooldown_minutes": 5,
             }
 
 
 @dataclass
 class ExecutionInfo:
     """执行信息"""
+
     execution_id: str
     trigger_type: str  # "scheduled", "manual", "startup"
     trigger_user: Optional[str]
@@ -682,7 +769,7 @@ class ExecutionInfo:
     current_stage: str  # "crawling", "analyzing", "reporting", "sending"
     error_message: Optional[str]
     items_processed: int = 0
-    categories_found: Dict[str, int] = None
+    categories_found: Optional[Dict[str, int]] = None
 
     def __post_init__(self):
         if self.categories_found is None:
@@ -691,24 +778,25 @@ class ExecutionInfo:
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         data = asdict(self)
-        data['start_time'] = self.start_time.isoformat()
+        data["start_time"] = self.start_time.isoformat()
         if self.end_time:
-            data['end_time'] = self.end_time.isoformat()
+            data["end_time"] = self.end_time.isoformat()
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ExecutionInfo':
+    def from_dict(cls, data: Dict[str, Any]) -> "ExecutionInfo":
         """从字典反序列化"""
-        if isinstance(data['start_time'], str):
-            data['start_time'] = datetime.fromisoformat(data['start_time'])
-        if data.get('end_time') and isinstance(data['end_time'], str):
-            data['end_time'] = datetime.fromisoformat(data['end_time'])
+        if isinstance(data["start_time"], str):
+            data["start_time"] = datetime.fromisoformat(data["start_time"])
+        if data.get("end_time") and isinstance(data["end_time"], str):
+            data["end_time"] = datetime.fromisoformat(data["end_time"])
         return cls(**data)
 
 
 @dataclass
 class ExecutionResult:
     """执行结果"""
+
     execution_id: str
     success: bool
     start_time: datetime
@@ -720,27 +808,28 @@ class ExecutionResult:
     trigger_user: Optional[str]
     trigger_chat_id: Optional[str] = None  # 触发命令的聊天ID，用于发送报告
     report_sent: bool = False
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         data = asdict(self)
-        data['start_time'] = self.start_time.isoformat()
-        data['end_time'] = self.end_time.isoformat()
+        data["start_time"] = self.start_time.isoformat()
+        data["end_time"] = self.end_time.isoformat()
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ExecutionResult':
+    def from_dict(cls, data: Dict[str, Any]) -> "ExecutionResult":
         """从字典反序列化"""
-        if isinstance(data['start_time'], str):
-            data['start_time'] = datetime.fromisoformat(data['start_time'])
-        if isinstance(data['end_time'], str):
-            data['end_time'] = datetime.fromisoformat(data['end_time'])
+        if isinstance(data["start_time"], str):
+            data["start_time"] = datetime.fromisoformat(data["start_time"])
+        if isinstance(data["end_time"], str):
+            data["end_time"] = datetime.fromisoformat(data["end_time"])
         return cls(**data)
 
 
 @dataclass
 class CommandExecutionHistory:
     """命令执行历史"""
+
     command: str
     user_id: str
     username: str
@@ -752,14 +841,14 @@ class CommandExecutionHistory:
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         data = asdict(self)
-        data['timestamp'] = self.timestamp.isoformat()
+        data["timestamp"] = self.timestamp.isoformat()
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'CommandExecutionHistory':
+    def from_dict(cls, data: Dict[str, Any]) -> "CommandExecutionHistory":
         """从字典反序列化"""
-        if isinstance(data['timestamp'], str):
-            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+        if isinstance(data["timestamp"], str):
+            data["timestamp"] = datetime.fromisoformat(data["timestamp"])
         return cls(**data)
 
 
@@ -783,7 +872,7 @@ def create_content_item_from_raw(
     url: str,
     publish_time: Union[datetime, str],
     source_name: str,
-    source_type: str
+    source_type: str,
 ) -> ContentItem:
     """从原始数据创建ContentItem对象"""
     # 处理时间格式
@@ -793,16 +882,18 @@ def create_content_item_from_raw(
         except ValueError:
             # 尝试其他常见格式
             from dateutil import parser
+
             publish_time = parser.parse(publish_time)
-    
+
     # 确保时间有时区信息
     if publish_time.tzinfo is None:
         from datetime import timezone
+
         publish_time = publish_time.replace(tzinfo=timezone.utc)
-    
+
     # 生成ID
     item_id = ContentItem.generate_id(title, url, publish_time)
-    
+
     return ContentItem(
         id=item_id,
         title=title.strip(),
@@ -810,26 +901,26 @@ def create_content_item_from_raw(
         url=url.strip(),
         publish_time=publish_time,
         source_name=source_name.strip(),
-        source_type=source_type.strip()
+        source_type=source_type.strip(),
     )
 
 
 # 批量操作工具类
 class DataModelUtils:
     """数据模型工具类"""
-    
+
     @staticmethod
     def serialize_content_items(items: List[ContentItem]) -> str:
         """批量序列化ContentItem列表为JSON"""
         data = [item.to_dict() for item in items]
         return json.dumps(data, ensure_ascii=False, indent=2)
-    
+
     @staticmethod
     def deserialize_content_items(json_str: str) -> List[ContentItem]:
         """从JSON批量反序列化ContentItem列表"""
         data = json.loads(json_str)
         return [ContentItem.from_dict(item_data) for item_data in data]
-    
+
     @staticmethod
     def validate_content_items(items: List[ContentItem]) -> List[str]:
         """批量验证ContentItem列表，返回错误信息列表"""
@@ -840,32 +931,33 @@ class DataModelUtils:
             except ValueError as e:
                 errors.append(f"项目 {i}: {str(e)}")
         return errors
-    
+
     @staticmethod
     def deduplicate_content_items(items: List[ContentItem]) -> List[ContentItem]:
         """基于内容哈希去重ContentItem列表"""
         seen_hashes = set()
         unique_items = []
-        
+
         for item in items:
             content_hash = item.generate_content_hash()
             if content_hash not in seen_hashes:
                 seen_hashes.add(content_hash)
                 unique_items.append(item)
-        
+
         return unique_items
-    
+
     @staticmethod
     def filter_by_time_window(
-        items: List[ContentItem], 
+        items: List[ContentItem],
         time_window_hours: int,
-        reference_time: Optional[datetime] = None
+        reference_time: Optional[datetime] = None,
     ) -> List[ContentItem]:
         """根据时间窗口过滤ContentItem列表"""
         if reference_time is None:
             reference_time = datetime.now()
-        
+
         from datetime import timedelta
+
         cutoff_time = reference_time - timedelta(hours=time_window_hours)
-        
+
         return [item for item in items if item.publish_time >= cutoff_time]

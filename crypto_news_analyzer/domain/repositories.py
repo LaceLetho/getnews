@@ -9,9 +9,9 @@ Version: 1.0.0
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
-from .models import AnalysisRequest, DataSource, IngestionJob
+from .models import AnalysisRequest, DataSource, IngestionJob, SemanticSearchJob
 
 
 class AnalysisRepository(ABC):
@@ -305,6 +305,47 @@ class ContentRepository(ABC):
         source_types: Optional[List[str]] = None,
         limit: Optional[int] = None,
     ) -> List[Any]:
+        pass
+
+    @abstractmethod
+    def fetch_rows_missing_embeddings(self, limit: int) -> List[Any]:
+        pass
+
+    @abstractmethod
+    def persist_embedding(self, content_id: str, embedding: List[float], model: str) -> bool:
+        pass
+
+    @abstractmethod
+    def semantic_search_by_similarity(
+        self,
+        query_embedding: List[float],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+    ) -> List[Tuple[Any, float]]:
+        pass
+
+
+class SemanticSearchRepository(ABC):
+    @abstractmethod
+    def create_semantic_search_job(self, job: SemanticSearchJob) -> None:
+        pass
+
+    @abstractmethod
+    def update_semantic_search_job(self, job: SemanticSearchJob) -> bool:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, job_id: str) -> Optional[SemanticSearchJob]:
+        pass
+
+    @abstractmethod
+    def get_by_recipient(
+        self,
+        recipient_key: str,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[SemanticSearchJob]:
         pass
 
 

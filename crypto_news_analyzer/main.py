@@ -4,15 +4,18 @@ import argparse
 import logging
 import threading
 import signal
+from typing import Optional
 
 from .execution_coordinator import MainController
+from .semantic_search import run_embedding_backfill_once
+from .utils.errors import UnsupportedBackendError
 from .utils.logging import setup_logging
-
 
 SUPPORTED_RUNTIME_MODES = (
     "analysis-service",
     "api-only",
     "ingestion",
+    "embedding-backfill",
 )
 DEFAULT_RUNTIME_MODE = "analysis-service"
 
@@ -28,32 +31,48 @@ def normalize_runtime_mode(mode: str, logger: logging.Logger) -> str:
     return normalized_mode
 
 
-def main():
-    """主函数"""
-    # 设置日志系统
-    log_level = os.environ.get('LOG_LEVEL', 'INFO')
-    setup_logging(log_level=log_level)
-    logger = logging.getLogger(__name__)
-    
-    # 解析命令行参数
+def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="加密货币新闻分析工具")
     parser.add_argument(
         "--mode",
         default=DEFAULT_RUNTIME_MODE,
         help=(
             "运行模式: analysis-service=公网分析服务(API+Telegram，无调度器，生产默认), "
-            "api-only=仅API服务(隔离用途), ingestion=仅数据摄取服务。"
+            "api-only=仅API服务(隔离用途), ingestion=仅数据摄取服务, "
+            "embedding-backfill=一次性历史Embedding回填。"
         ),
     )
-    parser.add_argument("--config", default="./config.json",
-                       help="配置文件路径")
-    
+    parser.add_argument("--config", default="./config.json", help="配置文件路径")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=100,
+        help="embedding-backfill模式下每批处理的文章数量",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="embedding-backfill模式下最多处理的缺失Embedding文章数量",
+    )
+    return parser
+
+
+def main():
+    """主函数"""
+    # 设置日志系统
+    log_level = os.environ.get("LOG_LEVEL", "INFO")
+    setup_logging(log_level=log_level)
+    logger = logging.getLogger(__name__)
+
+    # 解析命令行参数
+    parser = build_argument_parser()
     args = parser.parse_args()
-    
+
     try:
         args.mode = normalize_runtime_mode(args.mode, logger)
         logger.info(f"启动加密货币新闻分析系统，模式: {args.mode}")
-        
+
         if args.mode == "analysis-service":
             exit_code = run_analysis_service(args.config)
         elif args.mode == "api-only":
@@ -62,13 +81,19 @@ def main():
         elif args.mode == "ingestion":
             # 仅数据摄取服务（Railway拆分架构：ingestion服务）
             exit_code = run_ingestion_service(args.config)
+        elif args.mode == "embedding-backfill":
+            exit_code = run_embedding_backfill(
+                args.config,
+                batch_size=args.batch_size,
+                limit=args.limit,
+            )
         else:
             logger.error(f"不支持的运行模式: {args.mode}")
             exit_code = 1
-        
+
         logger.info(f"系统退出，状态码: {exit_code}")
         sys.exit(exit_code)
-        
+
     except KeyboardInterrupt:
         logger.info("接收到中断信号，正在退出...")
         sys.exit(0)
@@ -203,6 +228,35 @@ def run_ingestion_service(config_path: str = "./config.json") -> int:
     logger = logging.getLogger(__name__)
     logger.info("启动数据摄取服务模式（Railway ingestion服务）")
     return run_ingestion_loop(config_path)
+
+
+def run_embedding_backfill(
+    config_path: str = "./config.json",
+    batch_size: int = 100,
+    limit: Optional[int] = None,
+) -> int:
+    """运行一次性历史Embedding回填任务。"""
+    logger = logging.getLogger(__name__)
+    logger.info(
+        "启动历史Embedding回填模式，batch_size=%s limit=%s",
+        batch_size,
+        limit,
+    )
+
+    try:
+        os.environ["CRYPTO_NEWS_RUNTIME_MODE"] = "embedding-backfill"
+        run_embedding_backfill_once(
+            config_path=config_path,
+            batch_size=batch_size,
+            limit=limit,
+        )
+        return 0
+    except UnsupportedBackendError as exc:
+        logger.error(f"Embedding回填仅支持PostgreSQL后端: {exc}")
+        return 1
+    except Exception as exc:
+        logger.error(f"Embedding回填失败: {exc}")
+        return 1
 
 
 if __name__ == "__main__":

@@ -95,6 +95,19 @@ class StorageError(CryptoNewsAnalyzerError):
         super().__init__(message, ErrorType.STORAGE_ERROR, details)
 
 
+class UnsupportedBackendError(StorageError):
+    """存储后端不支持指定操作"""
+
+    def __init__(self, backend: str, feature: str):
+        self.backend = backend
+        self.feature = feature
+        super().__init__(
+            f"Backend '{backend}' does not support {feature}",
+            operation="unsupported_backend",
+            details={"backend": backend, "feature": feature},
+        )
+
+
 class RateLimitError(CryptoNewsAnalyzerError):
     """速率限制错误"""
     
@@ -334,7 +347,7 @@ class ErrorRecoveryManager:
         """记录恢复动作"""
         self.logger.info(f"错误恢复动作: {action.action_type} - {action.message}")
     
-    def generate_error_report(self, errors: list) -> str:
+    def generate_error_report(self, errors: list[Exception]) -> str:
         """
         生成错误报告
         

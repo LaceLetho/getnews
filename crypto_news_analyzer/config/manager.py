@@ -20,7 +20,15 @@ from ..datasource_payloads import (
 )
 from ..domain.models import DataSource
 from ..domain.repositories import DataSourceRepository
-from ..models import RSSSource, XSource, AuthConfig, StorageConfig, RESTAPISource, BirdConfig
+from ..models import (
+    RSSSource,
+    XSource,
+    AuthConfig,
+    StorageConfig,
+    RESTAPISource,
+    BirdConfig,
+    SemanticSearchConfig,
+)
 
 
 class ConfigManager:
@@ -138,6 +146,17 @@ class ConfigManager:
                 self.logger.error(f"LLM配置无效: {exc}")
                 return False
 
+            llm_batch_size = config["llm_config"].get("batch_size", 10)
+            semantic_search_data = dict(config.get("semantic_search", {}))
+            if "synthesis_batch_size" not in semantic_search_data:
+                semantic_search_data["synthesis_batch_size"] = llm_batch_size
+
+            try:
+                SemanticSearchConfig.from_dict(semantic_search_data)
+            except ValueError as exc:
+                self.logger.error(f"语义搜索配置无效: {exc}")
+                return False
+
             # 验证RSS源配置
             if "rss_sources" in config:
                 for source in config["rss_sources"]:
@@ -239,6 +258,7 @@ class ConfigManager:
             X_AUTH_TOKEN=os.getenv("X_AUTH_TOKEN", ""),
             GROK_API_KEY=os.getenv("GROK_API_KEY", ""),
             KIMI_API_KEY=os.getenv("KIMI_API_KEY", ""),
+            OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", ""),
             OPENCODE_API_KEY=os.getenv("OPENCODE_API_KEY", ""),
             TELEGRAM_BOT_TOKEN=os.getenv("TELEGRAM_BOT_TOKEN", ""),
             TELEGRAM_CHANNEL_ID=os.getenv("TELEGRAM_CHANNEL_ID", ""),
@@ -312,6 +332,14 @@ class ConfigManager:
             retry_delay_seconds=int(os.getenv("BIRD_RETRY_DELAY_SECONDS", 60)),
             bird_max_page=int(os.getenv("BIRD_MAX_PAGE", 3)),
         )
+
+    def get_semantic_search_config(self) -> SemanticSearchConfig:
+        """获取语义搜索配置。"""
+        semantic_search_data = dict(self.config_data.get("semantic_search", {}))
+        llm_batch_size = self.config_data.get("llm_config", {}).get("batch_size", 10)
+        if "synthesis_batch_size" not in semantic_search_data:
+            semantic_search_data["synthesis_batch_size"] = llm_batch_size
+        return SemanticSearchConfig.from_dict(semantic_search_data)
 
     def get_analysis_config(self) -> Dict[str, int]:
         """
@@ -426,6 +454,16 @@ class ConfigManager:
                 "cache_ttl_minutes": 240,
                 "cached_messages_hours": 24,
                 "enable_debug_logging": False,
+            },
+            "semantic_search": {
+                "query_max_chars": 300,
+                "max_subqueries": 4,
+                "per_subquery_limit": 50,
+                "max_retained_items": 200,
+                "synthesis_batch_size": 10,
+                "embedding_model": "text-embedding-3-small",
+                "embedding_dimensions": 1536,
+                "enabled": True,
             },
             "rss_sources": [
                 {
