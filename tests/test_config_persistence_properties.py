@@ -107,7 +107,9 @@ def valid_storage_config(draw):
         "max_storage_mb": draw(st.integers(min_value=100, max_value=10000)),
         "cleanup_frequency": draw(st.sampled_from(["daily", "weekly", "monthly"])),
         "database_path": draw(
-            st.sampled_from(["./data/crypto_news.db", "/tmp/test.db", "./test_data/db.sqlite"])
+            st.sampled_from(
+                ["./data/crypto_news.db", "/tmp/test.db", "./test_data/db.sqlite"]
+            )
         ),
     }
 
@@ -118,8 +120,12 @@ def valid_auth_config(draw):
     return {
         "X_CT0": draw(st.text(max_size=100)),  # 可以为空
         "X_AUTH_TOKEN": draw(st.text(max_size=200)),  # 可以为空
-        "TELEGRAM_BOT_TOKEN": draw(st.text(min_size=1, max_size=100).filter(lambda x: x.strip())),
-        "TELEGRAM_CHANNEL_ID": draw(st.text(min_size=1, max_size=50).filter(lambda x: x.strip())),
+        "TELEGRAM_BOT_TOKEN": draw(
+            st.text(min_size=1, max_size=100).filter(lambda x: x.strip())
+        ),
+        "TELEGRAM_CHANNEL_ID": draw(
+            st.text(min_size=1, max_size=50).filter(lambda x: x.strip())
+        ),
     }
 
 
@@ -128,7 +134,9 @@ def valid_llm_config(draw):
     """生成有效的LLM配置"""
     return {
         "model": draw(st.sampled_from(VALID_MODEL_CONFIGS)),
-        "fallback_models": draw(st.lists(st.sampled_from(VALID_MODEL_CONFIGS), min_size=0, max_size=3)),
+        "fallback_models": draw(
+            st.lists(st.sampled_from(VALID_MODEL_CONFIGS), min_size=0, max_size=3)
+        ),
         "market_model": draw(st.sampled_from(VALID_MARKET_MODEL_CONFIGS)),
         "temperature": draw(st.floats(min_value=0.0, max_value=2.0)),
         "max_tokens": draw(st.integers(min_value=100, max_value=4000)),
@@ -146,7 +154,9 @@ def valid_config(draw):
         "llm_config": draw(valid_llm_config()),
         "rss_sources": draw(st.lists(valid_rss_source(), min_size=0, max_size=10)),
         "x_sources": draw(st.lists(valid_x_source(), min_size=0, max_size=5)),
-        "rest_api_sources": draw(st.lists(valid_rest_api_source(), min_size=0, max_size=3)),
+        "rest_api_sources": draw(
+            st.lists(valid_rest_api_source(), min_size=0, max_size=3)
+        ),
     }
 
 
@@ -159,7 +169,7 @@ class TestConfigPersistenceProperties:
     def setup_method(self):
         """测试前设置"""
         self.temp_dir = tempfile.mkdtemp()
-        self.config_path = os.path.join(self.temp_dir, "test_config.json")
+        self.config_path = os.path.join(self.temp_dir, "test_config.jsonc")
 
     def teardown_method(self):
         """测试后清理"""
@@ -192,9 +202,9 @@ class TestConfigPersistenceProperties:
         loaded_config = manager.load_config()
 
         # 验证：保存和加载的配置应该完全一致
-        assert (
-            loaded_config == config_data
-        ), f"配置不一致：\n原始: {config_data}\n加载: {loaded_config}"
+        assert loaded_config == config_data, (
+            f"配置不一致：\n原始: {config_data}\n加载: {loaded_config}"
+        )
 
         # 验证：配置文件确实存在
         assert os.path.exists(self.config_path), "配置文件应该存在"
@@ -227,7 +237,9 @@ class TestConfigPersistenceProperties:
 
     @given(config1=valid_config(), config2=valid_config())
     @settings(max_examples=50, deadline=None)
-    def test_config_overwrite_consistency(self, config1: Dict[str, Any], config2: Dict[str, Any]):
+    def test_config_overwrite_consistency(
+        self, config1: Dict[str, Any], config2: Dict[str, Any]
+    ):
         """
         属性测试：配置覆盖的一致性
 

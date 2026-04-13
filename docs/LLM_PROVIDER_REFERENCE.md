@@ -1,6 +1,6 @@
 # LLM Provider Reference
 
-This document catalogs all supported LLM providers, their available models, and configurable options. Use this reference when configuring `llm_config` in `config.json`.
+This document catalogs all supported LLM providers, their available models, and configurable options. Use this reference when configuring `llm_config` in `config.jsonc`.
 
 ## Supported Providers
 
@@ -197,5 +197,5 @@ The following models have been removed and require migration:
 ## See Also
 
 - `crypto_news_analyzer/config/llm_registry.py` - Source of truth for provider/model definitions
-- `config.json` - Runtime configuration location
+- `config.jsonc` - Runtime configuration location
 - `.env.template` - Environment variable reference

@@ -263,7 +263,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   **References** (executor has NO interview context — be exhaustive):
   - Pattern: `crypto_news_analyzer/storage/data_manager.py` — 当前内容、执行日志、查询主要入口
   - Pattern: `crypto_news_analyzer/storage/cache_manager.py` — 当前发送缓存入口
-  - Pattern: `config.json:6` — 当前 SQLite 路径配置
+  - Pattern: `config.jsonc:6` — 当前 SQLite 路径配置
   - Pattern: `crypto_news_analyzer/models.py` — 现有存储配置模型
   - Test: `tests/test_data_storage_properties.py` — 存储行为性质测试
 
@@ -306,7 +306,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
   - Pattern: `crypto_news_analyzer/storage/data_manager.py` — 当前内容/日志 schema 来源
   - Pattern: `crypto_news_analyzer/storage/cache_manager.py` — 当前发送缓存 schema 来源
   - Pattern: `crypto_news_analyzer/models.py` — 存储配置入口
-  - Pattern: `config.json:6` — 当前 DB path，需要迁移为 `DATABASE_URL`
+  - Pattern: `config.jsonc:6` — 当前 DB path，需要迁移为 `DATABASE_URL`
   - Test: `tests/test_data_storage_properties.py` — 迁移后必须继续通过
 
   **Acceptance Criteria** (agent-executable only):
@@ -329,7 +329,7 @@ Wave 3: service split and Railway deployment (`8,9,10,11`)
     Evidence: .sisyphus/evidence/task-5-backfill-validation.txt
   ```
 
-  **Commit**: YES | Message: `feat(db): cut monolith storage over to postgres and pgvector` | Files: `crypto_news_analyzer/storage/`, `crypto_news_analyzer/models.py`, `config.json`, `tests/`, `migrations/`
+  **Commit**: YES | Message: `feat(db): cut monolith storage over to postgres and pgvector` | Files: `crypto_news_analyzer/storage/`, `crypto_news_analyzer/models.py`, `config.jsonc`, `tests/`, `migrations/`
 
 - [x] 6. 将分析异步 job 状态持久化到共享数据库
 

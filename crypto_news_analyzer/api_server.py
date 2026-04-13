@@ -823,7 +823,7 @@ def enqueue_semantic_search_job(
 
 
 def create_api_server(
-    config_path: str = "./config.json",
+    config_path: str = "./config.jsonc",
     start_services: bool = True,
     start_scheduler: Optional[bool] = None,
     start_command_listener: Optional[bool] = None,

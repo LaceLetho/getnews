@@ -53,7 +53,7 @@ uv run pytest tests/test_minimax_llm_analyzer.py -v
 ## Configuration
 
 - Environment variables: `.env` (copy from `.env.template`)
-- Application config: `config.json`
+- Application config: `config.jsonc`
 - Required env vars: `LLM_API_KEY`, `GROK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`
 - Optional: `X_CT0`, `X_AUTH_TOKEN` (for X/Twitter)
 

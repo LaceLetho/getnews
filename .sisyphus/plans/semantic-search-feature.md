@@ -45,7 +45,7 @@ Implement a new semantic-search path that works on top of PostgreSQL/pgvector an
 - pgvector similarity query path with time-window filtering and deterministic cap handling
 - Embedding generation service using OpenAI `text-embedding-3-small` (1536 dims)
 - Incremental embedding writes for newly ingested content
-- One-off historical backfill mode: `uv run python -m crypto_news_analyzer.main --mode embedding-backfill --config ./config.json --batch-size 100`
+- One-off historical backfill mode: `uv run python -m crypto_news_analyzer.main --mode embedding-backfill --config ./config.jsonc --batch-size 100`
 - Semantic search prompt(s) and compact report formatting
 - HTTP async endpoints and Telegram command
 - Automated coverage for repository, backfill, service, HTTP, Telegram, and unsupported-backend paths

@@ -55,13 +55,17 @@ def valid_url(draw):
     domain_parts = draw(
         st.lists(
             st.text(
-                alphabet=st.characters(whitelist_categories=("Ll", "Nd")), min_size=1, max_size=10
+                alphabet=st.characters(whitelist_categories=("Ll", "Nd")),
+                min_size=1,
+                max_size=10,
             ),
             min_size=1,
             max_size=3,
         )
     )
-    domain = ".".join(domain_parts) + draw(st.sampled_from([".com", ".org", ".net", ".io"]))
+    domain = ".".join(domain_parts) + draw(
+        st.sampled_from([".com", ".org", ".net", ".io"])
+    )
 
     # 路径部分（可选）
     path_parts = draw(
@@ -86,7 +90,9 @@ def valid_rss_source(draw):
     # 生成非空白字符的名称
     name = draw(
         st.text(
-            alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd", "Pc"), min_codepoint=32),
+            alphabet=st.characters(
+                whitelist_categories=("Lu", "Ll", "Nd", "Pc"), min_codepoint=32
+            ),
             min_size=1,
             max_size=50,
         )
@@ -101,7 +107,8 @@ def valid_rss_source(draw):
         "description": draw(
             st.text(
                 alphabet=st.characters(
-                    whitelist_categories=("Lu", "Ll", "Nd", "Pc", "Pd", "Po"), min_codepoint=32
+                    whitelist_categories=("Lu", "Ll", "Nd", "Pc", "Pd", "Po"),
+                    min_codepoint=32,
                 ),
                 min_size=1,
                 max_size=200,
@@ -117,13 +124,19 @@ def valid_x_source(draw):
     base_url = "https://x.com/"
     path_type = draw(st.sampled_from(["i/lists/", "user/"]))
     identifier = draw(
-        st.text(alphabet=st.characters(whitelist_categories=("Nd", "Ll")), min_size=5, max_size=20)
+        st.text(
+            alphabet=st.characters(whitelist_categories=("Nd", "Ll")),
+            min_size=5,
+            max_size=20,
+        )
     )
 
     # 生成非空白字符的名称
     name = draw(
         st.text(
-            alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd", "Pc"), min_codepoint=32),
+            alphabet=st.characters(
+                whitelist_categories=("Lu", "Ll", "Nd", "Pc"), min_codepoint=32
+            ),
             min_size=1,
             max_size=50,
         )
@@ -144,7 +157,9 @@ def valid_rest_api_source(draw):
     # 生成非空白字符的名称
     name = draw(
         st.text(
-            alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd", "Pc"), min_codepoint=32),
+            alphabet=st.characters(
+                whitelist_categories=("Lu", "Ll", "Nd", "Pc"), min_codepoint=32
+            ),
             min_size=1,
             max_size=50,
         )
@@ -198,7 +213,11 @@ def valid_storage_config(draw):
     # 生成安全的文件路径
     path_parts = draw(
         st.lists(
-            st.text(alphabet="abcdefghijklmnopqrstuvwxyz0123456789_-", min_size=1, max_size=10),
+            st.text(
+                alphabet="abcdefghijklmnopqrstuvwxyz0123456789_-",
+                min_size=1,
+                max_size=10,
+            ),
             min_size=1,
             max_size=3,
         )
@@ -218,7 +237,9 @@ def valid_llm_config(draw):
     """生成有效的LLM配置"""
     return {
         "model": draw(st.sampled_from(VALID_MODEL_CONFIGS)),
-        "fallback_models": draw(st.lists(st.sampled_from(VALID_MODEL_CONFIGS), min_size=0, max_size=3)),
+        "fallback_models": draw(
+            st.lists(st.sampled_from(VALID_MODEL_CONFIGS), min_size=0, max_size=3)
+        ),
         "market_model": draw(st.sampled_from(VALID_MARKET_MODEL_CONFIGS)),
         "temperature": draw(st.floats(min_value=0.0, max_value=2.0)),
         "max_tokens": draw(st.integers(min_value=100, max_value=4000)),
@@ -236,7 +257,9 @@ def valid_complete_config(draw):
         "llm_config": draw(valid_llm_config()),
         "rss_sources": draw(st.lists(valid_rss_source(), min_size=0, max_size=10)),
         "x_sources": draw(st.lists(valid_x_source(), min_size=0, max_size=5)),
-        "rest_api_sources": draw(st.lists(valid_rest_api_source(), min_size=0, max_size=3)),
+        "rest_api_sources": draw(
+            st.lists(valid_rest_api_source(), min_size=0, max_size=3)
+        ),
     }
 
 
@@ -248,7 +271,9 @@ def invalid_config_missing_fields(draw):
     # 随机删除一些必需字段
     required_fields = ["storage", "llm_config"]
     fields_to_remove = draw(
-        st.lists(st.sampled_from(required_fields), min_size=1, max_size=len(required_fields))
+        st.lists(
+            st.sampled_from(required_fields), min_size=1, max_size=len(required_fields)
+        )
     )
 
     for field in fields_to_remove:
@@ -299,7 +324,7 @@ class TestConfigFileManagementProperties:
     def setup_method(self):
         """测试前设置"""
         self.temp_dir = tempfile.mkdtemp()
-        self.config_path = os.path.join(self.temp_dir, "test_config.json")
+        self.config_path = os.path.join(self.temp_dir, "test_config.jsonc")
         self.manager = ConfigManager(self.config_path)
 
     def teardown_method(self):
@@ -340,7 +365,9 @@ class TestConfigFileManagementProperties:
         # 验证配置包含所有信息源
         if "rss_sources" in config_data:
             rss_sources = self.manager.get_rss_sources()
-            assert len(rss_sources) == len(config_data["rss_sources"]), "RSS源数量应该匹配"
+            assert len(rss_sources) == len(config_data["rss_sources"]), (
+                "RSS源数量应该匹配"
+            )
 
         if "x_sources" in config_data:
             x_sources = self.manager.get_x_sources()
@@ -348,9 +375,9 @@ class TestConfigFileManagementProperties:
 
         if "rest_api_sources" in config_data:
             api_sources = self.manager.get_rest_api_sources()
-            assert len(api_sources) == len(
-                config_data["rest_api_sources"]
-            ), "REST API源数量应该匹配"
+            assert len(api_sources) == len(config_data["rest_api_sources"]), (
+                "REST API源数量应该匹配"
+            )
 
     @given(
         original_config=valid_complete_config(),
@@ -385,7 +412,9 @@ class TestConfigFileManagementProperties:
                 modified_config["rss_sources"] = modified_config["rss_sources"].copy()
                 if modified_config["rss_sources"]:
                     # 修改第一个源的名称
-                    modified_config["rss_sources"][0] = modified_config["rss_sources"][0].copy()
+                    modified_config["rss_sources"][0] = modified_config["rss_sources"][
+                        0
+                    ].copy()
                     modified_config["rss_sources"][0]["name"] = (
                         "Modified " + modified_config["rss_sources"][0]["name"]
                     )
@@ -416,7 +445,9 @@ class TestConfigFileManagementProperties:
         modified_rss_count = len(modified_config.get("rss_sources", []))
 
         loaded_rss_sources = self.manager.get_rss_sources()
-        assert len(loaded_rss_sources) == modified_rss_count, "RSS源数量应该反映最新配置"
+        assert len(loaded_rss_sources) == modified_rss_count, (
+            "RSS源数量应该反映最新配置"
+        )
 
     def test_default_config_creation_when_missing(self):
         """
@@ -469,22 +500,24 @@ class TestConfigFileManagementProperties:
             incomplete_config = config_data.copy()
             del incomplete_config[field]
 
-            assert not self.manager.validate_config(
-                incomplete_config
-            ), f"缺少必需字段 '{field}' 的配置应该验证失败"
+            assert not self.manager.validate_config(incomplete_config), (
+                f"缺少必需字段 '{field}' 的配置应该验证失败"
+            )
 
         # 测试嵌套字段的完整性
         if "storage" in config_data:
             incomplete_storage = config_data.copy()
             incomplete_storage["storage"] = {}
-            assert not self.manager.validate_config(
-                incomplete_storage
-            ), "存储配置为空时应该验证失败"
+            assert not self.manager.validate_config(incomplete_storage), (
+                "存储配置为空时应该验证失败"
+            )
 
         if "auth" in config_data:
             incomplete_auth = config_data.copy()
             incomplete_auth["auth"] = {}
-            assert not self.manager.validate_config(incomplete_auth), "认证配置为空时应该验证失败"
+            assert not self.manager.validate_config(incomplete_auth), (
+                "认证配置为空时应该验证失败"
+            )
 
     @given(config_data=invalid_config_missing_fields())
     @settings(max_examples=30, deadline=None)
@@ -496,7 +529,9 @@ class TestConfigFileManagementProperties:
         对于任何缺少必需字段的配置，系统应该检测到并验证失败。
         """
         # 缺少必需字段的配置应该验证失败
-        assert not self.manager.validate_config(config_data), "缺少必需字段的配置应该验证失败"
+        assert not self.manager.validate_config(config_data), (
+            "缺少必需字段的配置应该验证失败"
+        )
 
         # 尝试保存无效配置应该抛出异常
         with pytest.raises(ValueError, match="配置数据验证失败"):
@@ -520,7 +555,10 @@ class TestConfigFileManagementProperties:
         # 检查RSS源URL
         for source in config_data.get("rss_sources", []):
             url = source.get("url", "")
-            if not (url.startswith("http://") or url.startswith("https://")) or len(url) < 10:
+            if (
+                not (url.startswith("http://") or url.startswith("https://"))
+                or len(url) < 10
+            ):
                 has_invalid_url = True
                 break
 
@@ -542,11 +580,15 @@ class TestConfigFileManagementProperties:
                 break
 
         if has_invalid_url:
-            assert not is_valid, f"包含无效URL的配置应该验证失败，但验证通过了。配置: {config_data}"
+            assert not is_valid, (
+                f"包含无效URL的配置应该验证失败，但验证通过了。配置: {config_data}"
+            )
 
     @given(config_data=valid_complete_config())
     @settings(max_examples=30, deadline=None)
-    def test_config_persistence_across_manager_instances(self, config_data: Dict[str, Any]):
+    def test_config_persistence_across_manager_instances(
+        self, config_data: Dict[str, Any]
+    ):
         """
         **属性 3: 配置文件管理 - 跨实例持久化**
         **验证: 需求 2.1, 2.5**
@@ -579,7 +621,9 @@ class TestConfigFileManagementProperties:
         max_storage_mb=st.integers(min_value=1, max_value=86400),
     )
     @settings(max_examples=50, deadline=None)
-    def test_numeric_parameter_validation(self, retention_days: int, max_storage_mb: int):
+    def test_numeric_parameter_validation(
+        self, retention_days: int, max_storage_mb: int
+    ):
         """
         **属性 3: 配置文件管理 - 数值参数验证**
         **验证: 需求 2.13**
@@ -624,16 +668,16 @@ class TestConfigFileManagementProperties:
         invalid_retention_config: Dict[str, Any] = config.copy()
         invalid_retention_config["storage"] = config["storage"].copy()
         invalid_retention_config["storage"]["retention_days"] = 0
-        assert not self.manager.validate_config(
-            invalid_retention_config
-        ), "retention_days为0应该验证失败"
+        assert not self.manager.validate_config(invalid_retention_config), (
+            "retention_days为0应该验证失败"
+        )
 
         invalid_storage_size_config: Dict[str, Any] = config.copy()
         invalid_storage_size_config["storage"] = config["storage"].copy()
         invalid_storage_size_config["storage"]["max_storage_mb"] = 0
-        assert not self.manager.validate_config(
-            invalid_storage_size_config
-        ), "max_storage_mb为0应该验证失败"
+        assert not self.manager.validate_config(invalid_storage_size_config), (
+            "max_storage_mb为0应该验证失败"
+        )
 
 
 if __name__ == "__main__":

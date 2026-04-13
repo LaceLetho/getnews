@@ -1,9 +1,9 @@
 # Datasource Database Migration and CRUD Interfaces
 
 ## TL;DR
-> **Summary**: Move datasource definitions out of `config.json` and into database-backed persistence, add normalized multi-tag support, and expose synchronous datasource create/list/delete through both REST API and Telegram while preserving current ingestion behavior.
+> **Summary**: Move datasource definitions out of `config.jsonc` and into database-backed persistence, add normalized multi-tag support, and expose synchronous datasource create/list/delete through both REST API and Telegram while preserving current ingestion behavior.
 > **Deliverables**:
-> - Database-backed datasource source of truth with bootstrap import from `config.json`
+> - Database-backed datasource source of truth with bootstrap import from `config.jsonc`
 > - Multi-tag datasource model and validation rules
 > - REST create/list/delete endpoints under existing Bearer auth
 > - Telegram create/list/delete commands under existing authorized-user checks
@@ -14,7 +14,7 @@
 
 ## Context
 ### Original Request
-- Move datasource definitions from `config.json` into PostgreSQL and manage them from the database going forward.
+- Move datasource definitions from `config.jsonc` into PostgreSQL and manage them from the database going forward.
 - Add multi-tag support per datasource, e.g. `crypto`, `AI`, or multiple tags on the same datasource.
 - Add datasource create/list/delete interfaces through both Telegram commands and REST API.
 
@@ -32,7 +32,7 @@
 
 ## Work Objectives
 ### Core Objective
-Replace config-file datasource definitions with database-backed datasource records that can be created, listed, and deleted via REST API and Telegram without requiring future edits to `config.json`.
+Replace config-file datasource definitions with database-backed datasource records that can be created, listed, and deleted via REST API and Telegram without requiring future edits to `config.jsonc`.
 
 ### Deliverables
 - New datasource persistence model and migrations
@@ -50,7 +50,7 @@ Replace config-file datasource definitions with database-backed datasource recor
 - `uv run pytest tests/ -k "datasource or api_server or telegram_command_handler" -v` exits `0`.
 
 ### Must Have
-- Datasource storage becomes database-backed runtime truth; `config.json` is bootstrap input only, not ongoing authority.
+- Datasource storage becomes database-backed runtime truth; `config.jsonc` is bootstrap input only, not ongoing authority.
 - Datasources support multiple normalized tags.
 - REST and Telegram both support create/list/delete.
 - `rss`, `x`, and `rest_api` are all valid datasource types in v1.
@@ -61,7 +61,7 @@ Replace config-file datasource definitions with database-backed datasource recor
 - No datasource update/edit endpoint or command.
 - No soft delete or `is_active` substitute.
 - No tag-management subsystem, tag catalog UI, or report-generation work.
-- No broader migration of unrelated config values from `config.json`.
+- No broader migration of unrelated config values from `config.jsonc`.
 - No historical backfill of datasource IDs into `content_items`, `analysis_jobs`, or `ingestion_jobs`.
 - No free-form Telegram parser variants; only one accepted add-command payload shape.
 - No storage of tags as comma-delimited strings.
@@ -187,8 +187,8 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
 - [x] 3. Implement datasource repositories and bootstrap import logic
 
-  **What to do**: Add datasource CRUD methods behind a dedicated repository abstraction and wire concrete storage implementations. Implement create/list/delete plus lookup helpers and active-job delete guard checks. Add bootstrap import logic that runs transactionally only when datasource storage is empty; it must read datasource arrays from `config.json`, convert them into datasource records, import them once, and then leave the database as the only runtime datasource source of truth. If datasource rows already exist, bootstrap must skip import and log a no-op outcome; it must not overwrite operator-managed rows.
-  **Must NOT do**: Do not implement dual-write between `config.json` and database. Do not overwrite non-empty datasource tables from config.
+**What to do**: Add datasource CRUD methods behind a dedicated repository abstraction and wire concrete storage implementations. Implement create/list/delete plus lookup helpers and active-job delete guard checks. Add bootstrap import logic that runs transactionally only when datasource storage is empty; it must read datasource arrays from `config.jsonc`, convert them into datasource records, import them once, and then leave the database as the only runtime datasource source of truth. If datasource rows already exist, bootstrap must skip import and log a no-op outcome; it must not overwrite operator-managed rows.
+**Must NOT do**: Do not implement dual-write between `config.jsonc` and database. Do not overwrite non-empty datasource tables from config.
 
   **Recommended Agent Profile**:
   - Category: `deep` - Reason: repository behavior and bootstrap semantics are central to the migration’s correctness.
@@ -201,13 +201,13 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
   - Pattern: `crypto_news_analyzer/storage/repositories.py:23-118` - concrete repository implementation style to mirror.
   - Pattern: `crypto_news_analyzer/storage/data_manager.py` - existing CRUD helper conventions and backend branching to reuse.
   - Pattern: `crypto_news_analyzer/config/manager.py:174-210` - current datasource retrieval contract bootstrap must replace without changing caller expectations.
-  - Pattern: `config.json` - current datasource payload shape to import from during first-run bootstrap.
+- Pattern: `config.jsonc` - current datasource payload shape to import from during first-run bootstrap.
   - Pattern: `migrations/postgresql/001_init.sql:83-102` - `ingestion_jobs` snapshot fields (`source_type`, `source_name`, `status`) used for hard-delete blocking logic.
 
   **Acceptance Criteria** (agent-executable only):
   - [ ] `uv run pytest tests/test_datasource_repository.py -k "create or list or delete" -v` exits `0`.
   - [ ] `uv run pytest tests/test_datasource_bootstrap.py -k "bootstrap or idempotent" -v` exits `0`.
-  - [ ] first bootstrap import inserts datasource rows from `config.json`; second bootstrap import inserts zero additional rows.
+- [ ] first bootstrap import inserts datasource rows from `config.jsonc`; second bootstrap import inserts zero additional rows.
   - [ ] delete returns a conflict/guard failure when matching active ingestion jobs exist.
 
   **QA Scenarios** (MANDATORY - task incomplete without these):
@@ -270,7 +270,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 
 - [x] 5. Switch runtime datasource loading from config arrays to repository-backed provider
 
-  **What to do**: Preserve current call sites by keeping `ConfigManager` responsible for non-datasource settings while moving datasource retrieval behind a repository-backed provider. `ConfigManager.get_rss_sources()`, `get_x_sources()`, and `get_rest_api_sources()` must continue returning the existing typed source objects, but they should now read through the datasource repository/provider after optional bootstrap. Update the ingestion path so `_execute_crawling_stage()` continues to use `DataSourceFactory` and existing crawler adapters without needing to know whether sources came from JSON or database. Add regression tests proving ingestion can run when datasource arrays are absent or empty in `config.json` after bootstrap/database seeding.
+**What to do**: Preserve current call sites by keeping `ConfigManager` responsible for non-datasource settings while moving datasource retrieval behind a repository-backed provider. `ConfigManager.get_rss_sources()`, `get_x_sources()`, and `get_rest_api_sources()` must continue returning the existing typed source objects, but they should now read through the datasource repository/provider after optional bootstrap. Update the ingestion path so `_execute_crawling_stage()` continues to use `DataSourceFactory` and existing crawler adapters without needing to know whether sources came from JSON or database. Add regression tests proving ingestion can run when datasource arrays are absent or empty in `config.jsonc` after bootstrap/database seeding.
   **Must NOT do**: Do not redesign the crawler factory or coordinator flow beyond the datasource loading seam.
 
   **Recommended Agent Profile**:
@@ -289,7 +289,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
   **Acceptance Criteria** (agent-executable only):
   - [ ] `uv run pytest tests/test_datasource_bootstrap.py -k runtime_loading -v` exits `0`.
   - [ ] `uv run pytest tests/test_execution_coordinator.py -k datasource -v` exits `0` if such coordinator coverage is added; otherwise the datasource runtime test suite exits `0`.
-  - [ ] ingestion runtime tests prove DB-seeded datasources are crawled without requiring populated datasource arrays in `config.json`.
+- [ ] ingestion runtime tests prove DB-seeded datasources are crawled without requiring populated datasource arrays in `config.jsonc`.
   - [ ] existing factory type names (`rss`, `x`, `rest_api`) remain unchanged at the crawl boundary.
 
   **QA Scenarios** (MANDATORY - task incomplete without these):
@@ -532,7 +532,7 @@ Wave 2: REST + Telegram management surfaces (Tasks 6-10)
 - Commit 5: `feat(telegram): add datasource management commands`
 
 ## Success Criteria
-- Datasource creation, listing, and deletion no longer require editing `config.json`.
+- Datasource creation, listing, and deletion no longer require editing `config.jsonc`.
 - Ingestion runtime pulls datasource definitions from repository-backed database storage.
 - Tags are stored, normalized, returned, and filter-ready for future report segmentation.
 - REST and Telegram surfaces enforce current auth rules and reject invalid payloads consistently.

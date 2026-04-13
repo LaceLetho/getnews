@@ -29,7 +29,7 @@
 graph TB
     subgraph "配置层"
         CF[配置文件管理器]
-        CONFIG[config.json]
+        CONFIG[config.jsonc]
     end
     
     subgraph "数据收集层"
@@ -767,7 +767,7 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 }
 ```
 
-**注意**: 授权用户列表不再存储在config.json中，而是通过TELEGRAM_AUTHORIZED_USERS环境变量配置，以保护用户隐私。
+**注意**: 授权用户列表不再存储在config.jsonc中，而是通过TELEGRAM_AUTHORIZED_USERS环境变量配置，以保护用户隐私。
 
 ### 9. 执行协调器 (ExecutionCoordinator)
 

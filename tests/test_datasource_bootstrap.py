@@ -50,7 +50,9 @@ class _FakePsycopg:
         return _FakeConnection(self.executed)
 
 
-def _fetch_sqlite_columns(connection: sqlite3.Connection, table_name: str) -> dict[str, dict[str, object]]:
+def _fetch_sqlite_columns(
+    connection: sqlite3.Connection, table_name: str
+) -> dict[str, dict[str, object]]:
     return {
         row[1]: {
             "type": row[2],
@@ -62,7 +64,9 @@ def _fetch_sqlite_columns(connection: sqlite3.Connection, table_name: str) -> di
     }
 
 
-def _fetch_sqlite_indexes(connection: sqlite3.Connection, table_name: str) -> dict[str, dict[str, object]]:
+def _fetch_sqlite_indexes(
+    connection: sqlite3.Connection, table_name: str
+) -> dict[str, dict[str, object]]:
     return {
         row[1]: {
             "unique": row[2],
@@ -264,7 +268,9 @@ def _load_bootstrapped_datasources(database_path: Path):
     return data_manager, repository
 
 
-def test_datasource_schema_sqlite_bootstrap_creates_expected_tables_indexes_and_constraints(tmp_path: Path):
+def test_datasource_schema_sqlite_bootstrap_creates_expected_tables_indexes_and_constraints(
+    tmp_path: Path,
+):
     db_path = tmp_path / "datasource_schema.db"
     manager = DataManager(StorageConfig(database_path=str(db_path)))
 
@@ -298,12 +304,25 @@ def test_datasource_schema_sqlite_bootstrap_creates_expected_tables_indexes_and_
 
             tag_indexes = _fetch_sqlite_indexes(connection, "datasource_tags")
             assert "idx_datasource_tags_tag" in tag_indexes
-            assert any(index_info["origin"] == "pk" for index_info in tag_indexes.values())
+            assert any(
+                index_info["origin"] == "pk" for index_info in tag_indexes.values()
+            )
 
             foreign_keys = connection.execute(
                 "PRAGMA foreign_key_list(datasource_tags)"
             ).fetchall()
-            assert foreign_keys == [(0, 0, "datasources", "datasource_id", "id", "NO ACTION", "CASCADE", "NONE")]
+            assert foreign_keys == [
+                (
+                    0,
+                    0,
+                    "datasources",
+                    "datasource_id",
+                    "id",
+                    "NO ACTION",
+                    "CASCADE",
+                    "NONE",
+                )
+            ]
         finally:
             connection.close()
 
@@ -327,7 +346,9 @@ def test_datasource_schema_sqlite_bootstrap_creates_expected_tables_indexes_and_
             except sqlite3.IntegrityError:
                 pass
             else:
-                raise AssertionError("expected unique constraint on datasources(source_type, name)")
+                raise AssertionError(
+                    "expected unique constraint on datasources(source_type, name)"
+                )
 
             try:
                 cursor.execute(
@@ -366,7 +387,9 @@ def test_datasource_schema_sqlite_delete_cascades_only_to_tags(tmp_path: Path):
             cursor.execute("DELETE FROM datasources WHERE id = ?", ("ds-1",))
             connection.commit()
 
-            remaining_tags = _fetch_count(cursor, "SELECT COUNT(*) FROM datasource_tags")
+            remaining_tags = _fetch_count(
+                cursor, "SELECT COUNT(*) FROM datasource_tags"
+            )
             remaining_jobs = _fetch_count(cursor, "SELECT COUNT(*) FROM ingestion_jobs")
 
             assert remaining_tags == 0
@@ -379,7 +402,9 @@ def test_datasource_schema_postgres_bootstrap_executes_expected_ddl(monkeypatch)
     executed = []
     fake_psycopg = _FakePsycopg(executed)
 
-    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg)
+    monkeypatch.setattr(
+        "crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg
+    )
     monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
 
     manager = DataManager(
@@ -390,33 +415,60 @@ def test_datasource_schema_postgres_bootstrap_executes_expected_ddl(monkeypatch)
         )
     )
 
-    datasource_table_queries = [query for query, _ in executed if "CREATE TABLE IF NOT EXISTS datasources" in query]
-    tag_table_queries = [query for query, _ in executed if "CREATE TABLE IF NOT EXISTS datasource_tags" in query]
+    datasource_table_queries = [
+        query
+        for query, _ in executed
+        if "CREATE TABLE IF NOT EXISTS datasources" in query
+    ]
+    tag_table_queries = [
+        query
+        for query, _ in executed
+        if "CREATE TABLE IF NOT EXISTS datasource_tags" in query
+    ]
 
     assert datasource_table_queries
-    assert "config_payload JSONB NOT NULL DEFAULT '{}'::jsonb" in datasource_table_queries[0]
-    assert "created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" in datasource_table_queries[0]
+    assert (
+        "config_payload JSONB NOT NULL DEFAULT '{}'::jsonb"
+        in datasource_table_queries[0]
+    )
+    assert (
+        "created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP"
+        in datasource_table_queries[0]
+    )
 
     assert tag_table_queries
     assert "PRIMARY KEY (datasource_id, tag)" in tag_table_queries[0]
     assert "REFERENCES datasources (id) ON DELETE CASCADE" in tag_table_queries[0]
 
-    assert any("CREATE UNIQUE INDEX IF NOT EXISTS idx_datasources_source_name" in query for query, _ in executed)
+    assert any(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_datasources_source_name" in query
+        for query, _ in executed
+    )
     assert any("ON datasources (source_type, name)" in query for query, _ in executed)
-    assert any("CREATE INDEX IF NOT EXISTS idx_datasources_created_at" in query for query, _ in executed)
-    assert any("CREATE INDEX IF NOT EXISTS idx_datasource_tags_tag" in query for query, _ in executed)
+    assert any(
+        "CREATE INDEX IF NOT EXISTS idx_datasources_created_at" in query
+        for query, _ in executed
+    )
+    assert any(
+        "CREATE INDEX IF NOT EXISTS idx_datasource_tags_tag" in query
+        for query, _ in executed
+    )
 
     manager.close()
 
 
 def test_datasource_schema_postgres_migration_is_additive_only():
-    migration_sql = Path("migrations/postgresql/002_datasource_schema.sql").read_text(encoding="utf-8")
+    migration_sql = Path("migrations/postgresql/002_datasource_schema.sql").read_text(
+        encoding="utf-8"
+    )
 
     assert "CREATE TABLE IF NOT EXISTS datasources" in migration_sql
     assert "CREATE TABLE IF NOT EXISTS datasource_tags" in migration_sql
     assert "config_payload JSONB NOT NULL DEFAULT '{}'::jsonb" in migration_sql
     assert "REFERENCES datasources (id) ON DELETE CASCADE" in migration_sql
-    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_datasources_source_name" in migration_sql
+    assert (
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_datasources_source_name" in migration_sql
+    )
     assert "CREATE INDEX IF NOT EXISTS idx_datasource_tags_tag" in migration_sql
 
     forbidden_tokens = [
@@ -431,7 +483,9 @@ def test_datasource_schema_postgres_migration_is_additive_only():
     assert not any(token in migration_sql for token in forbidden_tokens)
 
 
-def test_datasource_no_historical_backfill_when_bootstrapping_existing_sqlite_db(tmp_path: Path):
+def test_datasource_no_historical_backfill_when_bootstrapping_existing_sqlite_db(
+    tmp_path: Path,
+):
     db_path = tmp_path / "existing_pre_datasource.db"
     _create_pre_datasource_schema(db_path)
 
@@ -441,10 +495,16 @@ def test_datasource_no_historical_backfill_when_bootstrapping_existing_sqlite_db
         connection = sqlite3.connect(db_path)
         try:
             cursor = connection.cursor()
-            historical_content_rows = _fetch_count(cursor, "SELECT COUNT(*) FROM content_items")
-            historical_job_rows = _fetch_count(cursor, "SELECT COUNT(*) FROM ingestion_jobs")
+            historical_content_rows = _fetch_count(
+                cursor, "SELECT COUNT(*) FROM content_items"
+            )
+            historical_job_rows = _fetch_count(
+                cursor, "SELECT COUNT(*) FROM ingestion_jobs"
+            )
             datasource_rows = _fetch_count(cursor, "SELECT COUNT(*) FROM datasources")
-            datasource_tag_rows = _fetch_count(cursor, "SELECT COUNT(*) FROM datasource_tags")
+            datasource_tag_rows = _fetch_count(
+                cursor, "SELECT COUNT(*) FROM datasource_tags"
+            )
 
             assert historical_content_rows == 1
             assert historical_job_rows == 1
@@ -457,7 +517,7 @@ def test_datasource_no_historical_backfill_when_bootstrapping_existing_sqlite_db
 
 
 def test_datasource_bootstrap_imports_config_rows_when_storage_is_empty(tmp_path: Path):
-    config_path = tmp_path / "config.json"
+    config_path = tmp_path / "config.jsonc"
     database_path = tmp_path / "bootstrap_empty.db"
     _write_bootstrap_config(config_path, database_path)
 
@@ -497,7 +557,7 @@ def test_datasource_bootstrap_imports_config_rows_when_storage_is_empty(tmp_path
 
 
 def test_datasource_bootstrap_is_idempotent_on_second_initialization(tmp_path: Path):
-    config_path = tmp_path / "config.json"
+    config_path = tmp_path / "config.jsonc"
     database_path = tmp_path / "bootstrap_idempotent.db"
     _write_bootstrap_config(config_path, database_path)
 
@@ -518,8 +578,10 @@ def test_datasource_bootstrap_is_idempotent_on_second_initialization(tmp_path: P
         second_controller.cleanup_resources()
 
 
-def test_datasource_bootstrap_skip_non_empty_table_preserves_existing_rows(tmp_path: Path):
-    config_path = tmp_path / "config.json"
+def test_datasource_bootstrap_skip_non_empty_table_preserves_existing_rows(
+    tmp_path: Path,
+):
+    config_path = tmp_path / "config.jsonc"
     database_path = tmp_path / "bootstrap_skip_non_empty.db"
     _write_bootstrap_config(config_path, database_path)
 
@@ -529,7 +591,10 @@ def test_datasource_bootstrap_skip_non_empty_table_preserves_existing_rows(tmp_p
         DataSource.create(
             name="Operator Feed",
             source_type="rss",
-            config_payload={"name": "Operator Feed", "url": "https://example.com/operator"},
+            config_payload={
+                "name": "Operator Feed",
+                "url": "https://example.com/operator",
+            },
         )
     )
     data_manager.close()
@@ -537,10 +602,14 @@ def test_datasource_bootstrap_skip_non_empty_table_preserves_existing_rows(tmp_p
     controller = MainController(str(config_path))
     assert controller.initialize_ingestion_system() is True
 
-    reloaded_manager, reloaded_repository = _load_bootstrapped_datasources(database_path)
+    reloaded_manager, reloaded_repository = _load_bootstrapped_datasources(
+        database_path
+    )
     try:
         rows = reloaded_repository.list()
-        assert [(row.source_type, row.name) for row in rows] == [("rss", "Operator Feed")]
+        assert [(row.source_type, row.name) for row in rows] == [
+            ("rss", "Operator Feed")
+        ]
         loaded = reloaded_repository.get_by_id(existing.id)
         assert loaded is not None
         assert loaded.config_payload == {
@@ -552,8 +621,10 @@ def test_datasource_bootstrap_skip_non_empty_table_preserves_existing_rows(tmp_p
         controller.cleanup_resources()
 
 
-def test_runtime_loading_uses_repository_backed_datasource_rows_after_bootstrap(tmp_path: Path):
-    config_path = tmp_path / "config.json"
+def test_runtime_loading_uses_repository_backed_datasource_rows_after_bootstrap(
+    tmp_path: Path,
+):
+    config_path = tmp_path / "config.jsonc"
     database_path = tmp_path / "runtime_loading.db"
     _write_bootstrap_config(config_path, database_path)
 
@@ -605,8 +676,10 @@ def test_runtime_loading_uses_repository_backed_datasource_rows_after_bootstrap(
         controller.cleanup_resources()
 
 
-def test_empty_config_arrays_runtime_loading_reads_seeded_repository_rows(tmp_path: Path):
-    config_path = tmp_path / "config.json"
+def test_empty_config_arrays_runtime_loading_reads_seeded_repository_rows(
+    tmp_path: Path,
+):
+    config_path = tmp_path / "config.jsonc"
     database_path = tmp_path / "empty_arrays_runtime_loading.db"
     _write_bootstrap_config(config_path, database_path)
 
@@ -623,15 +696,23 @@ def test_empty_config_arrays_runtime_loading_reads_seeded_repository_rows(tmp_pa
         config_manager = second_controller.config_manager
         assert config_manager is not None
 
-        assert [source.name for source in config_manager.get_rss_sources()] == ["CoinDesk"]
-        assert [source.name for source in config_manager.get_x_sources()] == ["Whale Watch"]
-        assert [source.name for source in config_manager.get_rest_api_sources()] == ["News API"]
+        assert [source.name for source in config_manager.get_rss_sources()] == [
+            "CoinDesk"
+        ]
+        assert [source.name for source in config_manager.get_x_sources()] == [
+            "Whale Watch"
+        ]
+        assert [source.name for source in config_manager.get_rest_api_sources()] == [
+            "News API"
+        ]
     finally:
         second_controller.cleanup_resources()
 
 
-def test_empty_config_arrays_runtime_loading_reads_seeded_repository_rows_when_keys_omitted(tmp_path: Path):
-    config_path = tmp_path / "config.json"
+def test_empty_config_arrays_runtime_loading_reads_seeded_repository_rows_when_keys_omitted(
+    tmp_path: Path,
+):
+    config_path = tmp_path / "config.jsonc"
     database_path = tmp_path / "omitted_arrays_runtime_loading.db"
     _write_bootstrap_config(config_path, database_path)
 
@@ -639,7 +720,9 @@ def test_empty_config_arrays_runtime_loading_reads_seeded_repository_rows_when_k
     assert first_controller.initialize_ingestion_system() is True
     first_controller.cleanup_resources()
 
-    _write_bootstrap_config(config_path, database_path, datasource_mode="omitted_arrays")
+    _write_bootstrap_config(
+        config_path, database_path, datasource_mode="omitted_arrays"
+    )
 
     second_controller = MainController(str(config_path))
     assert second_controller.initialize_ingestion_system() is True
@@ -648,9 +731,15 @@ def test_empty_config_arrays_runtime_loading_reads_seeded_repository_rows_when_k
         config_manager = second_controller.config_manager
         assert config_manager is not None
 
-        assert [source.name for source in config_manager.get_rss_sources()] == ["CoinDesk"]
-        assert [source.name for source in config_manager.get_x_sources()] == ["Whale Watch"]
-        assert [source.name for source in config_manager.get_rest_api_sources()] == ["News API"]
+        assert [source.name for source in config_manager.get_rss_sources()] == [
+            "CoinDesk"
+        ]
+        assert [source.name for source in config_manager.get_x_sources()] == [
+            "Whale Watch"
+        ]
+        assert [source.name for source in config_manager.get_rest_api_sources()] == [
+            "News API"
+        ]
     finally:
         second_controller.cleanup_resources()
 
@@ -659,7 +748,7 @@ def test_crawling_stage_runtime_includes_rest_api_sources_alongside_rss_and_x(
     tmp_path: Path,
     monkeypatch,
 ):
-    config_path = tmp_path / "config.json"
+    config_path = tmp_path / "config.jsonc"
     database_path = tmp_path / "runtime_crawl.db"
     _write_bootstrap_config(config_path, database_path)
 

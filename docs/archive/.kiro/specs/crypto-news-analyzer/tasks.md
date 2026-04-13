@@ -345,7 +345,7 @@
     - _需求: 16.28, 16.29, 16.30, 16.38, 16.39, 16.40, 16.41_
 
   - [x] 12.10 更新配置文件
-    - 从config.json的telegram_commands部分移除authorized_users字段
+    - 从config.jsonc的telegram_commands部分移除authorized_users字段
     - 保持其他telegram_commands配置不变
     - 更新.env.template添加TELEGRAM_AUTHORIZED_USERS示例
     - 添加注释解释格式（ID和用户名）

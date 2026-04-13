@@ -165,7 +165,7 @@ def _build_test_app(
     monkeypatch.setattr(
         api_server, "MainController", lambda *_args, **_kwargs: controller
     )
-    return api_server.create_api_server("./config.json", start_services=False)
+    return api_server.create_api_server("./config.jsonc", start_services=False)
 
 
 def _app_state(client: TestClient) -> api_server.AppState:

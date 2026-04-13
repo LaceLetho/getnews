@@ -163,7 +163,7 @@ crypto_news_analyzer/
 ├── execution_coordinator.py   # MainController for analysis-service and ingestion flows
 ├── api_server.py              # FastAPI app factory and analyze job endpoints
 ├── models.py                  # Shared data/config/result models
-├── config/manager.py          # Env + config.json loading and normalization
+├── config/manager.py          # Env + config.jsonc loading and normalization
 ├── crawlers/                  # RSS, X/Twitter, and Bird-backed ingestion sources
 ├── analyzers/                 # LLM analysis pipeline and structured outputs
 ├── storage/                   # Repository layer for SQLite/Postgres backends and ingestion state
@@ -188,8 +188,8 @@ crypto_news_analyzer/
 Datasource storage follows a **database-first** model:
 
 - Runtime source-of-truth is the database (`datasources` and `datasource_tags` tables)
-- On first startup (when datasource tables are empty), the system bootstraps by importing from `config.json`
-- After bootstrap, runtime reads exclusively from the database; edits to `config.json` do not affect runtime behavior
+- On first startup (when datasource tables are empty), the system bootstraps by importing from `config.jsonc`
+- After bootstrap, runtime reads exclusively from the database; edits to `config.jsonc` do not affect runtime behavior
 - Use the REST API or Telegram commands to manage datasources at runtime
 
 ### Tag Constraints
@@ -222,7 +222,7 @@ Telegram commands reject inline authentication secrets. The `rest_api` payload c
 
 ## Configuration
 
-- `config.json` - App config (sources, LLM settings)
+- `config.jsonc` - App config (sources, LLM settings)
 - `.env` - Secrets (copy from `.env.template`)
 - `docs/RAILWAY_DEPLOYMENT.md` - Current split-service deployment reference
 - `migrations/postgresql/README.md` - Postgres cutover/backfill reference

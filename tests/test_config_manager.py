@@ -21,7 +21,7 @@ class TestConfigManager:
     def setup_method(self):
         """测试前设置"""
         self.temp_dir = tempfile.mkdtemp()
-        self.config_path = os.path.join(self.temp_dir, "test_config.json")
+        self.config_path = os.path.join(self.temp_dir, "test_config.jsonc")
         self.manager = ConfigManager(self.config_path)
 
     def teardown_method(self):

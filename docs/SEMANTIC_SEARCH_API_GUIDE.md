@@ -205,7 +205,7 @@ Example:
 
 ## Configuration
 
-Semantic search configuration (in `config.json`):
+Semantic search configuration (in `config.jsonc`):
 
 ```json
 {
@@ -231,7 +231,7 @@ Semantic search configuration (in `config.json`):
 To backfill embeddings for existing content:
 
 ```bash
-uv run python -m crypto_news_analyzer.main --mode embedding-backfill --config ./config.json --batch-size 100
+uv run python -m crypto_news_analyzer.main --mode embedding-backfill --config ./config.jsonc --batch-size 100
 ```
 
 Optional: add `--limit 1000` to process only the first 1000 missing embeddings.

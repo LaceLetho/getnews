@@ -34,7 +34,7 @@ from ..models import (
 class ConfigManager:
     """配置文件管理器"""
 
-    def __init__(self, config_path: str = "./config.json"):
+    def __init__(self, config_path: str = "./config.jsonc"):
         """
         初始化配置管理器
 
@@ -72,7 +72,7 @@ class ConfigManager:
                 self._create_default_config()
 
             with open(self.config_path, "r", encoding="utf-8") as f:
-                self.config_data = self._load_json_with_comments(f.read())
+                self.config_data = self.parse_jsonc(f.read())
 
             if not self.validate_config(self.config_data):
                 raise ValueError("配置文件验证失败")
@@ -87,7 +87,8 @@ class ConfigManager:
             self.logger.error(f"加载配置文件失败: {e}")
             raise
 
-    def _load_json_with_comments(self, raw_text: str) -> Dict[str, Any]:
+    @staticmethod
+    def parse_jsonc(raw_text: str) -> Dict[str, Any]:
         """Load JSON while tolerating // and /* */ comments outside strings."""
         sanitized_chars: List[str] = []
         in_string = False

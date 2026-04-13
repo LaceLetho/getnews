@@ -168,7 +168,7 @@ def test_main_accepts_embedding_backfill_batch_size_and_limit(monkeypatch):
             "--mode",
             "embedding-backfill",
             "--config",
-            "./custom-config.json",
+            "./custom-config.jsonc",
             "--batch-size",
             "25",
             "--limit",
@@ -181,7 +181,7 @@ def test_main_accepts_embedding_backfill_batch_size_and_limit(monkeypatch):
 
     assert exc_info.value.code == 0
     assert captured == {
-        "config_path": "./custom-config.json",
+        "config_path": "./custom-config.jsonc",
         "batch_size": 25,
         "limit": 7,
     }

@@ -19,7 +19,7 @@
 - 📊 **结构化报告**: 生成Markdown格式的分析报告
 - 📱 **自动发送**: 通过Telegram Bot自动发送报告
 - 🔁 **Split-service 运行面**: 仅保留 `analysis-service`、`api-only`、`ingestion` 三种运行模式
-- 🔧 **数据库优先的数据源管理**: 首次启动从 `config.json` 导入，运行时通过数据库管理，支持 REST API 和 Telegram 命令操作
+- 🔧 **数据库优先的数据源管理**: 首次启动从 `config.jsonc` 导入，运行时通过数据库管理，支持 REST API 和 Telegram 命令操作
 - 🔎 **语义搜索**: 支持 `POST /semantic-search` 异步语义检索与 `/semantic_search` Telegram 命令
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
 - 🎯 **智能分类**: 支持大户动向、利率事件、监管政策、真相揭露等多种分类
@@ -138,7 +138,7 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 
 ### LLM 配置
 
-模型配置在 `config.json` 的 `llm_config` 字段中定义。环境变量仅用于提供 provider 的 API 密钥（`KIMI_API_KEY`、`GROK_API_KEY`）。
+模型配置在 `config.jsonc` 的 `llm_config` 字段中定义。环境变量仅用于提供 provider 的 API 密钥（`KIMI_API_KEY`、`GROK_API_KEY`）。
 
 **`llm_config` 结构：**
 
@@ -276,7 +276,7 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - 每小时最多执行命令次数（默认：120次）
 - 命令冷却时间（默认：5分钟）
 
-可在 `config.json` 的 `telegram_commands.command_rate_limit` 中调整。
+可在 `config.jsonc` 的 `telegram_commands.command_rate_limit` 中调整。
 
 ## HTTP API（`analysis-service` / `api-only`）
 
@@ -342,7 +342,7 @@ curl -X POST "http://localhost:8080/analyze" \
 
 ## 数据源管理
 
-系统采用**数据库优先**的数据源管理模式。首次启动时，若数据源表为空，系统会从 `config.json` 自动导入配置。此后运行时，所有数据源读写均通过数据库进行，修改 `config.json` 不会影响运行时行为。
+系统采用**数据库优先**的数据源管理模式。首次启动时，若数据源表为空，系统会从 `config.jsonc` 自动导入配置。此后运行时，所有数据源读写均通过数据库进行，修改 `config.jsonc` 不会影响运行时行为。
 
 ### 数据源标签约束
 

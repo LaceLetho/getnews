@@ -47,7 +47,7 @@ data/                          # Runtime data (gitignored)
 
 ## Module Organization
 
-- `config/`: Centralized configuration loading from `config.json` and `.env`
+- `config/`: Centralized configuration loading from `config.jsonc` and `.env`
 - `crawlers/`: Source-specific data collection (RSS, X/Twitter)
 - `analyzers/`: LLM-powered content analysis and categorization
 - `storage/`: SQLite-based data persistence and deduplication
@@ -59,7 +59,7 @@ data/                          # Runtime data (gitignored)
 - `main.py`: CLI entry point with mode selection
 - `execution_coordinator.py`: MainController orchestrates crawl → analyze → report → send
 - `models.py`: All dataclasses (ContentItem, AnalysisResult, CrawlResult, etc.)
-- `config.json`: Application configuration (sources, LLM settings, rate limits)
+- `config.jsonc`: Application configuration (sources, LLM settings, rate limits)
 - `.env`: Secrets and API keys (never commit)
 
 ## Data Flow

@@ -132,7 +132,7 @@ class MainController:
     负责协调系统各组件的执行，支持多种运行模式。
     """
 
-    def __init__(self, config_path: str = "./config.json"):
+    def __init__(self, config_path: str = "./config.jsonc"):
         """
         初始化主控制器
 
@@ -2365,7 +2365,7 @@ class MainController:
 
 
 # 工具函数
-def create_main_controller(config_path: str = "./config.json") -> MainController:
+def create_main_controller(config_path: str = "./config.jsonc") -> MainController:
     """
     创建主控制器实例
 

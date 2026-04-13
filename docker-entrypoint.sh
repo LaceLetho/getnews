@@ -210,7 +210,7 @@ show_configuration() {
     log_info "运行模式: ${1:-analysis-service}"
     log_info "时间窗口: ${TIME_WINDOW_HOURS:-24} 小时"
     log_info "执行间隔: ${EXECUTION_INTERVAL:-3600} 秒"
-    log_info "配置文件: ${CONFIG_PATH:-/app/config.json}"
+    log_info "配置文件: ${CONFIG_PATH:-/app/config.jsonc}"
     log_info "Python路径: ${PYTHONPATH:-/app}"
     log_info "用户: $(whoami) (UID: $(id -u))"
     log_info "工作目录: $(pwd)"

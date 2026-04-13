@@ -23,7 +23,7 @@
 
 ## Context
 ### Original Request
-- 按“方案 C”改造：移除 `LLM_API_KEY`；保留当前 provider 为 `KIMI_API_KEY` / `GROK_API_KEY`；在 `config.json` 中引入 `fallback_models`；程序启动后基于本地 provider/模型注册表校验 `model` 与 `fallback_models`；支持模型专属配置（例如 thinking level）；并提供每个 provider 的精确模型名文档。
+- 按“方案 C”改造：移除 `LLM_API_KEY`；保留当前 provider 为 `KIMI_API_KEY` / `GROK_API_KEY`；在 `config.jsonc` 中引入 `fallback_models`；程序启动后基于本地 provider/模型注册表校验 `model` 与 `fallback_models`；支持模型专属配置（例如 thinking level）；并提供每个 provider 的精确模型名文档。
 
 ### Interview Summary
 - `LLM_API_KEY`：**直接硬删除**，不保留兼容 alias。
@@ -183,7 +183,7 @@ Wave 2: runtime integration + docs/tests
   **Parallelization**: Can Parallel: NO | Wave 1 | Blocks: 2, 3, 5, 6, 7, 8, 9, 10 | Blocked By: []
 
   **References** (executor has NO interview context - be exhaustive):
-  - Pattern: `config.json:9-20` - Current flat `llm_config` shape that must be replaced with structured role-aware config.
+  - Pattern: `config.jsonc:9-20` - Current flat `llm_config` shape that must be replaced with structured role-aware config.
   - Pattern: `crypto_news_analyzer/config/manager.py:79-153` - Existing config validation is shallow and must gain deep schema checks.
   - Pattern: `crypto_news_analyzer/models.py:229-284` - Current auth dataclass; do not repeat this "flat keys + global validation" mistake in the new config contract.
   - Pattern: `crypto_news_analyzer/analyzers/structured_output_manager.py:290-486` - Existing seam for provider-specific payload shaping and future option mapping.
@@ -212,7 +212,7 @@ Wave 2: runtime integration + docs/tests
     Evidence: .sisyphus/evidence/task-1-llm-registry-error.txt
   ```
 
-  **Commit**: NO | Message: `refactor(config): define provider-aware llm registry` | Files: [`crypto_news_analyzer/config/*`, `config.json`, tests]
+  **Commit**: NO | Message: `refactor(config): define provider-aware llm registry` | Files: [`crypto_news_analyzer/config/*`, `config.jsonc`, tests]
 
 - [x] 2. Remove `LLM_API_KEY` and redesign auth/runtime-scoped validation
 
@@ -314,14 +314,14 @@ Wave 2: runtime integration + docs/tests
 - [x] 4. Normalize defaults, templates, and examples to the new registry contract
 
   **What to do**:
-  - Replace the default flat `llm_config` in `config.json` and `ConfigManager._create_default_config()` with the new structured objects.
+  - Replace the default flat `llm_config` in `config.jsonc` and `ConfigManager._create_default_config()` with the new structured objects.
   - Remove stale defaults and examples (`MiniMax-M2.1`, `grok-beta`, `LLM_API_KEY`, `kimi-for-coding`) everywhere they appear in shipped config/docs/templates.
   - Ensure the default config uses one canonical supported set of model names that exists in the registry.
   - Ensure the example config demonstrates `fallback_models` order explicitly and shows `market_model` separate from analysis fallback.
 
   **Must NOT do**:
   - Do not leave mixed legacy/new examples in committed docs/templates.
-  - Do not keep incompatible defaults between `config.json` and `ConfigManager._create_default_config()`.
+  - Do not keep incompatible defaults between `config.jsonc` and `ConfigManager._create_default_config()`.
 
   **Recommended Agent Profile**:
   - Category: `unspecified-high` - Reason: This is a cross-file consistency sweep that still affects runtime defaults.
@@ -331,13 +331,13 @@ Wave 2: runtime integration + docs/tests
   **Parallelization**: Can Parallel: YES | Wave 1 | Blocks: 8, 9 | Blocked By: [1]
 
   **References**:
-  - Pattern: `config.json:9-20` - Current committed runtime config.
+  - Pattern: `config.jsonc:9-20` - Current committed runtime config.
   - Pattern: `crypto_news_analyzer/config/manager.py:384-426` - Default config generator still seeds legacy model defaults.
   - Pattern: `README.md:18,85` - README drift still mentions MiniMax and `LLM_API_KEY`; update examples to exact registry model names.
   - Pattern: `docs/RAILWAY_DEPLOYMENT.md:116-129` - Current fallback narrative to align with new config semantics.
 
   **Acceptance Criteria**:
-  - [ ] `config.json`, default config generator, `.env.template`, and docs all use the same provider/model names and field names.
+  - [ ] `config.jsonc`, default config generator, `.env.template`, and docs all use the same provider/model names and field names.
   - [ ] No committed default/example uses `LLM_API_KEY`, `MiniMax-M2.1`, `grok-beta`, or `kimi-for-coding` as live current config.
 
   **QA Scenarios**:
@@ -355,7 +355,7 @@ Wave 2: runtime integration + docs/tests
     Evidence: .sisyphus/evidence/task-4-defaults-error.txt
   ```
 
-  **Commit**: NO | Message: `chore(config): normalize llm defaults and examples` | Files: [`config.json`, `crypto_news_analyzer/config/manager.py`, docs/tests]
+  **Commit**: NO | Message: `chore(config): normalize llm defaults and examples` | Files: [`config.jsonc`, `crypto_news_analyzer/config/manager.py`, docs/tests]
 
 - [ ] 5. Refactor analyzer/provider routing to consume resolved model metadata
 

@@ -51,7 +51,7 @@ startCommand = "/app/docker-entrypoint.sh"
 DATABASE_URL=postgresql://...
 
 # 通用运行配置
-CONFIG_PATH=./config.json
+CONFIG_PATH=./config.jsonc
 LOG_LEVEL=INFO
 TIME_WINDOW_HOURS=24
 ```
@@ -61,7 +61,7 @@ TIME_WINDOW_HOURS=24
 - `DATABASE_URL` 是 PostgreSQL 模式下唯一有效的连接配置来源
 - Railway 中两个应用服务必须指向**同一个**私有 Postgres 实例
 - 若使用 PostgreSQL 后端，请确保配置中的 `storage.backend=postgres`
-- 数据源配置采用**数据库优先**模式：首次启动时若 `datasources` 表为空，系统会从 `config.json` 自动导入；此后运行时读取和修改均通过数据库进行
+- 数据源配置采用**数据库优先**模式：首次启动时若 `datasources` 表为空，系统会从 `config.jsonc` 自动导入；此后运行时读取和修改均通过数据库进行
 
 ### 仅 `crypto-news-analysis` 需要
 
@@ -110,7 +110,7 @@ X_AUTH_TOKEN=...
 
 ### Provider 配置与模型选择
 
-模型配置在 `config.json` 的 `llm_config` 字段中定义，而非通过环境变量直接指定。环境变量仅用于提供各 provider 的 API 密钥。
+模型配置在 `config.jsonc` 的 `llm_config` 字段中定义，而非通过环境变量直接指定。环境变量仅用于提供各 provider 的 API 密钥。
 
 **支持的 Provider 和模型：**
 

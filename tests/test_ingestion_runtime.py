@@ -37,14 +37,16 @@ class _FakeIngestionController:
         return True
 
     def initialize_system(self):
-        raise AssertionError("run_ingestion_loop should not call initialize_system in ingestion mode")
+        raise AssertionError(
+            "run_ingestion_loop should not call initialize_system in ingestion mode"
+        )
 
     def start_scheduler(self):
         self.start_scheduler_called = True
 
 
 def test_initialize_ingestion_system_skips_analysis_report_and_telegram(tmp_path):
-    config_path = tmp_path / "config.json"
+    config_path = tmp_path / "config.jsonc"
     db_path = tmp_path / "ingestion_runtime.db"
 
     config_path.write_text(
@@ -90,7 +92,7 @@ def test_run_ingestion_loop_uses_ingestion_initialization_path(monkeypatch):
     monkeypatch.setattr(main.signal, "signal", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(main.threading, "Event", _StopImmediatelyEvent)
 
-    exit_code = main.run_ingestion_loop("./config.json")
+    exit_code = main.run_ingestion_loop("./config.jsonc")
 
     assert exit_code == 0
     assert fake_controller.initialize_ingestion_system_called is True
@@ -106,13 +108,15 @@ def test_run_ingestion_service_delegates_to_ingestion_loop(monkeypatch):
 
     monkeypatch.setattr(main, "run_ingestion_loop", _fake_run_ingestion_loop)
 
-    exit_code = main.run_ingestion_service("custom-config.json")
+    exit_code = main.run_ingestion_service("custom-config.jsonc")
 
     assert exit_code == 0
-    assert captured["config_path"] == "custom-config.json"
+    assert captured["config_path"] == "custom-config.jsonc"
 
 
-def test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped(monkeypatch):
+def test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped(
+    monkeypatch,
+):
     captured = {
         "config_path": None,
         "start_services": None,
@@ -147,10 +151,10 @@ def test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped(m
     monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace(run=_fake_uvicorn_run))
     monkeypatch.delenv("CRYPTO_NEWS_RUNTIME_MODE", raising=False)
 
-    exit_code = main.run_api_only_service("./custom-config.json")
+    exit_code = main.run_api_only_service("./custom-config.jsonc")
 
     assert exit_code == 0
-    assert captured["config_path"] == "./custom-config.json"
+    assert captured["config_path"] == "./custom-config.jsonc"
     assert captured["start_services"] is False
     assert captured["start_scheduler"] is None
     assert captured["start_command_listener"] is None
@@ -195,10 +199,10 @@ def test_run_analysis_service_starts_telegram_without_scheduler(monkeypatch):
     monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace(run=_fake_uvicorn_run))
     monkeypatch.delenv("CRYPTO_NEWS_RUNTIME_MODE", raising=False)
 
-    exit_code = main.run_analysis_service("./custom-config.json")
+    exit_code = main.run_analysis_service("./custom-config.jsonc")
 
     assert exit_code == 0
-    assert captured["config_path"] == "./custom-config.json"
+    assert captured["config_path"] == "./custom-config.jsonc"
     assert captured["start_services"] is False
     assert captured["start_scheduler"] is False
     assert captured["start_command_listener"] is True
@@ -226,9 +230,13 @@ def test_normalize_runtime_mode_rejects_invalid_modes(runtime_mode):
 
 
 @pytest.mark.parametrize("runtime_mode", ["api-only", "analysis-service"])
-def test_trigger_manual_execution_rejected_in_public_analysis_runtime(monkeypatch, runtime_mode):
+def test_trigger_manual_execution_rejected_in_public_analysis_runtime(
+    monkeypatch, runtime_mode
+):
     controller = MainController.__new__(MainController)
     monkeypatch.setenv("CRYPTO_NEWS_RUNTIME_MODE", runtime_mode)
 
-    with pytest.raises(RuntimeError, match="disabled in analysis-service/api-only runtime"):
+    with pytest.raises(
+        RuntimeError, match="disabled in analysis-service/api-only runtime"
+    ):
         controller.trigger_manual_execution(user_id="tester", chat_id="chat-1")

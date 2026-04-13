@@ -19,7 +19,7 @@ from crypto_news_analyzer.models import SemanticSearchConfig, StorageConfig
 
 
 def test_semantic_search_config_defaults():
-    manager = ConfigManager(config_path="./nonexistent-config.json")
+    manager = ConfigManager(config_path="./nonexistent-config.jsonc")
     manager.config_data = {
         "storage": {
             "retention_days": 30,
@@ -31,8 +31,14 @@ def test_semantic_search_config_defaults():
         },
         "llm_config": {
             "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
-            "fallback_models": [{"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}],
-            "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}},
+            "fallback_models": [
+                {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+            ],
+            "market_model": {
+                "provider": "grok",
+                "name": "grok-4-1-fast-reasoning",
+                "options": {},
+            },
             "temperature": 0.4,
             "max_tokens": 1000,
             "batch_size": 7,
@@ -63,7 +69,9 @@ def test_semantic_search_query_validation_rejects_blank_and_whitespace(value: st
         _ = SemanticSearchRequest(hours=12, query=value, user_id="operator_01")
 
     with pytest.raises(ValueError, match="query is required"):
-        _ = SemanticSearchJob.create(recipient_key="api:operator_01", query=value, time_window_hours=12)
+        _ = SemanticSearchJob.create(
+            recipient_key="api:operator_01", query=value, time_window_hours=12
+        )
 
 
 def test_semantic_search_validation_rejects_invalid_user_id():
@@ -87,7 +95,7 @@ def test_semantic_search_job_contract_uses_frozen_prefix_and_counts():
 
 
 def test_semantic_search_runtime_explicitly_rejects_sqlite():
-    manager = ConfigManager(config_path="./nonexistent-config.json")
+    manager = ConfigManager(config_path="./nonexistent-config.jsonc")
     manager.config_data = {
         "storage": {
             "retention_days": 30,
@@ -99,8 +107,14 @@ def test_semantic_search_runtime_explicitly_rejects_sqlite():
         },
         "llm_config": {
             "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
-            "fallback_models": [{"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}],
-            "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}},
+            "fallback_models": [
+                {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+            ],
+            "market_model": {
+                "provider": "grok",
+                "name": "grok-4-1-fast-reasoning",
+                "options": {},
+            },
             "temperature": 0.4,
             "max_tokens": 1000,
             "batch_size": 10,
@@ -108,7 +122,9 @@ def test_semantic_search_runtime_explicitly_rejects_sqlite():
     }
 
     with pytest.raises(ValueError, match="SQLite runtime is unsupported"):
-        manager.get_semantic_search_config().ensure_supported_for_storage(StorageConfig())
+        manager.get_semantic_search_config().ensure_supported_for_storage(
+            StorageConfig()
+        )
 
     controller = cast(Any, SimpleNamespace(config_manager=manager))
     with pytest.raises(HTTPException) as exc_info:

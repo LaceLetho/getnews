@@ -1,13 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
-from crypto_news_analyzer.analyzers.structured_output_manager import StructuredAnalysisResult
+from crypto_news_analyzer.analyzers.structured_output_manager import (
+    StructuredAnalysisResult,
+)
 from crypto_news_analyzer.execution_coordinator import MainController
 from crypto_news_analyzer.models import ContentItem
 
 
 def test_analyze_by_time_window_respects_requested_window(tmp_path):
-    config_file = tmp_path / "config.json"
+    config_file = tmp_path / "config.jsonc"
     config_file.write_text(
         """
 {
@@ -87,7 +89,12 @@ def test_analyze_by_time_window_respects_requested_window(tmp_path):
     assert result["success"] is True
     assert result["items_processed"] == 2
 
-    assert controller.content_repository.get_content_items_since.call_args.kwargs["max_hours"] == 18
+    assert (
+        controller.content_repository.get_content_items_since.call_args.kwargs[
+            "max_hours"
+        ]
+        == 18
+    )
 
     analyzed_input = controller.llm_analyzer.analyze_content_batch.call_args.args[0]
     assert analyzed_input == content_items

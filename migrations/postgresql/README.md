@@ -39,6 +39,6 @@ Environment variable `DATABASE_URL` is the only supported PostgreSQL connection 
 
 4) Datasource bootstrap behavior:
 
-- On first startup, if `datasources` table is empty, the system imports from `config.json`
+- On first startup, if `datasources` table is empty, the system imports from `config.jsonc`
 - After bootstrap, runtime reads exclusively from the database
 - Use REST API (`POST /datasources`) or Telegram commands (`/datasource_add`) to manage datasources at runtime

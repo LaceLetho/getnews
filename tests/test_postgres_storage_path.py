@@ -58,7 +58,9 @@ def test_data_manager_postgres_initialization_runs_vector_setup(monkeypatch):
     executed = []
     fake_psycopg = _FakePsycopg(executed)
 
-    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg)
+    monkeypatch.setattr(
+        "crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg
+    )
     monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
 
     manager = DataManager(
@@ -69,7 +71,9 @@ def test_data_manager_postgres_initialization_runs_vector_setup(monkeypatch):
         )
     )
 
-    assert any("CREATE EXTENSION IF NOT EXISTS vector" in query for query, _ in executed)
+    assert any(
+        "CREATE EXTENSION IF NOT EXISTS vector" in query for query, _ in executed
+    )
     assert any("embedding vector(1536)" in query for query, _ in executed)
 
     item = create_content_item_from_raw(
@@ -87,7 +91,7 @@ def test_data_manager_postgres_initialization_runs_vector_setup(monkeypatch):
 
 
 def test_config_manager_supports_postgres_via_env_database_url(tmp_path, monkeypatch):
-    config_path = tmp_path / "config.json"
+    config_path = tmp_path / "config.jsonc"
     config_path.write_text(
         """
         {
@@ -324,7 +328,9 @@ def test_get_latest_message_time_accepts_str_and_datetime(as_string):
 def test_get_last_successful_analysis_time_accepts_str_and_datetime(as_string):
     manager = DataManager(StorageConfig(database_path=":memory:"))
     execution_time = datetime(2026, 3, 4, 9, 0)
-    cursor = _ReadCursor(row={"execution_time": _build_time_value(execution_time, as_string)})
+    cursor = _ReadCursor(
+        row={"execution_time": _build_time_value(execution_time, as_string)}
+    )
     manager._get_connection = lambda: _stub_connection(cursor)
 
     result = manager.get_last_successful_analysis_time(chat_id="telegram:123")

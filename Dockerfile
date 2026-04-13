@@ -74,7 +74,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # 默认环境变量（可通过docker run -e 覆盖）
 ENV TIME_WINDOW_HOURS=24
 ENV EXECUTION_INTERVAL=3600
-ENV CONFIG_PATH=/app/config.json
+ENV CONFIG_PATH=/app/config.jsonc
 
 # Bird工具相关环境变量
 ENV BIRD_CONFIG_PATH=/root/.bird/config.json

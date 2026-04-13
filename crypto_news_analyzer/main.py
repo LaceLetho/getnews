@@ -42,7 +42,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "embedding-backfill=一次性历史Embedding回填。"
         ),
     )
-    parser.add_argument("--config", default="./config.json", help="配置文件路径")
+    parser.add_argument("--config", default="./config.jsonc", help="配置文件路径")
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -102,7 +102,7 @@ def main():
         sys.exit(1)
 
 
-def run_api_only_service(config_path: str = "./config.json") -> int:
+def run_api_only_service(config_path: str = "./config.jsonc") -> int:
     """
     运行隔离的HTTP API服务器（Railway拆分架构：analysis服务）
 
@@ -138,7 +138,7 @@ def run_api_only_service(config_path: str = "./config.json") -> int:
         return 1
 
 
-def run_analysis_service(config_path: str = "./config.json") -> int:
+def run_analysis_service(config_path: str = "./config.jsonc") -> int:
     """运行公网分析服务（API + Telegram，无调度器）。"""
     import uvicorn
     from .api_server import create_api_server
@@ -167,7 +167,7 @@ def run_analysis_service(config_path: str = "./config.json") -> int:
         return 1
 
 
-def run_ingestion_loop(config_path: str = "./config.json") -> int:
+def run_ingestion_loop(config_path: str = "./config.jsonc") -> int:
     """
     运行数据摄取循环（Railway拆分架构：ingestion服务）
 
@@ -213,7 +213,7 @@ def run_ingestion_loop(config_path: str = "./config.json") -> int:
         return 1
 
 
-def run_ingestion_service(config_path: str = "./config.json") -> int:
+def run_ingestion_service(config_path: str = "./config.jsonc") -> int:
     """
     运行数据摄取服务（Railway拆分架构：ingestion服务）
 
@@ -231,7 +231,7 @@ def run_ingestion_service(config_path: str = "./config.json") -> int:
 
 
 def run_embedding_backfill(
-    config_path: str = "./config.json",
+    config_path: str = "./config.jsonc",
     batch_size: int = 100,
     limit: Optional[int] = None,
 ) -> int:

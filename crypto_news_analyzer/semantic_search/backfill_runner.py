@@ -216,7 +216,7 @@ class EmbeddingBackfillRunner:
 
 
 def run_embedding_backfill_once(
-    config_path: str = "./config.json",
+    config_path: str = "./config.jsonc",
     batch_size: int = 100,
     limit: Optional[int] = None,
 ) -> EmbeddingBackfillReport:

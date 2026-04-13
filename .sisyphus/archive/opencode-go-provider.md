@@ -339,7 +339,7 @@ Wave 2: defaults/docs/tests cleanup
   - Keep current default examples/config default path on Kimi/Grok unless a file already specifically enumerates all supported providers.
 
   **Must NOT do**:
-  - Do not make OpenCode Go the default in `config.json` or generated defaults.
+- Do not make OpenCode Go the default in `config.jsonc` or generated defaults.
   - Do not describe unsupported Go models as supported.
   - Do not imply `market_model` works with OpenCode Go.
 
