@@ -43,6 +43,24 @@
       "cooldown_minutes": 1
     }
   },
+  "semantic_search": {
+    // 用户原始检索词允许的最大字符数；过长会直接拒绝
+    "query_max_chars": 300,
+    // LLM 最多可将一个主题拆成多少个语义子查询；原始 query 也会保留
+    "max_subqueries": 4,
+    // 每个子查询最多从 pgvector 召回多少条候选新闻
+    "per_subquery_limit": 50,
+    // 所有子查询合并去重后，最多保留多少条新闻进入最终总结
+    "max_retained_items": 200,
+    // 总结阶段每批送给模型处理的新闻条数；这里跟随 llm_config.batch_size
+    "synthesis_batch_size": 200,
+    // 生成向量所用的 OpenAI embedding 模型
+    "embedding_model": "text-embedding-3-small",
+    // embedding 向量维度；必须与 storage.pgvector_dimensions 保持一致
+    "embedding_dimensions": 1536,
+    // 语义搜索总开关；关闭后 HTTP/Telegram 语义搜索都不可用
+    "enabled": true
+  },
   "analysis_config": {
     "max_analysis_window_hours": 24,
     "min_analysis_window_hours": 1

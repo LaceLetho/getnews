@@ -60,7 +60,11 @@ class TestConfigManager:
             "llm_config": {
                 "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
                 "fallback_models": [
-                    {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+                    {
+                        "provider": "grok",
+                        "name": "grok-4-1-fast-reasoning",
+                        "options": {},
+                    }
                 ],
                 "market_model": {
                     "provider": "grok",
@@ -74,7 +78,9 @@ class TestConfigManager:
 
     def test_validate_config_failure(self):
         """测试配置验证失败"""
-        invalid_config = {"storage": {"retention_days": 0, "database_path": "./test.db"}}
+        invalid_config = {
+            "storage": {"retention_days": 0, "database_path": "./test.db"}
+        }
 
         assert self.manager.validate_config(invalid_config) is False
 
@@ -96,7 +102,9 @@ class TestConfigManager:
         monkeypatch.setenv("TIME_WINDOW_HOURS", "48")
         assert self.manager.get_time_window_hours() == 48
 
-    def test_get_x_auth_credentials_does_not_depend_on_llm_auth_fields(self, monkeypatch):
+    def test_get_x_auth_credentials_does_not_depend_on_llm_auth_fields(
+        self, monkeypatch
+    ):
         monkeypatch.setenv("X_CT0", "x-ct0-token")
         monkeypatch.setenv("X_AUTH_TOKEN", "x-auth-token")
         monkeypatch.delenv("LLM_API_KEY", raising=False)
@@ -107,3 +115,53 @@ class TestConfigManager:
 
         assert x_auth["X_CT0"] == "x-ct0-token"
         assert x_auth["X_AUTH_TOKEN"] == "x-auth-token"
+
+    def test_load_config_supports_json_comments_in_semantic_search_block(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv(
+            "DATABASE_URL", "postgresql://postgres:password@host:5432/db"
+        )
+
+        config_with_comments = """
+        {
+          "storage": {
+            "retention_days": 30,
+            "max_storage_mb": 1000,
+            "cleanup_frequency": "daily",
+            "backend": "postgres",
+            "pgvector_dimensions": 1536
+          },
+          "llm_config": {
+            "model": {"provider": "opencode-go", "name": "kimi-k2.5", "options": {}},
+            "fallback_models": [
+              {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+            ],
+            "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}},
+            "batch_size": 10
+          },
+          "semantic_search": {
+            // 用户输入 query 的最大字符数
+            "query_max_chars": 300,
+            /* LLM 最多拆成多少个子查询 */
+            "max_subqueries": 4,
+            "per_subquery_limit": 50,
+            "max_retained_items": 200,
+            "synthesis_batch_size": 10,
+            "embedding_model": "text-embedding-3-small",
+            "embedding_dimensions": 1536,
+            "enabled": true
+          }
+        }
+        """.strip()
+
+        with open(self.config_path, "w", encoding="utf-8") as handle:
+            handle.write(config_with_comments)
+
+        loaded = self.manager.load_config()
+        semantic_search = self.manager.get_semantic_search_config()
+
+        assert loaded["semantic_search"]["query_max_chars"] == 300
+        assert semantic_search.max_subqueries == 4
+        assert semantic_search.embedding_dimensions == 1536
+        assert semantic_search.enabled is True

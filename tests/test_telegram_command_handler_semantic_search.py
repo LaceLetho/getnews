@@ -23,6 +23,20 @@ class _SemanticSearchCoordinatorStub:
         )
 
 
+class _SemanticSearchCoordinatorGetterStub:
+    def __init__(self, search_result: Dict[str, Any]):
+        self._service = Mock()
+        self._service.search.return_value = search_result
+        self.telegram_sender = Mock()
+        self.telegram_sender.send_report_to_chat.return_value = Mock(
+            success=True,
+            error_message=None,
+        )
+
+    def get_semantic_search_service(self):
+        return self._service
+
+
 def _make_handler(coordinator: Any = None):
     return TelegramCommandHandler(
         bot_token="token",
@@ -193,6 +207,20 @@ def test_semantic_search_background_flow_sends_report_to_chat():
         "# semantic report", "chat_1"
     )
     handler._send_message_sync.assert_not_called()
+
+
+def test_get_semantic_search_service_uses_coordinator_getter_when_attribute_missing():
+    coordinator = _SemanticSearchCoordinatorGetterStub(
+        {
+            "success": True,
+            "report_content": "# semantic report",
+            "execution_id": "semantic-1",
+            "errors": [],
+        }
+    )
+    handler: Any = _make_handler(coordinator)
+
+    assert handler._get_semantic_search_service() is coordinator._service
 
 
 def test_semantic_search_background_flow_sends_no_match_message():

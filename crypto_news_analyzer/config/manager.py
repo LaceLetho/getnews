@@ -50,7 +50,9 @@ class ConfigManager:
         load_dotenv()
         self.logger.info("环境变量已加载")
 
-    def set_datasource_repository(self, repository: Optional[DataSourceRepository]) -> None:
+    def set_datasource_repository(
+        self, repository: Optional[DataSourceRepository]
+    ) -> None:
         self._datasource_repository = repository
 
     def load_config(self) -> Dict[str, Any]:
@@ -70,7 +72,7 @@ class ConfigManager:
                 self._create_default_config()
 
             with open(self.config_path, "r", encoding="utf-8") as f:
-                self.config_data = json.load(f)
+                self.config_data = self._load_json_with_comments(f.read())
 
             if not self.validate_config(self.config_data):
                 raise ValueError("配置文件验证失败")
@@ -84,6 +86,55 @@ class ConfigManager:
         except Exception as e:
             self.logger.error(f"加载配置文件失败: {e}")
             raise
+
+    def _load_json_with_comments(self, raw_text: str) -> Dict[str, Any]:
+        """Load JSON while tolerating // and /* */ comments outside strings."""
+        sanitized_chars: List[str] = []
+        in_string = False
+        escape_next = False
+        index = 0
+        text_length = len(raw_text)
+
+        while index < text_length:
+            char = raw_text[index]
+            next_char = raw_text[index + 1] if index + 1 < text_length else ""
+
+            if in_string:
+                sanitized_chars.append(char)
+                if escape_next:
+                    escape_next = False
+                elif char == "\\":
+                    escape_next = True
+                elif char == '"':
+                    in_string = False
+                index += 1
+                continue
+
+            if char == '"':
+                in_string = True
+                sanitized_chars.append(char)
+                index += 1
+                continue
+
+            if char == "/" and next_char == "/":
+                index += 2
+                while index < text_length and raw_text[index] not in ("\n", "\r"):
+                    index += 1
+                continue
+
+            if char == "/" and next_char == "*":
+                index += 2
+                while index + 1 < text_length and not (
+                    raw_text[index] == "*" and raw_text[index + 1] == "/"
+                ):
+                    index += 1
+                index = min(index + 2, text_length)
+                continue
+
+            sanitized_chars.append(char)
+            index += 1
+
+        return json.loads("".join(sanitized_chars))
 
     def validate_config(self, config: Dict[str, Any]) -> bool:
         """
@@ -136,7 +187,9 @@ class ConfigManager:
                     self.logger.error("PostgreSQL模式下必须提供DATABASE_URL环境变量")
                     return False
             else:
-                storage_path = storage_config.get("database_path", "./data/crypto_news.db")
+                storage_path = storage_config.get(
+                    "database_path", "./data/crypto_news.db"
+                )
                 if not self.validate_storage_path(storage_path):
                     return False
 
@@ -212,12 +265,18 @@ class ConfigManager:
     def get_rss_sources(self) -> List[RSSSource]:
         """获取RSS订阅源列表"""
         return [
-            source for source in self._get_runtime_sources("rss") if isinstance(source, RSSSource)
+            source
+            for source in self._get_runtime_sources("rss")
+            if isinstance(source, RSSSource)
         ]
 
     def get_x_sources(self) -> List[XSource]:
         """获取X/Twitter信息源列表"""
-        return [source for source in self._get_runtime_sources("x") if isinstance(source, XSource)]
+        return [
+            source
+            for source in self._get_runtime_sources("x")
+            if isinstance(source, XSource)
+        ]
 
     def get_rest_api_sources(self) -> List[RESTAPISource]:
         """获取REST API数据源列表"""
@@ -283,7 +342,9 @@ class ConfigManager:
             try:
                 return int(env_value)
             except ValueError:
-                self.logger.warning(f"环境变量EXECUTION_INTERVAL值无效: {env_value}，使用默认值")
+                self.logger.warning(
+                    f"环境变量EXECUTION_INTERVAL值无效: {env_value}，使用默认值"
+                )
 
         return 3600
 
@@ -300,7 +361,9 @@ class ConfigManager:
             try:
                 return int(env_value)
             except ValueError:
-                self.logger.warning(f"环境变量TIME_WINDOW_HOURS值无效: {env_value}，使用默认值")
+                self.logger.warning(
+                    f"环境变量TIME_WINDOW_HOURS值无效: {env_value}，使用默认值"
+                )
 
         return 24
 
@@ -328,7 +391,8 @@ class ConfigManager:
             output_format=os.getenv("BIRD_OUTPUT_FORMAT", "json"),
             rate_limit_delay=float(os.getenv("BIRD_RATE_LIMIT_DELAY", 1.0)),
             config_file_path=os.getenv("BIRD_CONFIG_PATH", "~/.bird/config.json"),
-            enable_auto_retry=os.getenv("BIRD_ENABLE_AUTO_RETRY", "true").lower() == "true",
+            enable_auto_retry=os.getenv("BIRD_ENABLE_AUTO_RETRY", "true").lower()
+            == "true",
             retry_delay_seconds=int(os.getenv("BIRD_RETRY_DELAY_SECONDS", 60)),
             bird_max_page=int(os.getenv("BIRD_MAX_PAGE", 3)),
         )
@@ -350,8 +414,12 @@ class ConfigManager:
         """
         analysis_data = self.config_data.get("analysis_config", {})
         return {
-            "max_analysis_window_hours": analysis_data.get("max_analysis_window_hours", 24),
-            "min_analysis_window_hours": analysis_data.get("min_analysis_window_hours", 1),
+            "max_analysis_window_hours": analysis_data.get(
+                "max_analysis_window_hours", 24
+            ),
+            "min_analysis_window_hours": analysis_data.get(
+                "min_analysis_window_hours", 1
+            ),
         }
 
     def validate_bird_installation(self) -> bool:
