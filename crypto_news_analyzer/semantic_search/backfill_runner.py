@@ -52,34 +52,46 @@ class EmbeddingBackfillRunner:
         self.logger: logging.Logger = logger_ or logger
 
         if self.data_manager.backend != "postgres":
-            raise UnsupportedBackendError(self.data_manager.backend, "embedding backfill runtime")
+            raise UnsupportedBackendError(
+                self.data_manager.backend, "embedding backfill runtime"
+            )
         if not self.embedding_service.enabled:
-            raise RuntimeError("EmbeddingService不可用，请检查OPENAI_API_KEY和openai依赖")
+            raise RuntimeError(
+                "EmbeddingService不可用，请检查OPENAI_API_KEY和openai依赖"
+            )
 
     def run(self) -> EmbeddingBackfillReport:
         report = EmbeddingBackfillReport()
-        attempted_ids: set[str] = set()
+        failed_ids: set[str] = set()
 
         while True:
-            remaining = None if self.limit is None else self.limit - report.rows_examined
+            remaining = (
+                None if self.limit is None else self.limit - report.rows_examined
+            )
             if remaining is not None and remaining <= 0:
                 break
 
-            fetch_limit = self.batch_size if remaining is None else min(self.batch_size, remaining)
+            fetch_limit = (
+                self.batch_size
+                if remaining is None
+                else min(self.batch_size, remaining)
+            )
             batch = self.data_manager.get_content_items_missing_embeddings(
                 limit=fetch_limit,
-                exclude_ids=list(attempted_ids),
+                exclude_ids=list(failed_ids),
             )
             if not batch:
                 break
 
-            attempted_ids.update(item.id for item in batch)
             report.batches_processed += 1
             report.rows_examined += len(batch)
-            embedded_count, skipped_count, failed_count = self._process_batch(batch)
+            embedded_count, skipped_count, failed_count, failed_batch_ids = (
+                self._process_batch(batch)
+            )
             report.rows_embedded += embedded_count
             report.rows_skipped += skipped_count
             report.rows_failed += failed_count
+            failed_ids.update(failed_batch_ids)
 
             self.logger.info(
                 "Embedding backfill batch complete: batch=%s selected=%s embedded=%s skipped=%s failed=%s",
@@ -100,22 +112,26 @@ class EmbeddingBackfillRunner:
         )
         return report
 
-    def _process_batch(self, batch: Sequence[ContentItem]) -> tuple[int, int, int]:
+    def _process_batch(
+        self, batch: Sequence[ContentItem]
+    ) -> tuple[int, int, int, list[str]]:
         updates: list[tuple[str, list[float]]] = []
         failed_count = 0
+        failed_ids: list[str] = []
 
         embeddings = self._generate_batch_embeddings(batch)
         for item, embedding in zip(batch, embeddings):
             if embedding is None:
                 self.logger.warning("内容 %s 的Embedding生成失败，跳过该行", item.id)
                 failed_count += 1
+                failed_ids.append(item.id)
                 continue
 
             updates.append((item.id, embedding))
 
         updated_count = self._persist_batch(updates)
         skipped_count = max(0, len(updates) - updated_count)
-        return updated_count, skipped_count, failed_count
+        return updated_count, skipped_count, failed_count, failed_ids
 
     def _generate_batch_embeddings(
         self,
@@ -124,10 +140,14 @@ class EmbeddingBackfillRunner:
         if not batch:
             return []
 
-        batch_generator = getattr(self.embedding_service, "generate_for_content_items", None)
+        batch_generator = getattr(
+            self.embedding_service, "generate_for_content_items", None
+        )
         if callable(batch_generator):
             try:
-                generated = cast(Sequence[Optional[list[float]]], batch_generator(batch))
+                generated = cast(
+                    Sequence[Optional[list[float]]], batch_generator(batch)
+                )
                 results = list(generated)
             except Exception as exc:
                 self.logger.warning("批量Embedding生成异常，整批跳过: %s", exc)
@@ -148,7 +168,9 @@ class EmbeddingBackfillRunner:
             try:
                 results.append(self.embedding_service.generate_for_content_item(item))
             except Exception as exc:
-                self.logger.warning("内容 %s 的Embedding生成异常，跳过: %s", item.id, exc)
+                self.logger.warning(
+                    "内容 %s 的Embedding生成异常，跳过: %s", item.id, exc
+                )
                 results.append(None)
         return results
 

@@ -43,7 +43,9 @@ class _FakeCursor:
             return
 
         embedding_literal, model, updated_at, content_id = params
-        row = next((item for item in self.data_manager.rows if item.id == content_id), None)
+        row = next(
+            (item for item in self.data_manager.rows if item.id == content_id), None
+        )
         if row is None or row.embedding is not None:
             self.rowcount = 0
             return
@@ -71,6 +73,7 @@ class _FakeDataManager:
         self.backend = backend
         self.executed: list[tuple[str, Any]] = []
         self.commit_count = 0
+        self.fetch_exclude_ids: list[list[str]] = []
         self._lock = RLock()
 
     def get_content_items_missing_embeddings(
@@ -78,9 +81,14 @@ class _FakeDataManager:
         limit: int,
         exclude_ids: Optional[list[str]] = None,
     ) -> list[ContentItem]:
+        self.fetch_exclude_ids.append(list(exclude_ids or []))
         excluded = set(exclude_ids or [])
         candidates = sorted(
-            (row for row in self.rows if row.embedding is None and row.id not in excluded),
+            (
+                row
+                for row in self.rows
+                if row.embedding is None and row.id not in excluded
+            ),
             key=lambda row: row.publish_time,
             reverse=True,
         )[:limit]
@@ -122,7 +130,9 @@ class _FakeEmbeddingService:
         self.generated_ids.append(item.id)
         return self.results_by_id.get(item.id)
 
-    def generate_for_content_items(self, items: list[ContentItem]) -> list[Optional[list[float]]]:
+    def generate_for_content_items(
+        self, items: list[ContentItem]
+    ) -> list[Optional[list[float]]]:
         batch_ids = [item.id for item in items]
         self.generated_batches.append(batch_ids)
         self.generated_ids.extend(batch_ids)
@@ -140,7 +150,9 @@ def test_normalize_runtime_mode_accepts_embedding_backfill():
 def test_main_accepts_embedding_backfill_batch_size_and_limit(monkeypatch):
     captured: dict[str, Any] = {}
 
-    def _fake_run_embedding_backfill(config_path: str, batch_size: int, limit: Optional[int]):
+    def _fake_run_embedding_backfill(
+        config_path: str, batch_size: int, limit: Optional[int]
+    ):
         captured["config_path"] = config_path
         captured["batch_size"] = batch_size
         captured["limit"] = limit
@@ -270,9 +282,67 @@ def test_backfill_skips_failed_rows_and_continues(caplog):
     assert "Embedding生成失败，跳过该行" in caplog.text
 
 
+def test_backfill_only_excludes_failed_rows_across_batches():
+    now = datetime.now(timezone.utc)
+    data_manager = _FakeDataManager(
+        rows=[
+            _StoredRow(
+                id="content-failed",
+                title="Failed",
+                content="Body failed",
+                url="https://example.com/failed",
+                publish_time=now,
+            ),
+            _StoredRow(
+                id="content-middle",
+                title="Middle",
+                content="Body middle",
+                url="https://example.com/middle",
+                publish_time=now - timedelta(minutes=1),
+            ),
+            _StoredRow(
+                id="content-oldest",
+                title="Oldest",
+                content="Body oldest",
+                url="https://example.com/oldest",
+                publish_time=now - timedelta(minutes=2),
+            ),
+        ]
+    )
+    embedding_service = _FakeEmbeddingService(
+        {
+            "content-failed": None,
+            "content-middle": [0.1, 0.2, 0.3],
+            "content-oldest": [0.4, 0.5, 0.6],
+        }
+    )
+    runner = EmbeddingBackfillRunner(
+        cast(Any, data_manager), cast(Any, embedding_service), batch_size=1
+    )
+
+    report = runner.run()
+
+    assert report.rows_examined == 3
+    assert report.rows_embedded == 2
+    assert report.rows_failed == 1
+    assert embedding_service.generated_ids == [
+        "content-failed",
+        "content-middle",
+        "content-oldest",
+    ]
+    assert data_manager.fetch_exclude_ids == [
+        [],
+        ["content-failed"],
+        ["content-failed"],
+        ["content-failed"],
+    ]
+
+
 def test_backfill_rejects_sqlite_backend_fast():
     data_manager = _FakeDataManager(rows=[], backend="sqlite")
     embedding_service = _FakeEmbeddingService({})
 
     with pytest.raises(UnsupportedBackendError, match="embedding backfill runtime"):
-        EmbeddingBackfillRunner(cast(Any, data_manager), cast(Any, embedding_service)).run()
+        EmbeddingBackfillRunner(
+            cast(Any, data_manager), cast(Any, embedding_service)
+        ).run()
