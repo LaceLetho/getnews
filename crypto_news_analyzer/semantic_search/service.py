@@ -577,7 +577,7 @@ class SemanticSearchService:
             lines.extend(
                 [
                     f"[{index}] 标题: {match.item.title}",
-                    f"[{index}] 内容: {match.item.content}",
+                    f"[{index}] 内容: {self._truncate_prompt_field(match.item.content)}",
                     f"[{index}] 来源: {match.item.source_name} | {match.item.url}",
                     f"[{index}] 发布时间: {match.item.publish_time.isoformat()}",
                     f"[{index}] 相似度: {match.best_similarity:.4f}",
@@ -586,6 +586,13 @@ class SemanticSearchService:
                 ]
             )
         return "\n".join(lines).strip()
+
+    def _truncate_prompt_field(self, value: str) -> str:
+        normalized = str(value or "").strip()
+        max_chars = self.semantic_search_config.synthesis_item_content_max_chars
+        if len(normalized) <= max_chars:
+            return normalized
+        return f"{normalized[:max_chars].rstrip()}... [truncated]"
 
     def _build_report_prompt(
         self,

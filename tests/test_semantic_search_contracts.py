@@ -53,6 +53,7 @@ def test_semantic_search_config_defaults():
         per_subquery_limit=50,
         max_retained_items=200,
         synthesis_batch_size=7,
+        synthesis_item_content_max_chars=1000,
         embedding_model="text-embedding-3-small",
         embedding_dimensions=1536,
         keyword_search_enabled=True,

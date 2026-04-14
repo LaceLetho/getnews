@@ -3,7 +3,7 @@ from typing import Any, cast
 
 from crypto_news_analyzer.config.llm_registry import LLMConfig, ModelConfig
 from crypto_news_analyzer.models import ContentItem, SemanticSearchConfig
-from crypto_news_analyzer.semantic_search.service import SemanticSearchService
+from crypto_news_analyzer.semantic_search.service import SemanticSearchMatch, SemanticSearchService
 
 
 class _StubEmbeddingService:
@@ -239,6 +239,28 @@ def test_report_builder_uses_signal_only_sections():
     assert "## 来源" not in report
 
 
+def test_batch_prompt_truncates_item_content():
+    service = _build_service(
+        repository=_StubContentRepository([[]]),
+        semantic_search_config=SemanticSearchConfig(synthesis_item_content_max_chars=12),
+    )
+    match = SemanticSearchMatch(
+        item=_build_item("long", minutes=1, content="a" * 20),
+        best_similarity=0.9,
+        matched_subqueries=["ai token"],
+    )
+
+    prompt = service._build_batch_prompt(
+        query="ai token",
+        normalized_intent="AI token",
+        time_window_hours=24,
+        batch=[match],
+    )
+
+    assert "aaaaaaaaaaaa... [truncated]" in prompt
+    assert "aaaaaaaaaaaaaaaaaaaa" not in prompt
+
+
 def _build_service(
     repository: _StubContentRepository,
     semantic_search_config: SemanticSearchConfig | None = None,
@@ -264,11 +286,11 @@ def _build_llm_config() -> LLMConfig:
     )
 
 
-def _build_item(item_id: str, minutes: int) -> ContentItem:
+def _build_item(item_id: str, minutes: int, content: str | None = None) -> ContentItem:
     return ContentItem(
         id=item_id,
         title=f"Title {item_id}",
-        content=f"Body {item_id}",
+        content=content if content is not None else f"Body {item_id}",
         url=f"https://example.com/{item_id}",
         publish_time=datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=minutes),
         source_name="CoinDesk",

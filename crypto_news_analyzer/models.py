@@ -381,6 +381,7 @@ class SemanticSearchConfig:
     per_subquery_limit: int = 50
     max_retained_items: int = 200
     synthesis_batch_size: int = 10
+    synthesis_item_content_max_chars: int = 1000
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
     keyword_search_enabled: bool = True
@@ -402,6 +403,8 @@ class SemanticSearchConfig:
             raise ValueError("max_retained_items必须大于0")
         if self.synthesis_batch_size <= 0:
             raise ValueError("synthesis_batch_size必须大于0")
+        if self.synthesis_item_content_max_chars <= 0:
+            raise ValueError("synthesis_item_content_max_chars必须大于0")
         if not self.embedding_model or not self.embedding_model.strip():
             raise ValueError("embedding_model不能为空")
         if self.embedding_dimensions <= 0:
