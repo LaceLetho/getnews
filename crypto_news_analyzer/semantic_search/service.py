@@ -720,9 +720,10 @@ class SemanticSearchService:
         if self.client is None:
             raise RuntimeError("LLM client is unavailable")
 
+        sanitized_messages = [self._sanitize_llm_message(message) for message in messages]
         params: Dict[str, Any] = {
             "model": self.model_runtime.name,
-            "messages": list(messages),
+            "messages": sanitized_messages,
             "temperature": self.llm_config.temperature,
             "max_tokens": self.llm_config.max_tokens,
         }
@@ -735,6 +736,28 @@ class SemanticSearchService:
             self._log_llm_request_failure(params=params, exc=exc)
             raise
         return str(response.choices[0].message.content or "")
+
+    def _sanitize_llm_message(self, message: Dict[str, str]) -> Dict[str, str]:
+        sanitized = dict(message)
+        if "content" in sanitized:
+            sanitized["content"] = self._sanitize_prompt_text(sanitized["content"])
+        return sanitized
+
+    def _sanitize_prompt_text(self, value: str) -> str:
+        chars: List[str] = []
+        for char in str(value or ""):
+            category = unicodedata.category(char)
+            if char == "\u00a0":
+                chars.append(" ")
+            elif char == "\r":
+                chars.append("\n")
+            elif char in {"\n", "\t"}:
+                chars.append(char)
+            elif char == "\ufffd" or category in {"Cf", "Cs"} or category == "Cc":
+                continue
+            else:
+                chars.append(char)
+        return "".join(chars)
 
     def _log_llm_request_failure(self, *, params: Dict[str, Any], exc: Exception) -> None:
         messages = params.get("messages") or []

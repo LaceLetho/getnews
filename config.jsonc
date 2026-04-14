@@ -25,7 +25,9 @@
       "options": {}
     },
     "temperature": 0.5,
-    "max_tokens": 150000,
+    // 单次 LLM 响应允许生成的最大输出 token 数；不是输入 prompt 长度。
+    // 该值过大可能触发部分 OpenAI-compatible 代理的 token 统计兼容问题。
+    "max_tokens": 10000,
     "batch_size": 200,
     "market_prompt_path": "./prompts/market_summary_prompt.md",
     "analysis_prompt_path": "./prompts/analysis_prompt.md",

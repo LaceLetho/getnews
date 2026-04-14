@@ -279,13 +279,38 @@ def test_llm_complete_logs_request_details_on_failure(caplog):
     assert "语义搜索LLM请求失败，请求详情=" in caplog.text
     assert '"model": "kimi-k2.5"' in caplog.text
     assert '"message_count": 2' in caplog.text
-    assert '"total_content_chars": 2107' in caplog.text
+    assert '"total_content_chars": 2103' in caplog.text
     assert "content_repr_preview" in caplog.text
-    assert '"control_chars_excluding_newline_tab": {"U+0000": 1}' in caplog.text
-    assert '"format_chars": {"U+200B": 1}' in caplog.text
-    assert '"surrogate_chars": {"U+D800": 1}' in caplog.text
-    assert '"replacement_char_count": 1' in caplog.text
+    assert '"control_chars_excluding_newline_tab": {}' in caplog.text
+    assert '"format_chars": {}' in caplog.text
+    assert '"surrogate_chars": {}' in caplog.text
+    assert '"replacement_char_count": 0' in caplog.text
     assert "[truncated]" in caplog.text
+
+
+def test_llm_complete_sanitizes_prompt_text_before_request():
+    service = _build_service(repository=_StubContentRepository([[]]))
+    client = _CapturingChatClient(content="ok")
+    service.client = client
+
+    assert (
+        service._llm_complete([{"role": "user", "content": "A\x00\u200d\xa0\ud800\ufffd\rB\nC\tD"}])
+        == "ok"
+    )
+
+    assert client.calls[0]["messages"][0]["content"] == "A \nB\nC\tD"
+
+
+class _CapturingChatClient:
+    def __init__(self, content: str):
+        self.calls = []
+        self.chat = self
+        self.completions = self
+        self._content = content
+
+    def create(self, **kwargs: Any):
+        self.calls.append(kwargs)
+        return _Response(content=self._content)
 
 
 class _FailingChatClient:
@@ -295,6 +320,21 @@ class _FailingChatClient:
 
     def create(self, **_kwargs: Any):
         raise RuntimeError("upstream failed")
+
+
+class _Response:
+    def __init__(self, content: str):
+        self.choices = [_Choice(content=content)]
+
+
+class _Choice:
+    def __init__(self, content: str):
+        self.message = _Message(content=content)
+
+
+class _Message:
+    def __init__(self, content: str):
+        self.content = content
 
 
 def _build_service(
