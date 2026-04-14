@@ -121,7 +121,7 @@ Success response:
   "normalized_intent": "ETF approvals, institutional investment, regulatory decisions",
   "matched_count": 45,
   "retained_count": 38,
-  "report": "# 主题检索报告\n\n**查询主题**: Bitcoin ETF approvals...\n\n## 核心结论\n..."
+  "report": "# 主题检索报告\n\n- 归一化意图: Bitcoin ETF approvals\n...\n\n## 关键信号\n..."
 }
 ```
 
@@ -170,23 +170,21 @@ The returned report is a compact Markdown document with this structure:
 ```markdown
 # 主题检索报告
 
-**原始查询**: Bitcoin ETF approvals and institutional adoption
-**理解意图**: ETF approvals, institutional investment, regulatory decisions
-**时间窗口**: 24小时
-**匹配数量**: 45
-**保留数量**: 38
-
-## 核心结论
-
-- [conclusion with citations]
+- 归一化意图: ETF approvals, institutional investment, regulatory decisions
+- 原始查询: Bitcoin ETF approvals and institutional adoption
+- 时间窗口: 24 小时
+- 匹配条数: 45
+- 保留条数: 38
 
 ## 关键信号
 
-- [signal with citations]
+### 信号 1
+这里是一个完整段落，优先给出具体渠道、入口、产品、活动、时间点或操作线索。
+来源：[Source Name](https://example.com/article)
 
-## 来源
-
-- Source Name - https://example.com/article
+### 信号 2
+这里是第二个完整段落，用于补充新的具体线索或限制条件。
+来源：[Another Source](https://example.com/another-article)
 ```
 
 ## Telegram Command

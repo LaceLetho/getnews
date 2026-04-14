@@ -79,9 +79,7 @@ class SemanticSearchService:
         self.logger = logging.getLogger(__name__)
         self.client = client
         if self.client is None:
-            api_key = self.provider_credentials.get(
-                self.model_runtime.provider_name, ""
-            )
+            api_key = self.provider_credentials.get(self.model_runtime.provider_name, "")
             if api_key and OpenAI is not None:
                 self.client = self._build_client(self.model_runtime, api_key)
 
@@ -133,9 +131,7 @@ class SemanticSearchService:
         )
 
     def search(self, *, query: str, time_window_hours: int) -> Dict[str, Any]:
-        validated_query = self._validate_request(
-            query=query, time_window_hours=time_window_hours
-        )
+        validated_query = self._validate_request(query=query, time_window_hours=time_window_hours)
         normalized_intent, subqueries = self._plan_subqueries(validated_query)
         since_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
 
@@ -144,9 +140,7 @@ class SemanticSearchService:
         )
         ranked_matches = self._rank_matches(merged_matches)
         matched_count = len(ranked_matches)
-        retained_matches = ranked_matches[
-            : self.semantic_search_config.max_retained_items
-        ]
+        retained_matches = ranked_matches[: self.semantic_search_config.max_retained_items]
         retained_count = len(retained_matches)
 
         if not retained_matches:
@@ -227,11 +221,7 @@ class SemanticSearchService:
             )
             planned_subqueries = planned_payload.get("subqueries") or []
             if isinstance(planned_subqueries, list):
-                subqueries = [
-                    str(item).strip()
-                    for item in planned_subqueries
-                    if str(item).strip()
-                ]
+                subqueries = [str(item).strip() for item in planned_subqueries if str(item).strip()]
         except Exception as exc:
             self.logger.warning("语义搜索查询规划失败，回退原始查询: %s", exc)
 
@@ -287,17 +277,13 @@ class SemanticSearchService:
                     )
                     continue
 
-                existing.best_similarity = max(
-                    existing.best_similarity, float(similarity)
-                )
+                existing.best_similarity = max(existing.best_similarity, float(similarity))
                 if subquery not in existing.matched_subqueries:
                     existing.matched_subqueries.append(subquery)
 
         return merged
 
-    def _rank_matches(
-        self, matches: Dict[str, SemanticSearchMatch]
-    ) -> List[SemanticSearchMatch]:
+    def _rank_matches(self, matches: Dict[str, SemanticSearchMatch]) -> List[SemanticSearchMatch]:
         def _publish_time(match: SemanticSearchMatch) -> datetime:
             publish_time = match.item.publish_time
             if publish_time.tzinfo is None:
@@ -360,11 +346,6 @@ class SemanticSearchService:
         retained_matches: Sequence[SemanticSearchMatch],
         batch_summaries: Sequence[str],
     ) -> str:
-        source_refs = [
-            (f"S{index}", match.item)
-            for index, match in enumerate(retained_matches, start=1)
-        ]
-        sources = self.report_builder.sources_from_items(source_refs)
         draft_report = ""
 
         try:
@@ -389,16 +370,14 @@ class SemanticSearchService:
             self.logger.warning("语义搜索最终归纳失败，使用降级报告: %s", exc)
             draft_report = self._build_fallback_final_summary(retained_matches)
 
-        conclusion_lines, signal_lines = self._extract_sections(draft_report)
+        signal_blocks = self._extract_signal_blocks(draft_report)
         return self.report_builder.build(
             normalized_intent=normalized_intent,
             original_query=query,
             time_window_hours=time_window_hours,
             matched_count=matched_count,
             retained_count=retained_count,
-            conclusion_lines=conclusion_lines,
-            signal_lines=signal_lines,
-            sources=sources,
+            signal_blocks=signal_blocks,
         )
 
     def _build_batch_prompt(
@@ -456,68 +435,93 @@ class SemanticSearchService:
             .replace("{{TIME_WINDOW_HOURS}}", str(time_window_hours))
             .replace("{{MATCHED_COUNT}}", str(matched_count))
             .replace("{{RETAINED_COUNT}}", str(retained_count))
-            .replace(
-                "{{BATCH_SUMMARIES}}", "\n\n".join(batch_summaries).strip() or "无"
-            )
+            .replace("{{BATCH_SUMMARIES}}", "\n\n".join(batch_summaries).strip() or "无")
             .replace("{{SOURCES}}", "\n".join(source_lines).strip() or "无")
         )
 
-    def _extract_sections(self, draft_report: str) -> tuple[List[str], List[str]]:
-        conclusions: List[str] = []
-        signals: List[str] = []
-        current: Optional[List[str]] = None
+    def _extract_signal_blocks(self, draft_report: str) -> List[str]:
+        signal_lines: List[str] = []
+        in_signal_section = False
 
         for raw_line in draft_report.splitlines():
-            line = raw_line.strip()
-            if not line:
+            stripped = raw_line.strip()
+            if stripped.startswith("## "):
+                in_signal_section = stripped.startswith("## 关键信号")
                 continue
-            if line.startswith("## 核心结论"):
-                current = conclusions
+            if not in_signal_section:
                 continue
-            if line.startswith("## 关键信号"):
-                current = signals
-                continue
-            if line.startswith("## 来源"):
-                current = None
-                continue
-            if current is None:
-                continue
-            normalized = line[2:].strip() if line.startswith(("- ", "* ")) else line
-            if normalized:
-                current.append(normalized)
+            signal_lines.append(raw_line.rstrip())
 
-        if not conclusions and draft_report.strip():
-            first_nonempty_line = next(
-                (line.strip() for line in draft_report.splitlines() if line.strip()), ""
-            )
-            if first_nonempty_line:
-                conclusions.append(first_nonempty_line)
+        blocks = self._split_signal_blocks(signal_lines)
+        if blocks:
+            return blocks
 
-        return conclusions, signals
+        fallback_text = draft_report.strip()
+        if fallback_text:
+            return [fallback_text]
+        return []
 
-    def _build_fallback_batch_summary(
-        self, batch: Sequence[SemanticSearchMatch]
-    ) -> str:
+    def _split_signal_blocks(self, signal_lines: Sequence[str]) -> List[str]:
+        trimmed_lines = list(self._trim_blank_lines(signal_lines))
+        if not trimmed_lines:
+            return []
+
+        blocks: List[List[str]] = []
+        current_block: List[str] = []
+        has_explicit_headings = any(
+            line.strip().startswith("### ") for line in trimmed_lines if line.strip()
+        )
+
+        for raw_line in trimmed_lines:
+            stripped = raw_line.strip()
+            if has_explicit_headings and stripped.startswith("### "):
+                if current_block:
+                    blocks.append(current_block)
+                current_block = [stripped]
+                continue
+            current_block.append(raw_line)
+
+        if current_block:
+            blocks.append(current_block)
+
+        normalized_blocks = [
+            "\n".join(self._trim_blank_lines(block)).strip()
+            for block in blocks
+            if any(line.strip() for line in block)
+        ]
+        return [block for block in normalized_blocks if block]
+
+    def _trim_blank_lines(self, lines: Sequence[str]) -> List[str]:
+        start = 0
+        end = len(lines)
+        while start < end and not lines[start].strip():
+            start += 1
+        while end > start and not lines[end - 1].strip():
+            end -= 1
+        return list(lines[start:end])
+
+    def _build_fallback_batch_summary(self, batch: Sequence[SemanticSearchMatch]) -> str:
         return "\n".join(
             f"- {match.item.title} [{match.item.source_name}] ({match.item.url})"
             for match in batch[:5]
         )
 
-    def _build_fallback_final_summary(
-        self, retained_matches: Sequence[SemanticSearchMatch]
-    ) -> str:
+    def _build_fallback_final_summary(self, retained_matches: Sequence[SemanticSearchMatch]) -> str:
         top_matches = list(retained_matches[:5])
-        conclusion_lines = [
-            f"- {match.item.title} [S{index}]"
-            for index, match in enumerate(top_matches, start=1)
-        ]
-        signal_lines = [
-            f"- {match.item.source_name} 在 {match.item.publish_time.isoformat()} 提到：{match.item.title} [S{index}]"
-            for index, match in enumerate(top_matches, start=1)
-        ]
-        return "\n".join(
-            ["## 核心结论", *conclusion_lines, "", "## 关键信号", *signal_lines]
-        )
+        signal_blocks = []
+        for index, match in enumerate(top_matches, start=1):
+            signal_blocks.extend(
+                [
+                    f"### 信号 {index}",
+                    (
+                        f"{match.item.source_name} 在 {match.item.publish_time.isoformat()} "
+                        f"提到：{match.item.title}"
+                    ),
+                    f"来源：[{match.item.source_name}]({match.item.url})",
+                    "",
+                ]
+            )
+        return "\n".join(["## 关键信号", "", *signal_blocks]).strip()
 
     def _load_prompt(self, path: Path) -> str:
         return path.read_text(encoding="utf-8")
