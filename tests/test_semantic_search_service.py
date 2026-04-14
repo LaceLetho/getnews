@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
+import pytest
+
 from crypto_news_analyzer.config.llm_registry import LLMConfig, ModelConfig
 from crypto_news_analyzer.models import ContentItem, SemanticSearchConfig
 from crypto_news_analyzer.semantic_search.service import SemanticSearchMatch, SemanticSearchService
@@ -259,6 +261,35 @@ def test_batch_prompt_truncates_item_content():
 
     assert "aaaaaaaaaaaa... [truncated]" in prompt
     assert "aaaaaaaaaaaaaaaaaaaa" not in prompt
+
+
+def test_llm_complete_logs_request_details_on_failure(caplog):
+    service = _build_service(repository=_StubContentRepository([[]]))
+    service.client = _FailingChatClient()
+
+    with pytest.raises(RuntimeError, match="upstream failed"):
+        service._llm_complete(
+            [
+                {"role": "system", "content": "sys"},
+                {"role": "user", "content": "x" * 2100},
+            ],
+            response_format={"type": "json_object"},
+        )
+
+    assert "语义搜索LLM请求失败，请求详情=" in caplog.text
+    assert '"model": "kimi-k2.5"' in caplog.text
+    assert '"message_count": 2' in caplog.text
+    assert '"total_content_chars": 2103' in caplog.text
+    assert "[truncated]" in caplog.text
+
+
+class _FailingChatClient:
+    def __init__(self):
+        self.chat = self
+        self.completions = self
+
+    def create(self, **_kwargs: Any):
+        raise RuntimeError("upstream failed")
 
 
 def _build_service(

@@ -728,8 +728,47 @@ class SemanticSearchService:
         if response_format is not None:
             params["response_format"] = response_format
 
-        response = self.client.chat.completions.create(**params)
+        try:
+            response = self.client.chat.completions.create(**params)
+        except Exception as exc:
+            self._log_llm_request_failure(params=params, exc=exc)
+            raise
         return str(response.choices[0].message.content or "")
+
+    def _log_llm_request_failure(self, *, params: Dict[str, Any], exc: Exception) -> None:
+        messages = params.get("messages") or []
+        message_summaries = []
+        total_content_chars = 0
+        preview_chars = 2000
+
+        for message in messages:
+            content = str(message.get("content") or "") if isinstance(message, dict) else ""
+            total_content_chars += len(content)
+            preview = content[:preview_chars]
+            if len(content) > preview_chars:
+                preview = f"{preview}... [truncated]"
+            message_summaries.append(
+                {
+                    "role": message.get("role") if isinstance(message, dict) else None,
+                    "content_chars": len(content),
+                    "content_preview": preview,
+                }
+            )
+
+        request_summary = {
+            "model": params.get("model"),
+            "temperature": params.get("temperature"),
+            "max_tokens": params.get("max_tokens"),
+            "response_format": params.get("response_format"),
+            "message_count": len(messages),
+            "total_content_chars": total_content_chars,
+            "messages": message_summaries,
+        }
+        self.logger.warning(
+            "语义搜索LLM请求失败，请求详情=%s，错误=%s",
+            json.dumps(request_summary, ensure_ascii=False),
+            exc,
+        )
 
     def _build_client(self, runtime: ResolvedModelRuntime, api_key: str):
         if OpenAI is None:
