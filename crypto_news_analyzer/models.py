@@ -381,7 +381,7 @@ class SemanticSearchConfig:
     per_subquery_limit: int = 50
     max_retained_items: int = 200
     synthesis_batch_size: int = 10
-    synthesis_item_content_max_chars: int = 1000
+    synthesis_item_content_max_chars: int = 500
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
     keyword_search_enabled: bool = True
