@@ -271,7 +271,7 @@ def test_llm_complete_logs_request_details_on_failure(caplog):
         service._llm_complete(
             [
                 {"role": "system", "content": "sys"},
-                {"role": "user", "content": "x" * 2100},
+                {"role": "user", "content": "\x00\u200b\ud800\ufffd" + ("x" * 2100)},
             ],
             response_format={"type": "json_object"},
         )
@@ -279,7 +279,12 @@ def test_llm_complete_logs_request_details_on_failure(caplog):
     assert "语义搜索LLM请求失败，请求详情=" in caplog.text
     assert '"model": "kimi-k2.5"' in caplog.text
     assert '"message_count": 2' in caplog.text
-    assert '"total_content_chars": 2103' in caplog.text
+    assert '"total_content_chars": 2107' in caplog.text
+    assert "content_repr_preview" in caplog.text
+    assert '"control_chars_excluding_newline_tab": {"U+0000": 1}' in caplog.text
+    assert '"format_chars": {"U+200B": 1}' in caplog.text
+    assert '"surrogate_chars": {"U+D800": 1}' in caplog.text
+    assert '"replacement_char_count": 1' in caplog.text
     assert "[truncated]" in caplog.text
 
 

@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
+import unicodedata
 
 try:
     from openai import OpenAI
@@ -752,6 +753,8 @@ class SemanticSearchService:
                     "role": message.get("role") if isinstance(message, dict) else None,
                     "content_chars": len(content),
                     "content_preview": preview,
+                    "content_repr_preview": repr(content[:preview_chars]),
+                    "text_anomalies": self._summarize_text_anomalies(content),
                 }
             )
 
@@ -769,6 +772,33 @@ class SemanticSearchService:
             json.dumps(request_summary, ensure_ascii=False),
             exc,
         )
+
+    def _summarize_text_anomalies(self, content: str) -> Dict[str, Any]:
+        control_chars: Dict[str, int] = {}
+        format_chars: Dict[str, int] = {}
+        surrogate_chars: Dict[str, int] = {}
+        replacement_char_count = 0
+
+        for char in content:
+            codepoint = ord(char)
+            category = unicodedata.category(char)
+            key = f"U+{codepoint:04X}"
+
+            if char == "\ufffd":
+                replacement_char_count += 1
+            elif category == "Cc" and char not in {"\n", "\r", "\t"}:
+                control_chars[key] = control_chars.get(key, 0) + 1
+            elif category == "Cf":
+                format_chars[key] = format_chars.get(key, 0) + 1
+            elif category == "Cs":
+                surrogate_chars[key] = surrogate_chars.get(key, 0) + 1
+
+        return {
+            "control_chars_excluding_newline_tab": control_chars,
+            "format_chars": format_chars,
+            "surrogate_chars": surrogate_chars,
+            "replacement_char_count": replacement_char_count,
+        }
 
     def _build_client(self, runtime: ResolvedModelRuntime, api_key: str):
         if OpenAI is None:
