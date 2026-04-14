@@ -51,9 +51,9 @@
     // 每个子查询最多从 pgvector 召回多少条候选新闻
     "per_subquery_limit": 200,
     // 所有向量召回和关键词召回合并去重，最多保留前多少条新闻进入最终总结
-    "max_retained_items": 1000,
+    "max_retained_items": 500,
     // 总结阶段每批送给模型处理的新闻条数；这里跟随 llm_config.batch_size
-    "synthesis_batch_size": 200,
+    "synthesis_batch_size": 100,
     // 生成向量所用的 OpenAI embedding 模型
     "embedding_model": "text-embedding-3-small",
     // embedding 向量维度；必须与 storage.pgvector_dimensions 保持一致
