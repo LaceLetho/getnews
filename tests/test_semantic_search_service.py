@@ -17,9 +17,11 @@ class _StubEmbeddingService:
 
 
 class _StubContentRepository:
-    def __init__(self, results_by_call):
+    def __init__(self, results_by_call, keyword_results=None):
         self.results_by_call = list(results_by_call)
+        self.keyword_results = list(keyword_results or [])
         self.calls = []
+        self.keyword_calls = []
 
     def semantic_search_by_similarity(self, query_embedding, since_time, max_hours, limit):
         self.calls.append(
@@ -32,17 +34,28 @@ class _StubContentRepository:
         )
         return self.results_by_call.pop(0) if self.results_by_call else []
 
+    def semantic_search_by_keywords(self, keyword_queries, since_time, max_hours, limit):
+        self.keyword_calls.append(
+            {
+                "keyword_queries": keyword_queries,
+                "since_time": since_time,
+                "max_hours": max_hours,
+                "limit": limit,
+            }
+        )
+        return self.keyword_results.pop(0) if self.keyword_results else []
+
 
 def test_query_planner_caps_unique_subqueries_and_keeps_original_query(monkeypatch):
     service = _build_service(repository=_StubContentRepository([[]]))
     responses = iter(
         [
-            '{"normalized_intent":"比特币ETF资金流与机构需求","subqueries":["ETF inflows","BTC ETF demand","ETF inflows","macro spillover"]}'
+            '{"normalized_intent":"比特币ETF资金流与机构需求","subqueries":["ETF inflows","BTC ETF demand","ETF inflows","macro spillover"],"keyword_queries":["ETF","inflows","BTC ETF","institutional demand"]}'
         ]
     )
     monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
 
-    normalized_intent, subqueries = service._plan_subqueries("btc etf flows")
+    normalized_intent, subqueries, keyword_queries = service._plan_subqueries("btc etf flows")
 
     assert normalized_intent == "比特币ETF资金流与机构需求"
     assert subqueries == [
@@ -51,6 +64,7 @@ def test_query_planner_caps_unique_subqueries_and_keeps_original_query(monkeypat
         "BTC ETF demand",
         "macro spillover",
     ]
+    assert keyword_queries == ["etf", "inflows", "btc etf", "institutional demand"]
 
 
 def test_global_retained_set_is_capped_to_200_unique_items(monkeypatch):
@@ -65,7 +79,7 @@ def test_global_retained_set_is_capped_to_200_unique_items(monkeypatch):
     )
     responses = iter(
         [
-            '{"normalized_intent":"ETF资金流","subqueries":["btc etf flows","institutional demand"]}',
+            '{"normalized_intent":"ETF资金流","subqueries":["btc etf flows","institutional demand"],"keyword_queries":["ETF","inflows","institutional demand"]}',
             "## 关键信号\n\n### 信号 1\n批次里出现了一个具体入口。\n来源：[CoinDesk](https://example.com/item-1)",
             "## 关键信号\n\n### 信号 1\n最终保留了一个具体 alpha 信号。\n来源：[CoinDesk](https://example.com/item-2)",
         ]
@@ -87,9 +101,115 @@ def test_global_retained_set_is_capped_to_200_unique_items(monkeypatch):
     assert "来源：[CoinDesk](https://example.com/item-2)" in result["report_content"]
 
 
+def test_keyword_recall_fills_gap_when_vector_search_is_empty(monkeypatch):
+    keyword_item = _build_item("keyword-hit", minutes=1)
+    repository = _StubContentRepository([[]], keyword_results=[[(keyword_item, 12.0)]])
+    service = _build_service(repository=repository)
+    responses = iter(
+        [
+            '{"normalized_intent":"AI套餐非官方购买渠道","subqueries":["AI套餐 购买渠道"],"keyword_queries":["AI套餐","AI token","非官方购买渠道","第三方购买","代充","闲鱼","共享账号"]}',
+            "## 关键信号\n\n### 信号 1\n批次里发现了第三方购买讨论。\n来源：[CoinDesk](https://example.com/keyword-hit)",
+            "## 关键信号\n\n### 信号 1\n发现了具体第三方购买入口。\n来源：[CoinDesk](https://example.com/keyword-hit)",
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+
+    result = service.search(
+        query="帮我找一下AI套餐或者token的非官方购买渠道",
+        time_window_hours=24,
+    )
+
+    assert result["success"] is True
+    assert result["matched_count"] == 1
+    assert repository.keyword_calls
+    assert repository.keyword_calls[0]["limit"] == 30
+    assert "非官方购买渠道" in repository.keyword_calls[0]["keyword_queries"]
+    assert "代充" in repository.keyword_calls[0]["keyword_queries"]
+    assert "闲鱼" in repository.keyword_calls[0]["keyword_queries"]
+    assert "具体第三方购买入口" in result["report_content"]
+    assert result["keyword_queries"] == [
+        "ai套餐",
+        "ai token",
+        "非官方购买渠道",
+        "第三方购买",
+        "代充",
+        "闲鱼",
+        "共享账号",
+    ]
+
+
+def test_build_keyword_queries_prefers_llm_dynamic_keywords():
+    service = _build_service(repository=_StubContentRepository([[]]))
+
+    keyword_queries = service._build_keyword_queries(
+        query="帮我找一下AI套餐或者token的非官方购买渠道",
+        normalized_intent="AI套餐与token的非官方购买渠道",
+        subqueries=["AI套餐 购买渠道", "token 第三方购买"],
+        planned_keyword_queries=[
+            "AI套餐",
+            "AI token",
+            "非官方购买渠道",
+            "第三方购买",
+            "代充",
+            "闲鱼",
+        ],
+    )
+
+    assert "ai套餐或者token的非官方购买渠道" in keyword_queries
+    assert "ai套餐" in keyword_queries
+    assert "非官方购买渠道" in keyword_queries
+    assert "代充" in keyword_queries
+    assert "闲鱼" in keyword_queries
+    assert "ai token" in keyword_queries
+    assert "第三方充值" not in keyword_queries
+
+
+def test_build_keyword_queries_uses_local_fallback_when_llm_keywords_are_sparse():
+    service = _build_service(repository=_StubContentRepository([[]]))
+
+    keyword_queries = service._build_keyword_queries(
+        query="帮我找一下AI套餐或者token的非官方购买渠道",
+        normalized_intent="AI套餐与token的非官方购买渠道",
+        subqueries=["AI套餐 购买渠道", "token 第三方购买"],
+        planned_keyword_queries=["AI套餐"],
+    )
+
+    assert "ai套餐" in keyword_queries
+    assert "非官方购买渠道" in keyword_queries
+    assert "第三方充值" in keyword_queries
+    assert "代充" in keyword_queries
+    assert "闲鱼" in keyword_queries
+
+
+def test_query_planner_can_return_yield_channel_keywords(monkeypatch):
+    service = _build_service(repository=_StubContentRepository([[]]))
+    responses = iter(
+        [
+            '{"normalized_intent":"ETH与稳定币相对安全的收益渠道","subqueries":["ETH 稳定币 安全收益 渠道","stablecoin yield pool"],"keyword_queries":["ETH","稳定币","收益池","补贴","闪赚","OKX","ListaDAO","xAUT","Aave","Pendle"]}'
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+
+    normalized_intent, subqueries, keyword_queries = service._plan_subqueries(
+        "帮我汇总ETH与稳定币安全的理财或收益渠道与方法"
+    )
+
+    assert normalized_intent == "ETH与稳定币相对安全的收益渠道"
+    assert subqueries[0] == "帮我汇总ETH与稳定币安全的理财或收益渠道与方法"
+    assert "收益池" in keyword_queries
+    assert "补贴" in keyword_queries
+    assert "okx" in keyword_queries
+    assert "listadao" in keyword_queries
+    assert "xaut" in keyword_queries
+
+
 def test_no_match_returns_compact_non_error_report_shape(monkeypatch):
     service = _build_service(repository=_StubContentRepository([[]]))
-    responses = iter(['{"normalized_intent":"SOL生态空投","subqueries":["sol airdrop"]}'])
+    responses = iter(
+        [
+            '{"normalized_intent":"SOL生态空投","subqueries":["sol airdrop"],"keyword_queries":["SOL","airdrop"]}'
+        ]
+    )
     monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
 
     result = service.search(query="sol airdrop", time_window_hours=12)
@@ -101,6 +221,7 @@ def test_no_match_returns_compact_non_error_report_shape(monkeypatch):
         "matched_count": 0,
         "retained_count": 0,
         "subqueries": ["sol airdrop"],
+        "keyword_queries": ["sol", "airdrop"],
     }
 
 

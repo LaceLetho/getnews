@@ -268,16 +268,10 @@ class AuthConfig:
         object.__setattr__(self, "OPENAI_API_KEY", (self.OPENAI_API_KEY or "").strip())
 
         # OpenCode API密钥可以为空（如果不使用opencode-go模型）
-        object.__setattr__(
-            self, "OPENCODE_API_KEY", (self.OPENCODE_API_KEY or "").strip()
-        )
+        object.__setattr__(self, "OPENCODE_API_KEY", (self.OPENCODE_API_KEY or "").strip())
 
-        object.__setattr__(
-            self, "TELEGRAM_BOT_TOKEN", (self.TELEGRAM_BOT_TOKEN or "").strip()
-        )
-        object.__setattr__(
-            self, "TELEGRAM_CHANNEL_ID", (self.TELEGRAM_CHANNEL_ID or "").strip()
-        )
+        object.__setattr__(self, "TELEGRAM_BOT_TOKEN", (self.TELEGRAM_BOT_TOKEN or "").strip())
+        object.__setattr__(self, "TELEGRAM_CHANNEL_ID", (self.TELEGRAM_CHANNEL_ID or "").strip())
 
         normalized_mode = (mode or "").strip().lower()
         if normalized_mode in {"analysis-service", "api-only"}:
@@ -288,8 +282,7 @@ class AuthConfig:
             ]
             if missing_provider_env_vars:
                 raise ValueError(
-                    "缺少LLM提供商认证配置: "
-                    + ", ".join(sorted(missing_provider_env_vars))
+                    "缺少LLM提供商认证配置: " + ", ".join(sorted(missing_provider_env_vars))
                 )
 
     def validate_telegram(self, required: bool = True) -> None:
@@ -390,6 +383,9 @@ class SemanticSearchConfig:
     synthesis_batch_size: int = 10
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
+    keyword_search_enabled: bool = True
+    keyword_search_limit: int = 30
+    max_keyword_queries: int = 12
     enabled: bool = True
 
     def __post_init__(self):
@@ -410,6 +406,12 @@ class SemanticSearchConfig:
             raise ValueError("embedding_model不能为空")
         if self.embedding_dimensions <= 0:
             raise ValueError("embedding_dimensions必须大于0")
+        if not isinstance(self.keyword_search_enabled, bool):
+            raise ValueError("keyword_search_enabled必须是布尔值")
+        if self.keyword_search_limit <= 0:
+            raise ValueError("keyword_search_limit必须大于0")
+        if self.max_keyword_queries <= 0:
+            raise ValueError("max_keyword_queries必须大于0")
         if not isinstance(self.enabled, bool):
             raise ValueError("enabled必须是布尔值")
 

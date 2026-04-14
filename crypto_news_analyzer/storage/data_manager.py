@@ -1241,7 +1241,7 @@ class DataManager:
 
         now = datetime.now(timezone.utc)
         end_time = min(now, normalized_since_time + timedelta(hours=max_hours))
-        bounded_limit = min(max(1, limit), 50)
+        bounded_limit = max(1, limit)
         query_vector = self._pgvector_literal(query_embedding)
 
         with self._get_connection() as conn:
@@ -1288,6 +1288,111 @@ class DataManager:
                     source_type=row["source_type"],
                 )
                 items_with_scores.append((item, float(row["similarity"])))
+
+            return items_with_scores
+
+    def semantic_search_keywords(
+        self,
+        keyword_queries: List[str],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+    ) -> List[Tuple[ContentItem, float]]:
+        self._ensure_semantic_search_supported("semantic search keyword retrieval")
+
+        if max_hours <= 0:
+            raise ValueError("max_hours must be positive")
+
+        normalized_queries = []
+        seen = set()
+        for query in keyword_queries:
+            normalized = str(query or "").strip().lower()
+            if len(normalized) < 2 or normalized in seen:
+                continue
+            seen.add(normalized)
+            normalized_queries.append(normalized)
+
+        if not normalized_queries:
+            return []
+
+        from datetime import timezone
+
+        normalized_since_time = since_time
+        if normalized_since_time.tzinfo is None:
+            normalized_since_time = normalized_since_time.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        end_time = min(now, normalized_since_time + timedelta(hours=max_hours))
+        bounded_limit = max(1, limit)
+
+        score_clauses = []
+        filter_clauses = []
+        params: List[Any] = []
+        filter_params: List[Any] = []
+
+        for query in normalized_queries:
+            like_term = f"%{query}%"
+            score_clauses.append("""
+                CASE WHEN lower(title) LIKE ? THEN 8 ELSE 0 END +
+                CASE WHEN lower(content) LIKE ? THEN 4 ELSE 0 END +
+                CASE WHEN lower(source_name) LIKE ? THEN 2 ELSE 0 END
+                """)
+            params.extend([like_term, like_term, like_term])
+            filter_clauses.append(
+                "(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(source_name) LIKE ?)"
+            )
+            filter_params.extend([like_term, like_term, like_term])
+
+        params.extend(
+            [
+                normalized_since_time.isoformat(),
+                end_time.isoformat(),
+                *filter_params,
+                bounded_limit,
+            ]
+        )
+        score_expression = " + ".join(score_clauses)
+        filter_expression = " OR ".join(filter_clauses)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql(f"""
+                    SELECT
+                        id,
+                        title,
+                        content,
+                        url,
+                        publish_time,
+                        source_name,
+                        source_type,
+                        ({score_expression}) AS lexical_score
+                    FROM content_items
+                    WHERE publish_time >= ?
+                      AND publish_time <= ?
+                      AND ({filter_expression})
+                    ORDER BY lexical_score DESC, publish_time DESC
+                    LIMIT ?
+                    """),
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+
+            items_with_scores: List[Tuple[ContentItem, float]] = []
+            for row in rows:
+                publish_time = self._normalize_loaded_publish_time(
+                    self._coerce_loaded_datetime(row["publish_time"])
+                )
+                item = ContentItem(
+                    id=row["id"],
+                    title=row["title"],
+                    content=row["content"],
+                    url=row["url"],
+                    publish_time=publish_time,
+                    source_name=row["source_name"],
+                    source_type=row["source_type"],
+                )
+                items_with_scores.append((item, float(row["lexical_score"])))
 
             return items_with_scores
 

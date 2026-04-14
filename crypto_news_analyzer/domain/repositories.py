@@ -17,23 +17,23 @@ from .models import AnalysisRequest, DataSource, IngestionJob, SemanticSearchJob
 class AnalysisRepository(ABC):
     """
     Abstract repository for AnalysisRequest entities.
-    
+
     Implementations must handle:
     - Job persistence with status transitions
     - Querying jobs by recipient, status, time range
     - Concurrent access (if applicable)
     """
-    
+
     @abstractmethod
     def save(self, request: AnalysisRequest) -> None:
         """Save or update an AnalysisRequest"""
         pass
-    
+
     @abstractmethod
     def get_by_id(self, request_id: str) -> Optional[AnalysisRequest]:
         """Get AnalysisRequest by ID"""
         pass
-    
+
     @abstractmethod
     def get_by_recipient(
         self,
@@ -43,14 +43,14 @@ class AnalysisRepository(ABC):
     ) -> List[AnalysisRequest]:
         """
         Get AnalysisRequests for a recipient
-        
+
         Args:
             recipient_key: The recipient identifier
             status: Filter by status (optional)
             limit: Maximum results to return
         """
         pass
-    
+
     @abstractmethod
     def get_pending_jobs(
         self,
@@ -59,13 +59,13 @@ class AnalysisRepository(ABC):
     ) -> List[AnalysisRequest]:
         """
         Get pending jobs sorted by priority and creation time
-        
+
         Args:
             limit: Maximum jobs to return
             min_priority: Minimum priority level
         """
         pass
-    
+
     @abstractmethod
     def update_status(
         self,
@@ -75,17 +75,17 @@ class AnalysisRepository(ABC):
     ) -> bool:
         """
         Update job status
-        
+
         Args:
             request_id: Job ID
             status: New status value
             error_message: Error message (for failed status)
-        
+
         Returns:
             True if update succeeded
         """
         pass
-    
+
     @abstractmethod
     def complete_job(
         self,
@@ -94,16 +94,16 @@ class AnalysisRepository(ABC):
     ) -> bool:
         """
         Mark job as completed with result
-        
+
         Args:
             request_id: Job ID
             result: Analysis result data
-        
+
         Returns:
             True if update succeeded
         """
         pass
-    
+
     @abstractmethod
     def get_last_successful_analysis(
         self,
@@ -111,7 +111,7 @@ class AnalysisRepository(ABC):
     ) -> Optional[datetime]:
         """
         Get timestamp of last successful analysis for recipient
-        
+
         Used for calculating time windows in subsequent analyses.
         """
         pass
@@ -131,23 +131,23 @@ class AnalysisRepository(ABC):
 class IngestionRepository(ABC):
     """
     Abstract repository for IngestionJob entities.
-    
+
     Implementations must handle:
     - Job persistence with status transitions
     - Querying jobs by source, status, time range
     - Aggregation for statistics
     """
-    
+
     @abstractmethod
     def save(self, job: IngestionJob) -> None:
         """Save or update an IngestionJob"""
         pass
-    
+
     @abstractmethod
     def get_by_id(self, job_id: str) -> Optional[IngestionJob]:
         """Get IngestionJob by ID"""
         pass
-    
+
     @abstractmethod
     def get_by_source(
         self,
@@ -158,7 +158,7 @@ class IngestionRepository(ABC):
     ) -> List[IngestionJob]:
         """
         Get IngestionJobs for a source
-        
+
         Args:
             source_type: Source type ("rss", "x", "api")
             source_name: Specific source name (optional)
@@ -166,12 +166,12 @@ class IngestionRepository(ABC):
             limit: Maximum results to return
         """
         pass
-    
+
     @abstractmethod
     def get_pending_jobs(self, limit: int = 10) -> List[IngestionJob]:
         """Get pending ingestion jobs"""
         pass
-    
+
     @abstractmethod
     def update_status(
         self,
@@ -181,7 +181,7 @@ class IngestionRepository(ABC):
     ) -> bool:
         """Update job status"""
         pass
-    
+
     @abstractmethod
     def complete_job(
         self,
@@ -191,14 +191,14 @@ class IngestionRepository(ABC):
     ) -> bool:
         """
         Mark job as completed with statistics
-        
+
         Args:
             job_id: Job ID
             items_crawled: Total items crawled
             items_new: New (non-duplicate) items
         """
         pass
-    
+
     @abstractmethod
     def get_statistics(
         self,
@@ -207,11 +207,11 @@ class IngestionRepository(ABC):
     ) -> Dict[str, Any]:
         """
         Get ingestion statistics
-        
+
         Args:
             since: Start time for statistics
             source_type: Filter by source type (optional)
-        
+
         Returns:
             Dictionary with statistics:
             - total_jobs
@@ -226,23 +226,23 @@ class IngestionRepository(ABC):
 class ContentRepository(ABC):
     """
     Abstract repository for content items.
-    
+
     Implementations must handle:
     - Content deduplication (by hash)
     - Time-range queries for analysis
     - Source filtering
     """
-    
+
     @abstractmethod
     def save(self, content: Dict[str, Any]) -> bool:
         """
         Save content item if not duplicate
-        
+
         Returns:
             True if saved (not duplicate), False if duplicate
         """
         pass
-    
+
     @abstractmethod
     def get_by_time_range(
         self,
@@ -253,7 +253,7 @@ class ContentRepository(ABC):
     ) -> List[Dict[str, Any]]:
         """
         Get content items within time range
-        
+
         Args:
             start_time: Start of time range (inclusive)
             end_time: End of time range (inclusive)
@@ -261,12 +261,12 @@ class ContentRepository(ABC):
             source_name: Filter by source name (optional)
         """
         pass
-    
+
     @abstractmethod
     def exists_by_hash(self, content_hash: str) -> bool:
         """Check if content with given hash already exists"""
         pass
-    
+
     @abstractmethod
     def get_count_since(
         self,
@@ -325,6 +325,16 @@ class ContentRepository(ABC):
     ) -> List[Tuple[Any, float]]:
         pass
 
+    @abstractmethod
+    def semantic_search_by_keywords(
+        self,
+        keyword_queries: List[str],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+    ) -> List[Tuple[Any, float]]:
+        pass
+
 
 class SemanticSearchRepository(ABC):
     @abstractmethod
@@ -374,10 +384,10 @@ class DataSourceRepository(ABC):
 class CacheRepository(ABC):
     """
     Abstract repository for cached sent messages.
-    
+
     Used for deduplication across analysis runs.
     """
-    
+
     @abstractmethod
     def save_sent_message(
         self,
@@ -390,7 +400,7 @@ class CacheRepository(ABC):
     ) -> None:
         """Record a sent message for deduplication"""
         pass
-    
+
     @abstractmethod
     def get_titles_since(
         self,
@@ -399,11 +409,11 @@ class CacheRepository(ABC):
     ) -> List[str]:
         """
         Get titles of messages sent since timestamp
-        
+
         Used to build historical_titles for deduplication.
         """
         pass
-    
+
     @abstractmethod
     def exists_by_title(
         self,
@@ -413,12 +423,12 @@ class CacheRepository(ABC):
     ) -> bool:
         """Check if message with title was already sent since timestamp"""
         pass
-    
+
     @abstractmethod
     def cleanup_expired(self, before: datetime) -> int:
         """
         Remove cache entries older than timestamp
-        
+
         Returns:
             Number of entries removed
         """

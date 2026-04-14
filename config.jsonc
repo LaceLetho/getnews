@@ -50,14 +50,20 @@
     "max_subqueries": 4,
     // 每个子查询最多从 pgvector 召回多少条候选新闻
     "per_subquery_limit": 200,
-    // 所有子查询合并去重后，最多保留多少条新闻进入最终总结
-    "max_retained_items": 800,
+    // 所有向量召回和关键词召回合并去重，最多保留前多少条新闻进入最终总结
+    "max_retained_items": 1000,
     // 总结阶段每批送给模型处理的新闻条数；这里跟随 llm_config.batch_size
     "synthesis_batch_size": 200,
     // 生成向量所用的 OpenAI embedding 模型
     "embedding_model": "text-embedding-3-small",
     // embedding 向量维度；必须与 storage.pgvector_dimensions 保持一致
     "embedding_dimensions": 1536,
+    // 是否启用关键词补召回，用于弥补纯向量检索对渠道/入口类长尾问题的不足
+    "keyword_search_enabled": true,
+    // 所有关键词合并在一次 SQL 里最多返回数目
+    "keyword_search_limit": 800,
+    // 本地启发式扩展后最多保留多少个关键词检索片段
+    "max_keyword_queries": 16,
     // 语义搜索总开关；关闭后 HTTP/Telegram 语义搜索都不可用
     "enabled": true
   },

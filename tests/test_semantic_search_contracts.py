@@ -55,6 +55,9 @@ def test_semantic_search_config_defaults():
         synthesis_batch_size=7,
         embedding_model="text-embedding-3-small",
         embedding_dimensions=1536,
+        keyword_search_enabled=True,
+        keyword_search_limit=30,
+        max_keyword_queries=12,
         enabled=True,
     )
     assert SEMANTIC_SEARCH_ROUTE_PATH == "/semantic-search"
@@ -122,9 +125,7 @@ def test_semantic_search_runtime_explicitly_rejects_sqlite():
     }
 
     with pytest.raises(ValueError, match="SQLite runtime is unsupported"):
-        manager.get_semantic_search_config().ensure_supported_for_storage(
-            StorageConfig()
-        )
+        manager.get_semantic_search_config().ensure_supported_for_storage(StorageConfig())
 
     controller = cast(Any, SimpleNamespace(config_manager=manager))
     with pytest.raises(HTTPException) as exc_info:

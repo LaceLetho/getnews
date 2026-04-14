@@ -50,8 +50,7 @@ class _InMemorySemanticSearchRepository:
         rows = [
             SemanticSearchJob.from_dict(job.to_dict())
             for job in self.jobs.values()
-            if job.recipient_key == recipient_key
-            and (status is None or job.status == status)
+            if job.recipient_key == recipient_key and (status is None or job.status == status)
         ]
         return rows[:limit]
 
@@ -162,9 +161,7 @@ def _build_test_app(
     monkeypatch: pytest.MonkeyPatch,
     controller: _FakeController,
 ):
-    monkeypatch.setattr(
-        api_server, "MainController", lambda *_args, **_kwargs: controller
-    )
+    monkeypatch.setattr(api_server, "MainController", lambda *_args, **_kwargs: controller)
     return api_server.create_api_server("./config.jsonc", start_services=False)
 
 
@@ -186,11 +183,7 @@ def _make_job(
     error_message: Optional[str] = None,
 ) -> SemanticSearchJob:
     created_at = datetime.fromisoformat("2026-03-26T00:00:00+00:00")
-    started_at = (
-        datetime.fromisoformat("2026-03-26T00:00:05+00:00")
-        if status != "queued"
-        else None
-    )
+    started_at = datetime.fromisoformat("2026-03-26T00:00:05+00:00") if status != "queued" else None
     completed_at = (
         datetime.fromisoformat("2026-03-26T00:01:00+00:00")
         if status in {"completed", "failed"}
@@ -389,12 +382,11 @@ def test_run_semantic_search_job_persists_completed_lifecycle(
             "matched_count": 12,
             "retained_count": 6,
             "subqueries": ["btc etf flows", "bitcoin etf inflows"],
+            "keyword_queries": ["btc etf", "inflows"],
         }
     )
     app = _build_test_app(monkeypatch, controller)
-    monkeypatch.setattr(
-        api_server, "_build_semantic_search_service", lambda *_args: service
-    )
+    monkeypatch.setattr(api_server, "_build_semantic_search_service", lambda *_args: service)
 
     with TestClient(app) as client:
         app_state = _app_state(client)
@@ -410,9 +402,7 @@ def test_run_semantic_search_job_persists_completed_lifecycle(
 
         api_server._run_semantic_search_job(job_id, app_state)
 
-        status_response = client.get(
-            f"/semantic-search/{job_id}", headers=_authorized_headers()
-        )
+        status_response = client.get(f"/semantic-search/{job_id}", headers=_authorized_headers())
         result_response = client.get(
             f"/semantic-search/{job_id}/result",
             headers=_authorized_headers(),
@@ -443,9 +433,7 @@ def test_run_semantic_search_job_persists_failed_lifecycle(
     controller = _FakeController(semantic_search_repository=repository)
     service = _FakeSemanticSearchService(error=RuntimeError("planner exploded"))
     app = _build_test_app(monkeypatch, controller)
-    monkeypatch.setattr(
-        api_server, "_build_semantic_search_service", lambda *_args: service
-    )
+    monkeypatch.setattr(api_server, "_build_semantic_search_service", lambda *_args: service)
 
     with TestClient(app) as client:
         app_state = _app_state(client)
@@ -461,9 +449,7 @@ def test_run_semantic_search_job_persists_failed_lifecycle(
 
         api_server._run_semantic_search_job(job_id, app_state)
 
-        status_response = client.get(
-            f"/semantic-search/{job_id}", headers=_authorized_headers()
-        )
+        status_response = client.get(f"/semantic-search/{job_id}", headers=_authorized_headers())
         result_response = client.get(
             f"/semantic-search/{job_id}/result",
             headers=_authorized_headers(),

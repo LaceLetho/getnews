@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
 
 try:
@@ -132,11 +133,18 @@ class SemanticSearchService:
 
     def search(self, *, query: str, time_window_hours: int) -> Dict[str, Any]:
         validated_query = self._validate_request(query=query, time_window_hours=time_window_hours)
-        normalized_intent, subqueries = self._plan_subqueries(validated_query)
+        normalized_intent, subqueries, planned_keyword_queries = self._plan_subqueries(
+            validated_query
+        )
         since_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
 
         merged_matches = self._retrieve_matches(
-            subqueries=subqueries, since_time=since_time, max_hours=time_window_hours
+            query=validated_query,
+            normalized_intent=normalized_intent,
+            subqueries=subqueries,
+            planned_keyword_queries=planned_keyword_queries,
+            since_time=since_time,
+            max_hours=time_window_hours,
         )
         ranked_matches = self._rank_matches(merged_matches)
         matched_count = len(ranked_matches)
@@ -156,6 +164,7 @@ class SemanticSearchService:
                 "matched_count": 0,
                 "retained_count": 0,
                 "subqueries": subqueries,
+                "keyword_queries": planned_keyword_queries,
             }
 
         batch_summaries = self._summarize_in_batches(
@@ -180,6 +189,7 @@ class SemanticSearchService:
             "matched_count": matched_count,
             "retained_count": retained_count,
             "subqueries": subqueries,
+            "keyword_queries": planned_keyword_queries,
         }
 
     def _validate_request(self, *, query: str, time_window_hours: int) -> str:
@@ -196,14 +206,23 @@ class SemanticSearchService:
             raise ValueError("embedding service is unavailable")
         return normalized_query
 
-    def _plan_subqueries(self, query: str) -> tuple[str, List[str]]:
+    def _plan_subqueries(self, query: str) -> tuple[str, List[str], List[str]]:
         normalized_intent = query
         subqueries = [query]
+        keyword_queries: List[str] = []
 
         try:
             prompt = self._load_prompt(self.query_planner_prompt_path)
-            user_prompt = prompt.replace("{{QUERY}}", query).replace(
-                "{{MAX_SUBQUERIES}}", str(self.semantic_search_config.max_subqueries)
+            user_prompt = (
+                prompt.replace("{{QUERY}}", query)
+                .replace(
+                    "{{MAX_SUBQUERIES}}",
+                    str(self.semantic_search_config.max_subqueries),
+                )
+                .replace(
+                    "{{MAX_KEYWORD_QUERIES}}",
+                    str(self.semantic_search_config.max_keyword_queries),
+                )
             )
             response_text = self._llm_complete(
                 [
@@ -222,11 +241,17 @@ class SemanticSearchService:
             planned_subqueries = planned_payload.get("subqueries") or []
             if isinstance(planned_subqueries, list):
                 subqueries = [str(item).strip() for item in planned_subqueries if str(item).strip()]
+            planned_keyword_queries = planned_payload.get("keyword_queries") or []
+            if isinstance(planned_keyword_queries, list):
+                keyword_queries = [
+                    str(item).strip() for item in planned_keyword_queries if str(item).strip()
+                ]
         except Exception as exc:
             self.logger.warning("语义搜索查询规划失败，回退原始查询: %s", exc)
 
         final_subqueries = self._dedupe_subqueries(query=query, candidates=subqueries)
-        return normalized_intent, final_subqueries
+        final_keyword_queries = self._dedupe_keyword_queries(keyword_queries)
+        return normalized_intent, final_subqueries, final_keyword_queries
 
     def _dedupe_subqueries(self, *, query: str, candidates: Sequence[str]) -> List[str]:
         unique: List[str] = []
@@ -249,7 +274,10 @@ class SemanticSearchService:
     def _retrieve_matches(
         self,
         *,
+        query: str,
+        normalized_intent: str,
         subqueries: Sequence[str],
+        planned_keyword_queries: Sequence[str],
         since_time: datetime,
         max_hours: int,
     ) -> Dict[str, SemanticSearchMatch]:
@@ -281,7 +309,157 @@ class SemanticSearchService:
                 if subquery not in existing.matched_subqueries:
                     existing.matched_subqueries.append(subquery)
 
+        if self.semantic_search_config.keyword_search_enabled:
+            keyword_queries = self._build_keyword_queries(
+                query=query,
+                normalized_intent=normalized_intent,
+                subqueries=subqueries,
+                planned_keyword_queries=planned_keyword_queries,
+            )
+            if keyword_queries:
+                rows = self.content_repository.semantic_search_by_keywords(
+                    keyword_queries=keyword_queries,
+                    since_time=since_time,
+                    max_hours=max_hours,
+                    limit=self.semantic_search_config.keyword_search_limit,
+                )
+                for item, raw_score in rows:
+                    keyword_score = self._normalize_keyword_score(raw_score)
+                    existing = merged.get(item.id)
+                    if existing is None:
+                        merged[item.id] = SemanticSearchMatch(
+                            item=item,
+                            best_similarity=keyword_score,
+                            matched_subqueries=[
+                                f"keyword:{keyword}" for keyword in keyword_queries[:6]
+                            ],
+                        )
+                        continue
+
+                    existing.best_similarity = max(existing.best_similarity, keyword_score)
+                    for keyword in keyword_queries[:6]:
+                        keyword_marker = f"keyword:{keyword}"
+                        if keyword_marker not in existing.matched_subqueries:
+                            existing.matched_subqueries.append(keyword_marker)
+
         return merged
+
+    def _build_keyword_queries(
+        self,
+        *,
+        query: str,
+        normalized_intent: str,
+        subqueries: Sequence[str],
+        planned_keyword_queries: Sequence[str],
+    ) -> List[str]:
+        planned_keywords = self._dedupe_keyword_queries(planned_keyword_queries)
+        llm_keywords = self._dedupe_keyword_queries([query, *planned_keywords])
+        minimum_llm_keywords = min(4, self.semantic_search_config.max_keyword_queries)
+        if len(planned_keywords) >= minimum_llm_keywords:
+            return llm_keywords
+
+        candidates: List[str] = [*llm_keywords]
+        candidates.extend(
+            self._build_fallback_keyword_candidates(
+                query=query,
+                normalized_intent=normalized_intent,
+                subqueries=subqueries,
+            )
+        )
+        return self._dedupe_keyword_queries(candidates)
+
+    def _build_fallback_keyword_candidates(
+        self,
+        *,
+        query: str,
+        normalized_intent: str,
+        subqueries: Sequence[str],
+    ) -> List[str]:
+        candidates: List[str] = []
+        candidates.extend(self._expand_recall_aliases(query))
+        candidates.extend(self._expand_recall_aliases(normalized_intent))
+        for text in [query, normalized_intent, *subqueries]:
+            candidates.extend(self._extract_query_fragments(text))
+        return candidates
+
+    def _extract_query_fragments(self, text: str) -> List[str]:
+        normalized = self._normalize_query_text(text)
+        if not normalized:
+            return []
+
+        fragments = [normalized]
+        fragments.extend(
+            phrase.strip()
+            for phrase in re.findall(r"[A-Za-z0-9][A-Za-z0-9 _/+-]{1,48}", normalized)
+        )
+        fragments.extend(re.findall(r"[\u4e00-\u9fff]{2,16}", normalized))
+
+        for separator in ("或者", "或", "以及", "和", "/", "|", ",", "，", "、"):
+            if separator in normalized:
+                fragments.extend(part.strip() for part in normalized.split(separator))
+
+        return [fragment for fragment in fragments if fragment.strip()]
+
+    def _expand_recall_aliases(self, text: str) -> List[str]:
+        normalized = self._normalize_query_text(text).lower()
+        if not normalized:
+            return []
+
+        expansions: List[str] = []
+        if any(token in normalized for token in ("渠道", "入口", "怎么买", "购买", "代充")):
+            expansions.extend(
+                [
+                    "非官方购买渠道",
+                    "第三方购买",
+                    "第三方充值",
+                    "代充",
+                    "闲鱼",
+                    "共享账号",
+                    "拼车",
+                    "合租",
+                ]
+            )
+        if "ai" in normalized or "人工智能" in normalized:
+            expansions.extend(["ai 套餐", "ai token", "人工智能套餐"])
+        if "套餐" in normalized:
+            expansions.extend(["套餐", "会员", "代开"])
+        if "token" in normalized:
+            expansions.extend(["token购买", "token 渠道", "代币购买", "token"])
+        if any(token in normalized for token in ("非官方", "灰色", "第三方", "野生")):
+            expansions.extend(["非官方", "第三方", "灰色渠道", "野生渠道"])
+        return expansions
+
+    def _normalize_query_text(self, text: str) -> str:
+        normalized = str(text or "").strip()
+        if not normalized:
+            return ""
+        normalized = re.sub(
+            r"^(帮我找一下|请帮我找一下|请帮我|帮我|麻烦|我想|想|找一下|请问|有没有)",
+            "",
+            normalized,
+        )
+        normalized = re.sub(r"\s+", " ", normalized)
+        return normalized.strip(" ，,。.;；:：!?？")
+
+    def _dedupe_keyword_queries(self, candidates: Sequence[str]) -> List[str]:
+        deduped: List[str] = []
+        seen = set()
+        for candidate in candidates:
+            normalized = self._normalize_query_text(candidate).lower()
+            if len(normalized) < 2 or normalized in seen:
+                continue
+            if len(normalized) < 3 and not re.search(r"[\u4e00-\u9fff]", normalized):
+                continue
+            if len(normalized) > self.semantic_search_config.query_max_chars:
+                normalized = normalized[: self.semantic_search_config.query_max_chars]
+            seen.add(normalized)
+            deduped.append(normalized)
+            if len(deduped) >= self.semantic_search_config.max_keyword_queries:
+                break
+        return deduped
+
+    def _normalize_keyword_score(self, raw_score: float) -> float:
+        return min(0.99, 0.35 + max(0.0, float(raw_score)) * 0.05)
 
     def _rank_matches(self, matches: Dict[str, SemanticSearchMatch]) -> List[SemanticSearchMatch]:
         def _publish_time(match: SemanticSearchMatch) -> datetime:

@@ -339,6 +339,15 @@ class SQLiteContentRepository(ContentRepository):
     ) -> List[Tuple[ContentItem, float]]:
         raise self._unsupported("semantic search retrieval")
 
+    def semantic_search_by_keywords(
+        self,
+        keyword_queries: List[str],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+    ) -> List[Tuple[ContentItem, float]]:
+        raise self._unsupported("semantic search keyword retrieval")
+
 
 class PostgresContentRepository(SQLiteContentRepository):
     """PostgreSQL implementation of ContentRepository semantic APIs."""
@@ -362,6 +371,20 @@ class PostgresContentRepository(SQLiteContentRepository):
     ) -> List[Tuple[ContentItem, float]]:
         return self._data.semantic_search_similar(
             query_embedding=query_embedding,
+            since_time=since_time,
+            max_hours=max_hours,
+            limit=limit,
+        )
+
+    def semantic_search_by_keywords(
+        self,
+        keyword_queries: List[str],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+    ) -> List[Tuple[ContentItem, float]]:
+        return self._data.semantic_search_keywords(
+            keyword_queries=keyword_queries,
             since_time=since_time,
             max_hours=max_hours,
             limit=limit,

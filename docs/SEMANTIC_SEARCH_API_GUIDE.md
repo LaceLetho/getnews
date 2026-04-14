@@ -214,7 +214,10 @@ Semantic search configuration (in `config.jsonc`):
     "per_subquery_limit": 50,
     "max_retained_items": 200,
     "embedding_model": "text-embedding-3-small",
-    "embedding_dimensions": 1536
+    "embedding_dimensions": 1536,
+    "keyword_search_enabled": true,
+    "keyword_search_limit": 30,
+    "max_keyword_queries": 12
   }
 }
 ```

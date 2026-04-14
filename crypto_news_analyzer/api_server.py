@@ -61,9 +61,7 @@ class AppState:
         self.analysis_repository: Optional[AnalysisRepository] = None
         self.semantic_search_repository: Optional[SemanticSearchRepository] = None
         self.datasource_repository: Optional[DataSourceRepository] = None
-        self.analyze_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="api-analyze"
-        )
+        self.analyze_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="api-analyze")
         self.semantic_search_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="api-search",
@@ -81,9 +79,7 @@ class AppState:
 
             try:
                 if self.telegram_uses_webhook and self.controller.command_handler:
-                    logger.info(
-                        "Telegram webhook cleanup will be handled by lifespan shutdown"
-                    )
+                    logger.info("Telegram webhook cleanup will be handled by lifespan shutdown")
                 else:
                     self.controller.stop_command_listener()
                     logger.info("Command listener stopped during cleanup")
@@ -105,9 +101,7 @@ class AppState:
 
 class AnalyzeRequest(BaseModel):
     hours: int = Field(..., gt=0, description="分析最近N小时的消息（必填，必须>0）")
-    user_id: str = Field(
-        ..., description="请求用户标识（必填，仅允许字母、数字、_、-）"
-    )
+    user_id: str = Field(..., description="请求用户标识（必填，仅允许字母、数字、_、-）")
 
     @field_validator("user_id")
     @classmethod
@@ -121,9 +115,7 @@ class AnalyzeRequest(BaseModel):
 class SemanticSearchRequest(BaseModel):
     hours: int = Field(..., gt=0, description="搜索最近N小时的消息（必填，必须>0）")
     query: str = Field(..., description="语义搜索查询（必填，非空白）")
-    user_id: str = Field(
-        ..., description="请求用户标识（必填，仅允许字母、数字、_、-）"
-    )
+    user_id: str = Field(..., description="请求用户标识（必填，仅允许字母、数字、_、-）")
 
     @field_validator("query")
     @classmethod
@@ -361,11 +353,7 @@ def _get_analysis_repository(request: Request) -> AnalysisRepository:
         state.analysis_repository = controller.analysis_repository
         return cast(AnalysisRepository, state.analysis_repository)
 
-    if (
-        controller
-        and hasattr(controller, "data_manager")
-        and controller.data_manager is not None
-    ):
+    if controller and hasattr(controller, "data_manager") and controller.data_manager is not None:
         state.analysis_repository = SQLiteAnalysisRepository(controller.data_manager)
         return state.analysis_repository
 
@@ -413,25 +401,19 @@ def _get_semantic_search_repository(request: Request) -> SemanticSearchRepositor
     if hasattr(controller, "semantic_search_repository"):
         repository = getattr(controller, "semantic_search_repository")
         if repository is not None:
-            state.semantic_search_repository = cast(
-                SemanticSearchRepository, repository
-            )
+            state.semantic_search_repository = cast(SemanticSearchRepository, repository)
             return state.semantic_search_repository
 
     repositories = getattr(controller, "_repositories", None)
     if isinstance(repositories, dict):
         repository = repositories.get("semantic_search")
         if repository is not None:
-            state.semantic_search_repository = cast(
-                SemanticSearchRepository, repository
-            )
+            state.semantic_search_repository = cast(SemanticSearchRepository, repository)
             return state.semantic_search_repository
 
     data_manager = getattr(controller, "data_manager", None)
     if data_manager is not None:
-        state.semantic_search_repository = PostgresSemanticSearchRepository(
-            data_manager
-        )
+        state.semantic_search_repository = PostgresSemanticSearchRepository(data_manager)
         return state.semantic_search_repository
 
     raise HTTPException(status_code=503, detail="System not initialized")
@@ -441,9 +423,7 @@ def _get_telegram_command_handler(request: Request) -> Any:
     controller = _get_controller(request)
     command_handler = getattr(controller, "command_handler", None)
     if command_handler is None:
-        raise HTTPException(
-            status_code=404, detail="Telegram command handler not configured"
-        )
+        raise HTTPException(status_code=404, detail="Telegram command handler not configured")
     return command_handler
 
 
@@ -686,9 +666,7 @@ def _run_semantic_search_job(job_id: str, state: AppState) -> None:
 
     try:
         service = _build_semantic_search_service(controller)
-        result = service.search(
-            query=job.query, time_window_hours=job.time_window_hours
-        )
+        result = service.search(query=job.query, time_window_hours=job.time_window_hours)
         job.status = "completed"
         job.normalized_intent = str(result.get("normalized_intent") or "")
         job.matched_count = int(result.get("matched_count", 0))
@@ -700,6 +678,7 @@ def _run_semantic_search_job(job_id: str, state: AppState) -> None:
             "matched_count": job.matched_count,
             "retained_count": job.retained_count,
             "subqueries": list(result.get("subqueries") or []),
+            "keyword_queries": list(result.get("keyword_queries") or []),
             "errors": [],
         }
         job.error_message = None
@@ -720,9 +699,7 @@ def _run_semantic_search_job(job_id: str, state: AppState) -> None:
         _ = repository.update_semantic_search_job(job)
 
 
-def _persist_completed_api_job_success(
-    job: AnalyzeJobRecord, controller: MainController
-) -> None:
+def _persist_completed_api_job_success(job: AnalyzeJobRecord, controller: MainController) -> None:
     recipient_key = controller._normalize_manual_recipient_key("api", job.user_id)
     controller._persist_manual_analysis_success(
         recipient_key=recipient_key,
@@ -756,9 +733,9 @@ def _build_datasource_config_summary(datasource: DataSource) -> dict[str, Any]:
         return {
             "endpoint": payload.get("endpoint"),
             "method": payload.get("method"),
-            "response_mapping": dict(response_mapping)
-            if isinstance(response_mapping, dict)
-            else {},
+            "response_mapping": (
+                dict(response_mapping) if isinstance(response_mapping, dict) else {}
+            ),
             "header_count": len(headers) if isinstance(headers, dict) else 0,
             "param_count": len(params) if isinstance(params, dict) else 0,
         }
@@ -850,13 +827,9 @@ def create_api_server(
         if app_state.semantic_search_repository is None:
             repositories = getattr(controller, "_repositories", None)
             if isinstance(repositories, dict):
-                app_state.semantic_search_repository = repositories.get(
-                    "semantic_search"
-                )
+                app_state.semantic_search_repository = repositories.get("semantic_search")
 
-        effective_start_scheduler = (
-            start_services if start_scheduler is None else start_scheduler
-        )
+        effective_start_scheduler = start_services if start_scheduler is None else start_scheduler
         effective_start_command_listener = (
             start_services if start_command_listener is None else start_command_listener
         )
@@ -880,9 +853,7 @@ def create_api_server(
                     controller.start_command_listener()
                     logger.info("Telegram command listener started in API mode")
             else:
-                logger.warning(
-                    "Telegram command handler not configured, listener not started"
-                )
+                logger.warning("Telegram command handler not configured, listener not started")
         else:
             logger.info("Telegram command listener disabled in API runtime")
 
@@ -923,9 +894,7 @@ def create_api_server(
         min_hours = analysis_config.get("min_analysis_window_hours", 1)
 
         if request.hours < min_hours:
-            raise HTTPException(
-                status_code=400, detail=f"Hours must be at least {min_hours}"
-            )
+            raise HTTPException(status_code=400, detail=f"Hours must be at least {min_hours}")
 
         hours = min(request.hours, max_hours)
 
@@ -1018,16 +987,12 @@ def create_api_server(
         min_hours = analysis_config.get("min_analysis_window_hours", 1)
 
         if request.hours < min_hours:
-            raise HTTPException(
-                status_code=400, detail=f"Hours must be at least {min_hours}"
-            )
+            raise HTTPException(status_code=400, detail=f"Hours must be at least {min_hours}")
 
         hours = min(request.hours, max_hours)
 
         try:
-            job = enqueue_semantic_search_job(
-                hours, request.query, request.user_id, state
-            )
+            job = enqueue_semantic_search_job(hours, request.query, request.user_id, state)
         except HTTPException:
             raise
         except Exception as exc:
@@ -1051,9 +1016,7 @@ def create_api_server(
             result_url=result_url,
         )
 
-    @app.get(
-        SEMANTIC_SEARCH_JOB_STATUS_PATH, response_model=SemanticSearchJobStatusResponse
-    )
+    @app.get(SEMANTIC_SEARCH_JOB_STATUS_PATH, response_model=SemanticSearchJobStatusResponse)
     async def get_semantic_search_job_status(
         job_id: str,
         _: Annotated[str, Depends(verify_api_key)],
@@ -1065,9 +1028,7 @@ def create_api_server(
             raise HTTPException(status_code=404, detail="Semantic search job not found")
         return _semantic_search_request_to_job_record(job).to_status_response()
 
-    @app.get(
-        SEMANTIC_SEARCH_JOB_RESULT_PATH, response_model=SemanticSearchJobResultResponse
-    )
+    @app.get(SEMANTIC_SEARCH_JOB_RESULT_PATH, response_model=SemanticSearchJobResultResponse)
     async def get_semantic_search_job_result(
         job_id: str,
         _: Annotated[str, Depends(verify_api_key)],
@@ -1120,9 +1081,7 @@ def create_api_server(
 
         return DataSourceListResponse(
             success=True,
-            datasources=[
-                _to_datasource_response_item(datasource) for datasource in datasources
-            ],
+            datasources=[_to_datasource_response_item(datasource) for datasource in datasources],
         )
 
     @app.delete("/datasources/{datasource_id}", status_code=204)
@@ -1160,9 +1119,7 @@ def create_api_server(
         secret_token = req.headers.get(TELEGRAM_WEBHOOK_SECRET_HEADER)
 
         try:
-            await command_handler.handle_webhook_update(
-                payload, secret_token=secret_token
-            )
+            await command_handler.handle_webhook_update(payload, secret_token=secret_token)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except RuntimeError as exc:
