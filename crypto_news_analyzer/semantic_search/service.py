@@ -81,7 +81,9 @@ class SemanticSearchService:
         self.logger = logging.getLogger(__name__)
         self.client = client
         if self.client is None:
-            api_key = self.provider_credentials.get(self.model_runtime.provider_name, "")
+            api_key = self.provider_credentials.get(
+                self.model_runtime.provider_name, ""
+            )
             if api_key and OpenAI is not None:
                 self.client = self._build_client(self.model_runtime, api_key)
 
@@ -107,7 +109,6 @@ class SemanticSearchService:
             fallback_models=[ModelConfig(**item) for item in fallback_models],
             market_model=ModelConfig(**market_model),
             temperature=llm_config_payload.get("temperature", 0.5),
-            max_tokens=llm_config_payload.get("max_tokens", 4000),
             batch_size=llm_config_payload.get("batch_size", 10),
             market_prompt_path=llm_config_payload.get(
                 "market_prompt_path", "./prompts/market_summary_prompt.md"
@@ -133,7 +134,9 @@ class SemanticSearchService:
         )
 
     def search(self, *, query: str, time_window_hours: int) -> Dict[str, Any]:
-        validated_query = self._validate_request(query=query, time_window_hours=time_window_hours)
+        validated_query = self._validate_request(
+            query=query, time_window_hours=time_window_hours
+        )
         normalized_intent, subqueries, planned_keyword_queries = self._plan_subqueries(
             validated_query
         )
@@ -149,7 +152,9 @@ class SemanticSearchService:
         )
         ranked_matches = self._rank_matches(merged_matches)
         matched_count = len(ranked_matches)
-        retained_matches = ranked_matches[: self.semantic_search_config.max_retained_items]
+        retained_matches = ranked_matches[
+            : self.semantic_search_config.max_retained_items
+        ]
         retained_count = len(retained_matches)
 
         if not retained_matches:
@@ -241,11 +246,17 @@ class SemanticSearchService:
             )
             planned_subqueries = planned_payload.get("subqueries") or []
             if isinstance(planned_subqueries, list):
-                subqueries = [str(item).strip() for item in planned_subqueries if str(item).strip()]
+                subqueries = [
+                    str(item).strip()
+                    for item in planned_subqueries
+                    if str(item).strip()
+                ]
             planned_keyword_queries = planned_payload.get("keyword_queries") or []
             if isinstance(planned_keyword_queries, list):
                 keyword_queries = [
-                    str(item).strip() for item in planned_keyword_queries if str(item).strip()
+                    str(item).strip()
+                    for item in planned_keyword_queries
+                    if str(item).strip()
                 ]
         except Exception as exc:
             self.logger.warning("语义搜索查询规划失败，回退原始查询: %s", exc)
@@ -306,7 +317,9 @@ class SemanticSearchService:
                     )
                     continue
 
-                existing.best_similarity = max(existing.best_similarity, float(similarity))
+                existing.best_similarity = max(
+                    existing.best_similarity, float(similarity)
+                )
                 if subquery not in existing.matched_subqueries:
                     existing.matched_subqueries.append(subquery)
 
@@ -337,7 +350,9 @@ class SemanticSearchService:
                         )
                         continue
 
-                    existing.best_similarity = max(existing.best_similarity, keyword_score)
+                    existing.best_similarity = max(
+                        existing.best_similarity, keyword_score
+                    )
                     for keyword in keyword_queries[:6]:
                         keyword_marker = f"keyword:{keyword}"
                         if keyword_marker not in existing.matched_subqueries:
@@ -407,7 +422,9 @@ class SemanticSearchService:
             return []
 
         expansions: List[str] = []
-        if any(token in normalized for token in ("渠道", "入口", "怎么买", "购买", "代充")):
+        if any(
+            token in normalized for token in ("渠道", "入口", "怎么买", "购买", "代充")
+        ):
             expansions.extend(
                 [
                     "非官方购买渠道",
@@ -462,7 +479,9 @@ class SemanticSearchService:
     def _normalize_keyword_score(self, raw_score: float) -> float:
         return min(0.99, 0.35 + max(0.0, float(raw_score)) * 0.05)
 
-    def _rank_matches(self, matches: Dict[str, SemanticSearchMatch]) -> List[SemanticSearchMatch]:
+    def _rank_matches(
+        self, matches: Dict[str, SemanticSearchMatch]
+    ) -> List[SemanticSearchMatch]:
         def _publish_time(match: SemanticSearchMatch) -> datetime:
             publish_time = match.item.publish_time
             if publish_time.tzinfo is None:
@@ -621,7 +640,9 @@ class SemanticSearchService:
             .replace("{{TIME_WINDOW_HOURS}}", str(time_window_hours))
             .replace("{{MATCHED_COUNT}}", str(matched_count))
             .replace("{{RETAINED_COUNT}}", str(retained_count))
-            .replace("{{BATCH_SUMMARIES}}", "\n\n".join(batch_summaries).strip() or "无")
+            .replace(
+                "{{BATCH_SUMMARIES}}", "\n\n".join(batch_summaries).strip() or "无"
+            )
             .replace("{{SOURCES}}", "\n".join(source_lines).strip() or "无")
         )
 
@@ -686,13 +707,17 @@ class SemanticSearchService:
             end -= 1
         return list(lines[start:end])
 
-    def _build_fallback_batch_summary(self, batch: Sequence[SemanticSearchMatch]) -> str:
+    def _build_fallback_batch_summary(
+        self, batch: Sequence[SemanticSearchMatch]
+    ) -> str:
         return "\n".join(
             f"- {match.item.title} [{match.item.source_name}] ({match.item.url})"
             for match in batch[:5]
         )
 
-    def _build_fallback_final_summary(self, retained_matches: Sequence[SemanticSearchMatch]) -> str:
+    def _build_fallback_final_summary(
+        self, retained_matches: Sequence[SemanticSearchMatch]
+    ) -> str:
         top_matches = list(retained_matches[:5])
         signal_blocks = []
         for index, match in enumerate(top_matches, start=1):
@@ -720,12 +745,13 @@ class SemanticSearchService:
         if self.client is None:
             raise RuntimeError("LLM client is unavailable")
 
-        sanitized_messages = [self._sanitize_llm_message(message) for message in messages]
+        sanitized_messages = [
+            self._sanitize_llm_message(message) for message in messages
+        ]
         params: Dict[str, Any] = {
             "model": self.model_runtime.name,
             "messages": sanitized_messages,
             "temperature": self.llm_config.temperature,
-            "max_tokens": self.llm_config.max_tokens,
         }
         if response_format is not None:
             params["response_format"] = response_format
@@ -759,14 +785,18 @@ class SemanticSearchService:
                 chars.append(char)
         return "".join(chars)
 
-    def _log_llm_request_failure(self, *, params: Dict[str, Any], exc: Exception) -> None:
+    def _log_llm_request_failure(
+        self, *, params: Dict[str, Any], exc: Exception
+    ) -> None:
         messages = params.get("messages") or []
         message_summaries = []
         total_content_chars = 0
         preview_chars = 2000
 
         for message in messages:
-            content = str(message.get("content") or "") if isinstance(message, dict) else ""
+            content = (
+                str(message.get("content") or "") if isinstance(message, dict) else ""
+            )
             total_content_chars += len(content)
             preview = content[:preview_chars]
             if len(content) > preview_chars:
@@ -784,7 +814,6 @@ class SemanticSearchService:
         request_summary = {
             "model": params.get("model"),
             "temperature": params.get("temperature"),
-            "max_tokens": params.get("max_tokens"),
             "response_format": params.get("response_format"),
             "message_count": len(messages),
             "total_content_chars": total_content_chars,

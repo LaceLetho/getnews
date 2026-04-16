@@ -55,7 +55,6 @@ class LLMConfig:
     fallback_models: List[ModelConfig]
     market_model: ModelConfig
     temperature: float = 0.5
-    max_tokens: int = 4000
     batch_size: int = 10
     market_prompt_path: str = "./prompts/market_summary_prompt.md"
     analysis_prompt_path: str = "./prompts/analysis_prompt.md"
@@ -84,9 +83,6 @@ class LLMConfig:
             raise ValueError("temperature必须是数字")
         self.temperature = float(self.temperature)
 
-        if self.max_tokens <= 0:
-            raise ValueError("max_tokens必须大于0")
-
         if self.batch_size <= 0:
             raise ValueError("batch_size必须大于0")
 
@@ -99,10 +95,16 @@ class LLMConfig:
         if self.cached_messages_hours <= 0:
             raise ValueError("cached_messages_hours必须大于0")
 
-        if not isinstance(self.market_prompt_path, str) or not self.market_prompt_path.strip():
+        if (
+            not isinstance(self.market_prompt_path, str)
+            or not self.market_prompt_path.strip()
+        ):
             raise ValueError("market_prompt_path不能为空")
 
-        if not isinstance(self.analysis_prompt_path, str) or not self.analysis_prompt_path.strip():
+        if (
+            not isinstance(self.analysis_prompt_path, str)
+            or not self.analysis_prompt_path.strip()
+        ):
             raise ValueError("analysis_prompt_path不能为空")
 
 
@@ -284,7 +286,9 @@ def get_provider_record(provider: str) -> ProviderRecord:
     record = PROVIDERS.get(normalized_provider)
     if record is None:
         supported = ", ".join(sorted(PROVIDERS))
-        raise LLMRegistryError(f"Unsupported LLM provider '{provider}'. Supported providers: {supported}.")
+        raise LLMRegistryError(
+            f"Unsupported LLM provider '{provider}'. Supported providers: {supported}."
+        )
     return record
 
 
@@ -351,7 +355,11 @@ def validate_model_config(payload: Any, field_name: str) -> ModelConfig:
                 f"Remove llm_config.{field_name}.options.thinking_level or choose a supported model."
             )
 
-    return ModelConfig(provider=model_record.provider, name=model_record.name, options=normalized_options)
+    return ModelConfig(
+        provider=model_record.provider,
+        name=model_record.name,
+        options=normalized_options,
+    )
 
 
 def validate_llm_config_payload(payload: Any) -> LLMConfig:
@@ -375,7 +383,9 @@ def validate_llm_config_payload(payload: Any) -> LLMConfig:
     if not isinstance(fallback_payloads, list):
         raise LLMRegistryError("llm_config.fallback_models must be a list.")
 
-    validated_market_model = validate_model_config(payload.get("market_model"), "market_model")
+    validated_market_model = validate_model_config(
+        payload.get("market_model"), "market_model"
+    )
     if validated_market_model.provider == "opencode-go":
         raise LLMRegistryError(
             "llm_config.market_model: OpenCode Go provider is not supported for market snapshots in "
@@ -390,10 +400,13 @@ def validate_llm_config_payload(payload: Any) -> LLMConfig:
         ],
         market_model=validated_market_model,
         temperature=payload.get("temperature", 0.5),
-        max_tokens=payload.get("max_tokens", 4000),
         batch_size=payload.get("batch_size", 10),
-        market_prompt_path=payload.get("market_prompt_path", "./prompts/market_summary_prompt.md"),
-        analysis_prompt_path=payload.get("analysis_prompt_path", "./prompts/analysis_prompt.md"),
+        market_prompt_path=payload.get(
+            "market_prompt_path", "./prompts/market_summary_prompt.md"
+        ),
+        analysis_prompt_path=payload.get(
+            "analysis_prompt_path", "./prompts/analysis_prompt.md"
+        ),
         min_weight_score=payload.get("min_weight_score", 50),
         cache_ttl_minutes=payload.get("cache_ttl_minutes", 240),
         cached_messages_hours=payload.get("cached_messages_hours", 24),

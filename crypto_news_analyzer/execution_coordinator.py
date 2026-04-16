@@ -386,7 +386,6 @@ class MainController:
                 market_prompt_path=llm_config.market_prompt_path,
                 analysis_prompt_path=llm_config.analysis_prompt_path,
                 temperature=llm_config.temperature,
-                max_tokens=llm_config.max_tokens,
                 batch_size=llm_config.batch_size,
                 cache_ttl_minutes=llm_config.cache_ttl_minutes,
                 cached_messages_hours=llm_config.cached_messages_hours,

@@ -50,7 +50,9 @@ class ConfigManager:
         load_dotenv()
         self.logger.info("环境变量已加载")
 
-    def set_datasource_repository(self, repository: Optional[DataSourceRepository]) -> None:
+    def set_datasource_repository(
+        self, repository: Optional[DataSourceRepository]
+    ) -> None:
         self._datasource_repository = repository
 
     def load_config(self) -> Dict[str, Any]:
@@ -186,7 +188,9 @@ class ConfigManager:
                     self.logger.error("PostgreSQL模式下必须提供DATABASE_URL环境变量")
                     return False
             else:
-                storage_path = storage_config.get("database_path", "./data/crypto_news.db")
+                storage_path = storage_config.get(
+                    "database_path", "./data/crypto_news.db"
+                )
                 if not self.validate_storage_path(storage_path):
                     return False
 
@@ -262,12 +266,18 @@ class ConfigManager:
     def get_rss_sources(self) -> List[RSSSource]:
         """获取RSS订阅源列表"""
         return [
-            source for source in self._get_runtime_sources("rss") if isinstance(source, RSSSource)
+            source
+            for source in self._get_runtime_sources("rss")
+            if isinstance(source, RSSSource)
         ]
 
     def get_x_sources(self) -> List[XSource]:
         """获取X/Twitter信息源列表"""
-        return [source for source in self._get_runtime_sources("x") if isinstance(source, XSource)]
+        return [
+            source
+            for source in self._get_runtime_sources("x")
+            if isinstance(source, XSource)
+        ]
 
     def get_rest_api_sources(self) -> List[RESTAPISource]:
         """获取REST API数据源列表"""
@@ -333,7 +343,9 @@ class ConfigManager:
             try:
                 return int(env_value)
             except ValueError:
-                self.logger.warning(f"环境变量EXECUTION_INTERVAL值无效: {env_value}，使用默认值")
+                self.logger.warning(
+                    f"环境变量EXECUTION_INTERVAL值无效: {env_value}，使用默认值"
+                )
 
         return 3600
 
@@ -350,7 +362,9 @@ class ConfigManager:
             try:
                 return int(env_value)
             except ValueError:
-                self.logger.warning(f"环境变量TIME_WINDOW_HOURS值无效: {env_value}，使用默认值")
+                self.logger.warning(
+                    f"环境变量TIME_WINDOW_HOURS值无效: {env_value}，使用默认值"
+                )
 
         return 24
 
@@ -378,7 +392,8 @@ class ConfigManager:
             output_format=os.getenv("BIRD_OUTPUT_FORMAT", "json"),
             rate_limit_delay=float(os.getenv("BIRD_RATE_LIMIT_DELAY", 1.0)),
             config_file_path=os.getenv("BIRD_CONFIG_PATH", "~/.bird/config.json"),
-            enable_auto_retry=os.getenv("BIRD_ENABLE_AUTO_RETRY", "true").lower() == "true",
+            enable_auto_retry=os.getenv("BIRD_ENABLE_AUTO_RETRY", "true").lower()
+            == "true",
             retry_delay_seconds=int(os.getenv("BIRD_RETRY_DELAY_SECONDS", 60)),
             bird_max_page=int(os.getenv("BIRD_MAX_PAGE", 3)),
         )
@@ -400,8 +415,12 @@ class ConfigManager:
         """
         analysis_data = self.config_data.get("analysis_config", {})
         return {
-            "max_analysis_window_hours": analysis_data.get("max_analysis_window_hours", 24),
-            "min_analysis_window_hours": analysis_data.get("min_analysis_window_hours", 1),
+            "max_analysis_window_hours": analysis_data.get(
+                "max_analysis_window_hours", 24
+            ),
+            "min_analysis_window_hours": analysis_data.get(
+                "min_analysis_window_hours", 1
+            ),
         }
 
     def validate_bird_installation(self) -> bool:
@@ -496,7 +515,6 @@ class ConfigManager:
                     "options": {},
                 },
                 "temperature": 0.4,
-                "max_tokens": 1000,
                 "market_prompt_path": "./prompts/market_summary_prompt.md",
                 "analysis_prompt_path": "./prompts/analysis_prompt.md",
                 "batch_size": 10,
