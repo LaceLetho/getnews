@@ -9,6 +9,7 @@ SKILL_PATH = SKILL_DIR / "SKILL.md"
 ANALYZE_WORKFLOW_PATH = REFERENCE_DIR / "analyze-workflow.md"
 DATASOURCE_MANAGEMENT_PATH = REFERENCE_DIR / "datasource-management.md"
 OPERATIONS_AND_MAINTENANCE_PATH = REFERENCE_DIR / "operations-and-maintenance.md"
+SEMANTIC_SEARCH_PATH = REFERENCE_DIR / "semantic-search.md"
 
 
 def _read_text(path: Path) -> str:
@@ -56,12 +57,14 @@ def test_skill_paths_target_crypto_news_http_api_files() -> None:
     assert ANALYZE_WORKFLOW_PATH == REFERENCE_DIR / "analyze-workflow.md"
     assert DATASOURCE_MANAGEMENT_PATH == REFERENCE_DIR / "datasource-management.md"
     assert OPERATIONS_AND_MAINTENANCE_PATH == REFERENCE_DIR / "operations-and-maintenance.md"
+    assert SEMANTIC_SEARCH_PATH == REFERENCE_DIR / "semantic-search.md"
 
     for path in [
         SKILL_PATH,
         ANALYZE_WORKFLOW_PATH,
         DATASOURCE_MANAGEMENT_PATH,
         OPERATIONS_AND_MAINTENANCE_PATH,
+        SEMANTIC_SEARCH_PATH,
     ]:
         assert path.exists(), f"Missing shipped skill file: {path}"
 
@@ -70,12 +73,17 @@ def test_skill_requires_frontmatter_required_sections_and_reference_links() -> N
     frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
 
     assert frontmatter.get("name") == "crypto-news-http-api"
-    assert frontmatter.get("description") == "HTTP API skill for the crypto news analyzer."
+    assert (
+        frontmatter.get("description")
+        == "Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, or health checks from OpenClaw."
+    )
     assert body.startswith("# Crypto News HTTP API Skill")
 
     for heading in [
+        "When to Use",
         "Quick Reference",
         "Analyze Workflow",
+        "Semantic Search",
         "Datasource Management",
         "Telegram Webhook",
         "Endpoint Index",
@@ -86,6 +94,7 @@ def test_skill_requires_frontmatter_required_sections_and_reference_links() -> N
 
     for reference in [
         "references/analyze-workflow.md",
+        "references/semantic-search.md",
         "references/datasource-management.md",
         "references/operations-and-maintenance.md",
     ]:
@@ -101,6 +110,9 @@ def test_skill_endpoint_index_lists_only_supported_live_http_routes() -> None:
         "POST /analyze",
         "GET /analyze/{job_id}",
         "GET /analyze/{job_id}/result",
+        "POST /semantic-search",
+        "GET /semantic-search/{job_id}",
+        "GET /semantic-search/{job_id}/result",
         "POST /datasources",
         "GET /datasources",
         "DELETE /datasources/{id}",
@@ -162,6 +174,10 @@ def test_skill_quick_reference_covers_bearer_auth_and_async_workflow() -> None:
         "`POST /analyze` creates a job and returns immediately",
         "does **not** return the final report",
         "Workflow: `POST /analyze` -> `GET /analyze/{job_id}` -> `GET /analyze/{job_id}/result`",
+        "`POST /semantic-search` creates a job",
+        "Semantic workflow: `POST /semantic-search` -> `GET /semantic-search/{job_id}` -> `GET /semantic-search/{job_id}/result`",
+        "`Retry-After`",
+        "PostgreSQL with pgvector",
         "`queued`",
         "`running`",
         "`completed`",
@@ -186,6 +202,31 @@ def test_skill_analyze_workflow_section_covers_202_polling_and_result_fetch() ->
         "Do not expect the analysis report in the initial POST response",
     ]:
         assert expected in analyze_workflow, f"Missing analyze workflow contract: {expected}"
+
+
+def test_skill_semantic_search_section_covers_async_contract_constraints_and_dependencies() -> None:
+    _frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
+    semantic_search = _section(body, "Semantic Search")
+
+    for expected in [
+        "`/semantic-search`",
+        "`hours`",
+        "`query`",
+        "`user_id`",
+        "`202 Accepted`",
+        "`semantic_search_job_`",
+        "`completed` or `failed`",
+        "`status` field as the source of truth",
+        "300 characters",
+        "`^[A-Za-z0-9_-]{1,128}$`",
+        "PostgreSQL-only",
+        "`503`",
+        "4 subqueries",
+        "200 unique items",
+        "`OPENAI_API_KEY`",
+        "`KIMI_API_KEY` or `GROK_API_KEY`",
+    ]:
+        assert expected in semantic_search, f"Missing semantic search contract: {expected}"
 
 
 def test_skill_datasource_management_covers_crud_tags_and_redaction_rules() -> None:
@@ -227,6 +268,7 @@ def test_skill_updating_guidance_prefers_code_and_tests_when_prose_drifts() -> N
 
     assert "`api_server.py`" in updating
     assert "`docs/AI_ANALYZE_API_GUIDE.md`" in updating
+    assert "`docs/SEMANTIC_SEARCH_API_GUIDE.md`" in updating
     assert "code and tests first, then reference files, then guides" in updating
 
 
@@ -298,3 +340,37 @@ def test_operations_reference_covers_health_webhook_and_full_update_verification
         "code and tests over prose",
     ]:
         assert expected in operations_reference, f"Missing operations contract: {expected}"
+
+
+def test_semantic_search_reference_covers_async_contract_limits_and_backfill() -> None:
+    semantic_reference = _read_text(SEMANTIC_SEARCH_PATH)
+
+    for expected in [
+        "POST /semantic-search",
+        "GET /semantic-search/{job_id}",
+        "GET /semantic-search/{job_id}/result",
+        "`hours`",
+        "`query`",
+        "`user_id`",
+        "202 Accepted",
+        "`Location`",
+        "`Retry-After`",
+        "`semantic_search_job_`",
+        "`success` | boolean | `true` only when `status` is `completed`",
+        "`result_available` | boolean | `true` when status is `completed` or `failed`",
+        "Markdown semantic search report",
+        "PostgreSQL with pgvector",
+        "SQLite is unsupported",
+        "300 characters",
+        "4 subqueries",
+        "200 unique items",
+        "`OPENAI_API_KEY`",
+        "`KIMI_API_KEY` or `GROK_API_KEY`",
+        "`/semantic_search <hours> <topic>`",
+        "embedding-backfill",
+        "`docs/SEMANTIC_SEARCH_API_GUIDE.md`",
+        "`tests/test_api_server_semantic_search.py`",
+        "`tests/test_semantic_search_contracts.py`",
+        "trust code and tests over prose",
+    ]:
+        assert expected in semantic_reference, f"Missing semantic reference contract: {expected}"
