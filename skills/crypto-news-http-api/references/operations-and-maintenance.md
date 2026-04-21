@@ -55,7 +55,7 @@ These files contain the ground truth for HTTP behavior:
 Before merge, run the full planned verification suite to verify the skill docs, the backing API contract, and the legacy-reference guardrails stay aligned:
 
 ```bash
-uv run pytest tests/test_opencode_skill_crypto_news_http_api.py -v
+uv run pytest tests/test_openclaw_skill_crypto_news_http_api.py -v
 uv run pytest tests/test_api_server.py -k "health or analyze or datasource or webhook" -v
 uv run pytest tests/test_banned_legacy_reference_scan.py -v
 uv run python tests/helpers/banned_legacy_reference_scan.py

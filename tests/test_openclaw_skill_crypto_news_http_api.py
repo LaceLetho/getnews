@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = REPO_ROOT / ".opencode" / "skills" / "crypto-news-http-api"
+SKILL_DIR = REPO_ROOT / "skills" / "crypto-news-http-api"
 REFERENCE_DIR = SKILL_DIR / "references"
 SKILL_PATH = SKILL_DIR / "SKILL.md"
 ANALYZE_WORKFLOW_PATH = REFERENCE_DIR / "analyze-workflow.md"
@@ -51,7 +51,7 @@ def _section(body: str, heading: str) -> str:
 
 
 def test_skill_paths_target_crypto_news_http_api_files() -> None:
-    assert SKILL_DIR == REPO_ROOT / ".opencode" / "skills" / "crypto-news-http-api"
+    assert SKILL_DIR == REPO_ROOT / "skills" / "crypto-news-http-api"
     assert REFERENCE_DIR == SKILL_DIR / "references"
     assert SKILL_PATH == SKILL_DIR / "SKILL.md"
     assert ANALYZE_WORKFLOW_PATH == REFERENCE_DIR / "analyze-workflow.md"
@@ -77,11 +77,13 @@ def test_skill_requires_frontmatter_required_sections_and_reference_links() -> N
         frontmatter.get("description")
         == "Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, or health checks from OpenClaw."
     )
+    assert "primaryEnv: API_KEY" in frontmatter.get("metadata", "")
     assert body.startswith("# Crypto News HTTP API Skill")
 
     for heading in [
         "When to Use",
         "Quick Reference",
+        "OpenClaw Runtime",
         "Analyze Workflow",
         "Semantic Search",
         "Datasource Management",
@@ -184,6 +186,20 @@ def test_skill_quick_reference_covers_bearer_auth_and_async_workflow() -> None:
         "`failed`",
     ]:
         assert expected in quick_reference, f"Missing workflow guidance: {expected}"
+
+
+def test_skill_openclaw_runtime_section_covers_api_key_injection() -> None:
+    _frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
+    openclaw_runtime = _section(body, "OpenClaw Runtime")
+
+    for expected in [
+        "metadata.openclaw.primaryEnv: API_KEY",
+        "~/.openclaw/openclaw.json",
+        '"crypto-news-http-api"',
+        '"YOUR_API_KEY"',
+        "do not send unauthenticated requests",
+    ]:
+        assert expected in openclaw_runtime, f"Missing OpenClaw runtime guidance: {expected}"
 
 
 def test_skill_analyze_workflow_section_covers_202_polling_and_result_fetch() -> None:
@@ -333,7 +349,7 @@ def test_operations_reference_covers_health_webhook_and_full_update_verification
         "`tests/test_api_server.py`",
         "`docs/AI_ANALYZE_API_GUIDE.md`",
         "Before merge, run the full planned verification suite",
-        "uv run pytest tests/test_opencode_skill_crypto_news_http_api.py -v",
+        "uv run pytest tests/test_openclaw_skill_crypto_news_http_api.py -v",
         'uv run pytest tests/test_api_server.py -k "health or analyze or datasource or webhook" -v',
         "uv run pytest tests/test_banned_legacy_reference_scan.py -v",
         "uv run python tests/helpers/banned_legacy_reference_scan.py",

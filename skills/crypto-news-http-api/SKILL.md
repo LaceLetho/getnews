@@ -1,15 +1,16 @@
 ---
 name: crypto-news-http-api
 description: Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, or health checks from OpenClaw.
+metadata: { openclaw: { skillKey: crypto-news-http-api, primaryEnv: API_KEY } }
 ---
 
 # Crypto News HTTP API Skill
 
-This skill helps OpenClaw interact with the Crypto News Analyzer HTTP API for asynchronous news analysis, semantic search, datasource management, and operational monitoring.
+Use this skill to call the Crypto News Analyzer HTTP API from OpenClaw.
 
 ## When to Use
 
-Use this skill when you need to call `https://news.tradao.xyz` or a local deployment of the same API.
+Use this skill when you need to call `https://news.tradao.xyz` or a compatible private deployment.
 
 Typical triggers:
 
@@ -23,13 +24,13 @@ Typical triggers:
 
 Authentication is Bearer token style: send `Authorization: Bearer <API_KEY>` with every request.
 
-The core analysis workflow is asynchronous. `POST /analyze` creates a job and returns immediately. It does **not** return the final report. You must poll for status, then fetch the result.
+`POST /analyze` creates a job and returns immediately. It does **not** return the final report. Poll status, then fetch the result.
 
 Workflow: `POST /analyze` -> `GET /analyze/{job_id}` -> `GET /analyze/{job_id}/result`
 
 Jobs move through these states: `queued`, `running`, `completed`, `failed`.
 
-Semantic search follows the same async pattern. `POST /semantic-search` creates a job, returns `202 Accepted`, and includes `status_url`, `result_url`, plus a `Retry-After` header.
+`POST /semantic-search` creates a job, returns `202 Accepted`, and includes `status_url`, `result_url`, plus a `Retry-After` header.
 
 Semantic workflow: `POST /semantic-search` -> `GET /semantic-search/{job_id}` -> `GET /semantic-search/{job_id}/result`
 
@@ -42,13 +43,32 @@ For detailed guides, see:
 - [Datasource Management Reference](references/datasource-management.md)
 - [Operations and Maintenance Reference](references/operations-and-maintenance.md)
 
+## OpenClaw Runtime
+
+This skill declares `metadata.openclaw.primaryEnv: API_KEY`. In OpenClaw, inject the bearer token through `~/.openclaw/openclaw.json`:
+
+```json5
+{
+  skills: {
+    entries: {
+      "crypto-news-http-api": {
+        enabled: true,
+        apiKey: "YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+If `apiKey` is unavailable, do not send unauthenticated requests. Ask the operator to configure the token first.
+
+If you are using a non-production deployment, replace `https://news.tradao.xyz` with the correct base URL before issuing requests.
+
 ## Analyze Workflow
 
-Create an analysis job by posting to `/analyze` with `hours` (how far back to look) and `user_id` (your agent identifier). The server responds with `202 Accepted`, a `job_id`, `status_url`, and `result_url`.
+Create an analysis job by posting to `/analyze` with `hours` and `user_id`. The server responds with `202 Accepted`, a `job_id`, `status_url`, and `result_url`.
 
-Poll the status endpoint until the job reaches `completed` or `failed`. Do not expect the analysis report in the initial POST response. Once completed, fetch the report from the result URL.
-
-This pattern keeps long-running analysis work from blocking your client and lets you track progress transparently.
+Poll the status endpoint until the job reaches `completed` or `failed`. Do not expect the analysis report in the initial POST response. Once completed, fetch the result URL.
 
 ## Semantic Search
 
@@ -71,7 +91,7 @@ Operational constraints:
 - Final retained results are capped at 200 unique items
 - Embedding generation requires `OPENAI_API_KEY`; query planning and report synthesis require `KIMI_API_KEY` or `GROK_API_KEY`
 
-The result body returns a Markdown report with `query`, `normalized_intent`, `matched_count`, `retained_count`, `time_window_hours`, and `report`. The report is structured for direct agent consumption with a normalized intent summary and cited signal blocks.
+The result body returns a Markdown report with `query`, `normalized_intent`, `matched_count`, `retained_count`, `time_window_hours`, and `report`.
 
 ## Datasource Management
 
