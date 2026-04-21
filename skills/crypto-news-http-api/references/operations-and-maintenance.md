@@ -63,6 +63,16 @@ uv run python tests/helpers/banned_legacy_reference_scan.py
 
 Do not merge until all four commands pass.
 
+### Release Command
+
+Publish a new ClawHub version from the repo root with:
+
+```bash
+skills/publish_clawhub_skill.sh crypto-news-http-api 0.2.1 "Describe the release briefly."
+```
+
+Use a semver version string. The script checks `clawhub` login state and runs the skill-specific test file before publishing unless `CLAWHUB_SKIP_TESTS=1` is set.
+
 ### Update Steps
 
 1. Read the canonical source files to identify behavioral changes

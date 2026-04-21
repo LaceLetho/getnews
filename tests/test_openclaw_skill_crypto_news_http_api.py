@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+PUBLISH_SCRIPT_PATH = REPO_ROOT / "skills" / "publish_clawhub_skill.sh"
 SKILL_DIR = REPO_ROOT / "skills" / "crypto-news-http-api"
 REFERENCE_DIR = SKILL_DIR / "references"
 SKILL_PATH = SKILL_DIR / "SKILL.md"
@@ -51,6 +52,7 @@ def _section(body: str, heading: str) -> str:
 
 
 def test_skill_paths_target_crypto_news_http_api_files() -> None:
+    assert PUBLISH_SCRIPT_PATH == REPO_ROOT / "skills" / "publish_clawhub_skill.sh"
     assert SKILL_DIR == REPO_ROOT / "skills" / "crypto-news-http-api"
     assert REFERENCE_DIR == SKILL_DIR / "references"
     assert SKILL_PATH == SKILL_DIR / "SKILL.md"
@@ -60,6 +62,7 @@ def test_skill_paths_target_crypto_news_http_api_files() -> None:
     assert SEMANTIC_SEARCH_PATH == REFERENCE_DIR / "semantic-search.md"
 
     for path in [
+        PUBLISH_SCRIPT_PATH,
         SKILL_PATH,
         ANALYZE_WORKFLOW_PATH,
         DATASOURCE_MANAGEMENT_PATH,
@@ -353,6 +356,9 @@ def test_operations_reference_covers_health_webhook_and_full_update_verification
         'uv run pytest tests/test_api_server.py -k "health or analyze or datasource or webhook" -v',
         "uv run pytest tests/test_banned_legacy_reference_scan.py -v",
         "uv run python tests/helpers/banned_legacy_reference_scan.py",
+        "skills/publish_clawhub_skill.sh crypto-news-http-api 0.2.1",
+        "`clawhub` login state",
+        "`CLAWHUB_SKIP_TESTS=1`",
         "code and tests over prose",
     ]:
         assert expected in operations_reference, f"Missing operations contract: {expected}"
