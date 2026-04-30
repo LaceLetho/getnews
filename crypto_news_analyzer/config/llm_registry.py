@@ -277,6 +277,14 @@ MODELS: Dict[str, Dict[str, ModelRecord]] = {
             supports_thinking_level=False,
             supports_responses_api=False,
         ),
+        "deepseek-v4-pro": ModelRecord(
+            provider="opencode-go",
+            name="deepseek-v4-pro",
+            supports_web_search=False,
+            supports_x_search=False,
+            supports_thinking_level=True,
+            supports_responses_api=False,
+        ),
     },
 }
 

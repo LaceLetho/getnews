@@ -101,7 +101,11 @@ class LLMAnalyzer:
             self.provider_credentials[provider] = (value or "").strip()
 
         self.analysis_model_runtime = model or resolve_model_runtime(
-            ModelConfig(provider="kimi", name="kimi-k2.5", options={})
+            ModelConfig(
+                provider="opencode-go",
+                name="deepseek-v4-pro",
+                options={"thinking_level": "high"},
+            )
         )
         self.fallback_model_runtimes = list(fallback_models or [])
         self.market_model_runtime = market_model or resolve_model_runtime(
@@ -222,6 +226,18 @@ class LLMAnalyzer:
                 f"{runtime.provider.name.capitalize()}客户端已初始化，使用模型: {runtime.name}"
             )
         return client
+
+    def _build_model_extra_body(
+        self, runtime: ResolvedModelRuntime
+    ) -> Optional[Dict[str, Any]]:
+        options = runtime.options
+        if not options:
+            return None
+        extra_body: Dict[str, Any] = {}
+        thinking_level = options.get("thinking_level")
+        if thinking_level:
+            extra_body["thinking"] = {"type": thinking_level}
+        return extra_body if extra_body else None
 
     def _supports_web_search(self, runtime: ResolvedModelRuntime) -> bool:
         return runtime.model.supports_web_search
@@ -528,6 +544,9 @@ class LLMAnalyzer:
                         )
 
                 # 使用结构化输出管理器强制返回结构化数据
+                extra_body = self._build_model_extra_body(
+                    self.analysis_model_runtime
+                )
                 batch_result = self.structured_output_manager.force_structured_response(
                     llm_client=self.client,
                     messages=messages,
@@ -538,6 +557,7 @@ class LLMAnalyzer:
                     enable_web_search=enable_web_search,
                     conversation_id=self.conversation_id,
                     usage_callback=self._record_token_usage,
+                    extra_body=extra_body,
                 )
 
                 # 记录主模型使用情况（如果没有使用过备用模型）
@@ -991,6 +1011,7 @@ class LLMAnalyzer:
         ]
 
         # 使用结构化输出
+        extra_body = self._build_model_extra_body(self.analysis_model_runtime)
         result = self.structured_output_manager.force_structured_response(
             llm_client=self.client,
             messages=messages,
@@ -998,7 +1019,8 @@ class LLMAnalyzer:
             max_retries=3,
             temperature=self.temperature,
             batch_mode=False,
-            conversation_id=self.conversation_id,  # 传递会话ID提高缓存命中率
+            conversation_id=self.conversation_id,
+            extra_body=extra_body,
         )
 
         if isinstance(result, BatchAnalysisResult):

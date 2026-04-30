@@ -165,7 +165,7 @@ def test_market_model_validated_independently():
 
 
 def test_opencode_go_analysis_models_validate():
-    for model_name in ["glm-5.1", "kimi-k2.5", "mimo-v2-pro"]:
+    for model_name in ["glm-5.1", "kimi-k2.5", "mimo-v2-pro", "deepseek-v4-pro"]:
         config = build_valid_llm_config()
         config["model"] = {
             "provider": "opencode-go",
@@ -219,3 +219,18 @@ def test_opencode_go_kimi_k2_5_rejects_thinking_level():
 
     with pytest.raises(LLMRegistryError, match="does not support thinking_level"):
         validate_llm_config_payload(config)
+
+
+def test_opencode_go_deepseek_v4_pro_supports_thinking_level():
+    config = build_valid_llm_config()
+    config["model"] = {
+        "provider": "opencode-go",
+        "name": "deepseek-v4-pro",
+        "options": {"thinking_level": "high"},
+    }
+
+    validated = validate_llm_config_payload(config)
+
+    assert validated.model.provider == "opencode-go"
+    assert validated.model.name == "deepseek-v4-pro"
+    assert validated.model.options["thinking_level"] == "high"

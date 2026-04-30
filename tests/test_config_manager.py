@@ -40,7 +40,7 @@ class TestConfigManager:
         # 验证必需字段存在
         assert "storage" in config
         assert "rss_sources" in config
-        assert config["llm_config"]["model"]["provider"] == "kimi"
+        assert config["llm_config"]["model"]["provider"] == "opencode-go"
         assert config["llm_config"]["market_model"]["provider"] == "grok"
 
         # 验证默认值

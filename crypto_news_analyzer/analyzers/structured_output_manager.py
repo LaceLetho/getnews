@@ -268,6 +268,7 @@ class StructuredOutputManager:
         enable_web_search: bool = False,
         conversation_id: Optional[str] = None,
         usage_callback: Optional[callable] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """
         强制大模型返回结构化响应
@@ -282,6 +283,7 @@ class StructuredOutputManager:
             enable_web_search: 是否启用web_search工具（仅Grok支持）
             conversation_id: 会话ID（用于提高缓存命中率）
             usage_callback: token使用情况回调函数
+            extra_body: 额外的请求体参数（如thinking_level配置）
 
         Returns:
             结构化的分析结果
@@ -329,6 +331,7 @@ class StructuredOutputManager:
                 enable_web_search=False,
                 conversation_id=conversation_id,
                 usage_callback=usage_callback,
+                extra_body=extra_body,
             )
 
         # 正常的结构化输出流程
@@ -355,6 +358,7 @@ class StructuredOutputManager:
                 enable_web_search=False,
                 conversation_id=conversation_id,
                 usage_callback=usage_callback,
+                extra_body=extra_body,
             )
 
     def _force_with_web_search(
@@ -847,6 +851,7 @@ class StructuredOutputManager:
         enable_web_search: bool = False,
         conversation_id: Optional[str] = None,
         usage_callback: Optional[callable] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """使用原生JSON模式强制结构化输出"""
         try:
@@ -863,6 +868,9 @@ class StructuredOutputManager:
                 "temperature": temperature,
                 "response_format": {"type": "json_object"},  # OpenAI JSON模式
             }
+
+            if extra_body:
+                call_params["extra_body"] = extra_body
 
             # 调用LLM
             response = llm_client.chat.completions.create(**call_params)

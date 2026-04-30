@@ -498,9 +498,11 @@ class ConfigManager:
             },
             "llm_config": {
                 "model": {
-                    "provider": "kimi",
-                    "name": "kimi-k2.5",
-                    "options": {},
+                    "provider": "opencode-go",
+                    "name": "deepseek-v4-pro",
+                    "options": {
+                        "thinking_level": "high"
+                    },
                 },
                 "fallback_models": [
                     {

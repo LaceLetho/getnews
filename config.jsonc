@@ -7,11 +7,13 @@
     "pgvector_dimensions": 1536
   },
   "llm_config": {
-    "model": {
-      "provider": "opencode-go",
-      "name": "kimi-k2.5",
-      "options": {}
-    },
+        "model": {
+            "provider": "opencode-go",
+            "name": "deepseek-v4-pro",
+            "options": {
+                "thinking_level": "high"
+            }
+        },
     "fallback_models": [
       {
         "provider": "grok",
