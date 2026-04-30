@@ -126,17 +126,14 @@ class LLMAnalyzer:
         self.logger = logging.getLogger(__name__)
         self.analysis_provider = self.analysis_model_runtime.provider_name
         self.market_provider = self.market_model_runtime.provider_name
-        self.analysis_api_key = self.provider_credentials.get(
-            self.analysis_provider, ""
-        )
+        self.analysis_api_key = self.provider_credentials.get(self.analysis_provider, "")
 
         self.batch_size = batch_size
 
         # 使用会话ID管理器获取或创建持久化的conversation_id
         conversation_id_manager = ConversationIdManager(cache_dir="./data/cache")
         self.conversation_id = (
-            conversation_id
-            or conversation_id_manager.get_or_create_conversation_id("llm_analyzer")
+            conversation_id or conversation_id_manager.get_or_create_conversation_id("llm_analyzer")
         )
 
         # 初始化token使用追踪器
@@ -155,9 +152,7 @@ class LLMAnalyzer:
         self.client = None
         if not mock_mode and self.analysis_api_key and OpenAI:
             try:
-                self.client = self._build_client(
-                    self.analysis_model_runtime, self.analysis_api_key
-                )
+                self.client = self._build_client(self.analysis_model_runtime, self.analysis_api_key)
             except Exception as e:
                 self.logger.error(f"初始化OpenAI客户端失败: {e}")
 
@@ -227,17 +222,26 @@ class LLMAnalyzer:
             )
         return client
 
-    def _build_model_extra_body(
-        self, runtime: ResolvedModelRuntime
-    ) -> Optional[Dict[str, Any]]:
+    def _build_model_extra_body(self, runtime: ResolvedModelRuntime) -> Optional[Dict[str, Any]]:
         options = runtime.options
         if not options:
             return None
         extra_body: Dict[str, Any] = {}
         thinking_level = options.get("thinking_level")
         if thinking_level:
-            extra_body["thinking"] = {"type": thinking_level}
+            extra_body["thinking"] = {
+                "type": self._map_thinking_type_for_runtime(runtime, thinking_level)
+            }
         return extra_body if extra_body else None
+
+    def _map_thinking_type_for_runtime(
+        self, runtime: ResolvedModelRuntime, thinking_level: str
+    ) -> str:
+        if runtime.provider_name == "opencode-go" and runtime.name == "deepseek-v4-pro":
+            if thinking_level == "disabled":
+                return "disabled"
+            return "enabled"
+        return thinking_level
 
     def _supports_web_search(self, runtime: ResolvedModelRuntime) -> bool:
         return runtime.model.supports_web_search
@@ -316,9 +320,7 @@ class LLMAnalyzer:
         # 读取市场快照提示词模板
         prompt_template = self._load_market_prompt_template()
 
-        self.logger.info(
-            f"准备调用市场快照服务，提示词长度: {len(prompt_template)} 字符"
-        )
+        self.logger.info(f"准备调用市场快照服务，提示词长度: {len(prompt_template)} 字符")
 
         # 调用市场快照服务获取快照
         snapshot = self.market_snapshot_service.get_market_snapshot(prompt_template)
@@ -341,9 +343,7 @@ class LLMAnalyzer:
         Returns:
             合并后的系统提示词（包含动态内容，不推荐用于生产环境）
         """
-        self.logger.warning(
-            "merge_prompts_with_snapshot() 已废弃，建议使用新的提示词构建方法"
-        )
+        self.logger.warning("merge_prompts_with_snapshot() 已废弃，建议使用新的提示词构建方法")
 
         # 读取分析提示词模板
         analysis_template = self._load_analysis_prompt_template()
@@ -354,12 +354,12 @@ class LLMAnalyzer:
                 "${Grok_Summary_Here}", market_snapshot.content
             )
         else:
-            system_prompt = f"{analysis_template}\n\n# Current Market Context\n{market_snapshot.content}"
+            system_prompt = (
+                f"{analysis_template}\n\n# Current Market Context\n{market_snapshot.content}"
+            )
 
         # 替换 ${outdated_news} 占位符
-        outdated_news = self._get_formatted_cached_messages(
-            hours=self.cached_messages_hours
-        )
+        outdated_news = self._get_formatted_cached_messages(hours=self.cached_messages_hours)
         if "${outdated_news}" in system_prompt:
             system_prompt = system_prompt.replace("${outdated_news}", outdated_news)
         else:
@@ -405,17 +405,11 @@ class LLMAnalyzer:
             return "无"
 
         try:
-            formatted_messages = self.cache_manager.format_cached_messages_for_prompt(
-                hours=hours
-            )
+            formatted_messages = self.cache_manager.format_cached_messages_for_prompt(hours=hours)
             if formatted_messages == "无":
-                self.logger.info(
-                    f"过去{hours}小时内没有已发送的消息缓存，Outdated News显示'无'"
-                )
+                self.logger.info(f"过去{hours}小时内没有已发送的消息缓存，Outdated News显示'无'")
             else:
-                self.logger.info(
-                    f"已获取格式化的缓存消息，包含过去{hours}小时的已发送内容"
-                )
+                self.logger.info(f"已获取格式化的缓存消息，包含过去{hours}小时的已发送内容")
             return formatted_messages
         except Exception as e:
             self.logger.warning(f"获取缓存消息失败: {e}，Outdated News将显示'无'")
@@ -447,9 +441,7 @@ class LLMAnalyzer:
         formatted_lines = [f"- {title}" for title in unique_titles]
         return "\n".join(formatted_lines)
 
-    def _deduplicate_titles_preserving_order(
-        self, titles: Optional[List[str]]
-    ) -> List[str]:
+    def _deduplicate_titles_preserving_order(self, titles: Optional[List[str]]) -> List[str]:
         if not titles:
             return []
 
@@ -463,9 +455,7 @@ class LLMAnalyzer:
 
         return unique_titles
 
-    def _extract_result_titles(
-        self, results: List[StructuredAnalysisResult]
-    ) -> List[str]:
+    def _extract_result_titles(self, results: List[StructuredAnalysisResult]) -> List[str]:
         return self._deduplicate_titles_preserving_order(
             [result.title for result in results if getattr(result, "title", None)]
         )
@@ -498,16 +488,12 @@ class LLMAnalyzer:
             raise RuntimeError("OpenAI客户端未初始化")
 
         all_results = []
-        rolling_historical_titles = self._deduplicate_titles_preserving_order(
-            historical_titles
-        )
+        rolling_historical_titles = self._deduplicate_titles_preserving_order(historical_titles)
 
         for i in range(0, len(items), self.batch_size):
             batch = items[i : i + self.batch_size]
             messages: List[Dict[str, str]] = []
-            self.logger.info(
-                f"处理批次 {i // self.batch_size + 1}，包含 {len(batch)} 条内容"
-            )
+            self.logger.info(f"处理批次 {i // self.batch_size + 1}，包含 {len(batch)} 条内容")
 
             try:
                 batch_historical_titles = (
@@ -524,29 +510,21 @@ class LLMAnalyzer:
                 ]
 
                 # 以用户友好的方式打印最终发送给LLM的完整提示词
-                self._log_final_prompt(
-                    system_prompt, user_prompt, i // self.batch_size + 1
-                )
+                self._log_final_prompt(system_prompt, user_prompt, i // self.batch_size + 1)
 
                 # 判断是否启用 web_search 及使用哪种方式
                 # Grok 使用 responses.parse() API
                 # Kimi 使用内置 web_search（builtin_function + $web_search）
-                enable_web_search = self._supports_web_search(
-                    self.analysis_model_runtime
-                )
+                enable_web_search = self._supports_web_search(self.analysis_model_runtime)
 
                 if enable_web_search:
                     if self.analysis_model_runtime.provider_name == "kimi":
                         self.logger.info("检测到 Kimi 模型，启用内置 web_search 工具")
                     elif self.analysis_model_runtime.provider_name == "grok":
-                        self.logger.info(
-                            "检测到 Grok 模型，启用 web_search 和 x_search 工具"
-                        )
+                        self.logger.info("检测到 Grok 模型，启用 web_search 和 x_search 工具")
 
                 # 使用结构化输出管理器强制返回结构化数据
-                extra_body = self._build_model_extra_body(
-                    self.analysis_model_runtime
-                )
+                extra_body = self._build_model_extra_body(self.analysis_model_runtime)
                 batch_result = self.structured_output_manager.force_structured_response(
                     llm_client=self.client,
                     messages=messages,
@@ -562,9 +540,7 @@ class LLMAnalyzer:
 
                 # 记录主模型使用情况（如果没有使用过备用模型）
                 if self._last_used_model is None:
-                    self._last_used_model = self._display_provider_name(
-                        self.analysis_model_runtime
-                    )
+                    self._last_used_model = self._display_provider_name(self.analysis_model_runtime)
 
                 # 打印LLM返回的原始数据
                 self._log_llm_response(batch_result, i // self.batch_size + 1)
@@ -573,11 +549,9 @@ class LLMAnalyzer:
                 if isinstance(batch_result, BatchAnalysisResult):
                     all_results.extend(batch_result.results)
                     if not is_scheduled:
-                        rolling_historical_titles = (
-                            self._deduplicate_titles_preserving_order(
-                                rolling_historical_titles
-                                + self._extract_result_titles(batch_result.results)
-                            )
+                        rolling_historical_titles = self._deduplicate_titles_preserving_order(
+                            rolling_historical_titles
+                            + self._extract_result_titles(batch_result.results)
                         )
                     self.logger.info(f"批次返回 {len(batch_result.results)} 条结果")
                 else:
@@ -600,9 +574,7 @@ class LLMAnalyzer:
                 ):
                     self.logger.info("尝试切换到 Grok 模型重试...")
                     try:
-                        fallback_client = self._build_client(
-                            fallback_runtime, fallback_api_key
-                        )
+                        fallback_client = self._build_client(fallback_runtime, fallback_api_key)
 
                         # 记录使用了备用模型
                         self._last_used_model = (
@@ -611,20 +583,16 @@ class LLMAnalyzer:
                         )
 
                         # Grok 备用模型保持开启 web_search/x_search
-                        batch_result = (
-                            self.structured_output_manager.force_structured_response(
-                                llm_client=fallback_client,
-                                messages=messages,
-                                model=fallback_runtime.name,
-                                max_retries=2,
-                                temperature=self.temperature,
-                                batch_mode=True,
-                                enable_web_search=self._supports_web_search(
-                                    fallback_runtime
-                                ),
-                                conversation_id=self.conversation_id,
-                                usage_callback=self._record_token_usage,
-                            )
+                        batch_result = self.structured_output_manager.force_structured_response(
+                            llm_client=fallback_client,
+                            messages=messages,
+                            model=fallback_runtime.name,
+                            max_retries=2,
+                            temperature=self.temperature,
+                            batch_mode=True,
+                            enable_web_search=self._supports_web_search(fallback_runtime),
+                            conversation_id=self.conversation_id,
+                            usage_callback=self._record_token_usage,
                         )
 
                         # 打印LLM返回的原始数据
@@ -637,23 +605,17 @@ class LLMAnalyzer:
                                 rolling_historical_titles = (
                                     self._deduplicate_titles_preserving_order(
                                         rolling_historical_titles
-                                        + self._extract_result_titles(
-                                            batch_result.results
-                                        )
+                                        + self._extract_result_titles(batch_result.results)
                                     )
                                 )
                             self.logger.info(
                                 f"Grok备用模型批次返回 {len(batch_result.results)} 条结果"
                             )
                         else:
-                            self.logger.warning(
-                                f"Grok批次返回格式异常: {type(batch_result)}"
-                            )
+                            self.logger.warning(f"Grok批次返回格式异常: {type(batch_result)}")
 
                     except Exception as fallback_error:
-                        self.logger.error(
-                            f"Grok备用模型失败，停止当前分析: {fallback_error}"
-                        )
+                        self.logger.error(f"Grok备用模型失败，停止当前分析: {fallback_error}")
                         raise
                 else:
                     self.logger.warning("未配置可用的备用模型凭证，无法使用备用模型")
@@ -701,9 +663,7 @@ class LLMAnalyzer:
 
         prompt_parts.append("# Outdated News")
         if is_scheduled:
-            outdated_news = self._get_formatted_cached_messages(
-                hours=self.cached_messages_hours
-            )
+            outdated_news = self._get_formatted_cached_messages(hours=self.cached_messages_hours)
         elif historical_titles:
             outdated_news = self._format_historical_titles(historical_titles)
         else:
@@ -768,9 +728,7 @@ class LLMAnalyzer:
         Returns:
             适合日志输出的文本
         """
-        enable_debug = self.config.get("llm_config", {}).get(
-            "enable_debug_logging", False
-        )
+        enable_debug = self.config.get("llm_config", {}).get("enable_debug_logging", False)
         if enable_debug:
             return text
 
@@ -787,9 +745,7 @@ class LLMAnalyzer:
             f"{text[-tail_length:]}"
         )
 
-    def _log_final_prompt(
-        self, system_prompt: str, user_prompt: str, batch_number: int
-    ) -> None:
+    def _log_final_prompt(self, system_prompt: str, user_prompt: str, batch_number: int) -> None:
         """
         以用户友好的方式打印最终发送给LLM的完整提示词
 
@@ -887,9 +843,7 @@ class LLMAnalyzer:
         """加载市场快照提示词模板"""
         try:
             if not self.market_prompt_path.exists():
-                raise FileNotFoundError(
-                    f"市场快照提示词文件不存在: {self.market_prompt_path}"
-                )
+                raise FileNotFoundError(f"市场快照提示词文件不存在: {self.market_prompt_path}")
 
             with open(self.market_prompt_path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
@@ -911,9 +865,7 @@ class LLMAnalyzer:
         """加载分析提示词模板"""
         try:
             if not self.analysis_prompt_path.exists():
-                raise FileNotFoundError(
-                    f"分析提示词文件不存在: {self.analysis_prompt_path}"
-                )
+                raise FileNotFoundError(f"分析提示词文件不存在: {self.analysis_prompt_path}")
 
             with open(self.analysis_prompt_path, "r", encoding="utf-8") as f:
                 return f.read().strip()
@@ -921,9 +873,7 @@ class LLMAnalyzer:
             self.logger.error(f"加载分析提示词失败: {e}")
             raise
 
-    def _generate_mock_results(
-        self, items: List[ContentItem]
-    ) -> List[StructuredAnalysisResult]:
+    def _generate_mock_results(self, items: List[ContentItem]) -> List[StructuredAnalysisResult]:
         """生成模拟分析结果（用于测试）"""
         mock_results = []
 
@@ -958,9 +908,7 @@ class LLMAnalyzer:
 
         return mock_results
 
-    def get_dynamic_categories(
-        self, results: List[StructuredAnalysisResult]
-    ) -> List[str]:
+    def get_dynamic_categories(self, results: List[StructuredAnalysisResult]) -> List[str]:
         """
         从分析结果中提取动态分类
 
@@ -1024,9 +972,7 @@ class LLMAnalyzer:
         )
 
         if isinstance(result, BatchAnalysisResult):
-            raise TypeError(
-                "Expected StructuredAnalysisResult for single-content analysis"
-            )
+            raise TypeError("Expected StructuredAnalysisResult for single-content analysis")
 
         return result
 
@@ -1050,9 +996,7 @@ class LLMAnalyzer:
         # 其他过滤逻辑由大模型在分析时完成
         return False
 
-    def build_system_prompt(
-        self, market_snapshot: Optional[MarketSnapshot] = None
-    ) -> str:
+    def build_system_prompt(self, market_snapshot: Optional[MarketSnapshot] = None) -> str:
         """
         构建系统提示词（便捷方法）
 
@@ -1112,9 +1056,7 @@ class LLMAnalyzer:
 
         return "\n".join(prompt_parts)
 
-    def parse_structured_response(
-        self, response: str
-    ) -> List[StructuredAnalysisResult]:
+    def parse_structured_response(self, response: str) -> List[StructuredAnalysisResult]:
         """
         解析结构化响应（用于错误恢复）
 
@@ -1148,9 +1090,7 @@ class LLMAnalyzer:
         Returns:
             是否有效
         """
-        validation_result = self.structured_output_manager.validate_output_structure(
-            response
-        )
+        validation_result = self.structured_output_manager.validate_output_structure(response)
         return validation_result.is_valid
 
     def handle_empty_batch_response(self) -> List[StructuredAnalysisResult]:
@@ -1210,12 +1150,14 @@ class LLMAnalyzer:
         return {
             "has_cached_snapshot": self._cached_market_snapshot is not None,
             "has_cached_prompt": self._cached_system_prompt is not None,
-            "snapshot_source": self._cached_market_snapshot.source
-            if self._cached_market_snapshot
-            else None,
-            "snapshot_timestamp": self._cached_market_snapshot.timestamp.isoformat()
-            if self._cached_market_snapshot
-            else None,
+            "snapshot_source": (
+                self._cached_market_snapshot.source if self._cached_market_snapshot else None
+            ),
+            "snapshot_timestamp": (
+                self._cached_market_snapshot.timestamp.isoformat()
+                if self._cached_market_snapshot
+                else None
+            ),
         }
 
     def update_config(self, **kwargs) -> None:
@@ -1237,9 +1179,7 @@ class LLMAnalyzer:
                 self.analysis_model_runtime = runtime
                 self.model = runtime.name
                 self.analysis_provider = runtime.provider_name
-                self.analysis_api_key = self.provider_credentials.get(
-                    self.analysis_provider, ""
-                )
+                self.analysis_api_key = self.provider_credentials.get(self.analysis_provider, "")
 
         self.logger.info("LLM分析器配置已更新")
 

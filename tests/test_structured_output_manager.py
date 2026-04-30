@@ -901,10 +901,22 @@ class TestOpenCodeGoIntegration:
             messages=[{"role": "user", "content": "analyze this"}],
             model="kimi-k2.5",
             batch_mode=True,
+            extra_body={"thinking": {"type": "enabled"}},
         )
 
         assert result is native_json_result
-        manager._force_with_native_json.assert_called_once()
+        manager._force_with_native_json.assert_called_once_with(
+            llm_client,
+            [{"role": "user", "content": "analyze this"}],
+            "kimi-k2.5",
+            3,
+            0.1,
+            True,
+            enable_web_search=False,
+            conversation_id=None,
+            usage_callback=None,
+            extra_body={"thinking": {"type": "enabled"}},
+        )
         manager._force_with_instructor.assert_not_called()
 
     def test_force_with_native_json_reports_usage(self):
@@ -950,10 +962,13 @@ class TestOpenCodeGoIntegration:
             temperature=0.1,
             batch_mode=True,
             usage_callback=usage_records.append,
+            extra_body={"thinking": {"type": "enabled"}},
         )
 
         assert isinstance(result, BatchAnalysisResult)
         assert len(result.results) == 1
+        create_mock.assert_called_once()
+        assert create_mock.call_args.kwargs["extra_body"] == {"thinking": {"type": "enabled"}}
         assert usage_records == [
             {
                 "model": "kimi-k2.5",
