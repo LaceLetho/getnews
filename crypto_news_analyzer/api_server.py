@@ -7,10 +7,11 @@ HTTP API服务器
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
 import uuid
-from typing import Annotated, Any, Optional, Union, cast
+from typing import Annotated, Any, Optional, cast
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, HTTPException, Depends, Response, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -42,6 +43,8 @@ from .storage.repositories import (
     PostgresSemanticSearchRepository,
     SQLiteAnalysisRepository,
 )
+from .intelligence.search import IntelligenceSearchService
+from .domain.repositories import IntelligenceRepository
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
@@ -67,6 +70,7 @@ class AppState:
             thread_name_prefix="api-search",
         )
         self.telegram_uses_webhook = False
+        self.intelligence_repository: Optional[IntelligenceRepository] = None
 
     def cleanup(self):
         """Cleanup resources on shutdown."""
@@ -97,6 +101,7 @@ class AppState:
         self.analysis_repository = None
         self.semantic_search_repository = None
         self.datasource_repository = None
+        self.intelligence_repository = None
 
 
 class AnalyzeRequest(BaseModel):
@@ -324,6 +329,123 @@ class DataSourceListResponse(BaseModel):
     datasources: list[DataSourceResponseItem]
 
 
+class IntelligenceEntryResponse(BaseModel):
+    id: str
+    entry_type: str
+    normalized_key: str
+    display_name: str
+    explanation: Optional[str] = None
+    usage_summary: Optional[str] = None
+    primary_label: Optional[str] = None
+    secondary_tags: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    first_seen_at: Optional[str] = None
+    last_seen_at: Optional[str] = None
+    evidence_count: int = 1
+    aliases: list[str] = Field(default_factory=list)
+    model_name: Optional[str] = None
+    prompt_version: Optional[str] = None
+    schema_version: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class IntelligenceListResponse(BaseModel):
+    entries: list[IntelligenceEntryResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class IntelligenceEntryDetailResponse(BaseModel):
+    id: str
+    entry_type: str
+    normalized_key: str
+    display_name: str
+    explanation: Optional[str] = None
+    usage_summary: Optional[str] = None
+    primary_label: Optional[str] = None
+    secondary_tags: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    first_seen_at: Optional[str] = None
+    last_seen_at: Optional[str] = None
+    evidence_count: int = 1
+    aliases: list[str] = Field(default_factory=list)
+    model_name: Optional[str] = None
+    prompt_version: Optional[str] = None
+    schema_version: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    raw_available: bool = False
+    raw_evidence: Optional[Any] = None
+
+
+class IntelligenceSearchResultItem(BaseModel):
+    id: str
+    entry_type: str
+    normalized_key: str
+    display_name: str
+    explanation: Optional[str] = None
+    primary_label: Optional[str] = None
+    secondary_tags: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    last_seen_at: Optional[str] = None
+    evidence_count: int = 1
+    similarity_score: float = 0.0
+
+
+class IntelligenceSearchResponse(BaseModel):
+    results: list[IntelligenceSearchResultItem]
+    total: int
+
+
+class IntelligenceRawItemResponse(BaseModel):
+    raw_text: Optional[str] = None
+    source_type: str
+    source_url: Optional[str] = None
+    published_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    is_expired: bool = False
+
+
+def _canonical_entry_to_response(entry: Any) -> IntelligenceEntryResponse:
+    return IntelligenceEntryResponse(
+        id=entry.id,
+        entry_type=entry.entry_type,
+        normalized_key=entry.normalized_key,
+        display_name=entry.display_name,
+        explanation=entry.explanation,
+        usage_summary=getattr(entry, "usage_summary", None),
+        primary_label=entry.primary_label,
+        secondary_tags=list(entry.secondary_tags),
+        confidence=entry.confidence,
+        first_seen_at=entry.first_seen_at.isoformat() if entry.first_seen_at else None,
+        last_seen_at=entry.last_seen_at.isoformat() if entry.last_seen_at else None,
+        evidence_count=entry.evidence_count,
+        aliases=list(getattr(entry, "aliases", [])),
+        model_name=entry.model_name,
+        prompt_version=entry.prompt_version,
+        schema_version=entry.schema_version,
+        created_at=entry.created_at.isoformat() if entry.created_at else None,
+        updated_at=entry.updated_at.isoformat() if entry.updated_at else None,
+    )
+
+
+def _as_naive_utc(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _is_expired(expires_at: Optional[datetime], now: Optional[datetime] = None) -> bool:
+    normalized_expires_at = _as_naive_utc(expires_at)
+    if normalized_expires_at is None:
+        return False
+    return normalized_expires_at < (now or datetime.utcnow())
+
+
 def _get_app_state(request: Request) -> AppState:
     """Get application state from request."""
     return cast(AppState, request.app.state.app_state)
@@ -374,6 +496,22 @@ def _get_datasource_repository(request: Request) -> DataSourceRepository:
             return cast(DataSourceRepository, state.datasource_repository)
 
     raise HTTPException(status_code=503, detail="System not initialized")
+
+def _get_intelligence_repository(request: Request) -> IntelligenceRepository:
+    """Get intelligence repository from app state or controller."""
+    state = _get_app_state(request)
+
+    if state.intelligence_repository is not None:
+        return state.intelligence_repository
+
+    controller = _get_controller(request)
+    intelligence_repository = getattr(controller, "intelligence_repository", None)
+    if intelligence_repository is not None:
+        state.intelligence_repository = cast(IntelligenceRepository, intelligence_repository)
+        return state.intelligence_repository
+
+    raise HTTPException(status_code=503, detail="Intelligence repository not initialized")
+
 
 
 def _ensure_semantic_search_http_supported(controller: MainController) -> None:
@@ -598,6 +736,45 @@ def _build_semantic_search_service(controller: MainController) -> SemanticSearch
         provider_credentials=provider_credentials,
     )
 
+def _build_intelligence_search_service(controller: MainController) -> IntelligenceSearchService:
+    """Build IntelligenceSearchService on demand for API querying."""
+    if controller.config_manager is None:
+        raise HTTPException(status_code=503, detail="System not initialized")
+
+    intelligence_repository = getattr(controller, "intelligence_repository", None)
+    if intelligence_repository is None:
+        raise HTTPException(status_code=503, detail="Intelligence repository not initialized")
+
+    embedding_service = getattr(controller, "embedding_service", None)
+    if embedding_service is None:
+        raise HTTPException(status_code=503, detail="Embedding service not initialized")
+
+    storage_config = getattr(controller, "storage_config", None)
+    if storage_config is None:
+        raise HTTPException(status_code=503, detail="Storage config not initialized")
+
+    return IntelligenceSearchService(
+        embedding_service=embedding_service,
+        intelligence_repository=intelligence_repository,
+        storage_config=storage_config,
+    )
+
+
+def _parse_window_param(window_str: Optional[str]) -> Optional[datetime]:
+    """Parse a window parameter like "7d", "24h", "30d" into a datetime cutoff."""
+    if not window_str or not str(window_str).strip():
+        return None
+    value = str(window_str).strip().lower()
+    match = re.match(r"^(\d+)([dh])$", value)
+    if not match:
+        return None
+    num = int(match.group(1))
+    unit = match.group(2)
+    if unit == "h":
+        return datetime.now(timezone.utc) - timedelta(hours=num)
+    return datetime.now(timezone.utc) - timedelta(days=num)
+
+
 
 def _run_analyze_job(job_id: str, state: AppState) -> None:
     """Run analyze job with proper error handling."""
@@ -731,7 +908,7 @@ def _build_datasource_config_summary(datasource: DataSource) -> dict[str, Any]:
         response_mapping = payload.get("response_mapping")
 
         return {
-            "endpoint": payload.get("endpoint"),
+            "endpoint": _summarize_public_endpoint(payload.get("endpoint")),
             "method": payload.get("method"),
             "response_mapping": (
                 dict(response_mapping) if isinstance(response_mapping, dict) else {}
@@ -741,6 +918,23 @@ def _build_datasource_config_summary(datasource: DataSource) -> dict[str, Any]:
         }
 
     return {}
+
+
+def _summarize_public_endpoint(endpoint: Any) -> Optional[str]:
+    if endpoint is None:
+        return None
+
+    endpoint_text = str(endpoint)
+    try:
+        parsed = urlsplit(endpoint_text)
+    except ValueError:
+        return endpoint_text.split("?", 1)[0].split("#", 1)[0]
+
+    netloc = parsed.hostname or ""
+    if parsed.port is not None:
+        netloc = f"{netloc}:{parsed.port}"
+
+    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
 
 
 def _to_datasource_response_item(datasource: DataSource) -> DataSourceResponseItem:
@@ -828,6 +1022,16 @@ def create_api_server(
             repositories = getattr(controller, "_repositories", None)
             if isinstance(repositories, dict):
                 app_state.semantic_search_repository = repositories.get("semantic_search")
+
+        app_state.intelligence_repository = getattr(
+            controller, "intelligence_repository", None
+        )
+        if app_state.intelligence_repository is None:
+            repositories = getattr(controller, "_repositories", None)
+            if isinstance(repositories, dict):
+                app_state.intelligence_repository = cast(
+                    IntelligenceRepository, repositories.get("intelligence")
+                )
 
         effective_start_scheduler = start_services if start_scheduler is None else start_scheduler
         effective_start_command_listener = (
@@ -1039,6 +1243,166 @@ def create_api_server(
         if job is None:
             raise HTTPException(status_code=404, detail="Semantic search job not found")
         return _semantic_search_request_to_job_record(job).to_result_response()
+
+    # ── Intelligence query endpoints ──────────────────────────────────────
+
+    @app.get("/intelligence/entries", response_model=IntelligenceListResponse)
+    async def list_intelligence_entries(
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+        window: Optional[str] = None,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ):
+        """List canonical intelligence entries with pagination."""
+        repository = _get_intelligence_repository(req)
+        window_cutoff = _parse_window_param(window)
+
+        page = max(1, page)
+        page_size = max(1, min(page_size, 100))
+
+        entries = repository.list_canonical_entries(
+            entry_type=entry_type if entry_type else None,
+            primary_label=primary_label if primary_label else None,
+            window=window_cutoff,
+            page=page,
+            page_size=page_size,
+        )
+        total = repository.count_canonical_entries(
+            entry_type=entry_type if entry_type else None,
+            primary_label=primary_label if primary_label else None,
+            window=window_cutoff,
+        )
+
+        return IntelligenceListResponse(
+            entries=[_canonical_entry_to_response(e) for e in entries],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+
+    @app.get("/intelligence/entries/{entry_id}", response_model=IntelligenceEntryDetailResponse)
+    async def get_intelligence_entry_detail(
+        entry_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+        include_raw: bool = False,
+    ):
+        """Get a single intelligence entry by ID with optional raw evidence."""
+        repository = _get_intelligence_repository(req)
+        entry = repository.get_canonical_entry_by_id(entry_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Intelligence entry not found")
+
+        response = IntelligenceEntryDetailResponse(
+            id=entry.id,
+            entry_type=entry.entry_type,
+            normalized_key=entry.normalized_key,
+            display_name=entry.display_name,
+            explanation=entry.explanation,
+            usage_summary=getattr(entry, "usage_summary", None),
+            primary_label=entry.primary_label,
+            secondary_tags=list(entry.secondary_tags),
+            confidence=entry.confidence,
+            first_seen_at=entry.first_seen_at.isoformat() if entry.first_seen_at else None,
+            last_seen_at=entry.last_seen_at.isoformat() if entry.last_seen_at else None,
+            evidence_count=entry.evidence_count,
+            aliases=list(getattr(entry, "aliases", [])),
+            model_name=entry.model_name,
+            prompt_version=entry.prompt_version,
+            schema_version=entry.schema_version,
+            created_at=entry.created_at.isoformat() if entry.created_at else None,
+            updated_at=entry.updated_at.isoformat() if entry.updated_at else None,
+        )
+
+        if include_raw and entry.latest_raw_item_id:
+            raw_item = repository.get_raw_item_by_id(entry.latest_raw_item_id)
+            if raw_item:
+                is_expired = _is_expired(raw_item.expires_at)
+                if not is_expired and raw_item.raw_text:
+                    response.raw_available = True
+                    response.raw_evidence = {
+                        "raw_item_id": raw_item.id,
+                        "raw_text": raw_item.raw_text,
+                        "source_type": raw_item.source_type,
+                        "source_url": raw_item.source_url,
+                        "published_at": raw_item.published_at.isoformat() if raw_item.published_at else None,
+                        "collected_at": raw_item.collected_at.isoformat() if raw_item.collected_at else None,
+                        "expires_at": raw_item.expires_at.isoformat() if raw_item.expires_at else None,
+                    }
+                else:
+                    response.raw_available = False
+
+        return response
+
+    @app.get("/intelligence/search", response_model=IntelligenceSearchResponse)
+    async def search_intelligence(
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+        q: str,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[str] = None,
+    ):
+        """Semantic search across canonical intelligence entries."""
+        controller = _get_controller(req)
+        service = _build_intelligence_search_service(controller)
+
+        window_cutoff = _parse_window_param(window)
+
+        results = service.semantic_search(
+            query_text=q,
+            entry_type=entry_type if entry_type else None,
+            primary_label=primary_label if primary_label else None,
+            window=window_cutoff,
+            limit=20,
+        )
+
+        return IntelligenceSearchResponse(
+            results=[
+                IntelligenceSearchResultItem(
+                    id=entry.id,
+                    entry_type=entry.entry_type,
+                    normalized_key=entry.normalized_key,
+                    display_name=entry.display_name,
+                    explanation=entry.explanation,
+                    primary_label=entry.primary_label,
+                    secondary_tags=list(entry.secondary_tags),
+                    confidence=entry.confidence,
+                    last_seen_at=entry.last_seen_at.isoformat() if entry.last_seen_at else None,
+                    evidence_count=entry.evidence_count,
+                    similarity_score=round(score, 4),
+                )
+                for entry, score in results
+            ],
+            total=len(results),
+        )
+
+    @app.get("/intelligence/raw/{raw_item_id}", response_model=IntelligenceRawItemResponse)
+    async def get_intelligence_raw_item(
+        raw_item_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Get a raw intelligence item by ID."""
+        repository = _get_intelligence_repository(req)
+        raw_item = repository.get_raw_item_by_id(raw_item_id)
+        if raw_item is None:
+            raise HTTPException(status_code=404, detail="Raw intelligence item not found")
+
+        is_expired = _is_expired(raw_item.expires_at)
+        raw_text = None if is_expired else raw_item.raw_text
+
+        return IntelligenceRawItemResponse(
+            raw_text=raw_text,
+            source_type=raw_item.source_type,
+            source_url=raw_item.source_url,
+            published_at=raw_item.published_at.isoformat() if raw_item.published_at else None,
+            expires_at=raw_item.expires_at.isoformat() if raw_item.expires_at else None,
+            is_expired=is_expired,
+        )
 
     @app.post("/datasources", response_model=DataSourceCreateResponse, status_code=201)
     async def create_datasource(

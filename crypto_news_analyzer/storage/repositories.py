@@ -10,16 +10,21 @@ from typing import List, Optional, Dict, Any, Tuple, cast
 
 from ..domain.models import (
     AnalysisRequest,
+    CanonicalIntelligenceEntry,
     DataSource,
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
+    ExtractionObservation,
     IngestionJob,
+    IntelligenceCrawlCheckpoint,
+    RawIntelligenceItem,
     SemanticSearchJob,
 )
 from ..domain.repositories import (
     AnalysisRepository,
     DataSourceRepository,
     IngestionRepository,
+    IntelligenceRepository,
     ContentRepository,
     CacheRepository,
     SemanticSearchRepository,
@@ -534,6 +539,143 @@ class SQLiteDataSourceRepository(DataSourceRepository):
         return self._data.delete_datasource(datasource_id)
 
 
+class SQLiteIntelligenceRepository(IntelligenceRepository):
+    def __init__(self, data_manager: DataManager):
+        self._data = data_manager
+
+    def save_raw_item(self, raw_item: RawIntelligenceItem) -> str:
+        return self._data.upsert_raw_intelligence_item(raw_item.to_dict())
+
+    def get_raw_items_by_source(
+        self, source_type: str, source_id: str, limit: int, offset: int
+    ) -> List[RawIntelligenceItem]:
+        rows = self._data.get_raw_intelligence_items_by_source(
+            source_type, source_id, limit, offset
+        )
+        return [RawIntelligenceItem.from_dict(row) for row in rows]
+
+    def get_raw_items_expiring_before(self, cutoff_time: datetime) -> List[RawIntelligenceItem]:
+        rows = self._data.get_raw_intelligence_items_expiring_before(cutoff_time)
+        return [RawIntelligenceItem.from_dict(row) for row in rows]
+
+    def get_raw_item_by_id(self, raw_item_id: str) -> Optional[RawIntelligenceItem]:
+        row = self._data.get_raw_intelligence_item_by_id(raw_item_id)
+        return RawIntelligenceItem.from_dict(row) if row else None
+
+    def delete_expired_raw_items(self, cutoff_time: datetime) -> int:
+        return self._data.delete_expired_raw_intelligence_items(cutoff_time)
+
+    def purge_raw_text_older_than(self, cutoff_time: datetime) -> int:
+        return self._data.purge_raw_intelligence_text_older_than(cutoff_time)
+
+    def save_observation(self, observation: ExtractionObservation) -> str:
+        return self._data.upsert_intelligence_observation(observation.to_dict())
+
+    def get_observations_by_raw_item(self, raw_item_id: str) -> List[ExtractionObservation]:
+        rows = self._data.get_intelligence_observations_by_raw_item(raw_item_id)
+        return [ExtractionObservation.from_dict(row) for row in rows]
+
+    def get_uncanonicalized_observations(self, limit: int) -> List[ExtractionObservation]:
+        rows = self._data.get_uncanonicalized_intelligence_observations(limit)
+        return [ExtractionObservation.from_dict(row) for row in rows]
+
+    def mark_observation_canonicalized(self, observation_id: str) -> bool:
+        return self._data.mark_intelligence_observation_canonicalized(observation_id)
+
+    def save_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
+        return self._data.upsert_canonical_intelligence_entry(entry.to_dict())
+
+    def get_canonical_entry_by_normalized_key(
+        self, entry_type: str, normalized_key: str
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        row = self._data.get_canonical_intelligence_entry_by_normalized_key(
+            entry_type, normalized_key
+        )
+        return CanonicalIntelligenceEntry.from_dict(row) if row else None
+
+    def get_canonical_entry_by_id(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
+        row = self._data.get_canonical_intelligence_entry_by_id(entry_id)
+        return CanonicalIntelligenceEntry.from_dict(row) if row else None
+
+    def upsert_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
+        return self._data.upsert_canonical_intelligence_entry(
+            entry.to_dict(), by_normalized_key=True
+        )
+
+    def list_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> List[CanonicalIntelligenceEntry]:
+        rows = self._data.list_canonical_intelligence_entries(
+            entry_type=entry_type,
+            primary_label=primary_label,
+            window=window,
+            page=page,
+            page_size=page_size,
+        )
+        return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
+
+    def count_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        return self._data.count_canonical_intelligence_entries(
+            entry_type=entry_type,
+            primary_label=primary_label,
+            window=window,
+        )
+
+    def update_embedding(self, entry_id: str, embedding: List[float], model: str) -> bool:
+        return self._data.update_canonical_intelligence_embedding(entry_id, embedding, model)
+
+    def get_entries_missing_embeddings(self, limit: int) -> List[CanonicalIntelligenceEntry]:
+        rows = self._data.get_canonical_intelligence_entries_missing_embeddings(limit)
+        return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
+
+    def semantic_search(
+        self,
+        query_embedding: List[float],
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        limit: int = 20,
+    ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
+        rows = self._data.semantic_search_canonical_intelligence_entries(
+            query_embedding=query_embedding,
+            entry_type=entry_type,
+            primary_label=primary_label,
+            window=window,
+            limit=limit,
+        )
+        return [(CanonicalIntelligenceEntry.from_dict(row), score) for row, score in rows]
+
+    def save_related_candidate(
+        self,
+        entry_id_a: str,
+        entry_id_b: str,
+        similarity_score: float,
+        relationship_type: str,
+    ) -> None:
+        self._data.save_intelligence_related_candidate(
+            entry_id_a, entry_id_b, similarity_score, relationship_type
+        )
+
+    def save_checkpoint(self, checkpoint: IntelligenceCrawlCheckpoint) -> None:
+        self._data.upsert_intelligence_checkpoint(checkpoint.to_dict())
+
+    def get_checkpoint(
+        self, source_type: str, source_id: str
+    ) -> Optional[IntelligenceCrawlCheckpoint]:
+        row = self._data.get_intelligence_checkpoint(source_type, source_id)
+        return IntelligenceCrawlCheckpoint.from_dict(row) if row else None
+
+
 class SQLiteCacheRepository(CacheRepository):
     """SQLite implementation of CacheRepository"""
 
@@ -614,6 +756,7 @@ class RepositoryFactory:
             "analysis": SQLiteAnalysisRepository(data_manager),
             "datasource": SQLiteDataSourceRepository(data_manager),
             "ingestion": SQLiteIngestionRepository(data_manager),
+            "intelligence": SQLiteIntelligenceRepository(data_manager),
             "content": (
                 PostgresContentRepository(data_manager)
                 if backend == "postgres"

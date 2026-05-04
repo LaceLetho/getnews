@@ -134,7 +134,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 > Implementation + Test = ONE task. Never separate.
 > EVERY task MUST have: Agent Profile + Parallelization + QA Scenarios.
 
-- [ ] 1. Define Intelligence Domain Schema, Migrations, and Repository Contracts
+- [x] 1. Define Intelligence Domain Schema, Migrations, and Repository Contracts
 
   **What to do**: Add the intelligence domain foundation before any collector logic. Create Postgres migration(s) following `migrations/postgresql/001_init.sql` and `002_datasource_schema.sql` style with `IF NOT EXISTS` guards. Add domain/repository contracts and storage implementations for: raw source items, extraction observations, canonical knowledge entries, aliases, related candidates, crawl checkpoints, embeddings metadata, and TTL cleanup status. Canonical entry fields must include `entry_type` (`channel` or `slang`), `normalized_key`, `display_name`, `explanation`, `usage_summary` for slang, `primary_label`, `secondary_tags`, `confidence`, `first_seen_at`, `last_seen_at`, `evidence_count`, `latest_raw_item_id`, `prompt_version`, `model_name`, `schema_version`, and timestamps. Slang observations must include `term`, `normalized_term`, `literal_meaning`, `contextual_meaning`, `usage_quote`, `aliases_or_variants`, and `detected_language`. Raw item rows must include `source_type`, `source_id`, `external_id`, `source_url`, `chat_id/thread_id/topic_id` metadata where applicable, `raw_text` unchanged, `published_at`, `collected_at`, `expires_at`, `content_hash`, and source edit/delete metadata if available.
   **Must NOT do**: Do not store Telethon sessions, V2EX PATs, API keys, or private credentials in any DB table. Do not add query audit tables. Do not add a third service schema.
@@ -179,7 +179,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(schema): add intelligence domain storage foundation` | Files: [`migrations/postgresql/*.sql`, `crypto_news_analyzer/domain/models.py`, `crypto_news_analyzer/domain/repositories.py`, `crypto_news_analyzer/storage/repositories.py`, `crypto_news_analyzer/storage/data_manager.py`, `tests/test_intelligence_models.py`, `tests/test_intelligence_repositories.py`, `tests/integration/test_intelligence_schema.py`]
 
-- [ ] 2. Add Intelligence Config, Datasource Types, and Validation
+- [x] 2. Add Intelligence Config, Datasource Types, and Validation
 
   **What to do**: Add an `intelligence_collection` config block and typed config model. Add datasource types `telegram_group` and `v2ex` to the existing DB-first datasource pipeline. Validation must require Telegram source allowlist identifiers (`chat_id` or `username`) and reject any session/auth secrets in datasource payloads. V2EX config must support API version (`v1`/`v2`), node allowlist, optional PAT env var name only, and hourly/backfill settings. Add primary label enum and secondary tag validation. Extraction model config must be independent from existing news analysis but constrained to existing `opencode-go` provider/model registry.
   **Must NOT do**: Do not add DeepSeek provider. Do not add generic HTML crawler config. Do not allow “crawl all joined Telegram chats”.
@@ -224,7 +224,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(config): add intelligence datasource validation` | Files: [`crypto_news_analyzer/models.py`, `crypto_news_analyzer/domain/models.py`, `crypto_news_analyzer/datasource_payloads.py`, `crypto_news_analyzer/config/manager.py`, `config.jsonc`, `tests/test_intelligence_config.py`, `tests/test_intelligence_datasource_payloads.py`]
 
-- [ ] 3. Add Real Postgres/pgvector Integration Test Harness
+- [x] 3. Add Real Postgres/pgvector Integration Test Harness
 
   **What to do**: Add reusable test infrastructure for real Postgres/pgvector integration tests while keeping local test ergonomics. Use `TEST_DATABASE_URL` gating so default `uv run pytest tests/` remains usable without Postgres, and add clear skip behavior when the env var is absent. Add helpers to initialize migrations, truncate intelligence tables, and assert pgvector extension/vector columns. Keep existing fake psycopg tests intact.
   **Must NOT do**: Do not require Docker Compose or Testcontainers for every local unit test run. Do not mutate production DBs; tests must require explicit `TEST_DATABASE_URL` and defensive database-name checks.
@@ -265,7 +265,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `test(pgvector): add intelligence integration harness` | Files: [`tests/conftest.py`, `tests/integration/test_intelligence_pgvector.py`, `pyproject.toml`]
 
-- [ ] 4. Implement Allowlisted Telethon Telegram Collector
+- [x] 4. Implement Allowlisted Telethon Telegram Collector
 
   **What to do**: Add a Telegram collector implementing the existing `DataSourceInterface` pattern. It must read only the explicitly configured chat ID/username, use env-only Telethon credentials/session (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_STRING_SESSION` or names chosen consistently), support last-24-hour backfill on first run, store per-source checkpoints, and handle hourly incremental fetches. It must catch FloodWait/rate errors, log safe metadata only, and return normalized raw intelligence items without mutating raw text. Tests must mock Telethon client and verify no all-chat enumeration calls are made.
   **Must NOT do**: Do not call APIs that list all dialogs/chats for crawling. Do not persist session material. Do not auto-join chats. Do not scrape Telegram via browser.
@@ -309,7 +309,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(collector): add allowlisted telegram intelligence source` | Files: [`crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py`, `crypto_news_analyzer/crawlers/data_source_factory.py`, `crypto_news_analyzer/models.py`, `tests/test_intelligence_telegram_collector.py`]
 
-- [ ] 5. Implement V2EX Official API Collector
+- [x] 5. Implement V2EX Official API Collector
 
   **What to do**: Add a V2EX collector implementing `DataSourceInterface`. Support v1 public endpoints and v2 authenticated API via PAT env var name only. Support configured node allowlist, latest/hot/topic replies where API permits, rate-limit header handling, 24-hour initial backfill, checkpoints, and official API pagination. Normalize topics/replies into raw intelligence items with exact original content fields preserved. Store source URLs and external IDs for dedupe.
   **Must NOT do**: Do not implement generic HTML scraping, CSS selector parsing, browser automation, proxy rotation, or content mirroring beyond raw 30-day TTL storage.
@@ -352,7 +352,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(collector): add v2ex intelligence source` | Files: [`crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py`, `crypto_news_analyzer/crawlers/data_source_factory.py`, `tests/test_intelligence_v2ex_collector.py`]
 
-- [ ] 6. Add Structured Intelligence Extraction Pipeline
+- [x] 6. Add Structured Intelligence Extraction Pipeline
 
   **What to do**: Add a focused extractor that uses existing structured-output patterns to convert raw items into extraction observations for channel info and slang. Add prompt file, Pydantic structured result schema, prompt/model/schema version constants, confidence fields, primary label enum validation, secondary tag normalization, and batching. Configure extraction model independently under `intelligence_collection.extraction` but use existing `opencode-go` provider validation. Store observations append-first even when below canonical exposure threshold.
   **Must NOT do**: Do not reuse market/news analysis prompt. Do not add DeepSeek provider. Do not call semantic merge logic here. Do not promote private keys/tokens/passwords to canonical channel entries.
@@ -396,7 +396,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(extractor): add structured intelligence extraction` | Files: [`crypto_news_analyzer/analyzers/intelligence_extractor.py`, `crypto_news_analyzer/analyzers/structured_output_manager.py`, `prompts/intelligence_extraction_prompt.md`, `crypto_news_analyzer/models.py`, `tests/test_intelligence_extraction.py`]
 
-- [ ] 7. Implement Conservative Merge/Update and Related Candidate Logic
+- [x] 7. Implement Conservative Merge/Update and Related Candidate Logic
 
   **What to do**: Implement canonicalization and merge rules. Normalize URLs/domains, Telegram usernames, invite links, and slang terms. Exact normalized key match updates existing canonical entry (`last_seen_at`, `evidence_count`, aliases, confidence aggregation, latest evidence). Non-exact semantic/textual similarity creates `related_candidate` links only and must never mutate canonical entry identity. Add low-confidence threshold behavior: observations below configured threshold remain observations unless repeated evidence crosses threshold.
   **Must NOT do**: Do not merge by embedding similarity alone. Do not let LLM decide identity merges. Do not delete canonical knowledge when raw TTL purges evidence.
@@ -440,7 +440,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(intelligence): add conservative merge engine` | Files: [`crypto_news_analyzer/intelligence/merge.py`, `crypto_news_analyzer/storage/repositories.py`, `tests/test_intelligence_merge.py`, `tests/integration/test_intelligence_pgvector.py`]
 
-- [ ] 8. Add Embedding and Semantic Retrieval for Intelligence Entries
+- [x] 8. Add Embedding and Semantic Retrieval for Intelligence Entries
 
   **What to do**: Reuse existing `EmbeddingService` to generate embeddings for canonical entry searchable text and optionally raw TTL-window evidence text. For slang entries, embedding text must concatenate term, explanation, usage summary, aliases, primary label, and secondary tags. Add repository methods for semantic search filtered by time window, primary label, secondary tag, source type, entry type, and raw availability. Ranking must combine vector distance with recency and confidence in a deterministic way documented in code comments/tests. Keep embedding model metadata per row for future backfills.
   **Must NOT do**: Do not introduce a new embedding provider. Do not call existing `/semantic-search` async job flow for these synchronous APIs. Do not embed expired raw text after TTL purge.
@@ -484,7 +484,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(search): add intelligence semantic retrieval` | Files: [`crypto_news_analyzer/intelligence/search.py`, `crypto_news_analyzer/storage/repositories.py`, `crypto_news_analyzer/semantic_search/embedding_service.py`, `tests/test_intelligence_semantic_search.py`, `tests/integration/test_intelligence_pgvector.py`]
 
-- [ ] 9. Orchestrate Hourly Intelligence Ingestion and 30-Day Raw TTL Cleanup
+- [x] 9. Orchestrate Hourly Intelligence Ingestion and 30-Day Raw TTL Cleanup
 
   **What to do**: Integrate collectors, raw persistence, extraction, merge/update, embedding generation, checkpoint updates, and raw TTL purge into `ingestion` runtime without adding a new service. Add a deterministic `run_intelligence_collection_once()` style orchestration path that the existing scheduler can call hourly. First run per source backfills only last 24 hours; later runs use checkpoints. TTL cleanup must delete or null raw text older than 30 days while retaining canonical knowledge, observations, and provenance metadata that does not contain raw text.
   **Must NOT do**: Do not start intelligence ingestion from `analysis-service`. Do not delete canonical entries when raw expires. Do not add query audit during orchestration.
@@ -527,7 +527,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(ingestion): orchestrate intelligence collection` | Files: [`crypto_news_analyzer/execution_coordinator.py`, `crypto_news_analyzer/main.py`, `crypto_news_analyzer/intelligence/pipeline.py`, `tests/test_intelligence_ingestion_runtime.py`, `tests/test_intelligence_ttl.py`]
 
-- [ ] 10. Add Synchronous Bearer-Protected HTTP Query APIs
+- [x] 10. Add Synchronous Bearer-Protected HTTP Query APIs
 
   **What to do**: Add synchronous FastAPI endpoints in `analysis-service`/`api-only` app for intelligence querying. Required endpoints: recent/list query, semantic search query, entry detail, and raw evidence retrieval through the same authenticated surface. Use query params for `window` (e.g. `7d`), `entry_type`, `primary_label`, `secondary_tag`, `source_type`, `q`, `semantic`, `include_raw`, `include_low_confidence`, `page`, `page_size`. Return raw text exactly when `include_raw=true` and raw evidence is still within TTL; return `raw_text: null` or omit raw field after TTL with `raw_available=false`. Unauthorized requests return 401.
   **Must NOT do**: Do not implement async job/poll/result for v1 intelligence query. Do not add public routes. Do not add query audit. Do not redact raw text.
@@ -569,7 +569,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(api): add intelligence query endpoints` | Files: [`crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/intelligence/search.py`, `tests/test_intelligence_api.py`]
 
-- [ ] 11. Add Authorized Telegram Intelligence Query Commands
+- [x] 11. Add Authorized Telegram Intelligence Query Commands
 
   **What to do**: Add Telegram command handlers for authorized users to query recent intelligence and semantic search from `analysis-service`. Required commands: `/intel_recent [window] [label]`, `/intel_search <query>`, `/intel_detail <entry_id>`, and an explicit raw option such as `/intel_detail <entry_id> raw` if matching current command style. Respect existing authorized-user checks and command rate limits. Format responses with entry type, title/term, explanation, labels, confidence, last seen, source count, and raw text only when requested and TTL-valid.
   **Must NOT do**: Do not allow unauthorized Telegram users to query. Do not add query audit. Do not redact raw text when raw output is requested and TTL-valid. Do not send overly long messages without existing Telegram splitting/formatting safeguards.
@@ -612,7 +612,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `feat(telegram): add intelligence query commands` | Files: [`crypto_news_analyzer/reporters/telegram_command_handler.py`, `tests/test_intelligence_telegram_commands.py`, `README.md`]
 
-- [ ] 12. Enforce Secrets, Access, and No-Audit Guardrails End-to-End
+- [x] 12. Enforce Secrets, Access, and No-Audit Guardrails End-to-End
 
   **What to do**: Add cross-cutting tests and code guards ensuring secrets are env-only, config summaries redact auth hints, logs do not include session/PAT/API key values, all HTTP endpoints use existing Bearer auth, Telegram commands use existing authorized-user checks, and no query audit implementation exists. Add static-ish tests that scan new intelligence config/API responses for prohibited secret fields and audit artifacts. Keep raw text original by design while preventing accidental persistence of session secrets.
   **Must NOT do**: Do not add audit logs/events/tables. Do not add redaction of returned raw source text. Do not expose raw text through unauthenticated paths.
@@ -655,7 +655,7 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 
   **Commit**: YES | Message: `test(security): enforce intelligence guardrails` | Files: [`crypto_news_analyzer/datasource_payloads.py`, `crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/reporters/telegram_command_handler.py`, `tests/test_intelligence_security_guardrails.py`]
 
-- [ ] 13. Final Integration Hardening, Config Examples, and Regression Sweep
+- [x] 13. Final Integration Hardening, Config Examples, and Regression Sweep
 
   **What to do**: Add final wiring, docs/config examples, and regression coverage after all feature tasks. Update `.env.template` with Telethon env var names, V2EX PAT env var convention, and opencode-go extraction config notes without real secrets. Update README command/API lists only if needed. Run full regression commands. Ensure existing `analysis-service`, `api-only`, and `ingestion` modes still behave as documented. Add any missing fixture tests discovered by integration sweep.
   **Must NOT do**: Do not include real session strings, tokens, private group names, or sensitive source examples. Do not document legacy API-server as primary. Do not add public product language.
@@ -702,10 +702,10 @@ Wave 5: Task 13 integration hardening and docs/config examples.
 > 4 review agents run in PARALLEL. ALL must APPROVE. Present consolidated results to user and get explicit "okay" before completing.
 > **Do NOT auto-proceed after verification. Wait for user's explicit approval before marking work complete.**
 > **Never mark F1-F4 as checked before getting user's okay.** Rejection or user feedback -> fix -> re-run -> present again -> wait for okay.
-- [ ] F1. Plan Compliance Audit — oracle
-- [ ] F2. Code Quality Review — unspecified-high
-- [ ] F3. Real Manual QA — unspecified-high (+ playwright if UI)
-- [ ] F4. Scope Fidelity Check — deep
+- [x] F1. Plan Compliance Audit — oracle
+- [x] F2. Code Quality Review — unspecified-high
+- [x] F3. Real Manual QA — unspecified-high (+ playwright if UI)
+- [x] F4. Scope Fidelity Check — deep
 
 ## Commit Strategy
 - Make atomic commits per completed task when requested by the user during execution.

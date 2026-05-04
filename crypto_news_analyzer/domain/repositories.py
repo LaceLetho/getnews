@@ -11,7 +11,16 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
 
-from .models import AnalysisRequest, DataSource, IngestionJob, SemanticSearchJob
+from .models import (
+    AnalysisRequest,
+    CanonicalIntelligenceEntry,
+    DataSource,
+    ExtractionObservation,
+    IngestionJob,
+    IntelligenceCrawlCheckpoint,
+    RawIntelligenceItem,
+    SemanticSearchJob,
+)
 
 
 class AnalysisRepository(ABC):
@@ -378,6 +387,127 @@ class DataSourceRepository(ABC):
 
     @abstractmethod
     def delete(self, datasource_id: str) -> bool:
+        pass
+
+
+class IntelligenceRepository(ABC):
+    @abstractmethod
+    def save_raw_item(self, raw_item: RawIntelligenceItem) -> str:
+        pass
+
+    @abstractmethod
+    def get_raw_items_by_source(
+        self, source_type: str, source_id: str, limit: int, offset: int
+    ) -> List[RawIntelligenceItem]:
+        pass
+
+    @abstractmethod
+    def get_raw_items_expiring_before(self, cutoff_time: datetime) -> List[RawIntelligenceItem]:
+        pass
+
+    @abstractmethod
+    def get_raw_item_by_id(self, raw_item_id: str) -> Optional[RawIntelligenceItem]:
+        pass
+
+    @abstractmethod
+    def delete_expired_raw_items(self, cutoff_time: datetime) -> int:
+        pass
+
+    @abstractmethod
+    def purge_raw_text_older_than(self, cutoff_time: datetime) -> int:
+        pass
+
+    @abstractmethod
+    def save_observation(self, observation: ExtractionObservation) -> str:
+        pass
+
+    @abstractmethod
+    def get_observations_by_raw_item(self, raw_item_id: str) -> List[ExtractionObservation]:
+        pass
+
+    @abstractmethod
+    def get_uncanonicalized_observations(self, limit: int) -> List[ExtractionObservation]:
+        pass
+
+    @abstractmethod
+    def mark_observation_canonicalized(self, observation_id: str) -> bool:
+        pass
+
+    @abstractmethod
+    def save_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
+        pass
+
+    @abstractmethod
+    def get_canonical_entry_by_normalized_key(
+        self, entry_type: str, normalized_key: str
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def get_canonical_entry_by_id(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def upsert_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
+        pass
+
+    @abstractmethod
+    def list_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> List[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def count_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        pass
+
+    @abstractmethod
+    def update_embedding(self, entry_id: str, embedding: List[float], model: str) -> bool:
+        pass
+
+    @abstractmethod
+    def get_entries_missing_embeddings(self, limit: int) -> List[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def semantic_search(
+        self,
+        query_embedding: List[float],
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        limit: int = 20,
+    ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
+        pass
+
+    @abstractmethod
+    def save_related_candidate(
+        self,
+        entry_id_a: str,
+        entry_id_b: str,
+        similarity_score: float,
+        relationship_type: str,
+    ) -> None:
+        pass
+
+    @abstractmethod
+    def save_checkpoint(self, checkpoint: IntelligenceCrawlCheckpoint) -> None:
+        pass
+
+    @abstractmethod
+    def get_checkpoint(
+        self, source_type: str, source_id: str
+    ) -> Optional[IntelligenceCrawlCheckpoint]:
         pass
 
 

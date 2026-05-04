@@ -30,19 +30,19 @@ log_debug() {
 }
 
 run_postgres_migrations() {
-    local migration_file="/app/migrations/postgresql/001_init.sql"
+    local migration_dir="/app/migrations/postgresql"
 
     if [[ -z "${DATABASE_URL:-}" ]]; then
         log_error "DATABASE_URL 未设置，无法执行 PostgreSQL 迁移"
         return 1
     fi
 
-    if [[ ! -f "$migration_file" ]]; then
-        log_error "迁移文件不存在: $migration_file"
+    if [[ ! -d "$migration_dir" ]]; then
+        log_error "迁移目录不存在: $migration_dir"
         return 1
     fi
 
-    log_info "执行 PostgreSQL schema 迁移: $migration_file"
+    log_info "执行 PostgreSQL schema 迁移: $migration_dir/*.sql"
 
     python - <<'PY'
 from pathlib import Path
@@ -50,14 +50,17 @@ import os
 
 import psycopg
 
-migration_file = Path("/app/migrations/postgresql/001_init.sql")
-sql = migration_file.read_text(encoding="utf-8")
+migration_dir = Path("/app/migrations/postgresql")
+migration_files = sorted(migration_dir.glob("[0-9][0-9][0-9]_*.sql"))
+if not migration_files:
+    raise RuntimeError(f"No PostgreSQL migrations found in {migration_dir}")
 
 with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
     with conn.cursor() as cur:
-        cur.execute(sql)
-
-print(f"Applied PostgreSQL migration: {migration_file}")
+        for migration_file in migration_files:
+            sql = migration_file.read_text(encoding="utf-8")
+            cur.execute(sql)
+            print(f"Applied PostgreSQL migration: {migration_file}")
 PY
 
     log_info "PostgreSQL schema 迁移执行完成"

@@ -383,6 +383,14 @@ def register_builtin_sources() -> None:
         from .rest_api_crawler import RESTAPICrawler
         factory.register_source("rest_api", RESTAPICrawler)
         
+        # 注册V2EX官方API数据源
+        from .v2ex_intelligence_crawler import V2EXIntelligenceCrawler  # pyright: ignore[reportMissingImports]
+        factory.register_source("v2ex", V2EXIntelligenceCrawler)
+        
+        # 注册Telegram群组情报数据源
+        from .telegram_intelligence_crawler import TelegramIntelligenceCrawler
+        factory.register_source("telegram_group", TelegramIntelligenceCrawler)
+        
     except ImportError as e:
         # 如果某些适配器还未实现，记录警告但不中断
         logger = get_logger(__name__)
