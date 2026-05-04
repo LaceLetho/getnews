@@ -162,6 +162,8 @@ class MainController:
         self.cache_repository: Optional[Any] = None
         self.datasource_repository: Optional[Any] = None
         self.semantic_search_repository: Optional[Any] = None
+        self.intelligence_repository: Optional[Any] = None
+        self._intelligence_pipeline: Optional[Any] = None
 
         # 执行状态管理
         self.current_execution: Optional[ExecutionInfo] = None
@@ -461,6 +463,7 @@ class MainController:
             self.telegram_sender = None
             self.command_handler = None
             self.market_snapshot_service = None
+            self._initialize_intelligence_pipeline_for_ingestion()
 
             self._initialized = True
             self.logger.info("摄取服务组件初始化完成（ingestion-only）")
@@ -502,6 +505,7 @@ class MainController:
         self.content_repository = self._repositories["content"]
         self.cache_repository = self._repositories["cache"]
         self.semantic_search_repository = self._repositories.get("semantic_search")
+        self.intelligence_repository = self._repositories.get("intelligence")
         self.logger.info("Repository初始化完成（存储边界已提取）")
 
         self._initialize_embedding_service()
@@ -527,6 +531,54 @@ class MainController:
 
         # 内置数据源已在模块导入时自动注册（见 crawlers/__init__.py）
         return config_data
+
+    def _initialize_intelligence_pipeline_for_ingestion(self) -> None:
+        self._intelligence_pipeline = None
+        if self.config_manager is None:
+            raise ValueError("配置管理器未初始化")
+
+        intelligence_config_payload = dict(
+            self.config_manager.config_data.get("intelligence_collection", {})
+        )
+        if not intelligence_config_payload:
+            self.logger.info("智能采集配置未启用，跳过IntelligencePipeline初始化")
+            return
+
+        if self.intelligence_repository is None or self.datasource_repository is None:
+            raise ValueError("智能采集仓储未初始化")
+
+        from .analyzers.intelligence_extractor import IntelligenceExtractor
+        from .intelligence.merge import IntelligenceMergeEngine
+        from .intelligence.pipeline import IntelligencePipeline
+        from .intelligence.search import IntelligenceSearchService
+
+        intelligence_config = self.config_manager.get_intelligence_config()
+        setattr(self.intelligence_repository, "datasource_repository", self.datasource_repository)
+
+        extractor = IntelligenceExtractor(
+            config=intelligence_config,
+            repository=self.intelligence_repository,
+        )
+        merge_engine = IntelligenceMergeEngine(
+            intelligence_repository=self.intelligence_repository,
+            confidence_threshold=intelligence_config.collection.confidence_threshold,
+        )
+        search_service = None
+        if self.embedding_service is not None and self.storage_config is not None:
+            search_service = IntelligenceSearchService(
+                embedding_service=self.embedding_service,
+                intelligence_repository=self.intelligence_repository,
+                storage_config=self.storage_config,
+            )
+
+        self._intelligence_pipeline = IntelligencePipeline(
+            data_source_factory=get_data_source_factory(),
+            intelligence_repository=self.intelligence_repository,
+            extractor=extractor,
+            merge_engine=merge_engine,
+            search_service=search_service,
+        )
+        self.logger.info("IntelligencePipeline初始化完成（ingestion-only）")
 
     def _initialize_embedding_service(self) -> None:
         if self.config_manager is None or self.data_manager is None:
@@ -2092,6 +2144,14 @@ class MainController:
             # 执行爬取阶段
             time_window_hours = self.config_manager.get_time_window_hours()
             crawl_result = self._execute_crawling_stage(time_window_hours)
+            if crawl_result["success"] and self._intelligence_pipeline is not None:
+                intelligence_result = self._intelligence_pipeline.run_intelligence_collection_once()
+                crawl_result["intelligence_result"] = intelligence_result
+                if intelligence_result.get("errors"):
+                    self.logger.warning(
+                        "智能采集完成但存在错误: %s",
+                        "; ".join(intelligence_result.get("errors", [])),
+                    )
 
             # 更新执行状态
             end_time = datetime.now()

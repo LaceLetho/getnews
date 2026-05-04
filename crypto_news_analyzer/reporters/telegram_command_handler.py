@@ -21,6 +21,7 @@ import os
 import hashlib
 import threading
 import time
+from urllib.parse import urlsplit, urlunsplit
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -36,13 +37,14 @@ from ..datasource_payloads import (
     parse_telegram_datasource_command_json,
     validate_telegram_datasource_create_payload,
 )
-from ..domain.models import DataSourceAlreadyExistsError, DataSourceInUseError
+from ..domain.models import DataSourceAlreadyExistsError, DataSourceInUseError, PrimaryLabel
 from ..models import (
     ChatContext,
     CommandExecutionHistory,
     SemanticSearchConfig,
     TelegramCommandConfig,
 )
+from ..intelligence.search import IntelligenceSearchService
 from ..utils.timezone_utils import now_utc8, format_datetime_utc8
 
 
@@ -186,6 +188,9 @@ class TelegramCommandHandler:
         application.add_handler(
             CommandHandler("semantic_search", self._handle_semantic_search_command)
         )
+        application.add_handler(CommandHandler("intel_recent", self._handle_intel_recent_command))
+        application.add_handler(CommandHandler("intel_search", self._handle_intel_search_command))
+        application.add_handler(CommandHandler("intel_detail", self._handle_intel_detail_command))
         application.add_handler(CommandHandler("market", self._handle_market_command))
         application.add_handler(CommandHandler("status", self._handle_status_command))
         application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
@@ -617,6 +622,9 @@ class TelegramCommandHandler:
                 BotCommand(
                     "semantic_search", "语义搜索，如/semantic_search 24 BTC adoption"
                 ),
+                BotCommand("intel_recent", "查看最近情报条目"),
+                BotCommand("intel_search", "搜索情报条目"),
+                BotCommand("intel_detail", "查看情报条目详情"),
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
                 BotCommand("tokens", "查看LLM token使用统计"),
@@ -900,6 +908,234 @@ class TelegramCommandHandler:
                 f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_intel_recent_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+        message = getattr(update, "effective_message", None) or update.message
+
+        if message is None:
+            self.logger.error("/intel_recent update has no effective message")
+            return
+
+        args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/intel_recent",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list",
+                )
+                self._log_command_execution(
+                    "/intel_recent", user_id, username, None, False, response
+                )
+                return
+
+            self._log_authorization_attempt(
+                command="/intel_recent",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True,
+            )
+
+            window_hours = 24
+            label = ""
+            if args:
+                first_arg = args[0]
+                if first_arg.isdigit():
+                    window_hours = int(first_arg)
+                    label = " ".join(args[1:]).strip()
+                else:
+                    label = " ".join(args).strip()
+
+            if window_hours <= 0:
+                await message.reply_text(
+                    "❌ 参数错误\n\n请输入有效的时间窗口，例如：/intel_recent 24 账号交易"
+                )
+                return
+
+            response = self.handle_intel_recent_command(
+                user_id, username, chat_id, window_hours, label or None
+            )
+            await message.reply_text(response, parse_mode="Markdown")
+
+        except Exception as e:
+            error_msg = f"处理/intel_recent命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_intel_search_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+        message = getattr(update, "effective_message", None) or update.message
+
+        if message is None:
+            self.logger.error("/intel_search update has no effective message")
+            return
+
+        args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/intel_search",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list",
+                )
+                self._log_command_execution(
+                    "/intel_search", user_id, username, None, False, response
+                )
+                return
+
+            self._log_authorization_attempt(
+                command="/intel_search",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True,
+            )
+
+            allowed, error_msg = self.check_rate_limit(user_id)
+            if not allowed:
+                response = f"⏱️ 速率限制\n\n{error_msg}"
+                await message.reply_text(response)
+                self._log_command_execution(
+                    "/intel_search", user_id, username, None, False, response
+                )
+                return
+
+            if not args:
+                await message.reply_text(
+                    "❌ 参数错误\n\n用法: /intel_search <query>\n示例: /intel_search GPT plus购买渠道"
+                )
+                return
+
+            query = " ".join(args).strip()
+            if not query:
+                await message.reply_text(
+                    "❌ 参数错误\n\n用法: /intel_search <query>\n示例: /intel_search GPT plus购买渠道"
+                )
+                return
+
+            response = self.handle_intel_search_command(user_id, username, chat_id, query)
+            await message.reply_text(response, parse_mode="Markdown")
+
+        except Exception as e:
+            error_msg = f"处理/intel_search命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_intel_detail_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+        message = getattr(update, "effective_message", None) or update.message
+
+        if message is None:
+            self.logger.error("/intel_detail update has no effective message")
+            return
+
+        args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/intel_detail",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list",
+                )
+                self._log_command_execution(
+                    "/intel_detail", user_id, username, None, False, response
+                )
+                return
+
+            self._log_authorization_attempt(
+                command="/intel_detail",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True,
+            )
+
+            if not args:
+                await message.reply_text(
+                    "❌ 参数错误\n\n用法: /intel_detail <entry_id> [raw]\n示例: /intel_detail intel-123 raw"
+                )
+                return
+
+            entry_id = args[0]
+            include_raw = len(args) > 1 and args[1].lower() == "raw"
+
+            response = self.handle_intel_detail_command(
+                user_id, username, chat_id, entry_id, include_raw
+            )
+            await message.reply_text(response, parse_mode="Markdown")
+
+        except Exception as e:
+            error_msg = f"处理/intel_detail命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
 
     async def _handle_status_command(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -1831,6 +2067,251 @@ class TelegramCommandHandler:
                 service = getter()
         return service
 
+    def _get_intelligence_repository(self) -> Optional[Any]:
+        repository = getattr(self.execution_coordinator, "intelligence_repository", None)
+        if repository is None:
+            getter = getattr(self.execution_coordinator, "get_intelligence_repository", None)
+            if callable(getter):
+                repository = getter()
+        return repository
+
+    def _get_intelligence_search_service(self) -> Optional[Any]:
+        service = getattr(self.execution_coordinator, "intelligence_search_service", None)
+        if service is None:
+            getter = getattr(
+                self.execution_coordinator, "get_intelligence_search_service", None
+            )
+            if callable(getter):
+                service = getter()
+
+        if service is not None:
+            return service
+
+        repository = self._get_intelligence_repository()
+        embedding_service = getattr(self.execution_coordinator, "embedding_service", None)
+        storage_config = getattr(self.execution_coordinator, "storage_config", None)
+        if repository is None or embedding_service is None or storage_config is None:
+            return None
+
+        return IntelligenceSearchService(
+            embedding_service=embedding_service,
+            intelligence_repository=repository,
+            storage_config=storage_config,
+        )
+
+    def _normalize_intelligence_primary_label(self, label: Optional[str]) -> Optional[str]:
+        normalized = str(label or "").strip()
+        if not normalized:
+            return None
+
+        for item in PrimaryLabel:
+            if normalized == item.value or normalized.lower() == item.name.lower():
+                return item.value
+        return normalized
+
+    def _format_intelligence_entry_summary(self, entry: Any) -> str:
+        last_seen = (
+            format_datetime_utc8(entry.last_seen_at)
+            if getattr(entry, "last_seen_at", None)
+            else "未知"
+        )
+        return (
+            f"• *{entry.display_name}*\n"
+            f"  - 标签: {entry.primary_label or '无'}\n"
+            f"  - 说明: {entry.explanation or entry.usage_summary or '无'}\n"
+            f"  - 置信度: {float(getattr(entry, 'confidence', 0.0)):.2f}\n"
+            f"  - 最后出现: {last_seen}\n"
+            f"  - 来源数: {int(getattr(entry, 'evidence_count', 0) or 0)}"
+        )
+
+    def _format_intelligence_detail(self, entry: Any, raw_text: Optional[str] = None) -> str:
+        last_seen = (
+            format_datetime_utc8(entry.last_seen_at)
+            if getattr(entry, "last_seen_at", None)
+            else "未知"
+        )
+        parts = [
+            "📌 *情报详情*",
+            f"*名称:* {entry.display_name}",
+            f"*类型:* {entry.entry_type}",
+            f"*标签:* {entry.primary_label or '无'}",
+            f"*说明:* {entry.explanation or entry.usage_summary or '无'}",
+            f"*置信度:* {float(getattr(entry, 'confidence', 0.0)):.2f}",
+            f"*最后出现:* {last_seen}",
+            f"*来源数:* {int(getattr(entry, 'evidence_count', 0) or 0)}",
+        ]
+        if getattr(entry, "aliases", None):
+            parts.append(f"*别名:* {', '.join(entry.aliases)}")
+        if raw_text is not None:
+            parts.append("")
+            parts.append("*Raw evidence:*")
+            parts.append(raw_text)
+        return "\n".join(parts)
+
+    def _format_intelligence_search_results(
+        self, query: str, results: List[tuple[Any, float]]
+    ) -> str:
+        if not results:
+            return "No entries found."
+
+        lines = [f"🔎 *情报搜索*\n查询: {query}\n"]
+        for index, (entry, score) in enumerate(results, start=1):
+            lines.append(
+                f"{index}. *{entry.display_name}* | 标签: {entry.primary_label or '无'} | 置信度: {float(getattr(entry, 'confidence', 0.0)):.2f} | 相似度: {float(score):.3f}"
+            )
+            if getattr(entry, "explanation", None):
+                lines.append(f"   {entry.explanation}")
+        return "\n".join(lines)
+
+    def _format_intelligence_recent_results(self, entries: List[Any]) -> str:
+        if not entries:
+            return "No entries found."
+
+        lines = ["📌 *最近情报条目*\n"]
+        for index, entry in enumerate(entries, start=1):
+            last_seen = (
+                format_datetime_utc8(entry.last_seen_at)
+                if getattr(entry, "last_seen_at", None)
+                else "未知"
+            )
+            lines.append(
+                f"{index}. *{entry.display_name}* | 标签: {entry.primary_label or '无'} | 置信度: {float(getattr(entry, 'confidence', 0.0)):.2f} | 最后出现: {last_seen}"
+            )
+            if getattr(entry, "explanation", None):
+                lines.append(f"   {entry.explanation}")
+        return "\n".join(lines)
+
+    def _build_intelligence_raw_response(self, entry: Any, raw_item: Optional[Any]) -> str:
+        raw_text = None
+        raw_available = False
+        if raw_item is not None:
+            now = datetime.utcnow()
+            raw_available = bool(
+                getattr(raw_item, "expires_at", None) and raw_item.expires_at > now
+            )
+            if raw_available:
+                raw_text = raw_item.raw_text
+
+        response = self._format_intelligence_detail(entry, raw_text=raw_text)
+        if raw_item is not None and not raw_available:
+            response += "\n\n⚠️ raw evidence expired"
+        return response
+
+    def handle_intel_recent_command(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        window_hours: int,
+        label: Optional[str] = None,
+    ) -> str:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                response = "❌ 情报仓储未初始化\n\n请先完成情报模块配置。"
+                self._log_command_execution(
+                    "/intel_recent", user_id, username, None, False, response
+                )
+                return response
+
+            cutoff = datetime.utcnow() - timedelta(hours=max(1, int(window_hours)))
+            primary_label = self._normalize_intelligence_primary_label(label)
+            entries = repository.list_canonical_entries(
+                entry_type=None,
+                primary_label=primary_label,
+                window=cutoff,
+                page=1,
+                page_size=20,
+            )
+            response = self._format_intelligence_recent_results(entries)
+            self._log_command_execution(
+                "/intel_recent", user_id, username, None, bool(entries), response
+            )
+            return response
+        except Exception as e:
+            error_msg = f"查询最近情报失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_recent", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
+    def handle_intel_search_command(
+        self, user_id: str, username: str, chat_id: str, query: str
+    ) -> str:
+        try:
+            service = self._get_intelligence_search_service()
+            if service is None:
+                response = "❌ 情报搜索服务未初始化\n\n请先完成情报模块配置。"
+                self._log_command_execution(
+                    "/intel_search", user_id, username, None, False, response
+                )
+                return response
+
+            results = service.semantic_search(query_text=query, limit=10)
+            response = self._format_intelligence_search_results(query, results)
+            self._log_command_execution(
+                "/intel_search", user_id, username, None, bool(results), response
+            )
+            return response
+        except Exception as e:
+            error_msg = f"情报搜索失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_search", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
+    def handle_intel_detail_command(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+        include_raw: bool = False,
+    ) -> str:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                response = "❌ 情报仓储未初始化\n\n请先完成情报模块配置。"
+                self._log_command_execution(
+                    "/intel_detail", user_id, username, None, False, response
+                )
+                return response
+
+            entry = repository.get_canonical_entry_by_id(entry_id)
+            if entry is None:
+                response = "Entry not found"
+                self._log_command_execution(
+                    "/intel_detail", user_id, username, None, False, response
+                )
+                return response
+
+            raw_item = None
+            if include_raw and getattr(entry, "latest_raw_item_id", None):
+                raw_item = repository.get_raw_item_by_id(entry.latest_raw_item_id)
+
+            response = (
+                self._build_intelligence_raw_response(entry, raw_item)
+                if include_raw
+                else self._format_intelligence_detail(entry)
+            )
+            log_response = response
+            if include_raw and raw_item is not None:
+                log_response = self._format_intelligence_detail(entry)
+                log_response += "\n\n[raw evidence returned; omitted from command history]"
+            self._log_command_execution(
+                "/intel_detail", user_id, username, None, True, log_response
+            )
+            return response
+        except Exception as e:
+            error_msg = f"情报详情查询失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_detail", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
     def _execute_semantic_search_and_notify(
         self,
         user_id: str,
@@ -2198,6 +2679,9 @@ class TelegramCommandHandler:
             user_permissions = [
                 "analyze",
                 "semantic_search",
+                "intel_recent",
+                "intel_search",
+                "intel_detail",
                 "market",
                 "status",
                 "help",
@@ -2218,6 +2702,19 @@ class TelegramCommandHandler:
                 "/semantic_search <hours> <topic> - 按时间窗口执行语义搜索\n"
                 "hours 为必填参数，例如 /semantic_search 24 BTC adoption。\n"
             )
+
+        help_text.append(
+            "/intel_recent [window] [label] - 查看最近情报条目\n"
+            "例如 /intel_recent 24 账号交易。\n"
+        )
+        help_text.append(
+            "/intel_search <query> - 语义搜索情报条目\n"
+            "例如 /intel_search GPT plus购买渠道。\n"
+        )
+        help_text.append(
+            "/intel_detail <entry_id> [raw] - 查看情报条目详情\n"
+            "加 raw 可返回 TTL 内原始证据。\n"
+        )
 
         if "status" in user_permissions:
             help_text.append(
@@ -2380,11 +2877,24 @@ class TelegramCommandHandler:
                 config_payload.get("description")
             )
             if endpoint:
-                lines.append(f"   接口: {endpoint}")
+                lines.append(f"   接口: {self._summarize_public_endpoint(endpoint)}")
             if description:
                 lines.append(f"   描述: {description}")
 
         return lines
+
+    def _format_datasource_lines(self, datasource: Any, index: int) -> List[str]:
+        return self._build_datasource_list_lines(index, datasource)
+
+    def _summarize_public_endpoint(self, endpoint: str) -> str:
+        try:
+            parsed = urlsplit(endpoint)
+        except ValueError:
+            return endpoint.split("?", 1)[0].split("#", 1)[0]
+        netloc = parsed.hostname or ""
+        if parsed.port is not None:
+            netloc = f"{netloc}:{parsed.port}"
+        return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
 
     def _format_datasource_add_error_response(
         self,

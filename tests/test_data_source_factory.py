@@ -7,7 +7,7 @@
 import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, cast, Type
 
 from crypto_news_analyzer.crawlers import (
     DataSourceFactory,
@@ -17,7 +17,8 @@ from crypto_news_analyzer.crawlers import (
     get_data_source_factory,
     RESTAPICrawler,
     RSSCrawlerAdapter,
-    XCrawlerAdapter
+    XCrawlerAdapter,
+    V2EXIntelligenceCrawler,
 )
 from crypto_news_analyzer.models import ContentItem, create_content_item_from_raw
 
@@ -110,7 +111,7 @@ class TestDataSourceFactory:
             pass
         
         with pytest.raises(ValueError, match="必须实现 DataSourceInterface 接口"):
-            factory.register_source("invalid", InvalidSource)
+            factory.register_source("invalid", cast(Type[DataSourceInterface], InvalidSource))
     
     def test_register_source_empty_type(self):
         """测试注册空类型名称"""
@@ -300,6 +301,7 @@ class TestGlobalFactory:
         assert "rss" in available_types
         assert "x" in available_types
         assert "rest_api" in available_types
+        assert "v2ex" in available_types
     
     def test_builtin_source_creation(self):
         """测试创建内置数据源"""
@@ -319,6 +321,10 @@ class TestGlobalFactory:
         api_source = factory.create_source("rest_api", time_window_hours=24)
         assert isinstance(api_source, RESTAPICrawler)
         api_source.cleanup()
+
+        v2ex_source = factory.create_source("v2ex", time_window_hours=24)
+        assert isinstance(v2ex_source, V2EXIntelligenceCrawler)
+        v2ex_source.cleanup()
 
 
 class TestDataSourceInterface:

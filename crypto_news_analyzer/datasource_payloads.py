@@ -32,9 +32,14 @@ TELEGRAM_INLINE_SECRET_KEY_TOKENS = (
     "password",
     "passwd",
     "session",
+    "session_string",
+    "api_id",
+    "api_hash",
+    "phone",
     "auth",
 )
 TELEGRAM_INLINE_SECRET_VALUE_TOKENS = ("bearer ", "token", "api_key", "apikey", "cookie")
+V2EX_ALLOWED_API_VERSIONS = {"v1", "v2"}
 
 
 class DataSourcePayloadValidationError(ValueError):
@@ -97,7 +102,7 @@ def validate_datasource_create_payload(payload: Mapping[str, Any]) -> ValidatedD
     source_type = str(raw_source_type or "").strip().lower()
     if source_type not in SUPPORTED_DATASOURCE_TYPES:
         raise DataSourcePayloadValidationError(
-            "source_type must be one of: rss, x, rest_api"
+            "source_type must be one of: rss, x, rest_api, telegram_group, v2ex"
         )
 
     raw_tags = payload.get("tags", [])
@@ -133,6 +138,10 @@ def validate_datasource_config_payload(source_type: str, payload: Mapping[str, A
         return _validate_x_payload(payload)
     if normalized_source_type == DataSourceType.REST_API.value:
         return _validate_rest_api_payload(payload)
+    if normalized_source_type == DataSourceType.TELEGRAM_GROUP.value:
+        return _validate_telegram_group_payload(payload)
+    if normalized_source_type == DataSourceType.V2EX.value:
+        return _validate_v2ex_payload(payload)
 
     raise DataSourcePayloadValidationError(
         f"Unsupported datasource type: {source_type}"
@@ -235,6 +244,91 @@ def validate_telegram_datasource_create_payload(payload: Mapping[str, Any]) -> V
     return validated_payload
 
 
+def _validate_telegram_group_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    name = _require_non_empty_string(payload, field_name="name", source_type="telegram_group")
+    chat_id = payload.get("chat_id")
+    chat_username = payload.get("chat_username")
+
+    if chat_id is None and chat_username is None:
+        raise DataSourcePayloadValidationError(
+            "telegram_group requires chat_id or chat_username"
+        )
+
+    if chat_id is not None and not isinstance(chat_id, (int, str)):
+        raise DataSourcePayloadValidationError("telegram_group.chat_id must be a string or integer")
+    if isinstance(chat_id, str) and not chat_id.strip():
+        raise DataSourcePayloadValidationError("telegram_group.chat_id must not be blank")
+
+    if chat_username is not None and not isinstance(chat_username, str):
+        raise DataSourcePayloadValidationError("telegram_group.chat_username must be a string")
+    if isinstance(chat_username, str) and not chat_username.strip():
+        raise DataSourcePayloadValidationError("telegram_group.chat_username must not be blank")
+
+    _reject_secret_like_payload(payload, source_type="telegram_group")
+
+    normalized_payload: Dict[str, Any] = {"name": name}
+    if chat_id is not None:
+        normalized_payload["chat_id"] = chat_id
+    if chat_username is not None:
+        normalized_payload["chat_username"] = chat_username.strip()
+    return normalized_payload
+
+
+def _validate_v2ex_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    name = _require_non_empty_string(payload, field_name="name", source_type="v2ex")
+
+    api_version = str(payload.get("api_version", "v2") or "").strip().lower()
+    if api_version not in V2EX_ALLOWED_API_VERSIONS:
+        raise DataSourcePayloadValidationError("v2ex.api_version must be v1 or v2")
+
+    if "node_allowlist" not in payload:
+        raise DataSourcePayloadValidationError(
+            "v2ex.node_allowlist must be provided (use an empty list to allow all nodes)"
+        )
+
+    node_allowlist = payload.get("node_allowlist")
+    if not isinstance(node_allowlist, list):
+        raise DataSourcePayloadValidationError("v2ex.node_allowlist must be a list of strings")
+
+    normalized_node_allowlist = []
+    for node_name in node_allowlist:
+        if not isinstance(node_name, str) or not node_name.strip():
+            raise DataSourcePayloadValidationError(
+                "v2ex.node_allowlist must contain only non-empty strings"
+            )
+        normalized_node_allowlist.append(node_name.strip())
+
+    pat_env_var_name = payload.get("pat_env_var_name")
+    if pat_env_var_name is not None:
+        if not isinstance(pat_env_var_name, str) or not pat_env_var_name.strip():
+            raise DataSourcePayloadValidationError(
+                "v2ex.pat_env_var_name must be a non-empty string"
+            )
+        normalized_pat_env_var_name = pat_env_var_name.strip()
+        if not _looks_like_env_var_name(normalized_pat_env_var_name):
+            raise DataSourcePayloadValidationError(
+                "v2ex.pat_env_var_name must be an environment variable name"
+            )
+    else:
+        normalized_pat_env_var_name = None
+
+    crawler_mode = str(payload.get("crawler_mode", "") or "").strip().lower()
+    if crawler_mode == "html":
+        raise DataSourcePayloadValidationError("v2ex.crawler_mode cannot be html")
+
+    _reject_v2ex_html_scraping_fields(payload)
+    _reject_secret_like_payload(payload, source_type="v2ex")
+
+    normalized_payload: Dict[str, Any] = {
+        "name": name,
+        "api_version": api_version,
+        "node_allowlist": normalized_node_allowlist,
+    }
+    if normalized_pat_env_var_name is not None:
+        normalized_payload["pat_env_var_name"] = normalized_pat_env_var_name
+    return normalized_payload
+
+
 def _validate_rss_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:
     name = _require_non_empty_string(payload, field_name="name", source_type="rss")
     url = _require_http_url(payload, field_name="url", source_type="rss")
@@ -327,9 +421,9 @@ def _reject_telegram_inline_secrets(container: Mapping[str, Any], *, container_n
         return
 
     for raw_key, raw_value in container.items():
-        normalized_key = str(raw_key).strip().lower().replace("_", "-")
+        normalized_key = str(raw_key).strip().lower()
         normalized_value = str(raw_value).strip().lower()
-        if any(token in normalized_key for token in TELEGRAM_INLINE_SECRET_KEY_TOKENS):
+        if _contains_inline_secret_token(normalized_key):
             raise TelegramDataSourceInputError(
                 f"❌ 无效输入\n\nTelegram 不支持在 rest_api.{container_name} 中内联提交敏感认证字段: {raw_key}"
             )
@@ -337,6 +431,73 @@ def _reject_telegram_inline_secrets(container: Mapping[str, Any], *, container_n
             raise TelegramDataSourceInputError(
                 f"❌ 无效输入\n\nTelegram 不支持在 rest_api.{container_name} 中内联提交敏感认证值: {raw_key}"
             )
+
+
+def _reject_secret_like_payload(payload: Mapping[str, Any], *, source_type: str) -> None:
+    def _walk(value: Any, path: str = "") -> None:
+        if isinstance(value, Mapping):
+            for raw_key, raw_item in value.items():
+                normalized_key = str(raw_key).strip().lower()
+                if _contains_inline_secret_token(normalized_key):
+                    raise DataSourcePayloadValidationError(
+                        f"{source_type} payload cannot contain secret field: {raw_key}"
+                    )
+                _walk(raw_item, f"{path}.{raw_key}" if path else str(raw_key))
+            return
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                _walk(item, f"{path}[{index}]")
+            return
+        if isinstance(value, str):
+            normalized_value = value.strip().lower()
+            if any(token in normalized_value for token in TELEGRAM_INLINE_SECRET_VALUE_TOKENS):
+                raise DataSourcePayloadValidationError(
+                    f"{source_type} payload cannot contain secret-like values"
+                )
+
+    _walk(payload)
+
+
+def _contains_inline_secret_token(normalized_key: str) -> bool:
+    normalized_variants = {
+        normalized_key,
+        normalized_key.replace("_", "-"),
+        normalized_key.replace("-", "_"),
+    }
+    return any(
+        token in variant
+        for token in TELEGRAM_INLINE_SECRET_KEY_TOKENS
+        for variant in normalized_variants
+    )
+
+
+def _reject_v2ex_html_scraping_fields(payload: Mapping[str, Any]) -> None:
+    forbidden_keys = {
+        "html_selector",
+        "article_selector",
+        "content_selector",
+        "css_selector",
+        "css_selectors",
+        "selector",
+        "selectors",
+        "list_selector",
+        "xpath",
+        "xpath_selector",
+    }
+    for raw_key in payload.keys():
+        normalized_key = str(raw_key).strip().lower().replace("-", "_")
+        if normalized_key in forbidden_keys or "selector" in normalized_key or normalized_key == "html":
+            raise DataSourcePayloadValidationError(
+                "v2ex payload cannot include HTML scraping or CSS selector fields"
+            )
+
+
+def _looks_like_env_var_name(value: str) -> bool:
+    if not value:
+        return False
+    if not value.replace("_", "").isalnum():
+        return False
+    return value.upper() == value
 
 
 def _reject_telegram_rest_api_inline_auth(payload: Mapping[str, Any]) -> None:

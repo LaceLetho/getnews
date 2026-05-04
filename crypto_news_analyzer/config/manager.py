@@ -21,6 +21,7 @@ from ..datasource_payloads import (
 from ..domain.models import DataSource
 from ..domain.repositories import DataSourceRepository
 from ..models import (
+    IntelligenceConfig,
     RSSSource,
     XSource,
     AuthConfig,
@@ -210,6 +211,14 @@ class ConfigManager:
             except ValueError as exc:
                 self.logger.error(f"语义搜索配置无效: {exc}")
                 return False
+
+            intelligence_collection_data = dict(config.get("intelligence_collection", {}))
+            if intelligence_collection_data:
+                try:
+                    IntelligenceConfig.from_dict(intelligence_collection_data)
+                except ValueError as exc:
+                    self.logger.error(f"智能采集配置无效: {exc}")
+                    return False
 
             # 验证RSS源配置
             if "rss_sources" in config:
@@ -406,6 +415,11 @@ class ConfigManager:
             semantic_search_data["synthesis_batch_size"] = llm_batch_size
         return SemanticSearchConfig.from_dict(semantic_search_data)
 
+    def get_intelligence_config(self) -> IntelligenceConfig:
+        """获取智能采集配置。"""
+        intelligence_data = dict(self.config_data.get("intelligence_collection", {}))
+        return IntelligenceConfig.from_dict(intelligence_data)
+
     def get_analysis_config(self) -> Dict[str, int]:
         """
         获取分析配置
@@ -537,6 +551,21 @@ class ConfigManager:
                 "keyword_search_limit": 30,
                 "max_keyword_queries": 12,
                 "enabled": True,
+            },
+            "intelligence_collection": {
+                "extraction": {
+                    "provider": "opencode-go",
+                    "model": "kimi-k2.5",
+                    "temperature": 0.5,
+                    "max_tokens": 4000,
+                },
+                "collection": {
+                    "interval_minutes": 60,
+                    "ttl_days": 30,
+                    "backfill_hours": 24,
+                    "confidence_threshold": 0.6,
+                },
+                "sources": {},
             },
             "rss_sources": [
                 {

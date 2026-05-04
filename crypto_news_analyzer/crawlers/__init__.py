@@ -9,8 +9,10 @@ from .x_crawler import XCrawler
 from .data_source_interface import DataSourceInterface, DataSourceError, ConfigValidationError, SourceUnavailableError, CrawlError
 from .data_source_factory import DataSourceFactory, get_data_source_factory, register_builtin_sources
 from .rest_api_crawler import RESTAPICrawler
+from .v2ex_intelligence_crawler import V2EXIntelligenceCrawler  # pyright: ignore[reportMissingImports]
 from .rss_crawler_adapter import RSSCrawlerAdapter
 from .x_crawler_adapter import XCrawlerAdapter
+from .telegram_intelligence_crawler import TelegramIntelligenceCrawler
 from .bird_dependency_manager import BirdDependencyManager, DependencyStatus, ValidationResult
 from .bird_wrapper import BirdWrapper
 
@@ -39,8 +41,10 @@ __all__ = [
     
     # 新的数据源实现
     'RESTAPICrawler',
+    'V2EXIntelligenceCrawler',
     'RSSCrawlerAdapter',
     'XCrawlerAdapter',
+    'TelegramIntelligenceCrawler',
     
     # Bird工具相关
     'BirdDependencyManager',

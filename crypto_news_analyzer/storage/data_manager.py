@@ -406,9 +406,163 @@ class DataManager:
                 CREATE INDEX IF NOT EXISTS idx_datasource_tags_tag
                 ON datasource_tags (tag)
             """)
+            self._initialize_intelligence_tables(cursor)
 
             conn.commit()
             logger.info("数据库表结构初始化完成")
+
+    def _initialize_intelligence_tables(self, cursor: Any) -> None:
+        json_default_empty_object = "'{}'::jsonb" if self.backend == "postgres" else "'{}'"
+        json_default_empty_list = "'[]'::jsonb" if self.backend == "postgres" else "'[]'"
+        datetime_type = "TIMESTAMPTZ" if self.backend == "postgres" else "DATETIME"
+        embedding_type = (
+            f"vector({self.config.pgvector_dimensions})" if self.backend == "postgres" else "TEXT"
+        )
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS raw_intelligence_items (
+                id TEXT PRIMARY KEY,
+                source_type TEXT NOT NULL,
+                source_id TEXT,
+                external_id TEXT,
+                source_url TEXT,
+                chat_id TEXT,
+                thread_id TEXT,
+                topic_id TEXT,
+                raw_text TEXT,
+                content_hash TEXT NOT NULL,
+                published_at {datetime_type},
+                collected_at {datetime_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at {datetime_type} NOT NULL,
+                edit_status TEXT,
+                edit_timestamp {datetime_type},
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        if self.backend == "postgres":
+            cursor.execute("ALTER TABLE raw_intelligence_items ALTER COLUMN raw_text DROP NOT NULL")
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_extraction_observations (
+                id TEXT PRIMARY KEY,
+                raw_item_id TEXT NOT NULL,
+                entry_type TEXT NOT NULL,
+                channel_name TEXT,
+                channel_description TEXT,
+                channel_urls {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_list},
+                channel_handles {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_list},
+                channel_domains {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_list},
+                term TEXT,
+                normalized_term TEXT,
+                literal_meaning TEXT,
+                contextual_meaning TEXT,
+                usage_example_raw_item_id TEXT,
+                usage_quote TEXT,
+                aliases_or_variants {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_list},
+                detected_language TEXT,
+                primary_label TEXT,
+                secondary_tags {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_list},
+                confidence FLOAT NOT NULL DEFAULT 0.0,
+                model_name TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                schema_version TEXT NOT NULL,
+                is_canonicalized BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (raw_item_id) REFERENCES raw_intelligence_items (id) ON DELETE CASCADE,
+                FOREIGN KEY (usage_example_raw_item_id) REFERENCES raw_intelligence_items (id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_canonical_entries (
+                id TEXT PRIMARY KEY,
+                entry_type TEXT NOT NULL,
+                normalized_key TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                explanation TEXT,
+                usage_summary TEXT,
+                primary_label TEXT,
+                secondary_tags {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_list},
+                confidence FLOAT NOT NULL DEFAULT 0.0,
+                first_seen_at {datetime_type},
+                last_seen_at {datetime_type},
+                evidence_count INTEGER NOT NULL DEFAULT 1,
+                latest_raw_item_id TEXT,
+                prompt_version TEXT,
+                model_name TEXT,
+                schema_version TEXT,
+                embedding {embedding_type},
+                embedding_model TEXT,
+                embedding_updated_at {datetime_type},
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (latest_raw_item_id) REFERENCES raw_intelligence_items (id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS intelligence_aliases (
+                canonical_entry_id TEXT NOT NULL,
+                alias TEXT NOT NULL,
+                source_type TEXT,
+                confidence FLOAT NOT NULL DEFAULT 0.0,
+                PRIMARY KEY (canonical_entry_id, alias),
+                FOREIGN KEY (canonical_entry_id) REFERENCES intelligence_canonical_entries (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_related_candidates (
+                entry_id_a TEXT NOT NULL,
+                entry_id_b TEXT NOT NULL,
+                similarity_score FLOAT,
+                relationship_type TEXT,
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (entry_id_a, entry_id_b),
+                FOREIGN KEY (entry_id_a) REFERENCES intelligence_canonical_entries (id) ON DELETE CASCADE,
+                FOREIGN KEY (entry_id_b) REFERENCES intelligence_canonical_entries (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_crawl_checkpoints (
+                source_type TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                last_crawled_at {datetime_type},
+                last_external_id TEXT,
+                checkpoint_data {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_object},
+                status TEXT,
+                error_message TEXT,
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (source_type, source_id)
+            )
+        """)
+        if self.backend == "postgres":
+            cursor.execute("DROP INDEX IF EXISTS idx_intelligence_raw_items_dedupe")
+        else:
+            cursor.execute("DROP INDEX IF EXISTS idx_intelligence_raw_items_dedupe")
+
+        for statement in [
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_source ON raw_intelligence_items (source_type, source_id)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_expires_at ON raw_intelligence_items (expires_at)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_content_hash ON raw_intelligence_items (content_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_collected_at ON raw_intelligence_items (collected_at)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_external_id ON raw_intelligence_items (external_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_raw_items_external_dedupe ON raw_intelligence_items (source_type, source_id, external_id) WHERE external_id IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_raw_item_id ON intelligence_extraction_observations (raw_item_id)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_entry_type ON intelligence_extraction_observations (entry_type)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_primary_label ON intelligence_extraction_observations (primary_label)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_confidence ON intelligence_extraction_observations (confidence)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_is_canonicalized ON intelligence_extraction_observations (is_canonicalized)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_type_key ON intelligence_canonical_entries (entry_type, normalized_key)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_entry_type ON intelligence_canonical_entries (entry_type)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_primary_label ON intelligence_canonical_entries (primary_label)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_last_seen_at ON intelligence_canonical_entries (last_seen_at)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_embedding_model ON intelligence_canonical_entries (embedding_model)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_aliases_alias ON intelligence_aliases (alias)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_related_candidates_pair ON intelligence_related_candidates (entry_id_a, entry_id_b)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_related_candidates_entry_id_a ON intelligence_related_candidates (entry_id_a)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_related_candidates_entry_id_b ON intelligence_related_candidates (entry_id_b)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_crawl_checkpoints_status ON intelligence_crawl_checkpoints (status)",
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_crawl_checkpoints_updated_at ON intelligence_crawl_checkpoints (updated_at)",
+        ]:
+            cursor.execute(statement)
 
     @contextmanager
     def _get_connection(self):
@@ -2054,6 +2208,653 @@ class DataManager:
             "created_at": created_at,
             "updated_at": None,
         }
+
+    @staticmethod
+    def _json_load(value: Any, default: Any) -> Any:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return default
+        return value
+
+    @staticmethod
+    def _dt_out(value: Any) -> Any:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return value
+
+    def upsert_raw_intelligence_item(self, item: Dict[str, Any]) -> str:
+        columns = [
+            "id",
+            "source_type",
+            "source_id",
+            "external_id",
+            "source_url",
+            "chat_id",
+            "thread_id",
+            "topic_id",
+            "raw_text",
+            "content_hash",
+            "published_at",
+            "collected_at",
+            "expires_at",
+            "edit_status",
+            "edit_timestamp",
+            "created_at",
+        ]
+        values = [self._dt_out(item.get(column)) for column in columns]
+        assignments = ", ".join(f"{column} = excluded.{column}" for column in columns[1:])
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.cursor().execute(
+                    self._sql(f"""
+                    INSERT INTO raw_intelligence_items ({', '.join(columns)})
+                    VALUES ({', '.join(['?'] * len(columns))})
+                    ON CONFLICT(id) DO UPDATE SET {assignments}
+                    """),
+                    tuple(values),
+                )
+                conn.commit()
+                return str(item["id"])
+
+    def _serialize_raw_intelligence_item_row(self, row: Any) -> Dict[str, Any]:
+        keys = [
+            "id",
+            "source_type",
+            "source_id",
+            "external_id",
+            "source_url",
+            "chat_id",
+            "thread_id",
+            "topic_id",
+            "raw_text",
+            "content_hash",
+            "published_at",
+            "collected_at",
+            "expires_at",
+            "edit_status",
+            "edit_timestamp",
+            "created_at",
+        ]
+        return {key: self._dt_out(row[key]) for key in keys}
+
+    def get_raw_intelligence_items_by_source(
+        self, source_type: str, source_id: str, limit: int, offset: int
+    ) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM raw_intelligence_items
+                WHERE source_type = ? AND source_id = ?
+                ORDER BY collected_at DESC
+                LIMIT ? OFFSET ?
+                """),
+                (source_type, source_id, max(1, limit), max(0, offset)),
+            )
+            return [self._serialize_raw_intelligence_item_row(row) for row in cursor.fetchall()]
+
+    def get_raw_intelligence_items_expiring_before(
+        self, cutoff_time: datetime
+    ) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql(
+                    "SELECT * FROM raw_intelligence_items WHERE expires_at < ? ORDER BY expires_at"
+                ),
+                (cutoff_time.isoformat(),),
+            )
+            return [self._serialize_raw_intelligence_item_row(row) for row in cursor.fetchall()]
+
+    def delete_expired_raw_intelligence_items(self, cutoff_time: datetime) -> int:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql("DELETE FROM raw_intelligence_items WHERE expires_at < ?"),
+                    (cutoff_time.isoformat(),),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+                return int(deleted)
+
+    def purge_raw_intelligence_text_older_than(self, cutoff_time: datetime) -> int:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql("""
+                    UPDATE raw_intelligence_items
+                    SET raw_text = NULL
+                    WHERE expires_at < ? AND raw_text IS NOT NULL
+                    """),
+                    (cutoff_time.isoformat(),),
+                )
+                updated = cursor.rowcount
+                conn.commit()
+                return int(updated)
+
+    def get_raw_intelligence_item_by_id(self, item_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("SELECT * FROM raw_intelligence_items WHERE id = ? LIMIT 1"),
+                (item_id,),
+            )
+            row = cursor.fetchone()
+            return self._serialize_raw_intelligence_item_row(row) if row else None
+
+
+    def upsert_intelligence_observation(self, observation: Dict[str, Any]) -> str:
+        json_fields = {
+            "channel_urls",
+            "channel_handles",
+            "channel_domains",
+            "aliases_or_variants",
+            "secondary_tags",
+        }
+        columns = [
+            "id",
+            "raw_item_id",
+            "entry_type",
+            "channel_name",
+            "channel_description",
+            "channel_urls",
+            "channel_handles",
+            "channel_domains",
+            "term",
+            "normalized_term",
+            "literal_meaning",
+            "contextual_meaning",
+            "usage_example_raw_item_id",
+            "usage_quote",
+            "aliases_or_variants",
+            "detected_language",
+            "primary_label",
+            "secondary_tags",
+            "confidence",
+            "model_name",
+            "prompt_version",
+            "schema_version",
+            "is_canonicalized",
+            "created_at",
+        ]
+        values = []
+        for column in columns:
+            value = observation.get(column)
+            if column in json_fields:
+                value = json.dumps(value or [], ensure_ascii=False)
+            elif isinstance(value, datetime):
+                value = value.isoformat()
+            values.append(value)
+        assignments = ", ".join(f"{column} = excluded.{column}" for column in columns[1:])
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.cursor().execute(
+                    self._sql(f"""
+                    INSERT INTO intelligence_extraction_observations ({', '.join(columns)})
+                    VALUES ({', '.join(['?'] * len(columns))})
+                    ON CONFLICT(id) DO UPDATE SET {assignments}
+                    """),
+                    tuple(values),
+                )
+                conn.commit()
+                return str(observation["id"])
+
+    def _serialize_intelligence_observation_row(self, row: Any) -> Dict[str, Any]:
+        data = {key: self._dt_out(row[key]) for key in row.keys()}
+        for key in [
+            "channel_urls",
+            "channel_handles",
+            "channel_domains",
+            "aliases_or_variants",
+            "secondary_tags",
+        ]:
+            data[key] = self._json_load(data.get(key), [])
+        data["is_canonicalized"] = bool(data.get("is_canonicalized"))
+        return data
+
+    def get_intelligence_observations_by_raw_item(self, raw_item_id: str) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM intelligence_extraction_observations
+                WHERE raw_item_id = ? ORDER BY created_at ASC
+                """),
+                (raw_item_id,),
+            )
+            return [self._serialize_intelligence_observation_row(row) for row in cursor.fetchall()]
+
+    def get_uncanonicalized_intelligence_observations(self, limit: int) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM intelligence_extraction_observations
+                WHERE is_canonicalized = ? ORDER BY confidence DESC, created_at ASC LIMIT ?
+                """),
+                (False, max(1, limit)),
+            )
+            return [self._serialize_intelligence_observation_row(row) for row in cursor.fetchall()]
+
+    def mark_intelligence_observation_canonicalized(self, observation_id: str) -> bool:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(
+                        "UPDATE intelligence_extraction_observations SET is_canonicalized = ? WHERE id = ?"
+                    ),
+                    (True, observation_id),
+                )
+                updated = cursor.rowcount > 0
+                conn.commit()
+                return updated
+
+    def upsert_canonical_intelligence_entry(
+        self, entry: Dict[str, Any], by_normalized_key: bool = False
+    ) -> str:
+        json_fields = {"secondary_tags"}
+        columns = [
+            "id",
+            "entry_type",
+            "normalized_key",
+            "display_name",
+            "explanation",
+            "usage_summary",
+            "primary_label",
+            "secondary_tags",
+            "confidence",
+            "first_seen_at",
+            "last_seen_at",
+            "evidence_count",
+            "latest_raw_item_id",
+            "prompt_version",
+            "model_name",
+            "schema_version",
+            "embedding",
+            "embedding_model",
+            "embedding_updated_at",
+            "created_at",
+            "updated_at",
+        ]
+        values = []
+        for column in columns:
+            value = entry.get(column)
+            if column in json_fields:
+                value = json.dumps(value or [], ensure_ascii=False)
+            elif column == "embedding" and value is not None:
+                value = (
+                    self._pgvector_literal(value)
+                    if self.backend == "postgres"
+                    else json.dumps(value)
+                )
+            elif isinstance(value, datetime):
+                value = value.isoformat()
+            values.append(value)
+        conflict = "entry_type, normalized_key" if by_normalized_key else "id"
+        excluded = "EXCLUDED" if self.backend == "postgres" else "excluded"
+        assignments = ", ".join(f"{column} = {excluded}.{column}" for column in columns[1:])
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.cursor().execute(
+                    self._sql(f"""
+                    INSERT INTO intelligence_canonical_entries ({', '.join(columns)})
+                    VALUES ({', '.join(['?'] * len(columns))})
+                    ON CONFLICT({conflict}) DO UPDATE SET {assignments}
+                    """),
+                    tuple(values),
+                )
+                if entry.get("aliases") is not None:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        self._sql("DELETE FROM intelligence_aliases WHERE canonical_entry_id = ?"),
+                        (entry["id"],),
+                    )
+                    for alias in entry.get("aliases") or []:
+                        cursor.execute(
+                            self._sql("""
+                            INSERT INTO intelligence_aliases
+                            (canonical_entry_id, alias, source_type, confidence)
+                            VALUES (?, ?, ?, ?)
+                            ON CONFLICT(canonical_entry_id, alias) DO UPDATE SET
+                                source_type = excluded.source_type,
+                                confidence = excluded.confidence
+                            """),
+                            (entry["id"], alias, "exact_match", entry.get("confidence", 0.0)),
+                        )
+                conn.commit()
+                return str(entry["id"])
+
+    def _serialize_canonical_intelligence_entry_row(self, conn: Any, row: Any) -> Dict[str, Any]:
+        data = {key: self._dt_out(row[key]) for key in row.keys()}
+        data["secondary_tags"] = self._json_load(data.get("secondary_tags"), [])
+        data["embedding"] = self._json_load(data.get("embedding"), data.get("embedding"))
+        if isinstance(data.get("embedding"), str) and data["embedding"].startswith("["):
+            data["embedding"] = [
+                float(part) for part in data["embedding"].strip("[]").split(",") if part
+            ]
+        cursor = conn.cursor()
+        cursor.execute(
+            self._sql(
+                "SELECT alias FROM intelligence_aliases WHERE canonical_entry_id = ? ORDER BY alias ASC"
+            ),
+            (data["id"],),
+        )
+        data["aliases"] = [
+            alias_row["alias"] if self.backend == "postgres" else alias_row[0]
+            for alias_row in cursor.fetchall()
+        ]
+        return data
+
+    def get_canonical_intelligence_entry_by_normalized_key(
+        self, entry_type: str, normalized_key: str
+    ) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM intelligence_canonical_entries
+                WHERE entry_type = ? AND normalized_key = ? LIMIT 1
+                """),
+                (entry_type, normalized_key),
+            )
+            row = cursor.fetchone()
+            return self._serialize_canonical_intelligence_entry_row(conn, row) if row else None
+
+    def list_canonical_intelligence_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> List[Dict[str, Any]]:
+        params: List[Any] = []
+        filters = []
+        if entry_type:
+            filters.append("entry_type = ?")
+            params.append(entry_type)
+        if primary_label:
+            filters.append("primary_label = ?")
+            params.append(primary_label)
+        if window:
+            filters.append("last_seen_at >= ?")
+            params.append(window.isoformat())
+        query = "SELECT * FROM intelligence_canonical_entries"
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        query += " ORDER BY last_seen_at DESC, updated_at DESC LIMIT ? OFFSET ?"
+        params.extend([max(1, page_size), max(0, page - 1) * max(1, page_size)])
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(self._sql(query), tuple(params))
+            return [
+                self._serialize_canonical_intelligence_entry_row(conn, row)
+                for row in cursor.fetchall()
+            ]
+
+    def get_canonical_intelligence_entry_by_id(
+        self, entry_id: str
+    ) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM intelligence_canonical_entries
+                WHERE id = ? LIMIT 1
+                """),
+                (entry_id,),
+            )
+            row = cursor.fetchone()
+            return self._serialize_canonical_intelligence_entry_row(conn, row) if row else None
+
+    def count_canonical_intelligence_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        params: List[Any] = []
+        filters = []
+        if entry_type:
+            filters.append("entry_type = ?")
+            params.append(entry_type)
+        if primary_label:
+            filters.append("primary_label = ?")
+            params.append(primary_label)
+        if window:
+            filters.append("last_seen_at >= ?")
+            params.append(window.isoformat())
+        query = "SELECT COUNT(*) FROM intelligence_canonical_entries"
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(self._sql(query), tuple(params))
+            row = cursor.fetchone()
+            return int(row[0]) if row else 0
+
+
+    def update_canonical_intelligence_embedding(
+        self, entry_id: str, embedding: List[float], model: str
+    ) -> bool:
+        if not embedding:
+            raise ValueError("embedding cannot be empty")
+        if not model or not model.strip():
+            raise ValueError("model cannot be empty")
+
+        embedding_value = (
+            self._pgvector_literal(embedding)
+            if self.backend == "postgres"
+            else json.dumps(embedding)
+        )
+        assignment = "CAST(? AS vector)" if self.backend == "postgres" else "?"
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(f"""
+                    UPDATE intelligence_canonical_entries
+                    SET embedding = {assignment}, embedding_model = ?, embedding_updated_at = ?
+                    WHERE id = ?
+                    """),
+                    (embedding_value, model.strip(), datetime.utcnow().isoformat(), entry_id),
+                )
+                updated = cursor.rowcount > 0
+                conn.commit()
+                return updated
+
+    def _boost_intelligence_similarity(
+        self,
+        vector_similarity: float,
+        confidence: Any,
+        last_seen_at: Any,
+    ) -> float:
+        confidence_value = max(0.0, min(1.0, float(confidence or 0.0)))
+        confidence_boost = confidence_value * 0.05
+
+        recency_boost = 0.0
+        seen_at = self._coerce_loaded_datetime(last_seen_at) if last_seen_at else None
+        if seen_at is not None:
+            age_days = max(
+                0.0, (datetime.utcnow() - seen_at.replace(tzinfo=None)).total_seconds() / 86400
+            )
+            if age_days <= 7:
+                recency_boost = 0.05
+            elif age_days <= 30:
+                recency_boost = 0.02
+
+        return float(vector_similarity) + confidence_boost + recency_boost
+
+    def get_canonical_intelligence_entries_missing_embeddings(
+        self, limit: int
+    ) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM intelligence_canonical_entries
+                WHERE embedding IS NULL ORDER BY updated_at DESC LIMIT ?
+                """),
+                (max(1, limit),),
+            )
+            return [
+                self._serialize_canonical_intelligence_entry_row(conn, row)
+                for row in cursor.fetchall()
+            ]
+
+    def semantic_search_canonical_intelligence_entries(
+        self,
+        query_embedding: List[float],
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        limit: int = 20,
+    ) -> List[Tuple[Dict[str, Any], float]]:
+        filters = ["embedding IS NOT NULL"]
+        params: List[Any] = []
+        if entry_type:
+            filters.append("entry_type = ?")
+            params.append(entry_type)
+        if primary_label:
+            filters.append("primary_label = ?")
+            params.append(primary_label)
+        if window:
+            filters.append("last_seen_at >= ?")
+            params.append(window.isoformat())
+        if self.backend == "postgres":
+            params = [self._pgvector_literal(query_embedding), *params, max(1, limit)]
+            query = f"""
+                SELECT *,
+                       similarity
+                       + (LEAST(GREATEST(COALESCE(confidence, 0.0), 0.0), 1.0) * 0.05)
+                       + CASE
+                           WHEN last_seen_at IS NULL THEN 0.0
+                           WHEN last_seen_at >= NOW() - INTERVAL '7 days' THEN 0.05
+                           WHEN last_seen_at >= NOW() - INTERVAL '30 days' THEN 0.02
+                           ELSE 0.0
+                         END AS boosted_similarity
+                FROM (
+                    SELECT *, 1 - (embedding <=> CAST(? AS vector)) AS similarity
+                    FROM intelligence_canonical_entries
+                    WHERE {' AND '.join(filters)}
+                ) ranked_entries
+                ORDER BY boosted_similarity DESC, updated_at DESC LIMIT ?
+            """
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(self._sql(query), tuple(params))
+                return [
+                    (
+                        self._serialize_canonical_intelligence_entry_row(conn, row),
+                        float(row["boosted_similarity"]),
+                    )
+                    for row in cursor.fetchall()
+                ]
+        rows = self.list_canonical_intelligence_entries(entry_type, primary_label, window, 1, 10000)
+        scored = []
+        for row in rows:
+            embedding = row.get("embedding")
+            if not embedding:
+                continue
+            dot = sum(float(a) * float(b) for a, b in zip(query_embedding, embedding))
+            q_norm = sum(float(a) * float(a) for a in query_embedding) ** 0.5
+            e_norm = sum(float(b) * float(b) for b in embedding) ** 0.5
+            vector_score = dot / (q_norm * e_norm) if q_norm and e_norm else 0.0
+            score = self._boost_intelligence_similarity(
+                vector_score,
+                row.get("confidence"),
+                row.get("last_seen_at"),
+            )
+            scored.append((row, score))
+        return sorted(scored, key=lambda item: item[1], reverse=True)[: max(1, limit)]
+
+    def save_intelligence_related_candidate(
+        self, entry_id_a: str, entry_id_b: str, similarity_score: float, relationship_type: str
+    ) -> None:
+        ordered_a, ordered_b = sorted([entry_id_a, entry_id_b])
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.cursor().execute(
+                    self._sql("""
+                    INSERT INTO intelligence_related_candidates
+                    (entry_id_a, entry_id_b, similarity_score, relationship_type, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(entry_id_a, entry_id_b) DO UPDATE SET
+                        similarity_score = excluded.similarity_score,
+                        relationship_type = excluded.relationship_type
+                    """),
+                    (
+                        ordered_a,
+                        ordered_b,
+                        similarity_score,
+                        relationship_type,
+                        datetime.utcnow().isoformat(),
+                    ),
+                )
+                conn.commit()
+
+    def upsert_intelligence_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        payload = dict(checkpoint)
+        payload["checkpoint_data"] = json.dumps(
+            payload.get("checkpoint_data") or {}, ensure_ascii=False
+        )
+        for key in ["last_crawled_at", "created_at", "updated_at"]:
+            payload[key] = self._dt_out(payload.get(key))
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.cursor().execute(
+                    self._sql("""
+                    INSERT INTO intelligence_crawl_checkpoints
+                    (source_type, source_id, last_crawled_at, last_external_id, checkpoint_data,
+                     status, error_message, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source_type, source_id) DO UPDATE SET
+                        last_crawled_at = excluded.last_crawled_at,
+                        last_external_id = excluded.last_external_id,
+                        checkpoint_data = excluded.checkpoint_data,
+                        status = excluded.status,
+                        error_message = excluded.error_message,
+                        updated_at = excluded.updated_at
+                    """),
+                    (
+                        payload["source_type"],
+                        payload["source_id"],
+                        payload.get("last_crawled_at"),
+                        payload.get("last_external_id"),
+                        payload["checkpoint_data"],
+                        payload.get("status"),
+                        payload.get("error_message"),
+                        payload.get("created_at"),
+                        payload.get("updated_at"),
+                    ),
+                )
+                conn.commit()
+
+    def get_intelligence_checkpoint(
+        self, source_type: str, source_id: str
+    ) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM intelligence_crawl_checkpoints
+                WHERE source_type = ? AND source_id = ? LIMIT 1
+                """),
+                (source_type, source_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            data = {key: self._dt_out(row[key]) for key in row.keys()}
+            data["checkpoint_data"] = self._json_load(data.get("checkpoint_data"), {})
+            return data
 
     def _serialize_analysis_job_row(self, row: Any) -> Dict[str, Any]:
         def _serialize_datetime(value: Any) -> Any:

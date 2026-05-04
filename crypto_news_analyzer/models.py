@@ -5,6 +5,7 @@
 """
 
 from dataclasses import dataclass, asdict
+from dataclasses import field
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Union
 from enum import Enum
@@ -12,6 +13,8 @@ import json
 import hashlib
 import uuid
 from urllib.parse import urlparse
+
+from .config.llm_registry import LLMRegistryError, validate_model_config
 
 
 @dataclass
@@ -440,6 +443,151 @@ class SemanticSearchConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SemanticSearchConfig":
         return cls(**data)
+
+
+@dataclass
+class IntelligenceExtractionConfig:
+    """Intelligence extraction model configuration."""
+
+    provider: str = "opencode-go"
+    model_name: str = "kimi-k2.5"
+    temperature: float = 0.5
+    max_tokens: int = 4000
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self) -> None:
+        provider = str(self.provider or "").strip()
+        model_name = str(self.model_name or "").strip()
+        if not provider:
+            raise ValueError("provider不能为空")
+        if provider != "opencode-go":
+            raise ValueError("intelligence extraction provider must be opencode-go")
+        if not model_name:
+            raise ValueError("model_name不能为空")
+        if not isinstance(self.temperature, (int, float)):
+            raise ValueError("temperature必须是数字")
+        if self.max_tokens <= 0:
+            raise ValueError("max_tokens必须大于0")
+
+        try:
+            validated = validate_model_config(
+                {"provider": provider, "name": model_name, "options": {}},
+                "intelligence_collection.extraction",
+            )
+        except LLMRegistryError as exc:
+            raise ValueError(str(exc)) from exc
+
+        self.provider = validated.provider
+        self.model_name = validated.name
+        self.temperature = float(self.temperature)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceExtractionConfig":
+        payload = dict(data or {})
+        return cls(
+            provider=payload.get("provider", "opencode-go"),
+            model_name=payload.get("model_name", payload.get("model", "")),
+            temperature=payload.get("temperature", 0.5),
+            max_tokens=payload.get("max_tokens", 4000),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "model": self.model_name,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+
+
+@dataclass
+class IntelligenceCollectionConfig:
+    """Intelligence collection runtime settings."""
+
+    interval_minutes: int = 60
+    ttl_days: int = 30
+    backfill_hours: int = 24
+    confidence_threshold: float = 0.6
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self) -> None:
+        if self.interval_minutes <= 0:
+            raise ValueError("interval_minutes必须大于0")
+        if self.ttl_days <= 0:
+            raise ValueError("ttl_days必须大于0")
+        if self.backfill_hours < 0:
+            raise ValueError("backfill_hours不能小于0")
+        if not isinstance(self.confidence_threshold, (int, float)):
+            raise ValueError("confidence_threshold必须是数字")
+        self.confidence_threshold = float(self.confidence_threshold)
+        if self.confidence_threshold < 0 or self.confidence_threshold > 1:
+            raise ValueError("confidence_threshold必须在0到1之间")
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceCollectionConfig":
+        payload = dict(data or {})
+        return cls(
+            interval_minutes=payload.get("interval_minutes", 60),
+            ttl_days=payload.get("ttl_days", 30),
+            backfill_hours=payload.get("backfill_hours", 24),
+            confidence_threshold=payload.get("confidence_threshold", 0.6),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "interval_minutes": self.interval_minutes,
+            "ttl_days": self.ttl_days,
+            "backfill_hours": self.backfill_hours,
+            "confidence_threshold": self.confidence_threshold,
+        }
+
+
+@dataclass
+class IntelligenceConfig:
+    """Top-level intelligence collection config."""
+
+    extraction: IntelligenceExtractionConfig = field(default_factory=IntelligenceExtractionConfig)
+    collection: IntelligenceCollectionConfig = field(default_factory=IntelligenceCollectionConfig)
+    sources: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self) -> None:
+        if not isinstance(self.extraction, IntelligenceExtractionConfig):
+            raise ValueError("extraction必须是IntelligenceExtractionConfig")
+        if not isinstance(self.collection, IntelligenceCollectionConfig):
+            raise ValueError("collection必须是IntelligenceCollectionConfig")
+        if self.sources is None:
+            self.sources = {}
+        if not isinstance(self.sources, dict):
+            raise ValueError("sources必须是对象")
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceConfig":
+        payload = dict(data or {})
+        sources = payload.get("sources", {})
+        if sources is None:
+            sources = {}
+        if not isinstance(sources, dict):
+            raise ValueError("sources必须是对象")
+
+        return cls(
+            extraction=IntelligenceExtractionConfig.from_dict(payload.get("extraction", {})),
+            collection=IntelligenceCollectionConfig.from_dict(payload.get("collection", {})),
+            sources=dict(sources),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "extraction": self.extraction.to_dict(),
+            "collection": self.collection.to_dict(),
+            "sources": dict(self.sources),
+        }
 
 
 @dataclass

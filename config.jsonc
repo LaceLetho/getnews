@@ -35,6 +35,21 @@
     "cached_messages_hours": 24,
     "enable_debug_logging": false
   },
+  "intelligence_collection": {
+    "extraction": {
+      "provider": "opencode-go",
+      "model": "kimi-k2.5",
+      "temperature": 0.5,
+      "max_tokens": 4000
+    },
+    "collection": {
+      "interval_minutes": 60,
+      "ttl_days": 30,
+      "backfill_hours": 24,
+      "confidence_threshold": 0.6
+    },
+    "sources": {}
+  },
   "telegram_commands": {
     "enabled": true,
     "execution_timeout_minutes": 30,
