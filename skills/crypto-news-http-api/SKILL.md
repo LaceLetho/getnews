@@ -18,6 +18,7 @@ Typical triggers:
 - Run asynchronous semantic search for a freeform topic query
 - Poll an API job until it finishes and then fetch the final result
 - Create, list, or delete datasources through the HTTP API
+- Query hidden-channel intelligence entries (canonical knowledge, semantic search, raw evidence)
 - Check service health before or after an API workflow
 
 ## Quick Reference
@@ -41,6 +42,7 @@ For detailed guides, see:
 - [Analyze Workflow Reference](references/analyze-workflow.md)
 - [Semantic Search Reference](references/semantic-search.md)
 - [Datasource Management Reference](references/datasource-management.md)
+- [Intelligence Query Reference](references/intelligence-query.md)
 - [Operations and Maintenance Reference](references/operations-and-maintenance.md)
 
 ## OpenClaw Runtime
@@ -101,6 +103,25 @@ Tags help organize sources. Each datasource accepts up to 16 unique tags. Each t
 
 List responses include only safe summaries. For `rest_api` type datasources, secrets are redacted and counts replace raw credential fields. This prevents accidental credential exposure when reviewing configurations.
 
+## Intelligence Query
+
+Query the hidden-channel intelligence knowledge base built by the private ingestion pipeline. All intelligence routes require Bearer auth.
+
+Four synchronous endpoints provide access to canonical knowledge entries and raw evidence:
+
+- `GET /intelligence/entries` — List canonical entries with time window, type, and label filters, paginated
+- `GET /intelligence/entries/{entry_id}` — Get a single entry with optional raw evidence text (`include_raw=true`)
+- `GET /intelligence/search` — Semantic search using `q` parameter, ranked by vector similarity + recency + confidence
+- `GET /intelligence/raw/{raw_item_id}` — Get original raw text for a collected item (30-day TTL)
+
+These endpoints are synchronous — no async job/poll flow. Results return immediately.
+
+Raw text is byte-for-byte original within 30-day TTL. After TTL, `raw_text` is `null` and `is_expired` is `true`. Canonical structured knowledge remains queryable indefinitely.
+
+The `window` parameter accepts `<N>h` (hours) or `<N>d` (days), e.g. `7d`, `24h`. Entry types are `channel` and `slang`. Primary labels include `AI`, `crypto`, `账号交易`, `支付`, `游戏`, `电商`, `社媒`, `开发者工具`, `其他`.
+
+For full parameter details, response schemas, and examples, see the [Intelligence Query Reference](references/intelligence-query.md).
+
 ## Telegram Webhook
 
 The webhook endpoint exists for maintainer-level Telegram integration. It is not the primary path for day-to-day operators. Regular users should interact through the API routes or Telegram slash commands instead.
@@ -122,6 +143,10 @@ Supported HTTP routes:
 - `GET /datasources` - List all datasources
 - `DELETE /datasources/{id}` - Delete a datasource
 - `POST /telegram/webhook` - Telegram webhook receiver
+- `GET /intelligence/entries` - List intelligence entries (synchronous, Bearer-protected)
+- `GET /intelligence/entries/{entry_id}` - Get intelligence entry detail with optional raw evidence
+- `GET /intelligence/search` - Semantic search across intelligence entries
+- `GET /intelligence/raw/{raw_item_id}` - Get raw intelligence item by ID
 
 ## Non-Goals
 

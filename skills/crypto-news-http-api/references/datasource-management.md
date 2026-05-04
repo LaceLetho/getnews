@@ -70,7 +70,9 @@ The delete operation will fail with `409 Conflict` if there are pending or runni
 
 ## Supported Datasource Types
 
-The API supports three datasource types: `rss`, `x`, and `rest_api`.
+The API supports five datasource types: `rss`, `x`, `rest_api`, `telegram_group`, and `v2ex`.
+
+`telegram_group` and `v2ex` feed the **hidden-channel intelligence pipeline** (raw collection → LLM extraction → canonical knowledge). They are not part of the news analysis pipeline and require the `openclaw+opencode` ingestion service with proper credentials.
 
 ### rss
 
@@ -202,6 +204,96 @@ If there are ingestion jobs for this datasource (matched by `source_type:source_
 ```
 
 To delete a datasource with active jobs, either wait for the jobs to complete or cancel them first.
+
+## Intelligence Datasource Types
+
+The following source types feed the hidden-channel intelligence pipeline. They store raw text (30-day TTL) and produce canonical knowledge entries through LLM extraction. All secrets **must** be provided via environment variables — never inlined in the config payload.
+
+### telegram_group
+
+Collects messages from allowlisted Telegram chats using Telethon MTProto.
+
+**Required config_payload fields:**
+- `name` (string, non-empty)
+- `chat_id` (string) **or** `chat_username` (string, with `@` prefix)
+
+**Config payload example (by username):**
+```json
+{
+  "source_type": "telegram_group",
+  "config_payload": {
+    "name": "Crypto Alpha",
+    "chat_username": "@cryptoalpha"
+  }
+}
+```
+
+**Config payload example (by chat ID):**
+```json
+{
+  "source_type": "telegram_group",
+  "config_payload": {
+    "name": "Private Group",
+    "chat_id": "-1001234567890"
+  }
+}
+```
+
+**Constraints:**
+- Must provide exactly one of `chat_id` or `chat_username` — not both, not neither
+- Cannot enumerate all joined chats; each datasource targets a single explicitly configured chat
+- No session strings, API hashes, passwords, or tokens in the payload — those come from environment variables (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_STRING_SESSION`)
+
+**Production checklist:**
+1. The server must have `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_STRING_SESSION` set in environment
+2. The Telegram account used for the session must have joined the target chat
+3. The account must not have 2FA enabled unless the session was generated with it
+
+### v2ex
+
+Collects topics and replies from V2EX nodes using the official API.
+
+**Required config_payload fields:**
+- `name` (string, non-empty)
+- `api_version` (string, `"v1"` or `"v2"`)
+- `node_allowlist` (array of strings, at least one node name)
+
+**Config payload example (v1, no auth):**
+```json
+{
+  "source_type": "v2ex",
+  "config_payload": {
+    "name": "V2EX Crypto & AI",
+    "api_version": "v1",
+    "node_allowlist": ["crypto", "openai"]
+  }
+}
+```
+
+**Config payload example (v2, with PAT):**
+```json
+{
+  "source_type": "v2ex",
+  "config_payload": {
+    "name": "V2EX Tech",
+    "api_version": "v2",
+    "node_allowlist": ["programmer"],
+    "pat_env_var_name": "V2EX_PAT"
+  }
+}
+```
+
+**Constraints:**
+- `api_version` must be `"v1"` or `"v2"` — no HTML/CSS scraping
+- `node_allowlist` must be a non-empty array of non-empty strings
+- v2 requires `pat_env_var_name` pointing to an environment variable (not the PAT value itself)
+- v1 is public and requires no authentication
+- Node names are the URL path after `/go/`, e.g. `https://www.v2ex.com/go/crypto` → `"crypto"`
+
+**Rate limits:**
+- v1: 120 requests/hour per IP (used for both topics and replies)
+- v2: varies by PAT tier
+- The crawler tracks `X-Rate-Limit-Remaining` headers and pauses when exhausted
 
 ## Error Reference
 
