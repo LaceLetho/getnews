@@ -2631,14 +2631,14 @@ class DataManager:
         if window:
             filters.append("last_seen_at >= ?")
             params.append(window.isoformat())
-        query = "SELECT COUNT(*) FROM intelligence_canonical_entries"
+        query = "SELECT COUNT(*) AS count FROM intelligence_canonical_entries"
         if filters:
             query += " WHERE " + " AND ".join(filters)
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(self._sql(query), tuple(params))
             row = cursor.fetchone()
-            return int(row[0]) if row else 0
+            return int(row["count"] if self.backend == "postgres" else row[0]) if row else 0
 
 
     def update_canonical_intelligence_embedding(
