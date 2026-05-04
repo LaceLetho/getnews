@@ -118,7 +118,7 @@ These endpoints are synchronous — no async job/poll flow. Results return immed
 
 Raw text is byte-for-byte original within 30-day TTL. After TTL, `raw_text` is `null` and `is_expired` is `true`. Canonical structured knowledge remains queryable indefinitely.
 
-The `window` parameter accepts `<N>h` (hours) or `<N>d` (days), e.g. `7d`, `24h`. Entry types are `channel` and `slang`. Primary labels include `AI`, `crypto`, `账号交易`, `支付`, `游戏`, `电商`, `社媒`, `开发者工具`, `其他`.
+The `window` parameter accepts `<N>h` (hours) or `<N>d` (days), e.g. `7d`, `24h`. Entry types are `channel` and `slang`. Primary labels: `AI`, `crypto`, plus several Chinese-category labels (see reference for full enum).
 
 For full parameter details, response schemas, and examples, see the [Intelligence Query Reference](references/intelligence-query.md).
 
