@@ -31,10 +31,12 @@ class V2EXIntelligenceCrawler(DataSourceInterface):
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
         "Cache-Control": "no-cache",
+        "Referer": "https://www.v2ex.com/",
     }
 
     V1_BASE_URL = "https://www.v2ex.com/api/"
     V2_BASE_URL = "https://www.v2ex.com/api/v2/"
+    V1_MAX_REPLY_PAGES = 50
 
     def __init__(
         self,
@@ -267,6 +269,7 @@ class V2EXIntelligenceCrawler(DataSourceInterface):
                 break
             if api_version == "v1" and len(topics) < page_size:
                 break
+            time.sleep(2.0)
             page += 1
 
         if self.last_rate_limit_remaining == 0:
@@ -329,6 +332,13 @@ class V2EXIntelligenceCrawler(DataSourceInterface):
                 break
             if api_version != "v1":
                 break
+            if api_version == "v1" and page >= self.V1_MAX_REPLY_PAGES:
+                self.logger.warning(
+                    "Capping V1 reply pagination at %s pages for topic %s",
+                    self.V1_MAX_REPLY_PAGES,
+                    topic_id,
+                )
+                break
             page += 1
         return replies
 
@@ -344,6 +354,9 @@ class V2EXIntelligenceCrawler(DataSourceInterface):
                 response = self.session.get(url, params=params, headers=headers, timeout=self.timeout)
                 self._update_rate_limit_state(dict(response.headers))
                 if getattr(response, "status_code", None) == 429:
+                    return [], response
+                if getattr(response, "status_code", None) == 403:
+                    self.last_rate_limit_remaining = 0
                     return [], response
                 response.raise_for_status()
                 return response.json(), response

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from ..domain.models import CheckpointStatus, DataSource, IntelligenceCrawlCheckpoint, RawIntelligenceItem
@@ -122,7 +122,10 @@ class IntelligencePipeline:
     def _time_window_hours(self, checkpoint: Optional[IntelligenceCrawlCheckpoint]) -> int:
         if checkpoint is None or checkpoint.last_crawled_at is None:
             return self.backfill_hours
-        elapsed_seconds = max(0.0, (datetime.utcnow() - checkpoint.last_crawled_at).total_seconds())
+        last = checkpoint.last_crawled_at
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        elapsed_seconds = max(0.0, (datetime.now(timezone.utc) - last).total_seconds())
         return max(1, int(math.ceil(elapsed_seconds / 3600.0)))
 
     def _crawler_config(self, datasource: DataSource) -> Dict[str, Any]:
