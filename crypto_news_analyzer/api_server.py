@@ -30,6 +30,7 @@ from .domain.models import (
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
     Priority,
+    PrimaryLabel,
     SemanticSearchJob,
 )
 from .models import SemanticSearchConfig
@@ -331,6 +332,7 @@ class DataSourceListResponse(BaseModel):
 
 class IntelligenceEntryResponse(BaseModel):
     id: str
+    entry_id: str
     entry_type: str
     normalized_key: str
     display_name: str
@@ -340,7 +342,6 @@ class IntelligenceEntryResponse(BaseModel):
     secondary_tags: list[str] = Field(default_factory=list)
     confidence: float = 0.0
     first_seen_at: Optional[str] = None
-    last_seen_at: Optional[str] = None
     evidence_count: int = 1
     aliases: list[str] = Field(default_factory=list)
     model_name: Optional[str] = None
@@ -359,6 +360,7 @@ class IntelligenceListResponse(BaseModel):
 
 class IntelligenceEntryDetailResponse(BaseModel):
     id: str
+    entry_id: str
     entry_type: str
     normalized_key: str
     display_name: str
@@ -382,6 +384,7 @@ class IntelligenceEntryDetailResponse(BaseModel):
 
 class IntelligenceSearchResultItem(BaseModel):
     id: str
+    entry_id: str
     entry_type: str
     normalized_key: str
     display_name: str
@@ -389,7 +392,6 @@ class IntelligenceSearchResultItem(BaseModel):
     primary_label: Optional[str] = None
     secondary_tags: list[str] = Field(default_factory=list)
     confidence: float = 0.0
-    last_seen_at: Optional[str] = None
     evidence_count: int = 1
     similarity_score: float = 0.0
 
@@ -397,6 +399,15 @@ class IntelligenceSearchResultItem(BaseModel):
 class IntelligenceSearchResponse(BaseModel):
     results: list[IntelligenceSearchResultItem]
     total: int
+
+
+class IntelligenceLabelResponseItem(BaseModel):
+    name: str
+    value: str
+
+
+class IntelligenceLabelsResponse(BaseModel):
+    labels: list[IntelligenceLabelResponseItem]
 
 
 class IntelligenceRawItemResponse(BaseModel):
@@ -411,6 +422,7 @@ class IntelligenceRawItemResponse(BaseModel):
 def _canonical_entry_to_response(entry: Any) -> IntelligenceEntryResponse:
     return IntelligenceEntryResponse(
         id=entry.id,
+        entry_id=entry.id,
         entry_type=entry.entry_type,
         normalized_key=entry.normalized_key,
         display_name=entry.display_name,
@@ -420,7 +432,6 @@ def _canonical_entry_to_response(entry: Any) -> IntelligenceEntryResponse:
         secondary_tags=list(entry.secondary_tags),
         confidence=entry.confidence,
         first_seen_at=entry.first_seen_at.isoformat() if entry.first_seen_at else None,
-        last_seen_at=entry.last_seen_at.isoformat() if entry.last_seen_at else None,
         evidence_count=entry.evidence_count,
         aliases=list(getattr(entry, "aliases", [])),
         model_name=entry.model_name,
@@ -1283,6 +1294,18 @@ def create_api_server(
             page_size=page_size,
         )
 
+    @app.get("/intelligence/labels", response_model=IntelligenceLabelsResponse)
+    async def list_intelligence_labels(
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """List searchable primary labels for intelligence queries."""
+        return IntelligenceLabelsResponse(
+            labels=[
+                IntelligenceLabelResponseItem(name=item.name, value=item.value)
+                for item in PrimaryLabel
+            ]
+        )
+
     @app.get("/intelligence/entries/{entry_id}", response_model=IntelligenceEntryDetailResponse)
     async def get_intelligence_entry_detail(
         entry_id: str,
@@ -1298,6 +1321,7 @@ def create_api_server(
 
         response = IntelligenceEntryDetailResponse(
             id=entry.id,
+            entry_id=entry.id,
             entry_type=entry.entry_type,
             normalized_key=entry.normalized_key,
             display_name=entry.display_name,
@@ -1364,6 +1388,7 @@ def create_api_server(
             results=[
                 IntelligenceSearchResultItem(
                     id=entry.id,
+                    entry_id=entry.id,
                     entry_type=entry.entry_type,
                     normalized_key=entry.normalized_key,
                     display_name=entry.display_name,
@@ -1371,7 +1396,6 @@ def create_api_server(
                     primary_label=entry.primary_label,
                     secondary_tags=list(entry.secondary_tags),
                     confidence=entry.confidence,
-                    last_seen_at=entry.last_seen_at.isoformat() if entry.last_seen_at else None,
                     evidence_count=entry.evidence_count,
                     similarity_score=round(score, 4),
                 )

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from telegram.ext import Application
 
+from crypto_news_analyzer.domain.models import PrimaryLabel
 from crypto_news_analyzer.models import TelegramCommandConfig
 from crypto_news_analyzer.reporters.telegram_command_handler import TelegramCommandHandler
 
@@ -85,6 +86,7 @@ def test_build_application_registers_intelligence_commands():
         call.args[0].commands for call in fake_application.add_handler.call_args_list
     ]
     assert any("intel_recent" in commands for commands in registered_commands)
+    assert any("intel_labels" in commands for commands in registered_commands)
     assert any("intel_search" in commands for commands in registered_commands)
     assert any("intel_detail" in commands for commands in registered_commands)
 
@@ -176,8 +178,41 @@ def test_intel_recent_business_method_formats_markdown_list():
 
     repository.list_canonical_entries.assert_called_once()
     assert "Seller One" in response
+    assert "intel-1" in response
+    assert "channel" in response
     assert "账号交易" in response
     assert "0.93" in response
+    assert "最后出现" not in response
+
+
+def test_authorized_intel_labels_handler_dispatches_business_method():
+    handler: Any = _make_handler()
+    handler.is_authorized_user = Mock(return_value=True)
+    handler.handle_intel_labels_command = Mock(return_value="🏷️ *可搜索情报标签*")
+    handler._log_authorization_attempt = Mock()
+    handler._log_command_execution = Mock()
+
+    update = _make_update()
+    context = SimpleNamespace(args=[])
+
+    asyncio.run(handler._handle_intel_labels_command(update, context))
+
+    handler.handle_intel_labels_command.assert_called_once_with("1", "tester", "chat_1")
+    update.message.reply_text.assert_awaited_once_with(
+        "🏷️ *可搜索情报标签*", parse_mode="Markdown"
+    )
+
+
+def test_intel_labels_business_method_formats_primary_label_values():
+    handler: Any = _make_handler()
+    handler._log_command_execution = Mock()
+
+    response = handler.handle_intel_labels_command("1", "tester", "chat_1")
+
+    for label in PrimaryLabel:
+        assert label.value in response
+    assert "`crypto` (CRYPTO)" in response
+    assert "/intel_recent 24 支付" in response
 
 
 def test_intel_detail_returns_exact_raw_text_when_ttl_valid():

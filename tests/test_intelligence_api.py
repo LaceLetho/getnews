@@ -404,6 +404,16 @@ def test_intelligence_raw_unauthorized_returns_401(
     assert response.status_code == 401
 
 
+def test_intelligence_labels_unauthorized_returns_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        response = client.get("/intelligence/labels")
+    assert response.status_code == 401
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Tests: GET /intelligence/entries
 # ──────────────────────────────────────────────────────────────────────
@@ -436,6 +446,9 @@ def test_list_entries_returns_paginated_sorted_by_last_seen_desc(
     assert data["page"] == 1
     assert len(data["entries"]) == 2
     assert data["entries"][0]["display_name"] == "Newer Entry"
+    assert data["entries"][0]["entry_id"] == "entry-newer"
+    assert data["entries"][0]["entry_type"] == EntryType.CHANNEL.value
+    assert "last_seen_at" not in data["entries"][0]
     assert data["entries"][1]["display_name"] == "Older Entry"
 
 
@@ -538,6 +551,26 @@ def test_list_entries_respects_pagination(
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Tests: GET /intelligence/labels
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_list_intelligence_labels_returns_primary_label_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        response = client.get("/intelligence/labels", headers=_authorized_headers())
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["labels"] == [
+        {"name": label.name, "value": label.value} for label in PrimaryLabel
+    ]
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Tests: GET /intelligence/entries/{entry_id}
 # ──────────────────────────────────────────────────────────────────────
 
@@ -563,6 +596,7 @@ def test_get_entry_detail_returns_full_entry(
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == "entry-full"
+    assert data["entry_id"] == "entry-full"
     assert data["display_name"] == "Full Entry"
     assert data["evidence_count"] == 3
     assert data["raw_available"] is False
@@ -735,6 +769,9 @@ def test_semantic_search_returns_ranked_results(
     data = response.json()
     assert data["total"] == 2
     assert data["results"][0]["display_name"] == "High Confidence"
+    assert data["results"][0]["entry_id"] == "high-conf"
+    assert data["results"][0]["entry_type"] == EntryType.CHANNEL.value
+    assert "last_seen_at" not in data["results"][0]
     assert data["results"][0]["similarity_score"] == 0.95
     assert data["results"][1]["display_name"] == "Low Confidence"
 
@@ -801,7 +838,7 @@ def test_semantic_search_respects_hour_window(
 
     assert response.status_code == 200
     data = response.json()
-    assert [item["id"] for item in data["results"]] == ["recent-search"]
+    assert [item["entry_id"] for item in data["results"]] == ["recent-search"]
 
 
 def test_semantic_search_missing_q_param_returns_422(

@@ -33,12 +33,14 @@ from crypto_news_analyzer.models import StorageConfig, TelegramCommandConfig
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INTELLIGENCE_ENDPOINTS = (
     ("GET", "/intelligence/entries"),
+    ("GET", "/intelligence/labels"),
     ("GET", "/intelligence/entries/entry-guard"),
     ("GET", "/intelligence/search?q=guardrail"),
     ("GET", "/intelligence/raw/raw-guard"),
 )
 INTELLIGENCE_COMMANDS = (
     ("/intel_recent", "_handle_intel_recent_command", "handle_intel_recent_command", ["24"]),
+    ("/intel_labels", "_handle_intel_labels_command", "handle_intel_labels_command", []),
     ("/intel_search", "_handle_intel_search_command", "handle_intel_search_command", ["渠道"]),
     ("/intel_detail", "_handle_intel_detail_command", "handle_intel_detail_command", ["entry-1", "raw"]),
 )
@@ -193,6 +195,7 @@ def test_no_public_unauthenticated_routes_for_intelligence(
 
     assert {route.path for route in intelligence_routes} == {
         "/intelligence/entries",
+        "/intelligence/labels",
         "/intelligence/entries/{entry_id}",
         "/intelligence/search",
         "/intelligence/raw/{raw_item_id}",

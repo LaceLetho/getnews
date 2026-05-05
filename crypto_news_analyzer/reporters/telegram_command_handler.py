@@ -189,6 +189,7 @@ class TelegramCommandHandler:
             CommandHandler("semantic_search", self._handle_semantic_search_command)
         )
         application.add_handler(CommandHandler("intel_recent", self._handle_intel_recent_command))
+        application.add_handler(CommandHandler("intel_labels", self._handle_intel_labels_command))
         application.add_handler(CommandHandler("intel_search", self._handle_intel_search_command))
         application.add_handler(CommandHandler("intel_detail", self._handle_intel_detail_command))
         application.add_handler(CommandHandler("market", self._handle_market_command))
@@ -623,6 +624,7 @@ class TelegramCommandHandler:
                     "semantic_search", "语义搜索，如/semantic_search 24 BTC adoption"
                 ),
                 BotCommand("intel_recent", "查看最近情报条目"),
+                BotCommand("intel_labels", "查看可搜索情报标签"),
                 BotCommand("intel_search", "搜索情报条目"),
                 BotCommand("intel_detail", "查看情报条目详情"),
                 BotCommand("market", "获取当前市场现状快照"),
@@ -715,7 +717,9 @@ class TelegramCommandHandler:
             chat_context = self._extract_chat_context(update)
         except ValueError as e:
             self.logger.error(f"Failed to extract chat context: {e}")
-            await update.message.reply_text("❌ 处理命令时发生错误")
+            message = getattr(update, "effective_message", None) or update.message
+            if message is not None:
+                await message.reply_text("❌ 处理命令时发生错误")
             return
 
         # Extract fields from context
@@ -981,6 +985,63 @@ class TelegramCommandHandler:
 
         except Exception as e:
             error_msg = f"处理/intel_recent命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_intel_labels_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+        message = getattr(update, "effective_message", None) or update.message
+
+        if message is None:
+            self.logger.error("/intel_labels update has no effective message")
+            return
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/intel_labels",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list",
+                )
+                self._log_command_execution(
+                    "/intel_labels", user_id, username, None, False, response
+                )
+                return
+
+            self._log_authorization_attempt(
+                command="/intel_labels",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True,
+            )
+
+            response = self.handle_intel_labels_command(user_id, username, chat_id)
+            await message.reply_text(response, parse_mode="Markdown")
+
+        except Exception as e:
+            error_msg = f"处理/intel_labels命令时发生错误: {str(e)}"
             self.logger.error(
                 f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
@@ -2109,6 +2170,17 @@ class TelegramCommandHandler:
                 return item.value
         return normalized
 
+    def _format_intelligence_labels(self) -> str:
+        lines = ["🏷️ *可搜索情报标签*\n"]
+        for item in PrimaryLabel:
+            if item.name == item.value:
+                lines.append(f"• `{item.value}`")
+            else:
+                lines.append(f"• `{item.value}` ({item.name})")
+        lines.append("")
+        lines.append("用法: `/intel_recent 24 支付`")
+        return "\n".join(lines)
+
     def _format_intelligence_entry_summary(self, entry: Any) -> str:
         last_seen = (
             format_datetime_utc8(entry.last_seen_at)
@@ -2169,13 +2241,10 @@ class TelegramCommandHandler:
 
         lines = ["📌 *最近情报条目*\n"]
         for index, entry in enumerate(entries, start=1):
-            last_seen = (
-                format_datetime_utc8(entry.last_seen_at)
-                if getattr(entry, "last_seen_at", None)
-                else "未知"
-            )
             lines.append(
-                f"{index}. *{entry.display_name}* | 标签: {entry.primary_label or '无'} | 置信度: {float(getattr(entry, 'confidence', 0.0)):.2f} | 最后出现: {last_seen}"
+                f"{index}. *{entry.display_name}* | ID: `{entry.id}` | "
+                f"类型: {entry.entry_type} | 标签: {entry.primary_label or '无'} | "
+                f"置信度: {float(getattr(entry, 'confidence', 0.0)):.2f}"
             )
             if getattr(entry, "explanation", None):
                 lines.append(f"   {entry.explanation}")
@@ -2233,6 +2302,23 @@ class TelegramCommandHandler:
             self.logger.error(error_msg)
             self._log_command_execution(
                 "/intel_recent", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
+    def handle_intel_labels_command(
+        self, user_id: str, username: str, chat_id: str
+    ) -> str:
+        try:
+            response = self._format_intelligence_labels()
+            self._log_command_execution(
+                "/intel_labels", user_id, username, None, True, response
+            )
+            return response
+        except Exception as e:
+            error_msg = f"查询情报标签失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_labels", user_id, username, None, False, error_msg
             )
             return f"❌ 执行失败\n\n{str(e)}"
 
@@ -2680,6 +2766,7 @@ class TelegramCommandHandler:
                 "analyze",
                 "semantic_search",
                 "intel_recent",
+                "intel_labels",
                 "intel_search",
                 "intel_detail",
                 "market",
@@ -2706,6 +2793,10 @@ class TelegramCommandHandler:
         help_text.append(
             "/intel_recent [window] [label] - 查看最近情报条目\n"
             "例如 /intel_recent 24 账号交易。\n"
+        )
+        help_text.append(
+            "/intel_labels - 查看可用于搜索的情报标签\n"
+            "例如先用 /intel_labels 查看 label，再用 /intel_recent 24 支付。\n"
         )
         help_text.append(
             "/intel_search <query> - 语义搜索情报条目\n"
