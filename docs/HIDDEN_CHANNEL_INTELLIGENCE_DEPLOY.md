@@ -254,6 +254,10 @@ curl -i "https://news.tradao.xyz/intelligence/entries?window=7d"
 curl -i "https://news.tradao.xyz/intelligence/entries?window=7d&page=1&page_size=20" \
   -H "Authorization: Bearer ${API_KEY}"
 
+# 可搜索 label 列表
+curl -i "https://news.tradao.xyz/intelligence/labels" \
+  -H "Authorization: Bearer ${API_KEY}"
+
 # 语义搜索
 curl -i "https://news.tradao.xyz/intelligence/search?q=GPT%20plus%E8%B4%AD%E4%B9%B0%E6%B8%A0%E9%81%93&semantic=true&window=7d" \
   -H "Authorization: Bearer ${API_KEY}"
@@ -271,8 +275,9 @@ curl -i "https://news.tradao.xyz/intelligence/entries/{entry_id}?include_raw=tru
 
 | 命令 | 用途 |
 |------|------|
-| `/intel_recent 7d` | 最近 7 天条目 |
-| `/intel_recent 7d crypto` | 按 primary label 过滤 |
+| `/intel_recent 168` | 最近 168 小时条目 |
+| `/intel_recent 168 crypto` | 按 primary label 过滤 |
+| `/intel_labels` | 查看可搜索 primary label 列表 |
 | `/intel_search GPT plus购买渠道` | 语义搜索 |
 | `/intel_detail <entry_id>` | 条目详情 |
 | `/intel_detail <entry_id> raw` | 条目详情 + 原始文本 |

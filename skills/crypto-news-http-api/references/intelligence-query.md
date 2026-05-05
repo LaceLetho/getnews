@@ -35,10 +35,6 @@ Filter by primary classification. Valid labels:
 
 `AI`, `crypto`, `暗网`, `账号交易`, `支付`, `游戏`, `电商`, `社媒`, `开发者工具`, `其他`
 
-### secondary_tag
-
-Secondary tags are LLM-generated and not enum-restricted. Filter with exact match on any tag.
-
 ### page / page_size
 
 Integer pagination for `/intelligence/entries`. Defaults: `page=1`, `page_size=20`. Maximum `page_size` is `100`.
@@ -66,6 +62,7 @@ List canonical intelligence entries sorted by `last_seen_at` descending.
   "entries": [
     {
       "id": "uuid",
+      "entry_id": "uuid",
       "entry_type": "slang",
       "normalized_key": "土区礼品卡",
       "display_name": "土区礼品卡",
@@ -74,7 +71,6 @@ List canonical intelligence entries sorted by `last_seen_at` descending.
       "secondary_tags": ["礼品卡", "低价区域"],
       "confidence": 0.92,
       "first_seen_at": "2026-05-01T10:00:00",
-      "last_seen_at": "2026-05-04T12:30:00",
       "evidence_count": 8,
       "model_name": "kimi-k2.5",
       "prompt_version": "1.0",
@@ -94,6 +90,31 @@ List canonical intelligence entries sorted by `last_seen_at` descending.
 ```bash
 curl -H "Authorization: Bearer ${API_KEY}" \
   "https://news.tradao.xyz/intelligence/entries?window=7d&entry_type=slang&page=1&page_size=10"
+```
+
+---
+
+## GET /intelligence/labels
+
+List all searchable primary labels. Use the returned `value` in `primary_label` filters.
+
+### Response (200)
+
+```json
+{
+  "labels": [
+    {"name": "AI", "value": "AI"},
+    {"name": "CRYPTO", "value": "crypto"},
+    {"name": "PAYMENT", "value": "支付"}
+  ]
+}
+```
+
+### Example
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/labels"
 ```
 
 ---
@@ -166,6 +187,7 @@ Semantic search across canonical intelligence entries. Embeds the query text and
   "results": [
     {
       "id": "uuid",
+      "entry_id": "uuid",
       "entry_type": "channel",
       "normalized_key": "@seller_channel",
       "display_name": "GPT Plus 代购频道",
@@ -173,7 +195,6 @@ Semantic search across canonical intelligence entries. Embeds the query text and
       "primary_label": "AI",
       "secondary_tags": ["代购", "GPT"],
       "confidence": 0.88,
-      "last_seen_at": "2026-05-04T11:00:00",
       "evidence_count": 5,
       "similarity_score": 0.9234
     }
