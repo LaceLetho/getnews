@@ -278,7 +278,7 @@ class TestMainController:
     
     def test_validate_prerequisites_missing_config(self):
         """测试前提条件验证失败 - 配置文件不存在"""
-    controller = MainController("nonexistent_config.jsonc")
+        controller = MainController("nonexistent_config.jsonc")
         
         result = controller.validate_prerequisites()
         

@@ -11,7 +11,6 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 import aiohttp
 import time
-from urllib.parse import quote
 
 
 TELEGRAM_BOT_URL_RE = re.compile(r"https://api\.telegram\.org/bot[^/\s]+")

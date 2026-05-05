@@ -16,7 +16,7 @@ UTC_PLUS_8 = timezone(timedelta(hours=8))
 def now_utc8() -> datetime:
     """
     获取当前东八区时间
-    
+
     Returns:
         当前东八区时间（带时区信息）
     """
@@ -26,10 +26,10 @@ def now_utc8() -> datetime:
 def parse_rfc2822_to_utc8(time_str: str) -> Optional[datetime]:
     """
     解析RFC 2822格式的时间字符串并转换为东八区时间
-    
+
     Args:
         time_str: RFC 2822格式的时间字符串（如 'Mon, 15 Jan 2024 14:30:00 +0000'）
-        
+
     Returns:
         转换后的东八区datetime对象，解析失败返回None
     """
@@ -48,11 +48,11 @@ def format_rfc2822_to_utc8_string(
 ) -> str:
     """
     解析RFC 2822格式时间并格式化为东八区时间字符串
-    
+
     Args:
         time_str: RFC 2822格式的时间字符串
         format_str: 输出格式字符串
-        
+
     Returns:
         格式化后的东八区时间字符串，解析失败返回原字符串
     """
@@ -68,11 +68,11 @@ def format_datetime_utc8(
 ) -> str:
     """
     格式化datetime为东八区时间字符串
-    
+
     Args:
         dt: datetime对象，如果为None则使用当前时间
         format_str: 时间格式字符串
-        
+
     Returns:
         格式化后的时间字符串
     """
@@ -84,17 +84,17 @@ def format_datetime_utc8(
     else:
         # 转换为UTC+8
         dt = dt.astimezone(UTC_PLUS_8)
-    
+
     return dt.strftime(format_str)
 
 
 def format_datetime_short_utc8(dt: Optional[datetime] = None) -> str:
     """
     格式化datetime为短格式东八区时间字符串（不含年份）
-    
+
     Args:
         dt: datetime对象，如果为None则使用当前时间
-        
+
     Returns:
         格式化后的时间字符串，格式为 "MM-DD HH:MM"
     """
@@ -104,10 +104,10 @@ def format_datetime_short_utc8(dt: Optional[datetime] = None) -> str:
 def format_datetime_full_utc8(dt: Optional[datetime] = None) -> str:
     """
     格式化datetime为完整格式东八区时间字符串
-    
+
     Args:
         dt: datetime对象，如果为None则使用当前时间
-        
+
     Returns:
         格式化后的时间字符串，格式为 "YYYY-MM-DD HH:MM:SS"
     """
@@ -117,16 +117,16 @@ def format_datetime_full_utc8(dt: Optional[datetime] = None) -> str:
 def convert_to_utc8(dt: datetime) -> datetime:
     """
     将datetime对象转换为东八区时间
-    
+
     Args:
         dt: datetime对象
-        
+
     Returns:
         转换后的东八区时间（带时区信息）
     """
     if dt.tzinfo is None:
         # 如果没有时区信息，假设为UTC时间（RSS parsed时间通常是UTC）
         dt = dt.replace(tzinfo=timezone.utc)
-    
+
     # 转换为UTC+8
     return dt.astimezone(UTC_PLUS_8)

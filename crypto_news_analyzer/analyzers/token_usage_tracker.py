@@ -6,7 +6,7 @@ Token使用情况追踪器
 
 import logging
 from collections import deque
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from ..utils.timezone_utils import now_utc8, format_datetime_utc8
@@ -22,7 +22,7 @@ class TokenUsageRecord:
     total_tokens: int
     cached_tokens: int = 0  # 缓存命中的token数
     conversation_id: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         return {
@@ -35,7 +35,7 @@ class TokenUsageRecord:
             'cache_hit_rate': f"{self.cache_hit_rate:.1%}" if self.prompt_tokens > 0 else "0.0%",
             'conversation_id': self.conversation_id
         }
-    
+
     @property
     def cache_hit_rate(self) -> float:
         """计算缓存命中率"""
@@ -46,18 +46,18 @@ class TokenUsageRecord:
 
 class TokenUsageTracker:
     """Token使用情况追踪器"""
-    
+
     def __init__(self, max_records: int = 50):
         """
         初始化追踪器
-        
+
         Args:
             max_records: 最多保存的记录数
         """
         self.max_records = max_records
         self.records: deque[TokenUsageRecord] = deque(maxlen=max_records)
         self.logger = logging.getLogger(__name__)
-    
+
     def record_usage(
         self,
         model: str,
@@ -69,7 +69,7 @@ class TokenUsageTracker:
     ) -> None:
         """
         记录一次LLM调用的token使用情况
-        
+
         Args:
             model: 模型名称
             prompt_tokens: 提示词token数
@@ -88,30 +88,30 @@ class TokenUsageTracker:
             conversation_id=conversation_id
         )
         self.records.append(record)
-        
+
         self.logger.debug(
             f"记录token使用: model={model}, total={total_tokens}, "
             f"cached={cached_tokens}, hit_rate={record.cache_hit_rate:.1%}"
         )
-    
+
     def get_recent_records(self, count: Optional[int] = None) -> List[TokenUsageRecord]:
         """
         获取最近的记录
-        
+
         Args:
             count: 获取的记录数，None表示全部
-            
+
         Returns:
             记录列表（从新到旧）
         """
         if count is None:
             return list(reversed(self.records))
         return list(reversed(self.records))[:count]
-    
+
     def get_statistics(self) -> Dict[str, Any]:
         """
         获取统计信息
-        
+
         Returns:
             统计信息字典
         """
@@ -124,15 +124,15 @@ class TokenUsageTracker:
                 'total_prompt_tokens': 0,
                 'total_completion_tokens': 0
             }
-        
+
         total_calls = len(self.records)
         total_tokens = sum(r.total_tokens for r in self.records)
         total_cached = sum(r.cached_tokens for r in self.records)
         total_prompt = sum(r.prompt_tokens for r in self.records)
         total_completion = sum(r.completion_tokens for r in self.records)
-        
+
         avg_hit_rate = total_cached / total_prompt if total_prompt > 0 else 0.0
-        
+
         return {
             'total_calls': total_calls,
             'total_tokens': total_tokens,
@@ -141,19 +141,19 @@ class TokenUsageTracker:
             'total_prompt_tokens': total_prompt,
             'total_completion_tokens': total_completion
         }
-    
+
     def format_summary(self) -> str:
         """
         格式化摘要信息（用于Telegram显示）
-        
+
         Returns:
             格式化的摘要文本
         """
         stats = self.get_statistics()
-        
+
         if stats['total_calls'] == 0:
             return "📊 Token使用统计\n\n暂无记录"
-        
+
         lines = [
             "📊 Token使用统计",
             "",
@@ -164,27 +164,27 @@ class TokenUsageTracker:
             f"提示词Token: {stats['total_prompt_tokens']:,}",
             f"完成Token: {stats['total_completion_tokens']:,}",
         ]
-        
+
         return "\n".join(lines)
-    
+
     def format_recent_records(self, count: int = 10) -> str:
         """
         格式化最近的记录（用于Telegram显示）
-        
+
         Args:
             count: 显示的记录数
-            
+
         Returns:
             格式化的记录文本
         """
         records = self.get_recent_records(count)
-        
+
         if not records:
             return "暂无记录"
-        
+
         lines = [f"📝 最近{len(records)}次调用:"]
         lines.append("")
-        
+
         for i, record in enumerate(records, 1):
             time_str = format_datetime_utc8(record.timestamp, format_str='%m-%d %H:%M')
             lines.append(
@@ -193,9 +193,9 @@ class TokenUsageTracker:
                 f"Cached: {record.cached_tokens:,} | "
                 f"Hit: {record.cache_hit_rate:.1%}"
             )
-        
+
         return "\n".join(lines)
-    
+
     def clear(self) -> None:
         """清除所有记录"""
         self.records.clear()

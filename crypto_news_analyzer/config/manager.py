@@ -8,7 +8,7 @@ import logging
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 
 from .llm_registry import LLMRegistryError, validate_llm_config_payload
@@ -18,7 +18,6 @@ from ..datasource_payloads import (
     runtime_source_from_record,
     validate_datasource_config_payload,
 )
-from ..domain.models import DataSource
 from ..domain.repositories import DataSourceRepository
 from ..models import (
     IntelligenceConfig,

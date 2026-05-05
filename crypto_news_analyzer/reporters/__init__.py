@@ -5,9 +5,9 @@
 """
 
 from .telegram_sender import (
-    TelegramSender, 
-    TelegramSenderSync, 
-    TelegramConfig, 
+    TelegramSender,
+    TelegramSenderSync,
+    TelegramConfig,
     SendResult,
     create_telegram_config,
     validate_telegram_credentials,

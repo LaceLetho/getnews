@@ -508,6 +508,7 @@ def _get_datasource_repository(request: Request) -> DataSourceRepository:
 
     raise HTTPException(status_code=503, detail="System not initialized")
 
+
 def _get_intelligence_repository(request: Request) -> IntelligenceRepository:
     """Get intelligence repository from app state or controller."""
     state = _get_app_state(request)
@@ -522,7 +523,6 @@ def _get_intelligence_repository(request: Request) -> IntelligenceRepository:
         return state.intelligence_repository
 
     raise HTTPException(status_code=503, detail="Intelligence repository not initialized")
-
 
 
 def _ensure_semantic_search_http_supported(controller: MainController) -> None:
@@ -747,6 +747,7 @@ def _build_semantic_search_service(controller: MainController) -> SemanticSearch
         provider_credentials=provider_credentials,
     )
 
+
 def _build_intelligence_search_service(controller: MainController) -> IntelligenceSearchService:
     """Build IntelligenceSearchService on demand for API querying."""
     if controller.config_manager is None:
@@ -784,7 +785,6 @@ def _parse_window_param(window_str: Optional[str]) -> Optional[datetime]:
     if unit == "h":
         return datetime.now(timezone.utc) - timedelta(hours=num)
     return datetime.now(timezone.utc) - timedelta(days=num)
-
 
 
 def _run_analyze_job(job_id: str, state: AppState) -> None:

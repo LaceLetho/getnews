@@ -973,7 +973,7 @@ class DataManager:
                 )
 
                 cursor.execute("""
-                    SELECT MIN(created_at), MAX(created_at) 
+                    SELECT MIN(created_at), MAX(created_at)
                     FROM content_items
                 """)
                 time_range = cursor.fetchone()
@@ -1015,7 +1015,7 @@ class DataManager:
 
                 cursor.execute(
                     self._sql("""
-                    INSERT INTO crawl_status 
+                    INSERT INTO crawl_status
                     (execution_time, total_items, rss_results, x_results)
                     VALUES (?, ?, ?, ?)
                 """),
@@ -2346,8 +2346,7 @@ class DataManager:
                 (item_id,),
             )
             row = cursor.fetchone()
-            return self._serialize_raw_intelligence_item_row(row) if row else None
-
+        return self._serialize_raw_intelligence_item_row(row) if row else None
 
     def upsert_intelligence_observation(self, observation: Dict[str, Any]) -> str:
         json_fields = {
@@ -2639,7 +2638,6 @@ class DataManager:
             cursor.execute(self._sql(query), tuple(params))
             row = cursor.fetchone()
             return int(row["count"] if self.backend == "postgres" else row[0]) if row else 0
-
 
     def update_canonical_intelligence_embedding(
         self, entry_id: str, embedding: List[float], model: str

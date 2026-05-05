@@ -6,7 +6,7 @@
 
 import time
 import logging
-from typing import Type, Dict, Any, Optional, Callable
+from typing import Type, Dict, Any, Optional
 from enum import Enum
 from dataclasses import dataclass
 
@@ -25,7 +25,7 @@ class ErrorType(Enum):
 
 class CryptoNewsAnalyzerError(Exception):
     """系统基础异常类"""
-    
+
     def __init__(self, message: str, error_type: ErrorType, details: Optional[Dict[str, Any]] = None):
         super().__init__(message)
         self.error_type = error_type
@@ -35,14 +35,14 @@ class CryptoNewsAnalyzerError(Exception):
 
 class NetworkError(CryptoNewsAnalyzerError):
     """网络相关错误"""
-    
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
         super().__init__(message, ErrorType.NETWORK_ERROR, details)
 
 
 class AuthError(CryptoNewsAnalyzerError):
     """认证相关错误"""
-    
+
     def __init__(self, message: str, service: str, details: Optional[Dict[str, Any]] = None):
         details = details or {}
         details["service"] = service
@@ -51,14 +51,14 @@ class AuthError(CryptoNewsAnalyzerError):
 
 class AuthenticationError(AuthError):
     """认证失败错误（AuthError的别名，用于向后兼容）"""
-    
+
     def __init__(self, message: str, service: str = "unknown", details: Optional[Dict[str, Any]] = None):
         super().__init__(message, service, details)
 
 
 class ParseError(CryptoNewsAnalyzerError):
     """解析相关错误"""
-    
+
     def __init__(self, message: str, source: str, details: Optional[Dict[str, Any]] = None):
         details = details or {}
         details["source"] = source
@@ -67,7 +67,7 @@ class ParseError(CryptoNewsAnalyzerError):
 
 class APIError(CryptoNewsAnalyzerError):
     """API调用错误"""
-    
+
     def __init__(self, message: str, api_name: str, status_code: Optional[int] = None, details: Optional[Dict[str, Any]] = None):
         details = details or {}
         details["api_name"] = api_name
@@ -78,7 +78,7 @@ class APIError(CryptoNewsAnalyzerError):
 
 class ConfigError(CryptoNewsAnalyzerError):
     """配置相关错误"""
-    
+
     def __init__(self, message: str, config_field: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         details = details or {}
         if config_field:
@@ -88,7 +88,7 @@ class ConfigError(CryptoNewsAnalyzerError):
 
 class StorageError(CryptoNewsAnalyzerError):
     """存储相关错误"""
-    
+
     def __init__(self, message: str, operation: str, details: Optional[Dict[str, Any]] = None):
         details = details or {}
         details["operation"] = operation
@@ -110,7 +110,7 @@ class UnsupportedBackendError(StorageError):
 
 class RateLimitError(CryptoNewsAnalyzerError):
     """速率限制错误"""
-    
+
     def __init__(self, message: str, service: str, retry_after: Optional[int] = None, details: Optional[Dict[str, Any]] = None):
         details = details or {}
         details["service"] = service
@@ -121,7 +121,7 @@ class RateLimitError(CryptoNewsAnalyzerError):
 
 class XPlatformError(CryptoNewsAnalyzerError):
     """X平台特定错误"""
-    
+
     def __init__(self, message: str, response_code: Optional[int] = None, details: Optional[Dict[str, Any]] = None):
         details = details or {}
         if response_code:
@@ -131,7 +131,7 @@ class XPlatformError(CryptoNewsAnalyzerError):
 
 class ContentFilterError(CryptoNewsAnalyzerError):
     """内容过滤错误（LLM API触发内容安全过滤）"""
-    
+
     def __init__(self, message: str, model: str = "unknown", details: Optional[Dict[str, Any]] = None):
         details = details or {}
         details["model"] = model
@@ -140,7 +140,7 @@ class ContentFilterError(CryptoNewsAnalyzerError):
 
 class CrawlerError(CryptoNewsAnalyzerError):
     """爬取器通用错误"""
-    
+
     def __init__(self, message: str, crawler_type: str = "unknown", details: Optional[Dict[str, Any]] = None):
         details = details or {}
         details["crawler_type"] = crawler_type
@@ -159,11 +159,11 @@ class RecoveryAction:
 
 class RetryStrategy:
     """重试策略基类"""
-    
+
     def should_retry(self, error: Exception, attempt: int) -> bool:
         """判断是否应该重试"""
         raise NotImplementedError
-    
+
     def calculate_delay(self, attempt: int) -> float:
         """计算重试延迟时间"""
         raise NotImplementedError
@@ -171,15 +171,15 @@ class RetryStrategy:
 
 class ExponentialBackoffRetry(RetryStrategy):
     """指数退避重试策略"""
-    
+
     def __init__(self, max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 60.0):
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.max_delay = max_delay
-    
+
     def should_retry(self, error: Exception, attempt: int) -> bool:
         return attempt < self.max_retries
-    
+
     def calculate_delay(self, attempt: int) -> float:
         delay = self.base_delay * (2 ** attempt)
         return min(delay, self.max_delay)
@@ -187,55 +187,55 @@ class ExponentialBackoffRetry(RetryStrategy):
 
 class NoRetryStrategy(RetryStrategy):
     """不重试策略"""
-    
+
     def should_retry(self, error: Exception, attempt: int) -> bool:
         return False
-    
+
     def calculate_delay(self, attempt: int) -> float:
         return 0.0
 
 
 class SkipAndContinueStrategy(RetryStrategy):
     """跳过并继续策略"""
-    
+
     def should_retry(self, error: Exception, attempt: int) -> bool:
         return False
-    
+
     def calculate_delay(self, attempt: int) -> float:
         return 0.0
 
 
 class DelayRetryStrategy(RetryStrategy):
     """延迟重试策略"""
-    
+
     def __init__(self, max_retries: int = 3, delay: float = 5.0):
         self.max_retries = max_retries
         self.delay = delay
-    
+
     def should_retry(self, error: Exception, attempt: int) -> bool:
         return attempt < self.max_retries
-    
+
     def calculate_delay(self, attempt: int) -> float:
         return self.delay
 
 
 class ExtendedDelayRetryStrategy(RetryStrategy):
     """扩展延迟重试策略（用于X平台速率限制）"""
-    
+
     def __init__(self, max_retries: int = 2, base_delay: float = 900.0):  # 15分钟基础延迟
         self.max_retries = max_retries
         self.base_delay = base_delay
-    
+
     def should_retry(self, error: Exception, attempt: int) -> bool:
         return attempt < self.max_retries
-    
+
     def calculate_delay(self, attempt: int) -> float:
         return self.base_delay * (attempt + 1)
 
 
 class ErrorRecoveryManager:
     """错误恢复管理器"""
-    
+
     def __init__(self):
         self.retry_strategies: Dict[Type[Exception], RetryStrategy] = {
             NetworkError: ExponentialBackoffRetry(max_retries=3),
@@ -246,28 +246,28 @@ class ErrorRecoveryManager:
             APIError: ExponentialBackoffRetry(max_retries=2)
         }
         self.logger = logging.getLogger(__name__)
-    
+
     def handle_error(self, error: Exception, context: str, attempt: int = 0) -> RecoveryAction:
         """
         处理错误并返回恢复动作
-        
+
         Args:
             error: 异常对象
             context: 错误上下文
             attempt: 当前尝试次数
-            
+
         Returns:
             恢复动作
         """
         error_type = type(error)
         strategy = self.retry_strategies.get(error_type, NoRetryStrategy())
-        
+
         self.logger.error(f"在 {context} 中发生错误: {str(error)}")
-        
+
         if strategy.should_retry(error, attempt):
             delay = strategy.calculate_delay(attempt)
             self.logger.info(f"将在 {delay} 秒后重试 (尝试 {attempt + 1})")
-            
+
             return RecoveryAction(
                 action_type="retry",
                 delay_seconds=delay,
@@ -290,26 +290,26 @@ class ErrorRecoveryManager:
                     should_continue=False,
                     message="操作失败"
                 )
-    
+
     def should_retry(self, error: Exception, attempt: int) -> bool:
         """判断是否应该重试"""
         error_type = type(error)
         strategy = self.retry_strategies.get(error_type, NoRetryStrategy())
         return strategy.should_retry(error, attempt)
-    
+
     def calculate_delay(self, error: Exception, attempt: int) -> float:
         """计算重试延迟时间"""
         error_type = type(error)
         strategy = self.retry_strategies.get(error_type, NoRetryStrategy())
         return strategy.calculate_delay(attempt)
-    
+
     def handle_x_platform_errors(self, response_code: int) -> RecoveryAction:
         """
         处理X平台特定错误
-        
+
         Args:
             response_code: HTTP响应码
-            
+
         Returns:
             恢复动作
         """
@@ -342,40 +342,40 @@ class ErrorRecoveryManager:
                 should_continue=True,
                 message=f"未知错误码 {response_code}，跳过"
             )
-    
+
     def log_recovery_action(self, action: RecoveryAction) -> None:
         """记录恢复动作"""
         self.logger.info(f"错误恢复动作: {action.action_type} - {action.message}")
-    
+
     def generate_error_report(self, errors: list[Exception]) -> str:
         """
         生成错误报告
-        
+
         Args:
             errors: 错误列表
-            
+
         Returns:
             错误报告字符串
         """
         if not errors:
             return "无错误"
-        
+
         report_lines = ["## 错误报告", ""]
-        
+
         error_counts = {}
         for error in errors:
             error_type = type(error).__name__
             error_counts[error_type] = error_counts.get(error_type, 0) + 1
-        
+
         report_lines.append("### 错误统计")
         for error_type, count in error_counts.items():
             report_lines.append(f"- {error_type}: {count} 次")
-        
+
         report_lines.append("\n### 详细错误")
         for i, error in enumerate(errors[:10], 1):  # 只显示前10个错误
             report_lines.append(f"{i}. {type(error).__name__}: {str(error)}")
-        
+
         if len(errors) > 10:
             report_lines.append(f"... 还有 {len(errors) - 10} 个错误")
-        
+
         return "\n".join(report_lines)

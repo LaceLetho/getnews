@@ -9,31 +9,27 @@ import subprocess
 import json
 import os
 import time
-import tempfile
 import math
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
-from pathlib import Path
-import logging
 
 from ..models import BirdConfig, BirdResult
 from ..utils.logging import get_logger
 from .bird_dependency_manager import BirdDependencyManager
 
 
-
 class BirdWrapper:
     """
     Bird工具Python封装层
-    
+
     提供调用bird工具命令行接口的Python封装，
     支持认证管理、命令执行和输出解析。
     """
-    
+
     def __init__(self, config: Optional[BirdConfig] = None, data_manager: Optional[Any] = None):
         """
         初始化Bird封装器
-        
+
         Args:
             config: Bird工具配置，如果为None则使用默认配置
             data_manager: 数据管理器实例，用于智能速率限制
@@ -42,15 +38,15 @@ class BirdWrapper:
         self.data_manager = data_manager
         self.logger = get_logger(__name__)
         self.dependency_manager = BirdDependencyManager(self.config)
-        
+
         # 验证bird工具可用性
         self._validate_bird_availability()
-        
+
         # 设置认证信息
         self._setup_authentication()
-        
+
         self.logger.info("Bird工具封装器初始化完成")
-    
+
     def _validate_bird_availability(self) -> None:
         """验证bird工具可用性"""
         status = self.dependency_manager.check_bird_availability()
@@ -58,41 +54,41 @@ class BirdWrapper:
             error_msg = f"Bird工具不可用: {status.error_message}"
             self.logger.error(error_msg)
             raise RuntimeError(error_msg)
-        
+
         self.logger.info(f"Bird工具验证成功: 版本 {status.version}, 路径 {status.executable_path}")
-    
+
     def _setup_authentication(self) -> None:
         """设置认证信息"""
         try:
             # 从环境变量读取认证信息
             ct0 = os.getenv('X_CT0')
             auth_token = os.getenv('X_AUTH_TOKEN')
-            
+
             if not ct0 or not auth_token:
                 self.logger.warning("未找到X/Twitter认证环境变量，某些功能可能不可用")
                 return
-            
+
             # 设置认证信息到bird配置
             self.setup_authentication(ct0, auth_token)
-            
+
         except Exception as e:
             self.logger.error(f"设置认证信息失败: {str(e)}")
             raise
-    
+
     def check_installation(self) -> bool:
         """
         检查bird工具安装状态
-        
+
         Returns:
             bool: 是否已正确安装
         """
         status = self.dependency_manager.check_bird_availability()
         return status.available
-    
+
     def get_version(self) -> str:
         """
         获取bird工具版本
-        
+
         Returns:
             str: 版本信息
         """
@@ -105,41 +101,41 @@ class BirdWrapper:
         except Exception as e:
             self.logger.error(f"获取bird工具版本失败: {str(e)}")
             raise
-    
+
     def execute_command(self, args: List[str], timeout: Optional[int] = None) -> BirdResult:
         """
         执行bird工具命令
-        
+
         Args:
             args: 命令参数列表
             timeout: 超时时间（秒），如果为None则使用配置中的默认值
-            
+
         Returns:
             BirdResult: 执行结果
         """
         if timeout is None:
             timeout = self.config.timeout_seconds
-        
+
         # 构建完整命令，添加认证参数
         command = [self.config.executable_path]
-        
+
         # 添加认证参数
         ct0 = os.getenv('X_CT0')
         auth_token = os.getenv('X_AUTH_TOKEN')
-        
+
         if ct0:
             command.extend(["--ct0", ct0])
         if auth_token:
             command.extend(["--auth-token", auth_token])
-        
+
         # 添加用户命令参数
         command.extend(args)
-        
+
         start_time = time.time()
-        
+
         try:
             self.logger.debug(f"执行bird命令: {' '.join(command[:3])} ... (隐藏认证参数)")
-            
+
             # 执行命令
             result = subprocess.run(
                 command,
@@ -148,9 +144,9 @@ class BirdWrapper:
                 timeout=timeout,
                 env=self._get_environment()
             )
-            
+
             execution_time = time.time() - start_time
-            
+
             # 创建结果对象
             bird_result = BirdResult(
                 success=result.returncode == 0,
@@ -160,19 +156,19 @@ class BirdWrapper:
                 execution_time=execution_time,
                 command=command
             )
-            
+
             if bird_result.success:
                 self.logger.debug(f"Bird命令执行成功，耗时 {execution_time:.2f} 秒")
             else:
                 self.logger.warning(f"Bird命令执行失败，退出码: {result.returncode}, 错误: {result.stderr}")
-            
+
             return bird_result
-            
+
         except subprocess.TimeoutExpired:
             execution_time = time.time() - start_time
             error_msg = f"Bird命令执行超时 ({timeout}秒)"
             self.logger.error(error_msg)
-            
+
             return BirdResult(
                 success=False,
                 output="",
@@ -181,12 +177,12 @@ class BirdWrapper:
                 execution_time=execution_time,
                 command=command
             )
-            
+
         except Exception as e:
             execution_time = time.time() - start_time
             error_msg = f"Bird命令执行异常: {str(e)}"
             self.logger.error(error_msg)
-            
+
             return BirdResult(
                 success=False,
                 output="",
@@ -195,36 +191,36 @@ class BirdWrapper:
                 execution_time=execution_time,
                 command=command
             )
-    
+
     def _get_environment(self) -> Dict[str, str]:
         """获取执行环境变量"""
         env = os.environ.copy()
-        
+
         # 添加bird工具特定的环境变量
         ct0 = os.getenv('X_CT0')
         auth_token = os.getenv('X_AUTH_TOKEN')
-        
+
         if ct0:
             env['X_CT0'] = ct0
         if auth_token:
             env['X_AUTH_TOKEN'] = auth_token
-        
+
         return env
-    
+
     def setup_authentication_from_env(self) -> None:
         """从环境变量设置认证信息"""
         ct0 = os.getenv('X_CT0')
         auth_token = os.getenv('X_AUTH_TOKEN')
-        
+
         if not ct0 or not auth_token:
             raise ValueError("环境变量X_CT0和X_AUTH_TOKEN必须设置")
-        
+
         self.setup_authentication(ct0, auth_token)
-    
+
     def setup_authentication(self, ct0: str, auth_token: str) -> None:
         """
         设置X/Twitter认证信息
-        
+
         Args:
             ct0: X认证参数ct0
             auth_token: X认证令牌
@@ -235,14 +231,14 @@ class BirdWrapper:
                 raise ValueError("ct0参数不能为空")
             if not auth_token or not auth_token.strip():
                 raise ValueError("auth_token参数不能为空")
-            
+
             # 创建bird配置文件
             config_path = os.path.expanduser(self.config.config_file_path)
             config_dir = os.path.dirname(config_path)
-            
+
             # 确保配置目录存在
             os.makedirs(config_dir, exist_ok=True)
-            
+
             # 准备配置数据
             bird_config = {
                 "auth": {
@@ -257,29 +253,29 @@ class BirdWrapper:
                     "retry_delay_seconds": self.config.retry_delay_seconds
                 }
             }
-            
+
             # 写入配置文件
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(bird_config, f, indent=2)
-            
+
             # 设置文件权限（仅所有者可读写）
             os.chmod(config_path, 0o600)
-            
+
             self.logger.info(f"Bird认证配置已保存到: {config_path}")
-            
+
         except Exception as e:
             self.logger.error(f"设置bird认证信息失败: {str(e)}")
             raise
-    
+
     def fetch_list_tweets(self, list_id: str, max_pages: Optional[int] = None, source_name: Optional[str] = None) -> BirdResult:
         """
         获取X列表推文
-        
+
         Args:
             list_id: 列表ID
             max_pages: 最大页数（1-5），如果为None则使用智能计算或配置中的默认值
             source_name: 数据源名称，用于智能速率限制计算
-            
+
         Returns:
             BirdResult: 执行结果
         """
@@ -291,10 +287,10 @@ class BirdWrapper:
             elif max_pages is None:
                 # 使用配置中的默认值
                 max_pages = self.config.bird_max_page
-            
+
             # 确保max_pages在有效范围内
             max_pages = max(1, min(self.config.bird_max_page, max_pages))
-            
+
             # 构建命令参数
             args = [
                 "list-timeline",
@@ -302,7 +298,7 @@ class BirdWrapper:
                 "--json",
                 "--max-pages", str(max_pages)
             ]
-            
+
             # 添加速率限制延迟
             if hasattr(self, '_last_request_time'):
                 elapsed = time.time() - self._last_request_time
@@ -310,17 +306,17 @@ class BirdWrapper:
                     sleep_time = self.config.rate_limit_delay - elapsed
                     self.logger.debug(f"速率限制延迟: {sleep_time:.2f} 秒")
                     time.sleep(sleep_time)
-            
+
             # 执行命令
             result = self.execute_command(args)
             self._last_request_time = time.time()
-            
+
             return result
-            
+
         except Exception as e:
             error_msg = f"获取列表推文失败: {str(e)}"
             self.logger.error(error_msg)
-            
+
             return BirdResult(
                 success=False,
                 output="",
@@ -329,16 +325,16 @@ class BirdWrapper:
                 execution_time=0.0,
                 command=["bird", "list-timeline", list_id]
             )
-    
+
     def fetch_user_timeline(self, username: str, max_pages: Optional[int] = None, source_name: Optional[str] = None) -> BirdResult:
         """
         获取用户时间线
-        
+
         Args:
             username: 用户名（不包含@符号）
             max_pages: 最大页数（1-5），如果为None则使用智能计算或配置中的默认值
             source_name: 数据源名称，用于智能速率限制计算
-            
+
         Returns:
             BirdResult: 执行结果
         """
@@ -350,14 +346,14 @@ class BirdWrapper:
             elif max_pages is None:
                 # 使用配置中的默认值
                 max_pages = self.config.bird_max_page
-            
+
             # 确保max_pages在有效范围内
             max_pages = max(1, min(self.config.bird_max_page, max_pages))
-            
+
             # 清理用户名
             if username.startswith('@'):
                 username = username[1:]
-            
+
             # 构建命令参数
             if username == "home":
                 # 主时间线
@@ -374,7 +370,7 @@ class BirdWrapper:
                     "--json",
                     "--max-pages", str(max_pages)
                 ]
-            
+
             # 添加速率限制延迟
             if hasattr(self, '_last_request_time'):
                 elapsed = time.time() - self._last_request_time
@@ -382,17 +378,17 @@ class BirdWrapper:
                     sleep_time = self.config.rate_limit_delay - elapsed
                     self.logger.debug(f"速率限制延迟: {sleep_time:.2f} 秒")
                     time.sleep(sleep_time)
-            
+
             # 执行命令
             result = self.execute_command(args)
             self._last_request_time = time.time()
-            
+
             return result
-            
+
         except Exception as e:
             error_msg = f"获取用户时间线失败: {str(e)}"
             self.logger.error(error_msg)
-            
+
             return BirdResult(
                 success=False,
                 output="",
@@ -401,21 +397,20 @@ class BirdWrapper:
                 execution_time=0.0,
                 command=["bird", "user-tweets", username]
             )
-    
-    
+
     def calculate_max_pages_for_source(self, source_name: str, source_type: str = "x") -> int:
         """
         计算指定数据源的智能max_pages值
-        
+
         根据本地数据库中最近一条消息的时间动态调整爬取页数，
         避免X平台风控，减少被限流或封禁的风险。
-        
+
         计算公式: min(ceil((当前时间 - 最近消息时间) / 6小时), bird_max_page)
-        
+
         Args:
             source_name: 数据源名称
             source_type: 数据源类型（默认为"x"）
-            
+
         Returns:
             计算出的max_pages值（1到bird_max_page之间）
         """
@@ -424,33 +419,33 @@ class BirdWrapper:
             if not self.data_manager:
                 self.logger.warning("未提供数据管理器，使用默认bird_max_page")
                 return self.config.bird_max_page
-            
+
             # 获取最近消息时间
             latest_time = self.data_manager.get_latest_message_time(source_name, source_type)
-            
+
             # 如果没有历史数据，使用bird_max_page作为默认值
             if latest_time is None:
                 self.logger.info(f"数据源 {source_name} 没有历史数据，使用bird_max_page={self.config.bird_max_page}")
                 return self.config.bird_max_page
-            
+
             # 将latest_time转换为UTC（如果它是naive datetime，假设它已经是UTC）
             if latest_time.tzinfo is None:
                 latest_time = latest_time.replace(tzinfo=timezone.utc)
-            
+
             # 获取当前UTC时间
             current_time = datetime.now(timezone.utc)
-            
+
             # 计算时间差（小时）
             time_diff = current_time - latest_time
             time_diff_hours = time_diff.total_seconds() / 3600
-            
+
             # 计算max_pages: min(ceil(时间差/6小时), bird_max_page)
             calculated_pages = math.ceil(time_diff_hours / 6)
             max_pages = min(calculated_pages, self.config.bird_max_page)
-            
+
             # 确保至少为1
             max_pages = max(1, max_pages)
-            
+
             self.logger.info(
                 f"智能速率限制计算: 数据源={source_name}, "
                 f"最近消息时间={latest_time.isoformat()}, "
@@ -458,27 +453,27 @@ class BirdWrapper:
                 f"计算页数={calculated_pages}, "
                 f"最终max_pages={max_pages}"
             )
-            
+
             return max_pages
-            
+
         except Exception as e:
             self.logger.error(f"计算max_pages失败: {str(e)}，使用默认值")
             return self.config.bird_max_page
-    
+
     def parse_tweet_data(self, raw_data: str) -> List[Dict[str, Any]]:
         """
         解析推文数据
-        
+
         Args:
             raw_data: bird工具的原始输出
-            
+
         Returns:
             List[Dict[str, Any]]: 解析后的推文数据列表
         """
         try:
             if not raw_data or not raw_data.strip():
                 return []
-            
+
             # 根据输出格式解析数据
             if self.config.output_format == "json":
                 return self._parse_json_output(raw_data)
@@ -487,17 +482,17 @@ class BirdWrapper:
             else:
                 self.logger.warning(f"不支持的输出格式: {self.config.output_format}")
                 return []
-                
+
         except Exception as e:
             self.logger.error(f"解析推文数据失败: {str(e)}")
             return []
-    
+
     def _parse_json_output(self, raw_data: str) -> List[Dict[str, Any]]:
         """解析JSON格式输出"""
         try:
             # 尝试解析为JSON
             data = json.loads(raw_data)
-            
+
             # bird工具返回的数据可能是数组或单个对象
             if isinstance(data, list):
                 tweets = data
@@ -511,7 +506,7 @@ class BirdWrapper:
                     tweets = [data]
             else:
                 return []
-            
+
             # 标准化推文数据格式
             normalized_tweets = []
             for item in tweets:
@@ -519,19 +514,19 @@ class BirdWrapper:
                     tweet = self._normalize_tweet_data(item)
                     if tweet:
                         normalized_tweets.append(tweet)
-            
+
             return normalized_tweets
-            
+
         except json.JSONDecodeError as e:
             self.logger.error(f"JSON解析失败: {str(e)}")
             return []
-    
+
     def _parse_text_output(self, raw_data: str) -> List[Dict[str, Any]]:
         """解析文本格式输出"""
         try:
             tweets = []
             lines = raw_data.strip().split('\n')
-            
+
             current_tweet = {}
             for line in lines:
                 line = line.strip()
@@ -540,7 +535,7 @@ class BirdWrapper:
                         tweets.append(current_tweet)
                         current_tweet = {}
                     continue
-                
+
                 # 解析字段
                 if line.startswith('ID: '):
                     current_tweet['id'] = line[4:]
@@ -552,17 +547,17 @@ class BirdWrapper:
                     current_tweet['created_at'] = line[6:]
                 elif line.startswith('URL: '):
                     current_tweet['url'] = line[5:]
-            
+
             # 添加最后一条推文
             if current_tweet:
                 tweets.append(current_tweet)
-            
+
             return tweets
-            
+
         except Exception as e:
             self.logger.error(f"文本解析失败: {str(e)}")
             return []
-    
+
     def _normalize_tweet_data(self, raw_tweet: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """标准化推文数据格式"""
         try:
@@ -579,7 +574,7 @@ class BirdWrapper:
                     'reply_count': raw_tweet.get('replyCount', 0)
                 }
             }
-            
+
             # 处理用户信息 - bird工具使用author字段
             author_data = raw_tweet.get('author', {})
             if author_data:
@@ -595,44 +590,44 @@ class BirdWrapper:
                     'name': raw_tweet.get('name', ''),
                     'id': raw_tweet.get('authorId', raw_tweet.get('user_id', ''))
                 }
-            
+
             # 确保必需字段存在
             if not tweet['id'] or not tweet['text']:
                 self.logger.warning(f"推文缺少必需字段: id={tweet['id']}, text_length={len(tweet['text'])}")
                 return None
-            
+
             return tweet
-            
+
         except Exception as e:
             self.logger.warning(f"标准化推文数据失败: {str(e)}")
             return None
-    
+
     def test_connection(self) -> bool:
         """
         测试与X/Twitter的连接
-        
+
         Returns:
             bool: 连接是否成功
         """
         try:
             # 使用whoami命令测试连接
             result = self.execute_command(["whoami"], timeout=30)
-            
+
             if result.success:
                 self.logger.info("Bird工具连接测试成功")
                 return True
             else:
                 self.logger.warning(f"Bird工具连接测试失败: {result.error}")
                 return False
-                
+
         except Exception as e:
             self.logger.error(f"Bird工具连接测试异常: {str(e)}")
             return False
-    
+
     def get_diagnostic_info(self) -> Dict[str, Any]:
         """
         获取诊断信息
-        
+
         Returns:
             Dict[str, Any]: 诊断信息
         """
@@ -642,7 +637,7 @@ class BirdWrapper:
             "connection_test": False,
             "version": None
         }
-        
+
         try:
             # 依赖状态
             status = self.dependency_manager.check_bird_availability()
@@ -652,19 +647,19 @@ class BirdWrapper:
                 "executable_path": status.executable_path,
                 "error_message": status.error_message
             }
-            
+
             # 版本信息
             if status.available:
                 try:
                     diagnostic_info["version"] = self.get_version()
                 except Exception:
                     pass
-            
+
             # 连接测试
             if status.available:
                 diagnostic_info["connection_test"] = self.test_connection()
-            
+
         except Exception as e:
             diagnostic_info["error"] = str(e)
-        
+
         return diagnostic_info

@@ -126,12 +126,12 @@ class SentMessageCacheManager:
                     """)
 
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_sent_at 
+                CREATE INDEX IF NOT EXISTS idx_sent_at
                 ON sent_message_cache (sent_at)
             """)
 
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_category 
+                CREATE INDEX IF NOT EXISTS idx_category
                 ON sent_message_cache (category)
             """)
 
@@ -164,14 +164,14 @@ class SentMessageCacheManager:
 
             # 2. 迁移数据：将 summary 同时作为 title 和 body
             cursor.execute("""
-                INSERT INTO sent_message_cache_new 
+                INSERT INTO sent_message_cache_new
                     (id, title, body, category, time, sent_at, recipient_key, created_at)
-                SELECT 
-                    id, 
-                    summary as title, 
-                    summary as body, 
-                    category, 
-                    time, 
+                SELECT
+                    id,
+                    summary as title,
+                    summary as body,
+                    category,
+                    time,
                     sent_at,
                     NULL as recipient_key,
                     created_at
@@ -292,7 +292,7 @@ class SentMessageCacheManager:
 
                         cursor.execute(
                             self._sql("""
-                            INSERT INTO sent_message_cache 
+                            INSERT INTO sent_message_cache
                             (title, body, category, time, sent_at, recipient_key)
                             VALUES (?, ?, ?, ?, ?, ?)
                         """),
@@ -561,7 +561,7 @@ class SentMessageCacheManager:
                 category_stats[row["category"]] = row["count"]
 
             cursor.execute("""
-                SELECT MIN(sent_at), MAX(sent_at) 
+                SELECT MIN(sent_at), MAX(sent_at)
                 FROM sent_message_cache
             """)
             time_range = cursor.fetchone()

@@ -20,16 +20,14 @@ import math
 import os
 import hashlib
 import threading
-import time
 from urllib.parse import urlsplit, urlunsplit
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from collections import defaultdict
 
 from telegram import Update, BotCommand
-from telegram.ext import Application, CommandHandler, ContextTypes, filters
-from telegram.error import TelegramError
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 from ..datasource_payloads import (
     DataSourcePayloadValidationError,
@@ -1913,7 +1911,7 @@ class TelegramCommandHandler:
 
             response = [
                 "👋 *欢迎使用加密货币新闻分析机器人*\n",
-                f"📋 *您的用户信息:*",
+                "📋 *您的用户信息:*",
                 f"• User ID: `{user_id}`",
                 f"• Username: @{username}" if username else "• Username: (未设置)",
                 f"• 授权状态: {'✅ 已授权' if is_authorized else '❌ 未授权'}\n",

@@ -8,10 +8,8 @@ from dataclasses import dataclass, asdict
 from dataclasses import field
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Union
-from enum import Enum
 import json
 import hashlib
-import uuid
 from urllib.parse import urlparse
 
 from .config.llm_registry import LLMRegistryError, validate_model_config
@@ -212,9 +210,9 @@ class RESTAPISource:
             raise ValueError(f"无效的HTTP方法: {self.method}")
 
         required_mappings = ["title_field", "content_field", "url_field", "time_field"]
-        for field in required_mappings:
-            if field not in self.response_mapping:
-                raise ValueError(f"缺少必需的响应映射字段: {field}")
+        for fname in required_mappings:
+            if fname not in self.response_mapping:
+                raise ValueError(f"缺少必需的响应映射字段: {fname}")
 
     def _is_valid_url(self, url: str) -> bool:
         """验证URL格式"""

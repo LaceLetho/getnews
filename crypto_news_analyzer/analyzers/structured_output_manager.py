@@ -6,7 +6,7 @@
 
 import json
 import logging
-from typing import Dict, Any, List, Optional, Type, Union
+from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
 from pathlib import Path
 from pydantic import BaseModel, Field, field_validator, model_validator, ValidationError
@@ -377,8 +377,6 @@ class StructuredOutputManager:
         使用OpenAI client.responses.parse() API
         参考：https://docs.x.ai/developers/model-capabilities/text/structured-outputs
         """
-        import json
-
         try:
             logger.info("启用web_search和x_search工具，使用responses.parse() API")
 
@@ -809,8 +807,6 @@ class StructuredOutputManager:
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """使用instructor库强制结构化输出"""
         try:
-            import instructor
-
             # 如果还没有设置instructor客户端，现在设置
             if self.instructor_client is None:
                 self.instructor_client = self.setup_instructor_client(llm_client)

@@ -15,18 +15,16 @@
 """
 
 import os
-import sys
 import signal
 import threading
 import time
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 import json
 import traceback
-import asyncio
 
 from .config.manager import ConfigManager
 from .config.llm_registry import (
@@ -47,7 +45,6 @@ from .models import (
     AnalysisResult,
     TelegramCommandConfig,
 )
-from .utils.logging import get_log_manager
 from .utils.errors import ErrorRecoveryManager
 
 

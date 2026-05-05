@@ -18,7 +18,7 @@ class TestNextExecutionTimeFix:
     def mock_controller(self):
         """创建模拟的MainController实例"""
         with patch('crypto_news_analyzer.execution_coordinator.ConfigManager'):
-controller = MainController("test_config.jsonc")
+            controller = MainController("test_config.jsonc")
             controller._initialized = True
             
             # Mock config_manager
