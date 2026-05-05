@@ -2280,7 +2280,7 @@ class TelegramCommandHandler:
         raw_text = None
         raw_available = False
         if raw_item is not None:
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
             raw_available = bool(
                 getattr(raw_item, "expires_at", None) and raw_item.expires_at > now
             )
