@@ -23,7 +23,7 @@ import threading
 from urllib.parse import urlsplit, urlunsplit
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 from telegram import Update, BotCommand
@@ -2252,7 +2252,7 @@ class TelegramCommandHandler:
         raw_text = None
         raw_available = False
         if raw_item is not None:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             raw_available = bool(
                 getattr(raw_item, "expires_at", None) and raw_item.expires_at > now
             )
