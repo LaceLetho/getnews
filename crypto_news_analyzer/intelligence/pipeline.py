@@ -218,7 +218,7 @@ class IntelligencePipeline:
                 self.merge_engine.create_related_candidates(entry, candidate, float(score))
 
     def _run_ttl_cleanup(self) -> int:
-        cutoff_time = datetime.utcnow()
+        cutoff_time = datetime.now(timezone.utc)
         expiring_items = self.intelligence_repository.get_raw_items_expiring_before(cutoff_time)
         expiring_with_text = [item for item in expiring_items if getattr(item, "raw_text", None)]
         purged_count = int(self.intelligence_repository.purge_raw_text_older_than(cutoff_time) or 0)
@@ -244,7 +244,7 @@ class IntelligencePipeline:
         checkpoint = IntelligenceCrawlCheckpoint.create(
             source_type=datasource.source_type,
             source_id=source_id,
-            last_crawled_at=datetime.utcnow(),
+            last_crawled_at=datetime.now(timezone.utc),
             last_external_id=getattr(latest_item, "external_id", None) if latest_item else None,
             checkpoint_data={"datasource_id": datasource.id, "datasource_name": datasource.name},
             status=CheckpointStatus.OK.value,

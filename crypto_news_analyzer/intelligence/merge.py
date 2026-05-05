@@ -154,7 +154,11 @@ class IntelligenceMergeEngine:
             observation.confidence,
         )
         entry.last_seen_at = max(
-            [dt for dt in [entry.last_seen_at, observation.created_at, datetime.utcnow()] if dt]
+            [
+                dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+                for dt in [entry.last_seen_at, observation.created_at, datetime.utcnow()]
+                if dt
+            ]
         )
         entry.latest_raw_item_id = observation.raw_item_id
         entry.aliases = self.merge_aliases(entry.aliases, self._aliases_from_observation(observation))
