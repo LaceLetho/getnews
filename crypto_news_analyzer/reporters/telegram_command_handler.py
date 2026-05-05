@@ -962,13 +962,20 @@ class TelegramCommandHandler:
 
             window_hours = 24
             label = ""
+            page = 1
             if args:
                 first_arg = args[0]
                 if first_arg.isdigit():
                     window_hours = int(first_arg)
-                    label = " ".join(args[1:]).strip()
+                    remaining = args[1:]
                 else:
-                    label = " ".join(args).strip()
+                    remaining = list(args)
+
+                if remaining and remaining[-1].isdigit():
+                    page = max(1, int(remaining[-1]))
+                    remaining = remaining[:-1]
+
+                label = " ".join(remaining).strip()
 
             if window_hours <= 0:
                 await message.reply_text(
@@ -977,7 +984,7 @@ class TelegramCommandHandler:
                 return
 
             response = self.handle_intel_recent_command(
-                user_id, username, chat_id, window_hours, label or None
+                user_id, username, chat_id, window_hours, label or None, page
             )
             await message.reply_text(response, parse_mode="Markdown")
 
@@ -2233,8 +2240,18 @@ class TelegramCommandHandler:
                 lines.append(f"   {entry.explanation}")
         return "\n".join(lines)
 
-    def _format_intelligence_recent_results(self, entries: List[Any]) -> str:
+    def _format_intelligence_recent_results(
+        self,
+        entries: List[Any],
+        total: int = 0,
+        page: int = 1,
+        page_size: int = 20,
+        window_hours: int = 24,
+        label: str = "",
+    ) -> str:
         if not entries:
+            if total > 0 and page > 1:
+                return f"No entries found on page {page}."
             return "No entries found."
 
         lines = ["📌 *最近情报条目*\n"]
@@ -2246,6 +2263,17 @@ class TelegramCommandHandler:
             )
             if getattr(entry, "explanation", None):
                 lines.append(f"   {entry.explanation}")
+
+        if total > 0:
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            label_part = f" {label}" if label else ""
+            footer = f"\n📄 *共 {total} 条 | 第 {page}/{total_pages} 页*"
+            if page < total_pages:
+                footer += (
+                    f"\n👉 下一页: `/intel_recent {window_hours}{label_part} {page + 1}`"
+                )
+            lines.append(footer)
+
         return "\n".join(lines)
 
     def _build_intelligence_raw_response(self, entry: Any, raw_item: Optional[Any]) -> str:
@@ -2271,6 +2299,7 @@ class TelegramCommandHandler:
         chat_id: str,
         window_hours: int,
         label: Optional[str] = None,
+        page: int = 1,
     ) -> str:
         try:
             repository = self._get_intelligence_repository()
@@ -2283,14 +2312,37 @@ class TelegramCommandHandler:
 
             cutoff = datetime.utcnow() - timedelta(hours=max(1, int(window_hours)))
             primary_label = self._normalize_intelligence_primary_label(label)
+            page = max(1, page)
+            total = repository.count_canonical_entries(
+                entry_type=None,
+                primary_label=primary_label,
+                window=cutoff,
+            )
             entries = repository.list_canonical_entries(
                 entry_type=None,
                 primary_label=primary_label,
                 window=cutoff,
-                page=1,
+                page=page,
                 page_size=20,
             )
-            response = self._format_intelligence_recent_results(entries)
+            total_pages = max(1, (total + 20 - 1) // 20) if total > 0 else 1
+            if page > total_pages:
+                page = total_pages
+                entries = repository.list_canonical_entries(
+                    entry_type=None,
+                    primary_label=primary_label,
+                    window=cutoff,
+                    page=page,
+                    page_size=20,
+                )
+            response = self._format_intelligence_recent_results(
+                entries,
+                total=total,
+                page=page,
+                page_size=20,
+                window_hours=window_hours,
+                label=label or "",
+            )
             self._log_command_execution(
                 "/intel_recent", user_id, username, None, bool(entries), response
             )

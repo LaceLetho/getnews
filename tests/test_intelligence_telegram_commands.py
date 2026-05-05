@@ -104,7 +104,7 @@ def test_authorized_intel_recent_handler_dispatches_business_method():
     asyncio.run(handler._handle_intel_recent_command(update, context))
 
     handler.handle_intel_recent_command.assert_called_once_with(
-        "1", "tester", "chat_1", 24, "账号交易"
+        "1", "tester", "chat_1", 24, "账号交易", 1
     )
     update.message.reply_text.assert_awaited_once_with(
         "📌 *最近情报条目*", parse_mode="Markdown"
@@ -172,6 +172,7 @@ def test_intel_recent_business_method_formats_markdown_list():
         _make_entry(display_name="Seller One", confidence=0.93),
         _make_entry(id="intel-2", display_name="Seller Two", confidence=0.82),
     ]
+    repository.count_canonical_entries.return_value = 2
     handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
 
     response = handler.handle_intel_recent_command("1", "tester", "chat_1", 24, "账号交易")
@@ -183,6 +184,7 @@ def test_intel_recent_business_method_formats_markdown_list():
     assert "账号交易" in response
     assert "0.93" in response
     assert "最后出现" not in response
+    assert "共 2 条" in response
 
 
 def test_authorized_intel_labels_handler_dispatches_business_method():
