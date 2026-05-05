@@ -151,6 +151,8 @@ class V2EXIntelligenceCrawler(DataSourceInterface):
         for node_name in node_allowlist:
             checkpoint = repository.get_checkpoint(self.get_source_type(), node_name) if repository else None
             node_cutoff = checkpoint.last_crawled_at if checkpoint and checkpoint.last_crawled_at else cutoff_floor
+            if node_cutoff.tzinfo is not None:
+                node_cutoff = node_cutoff.replace(tzinfo=None)
 
             node_items, node_state = self._crawl_node(
                 api_version=api_version,

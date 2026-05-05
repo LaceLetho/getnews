@@ -268,7 +268,17 @@ class IntelligencePipeline:
     def _latest_item(self, items: Sequence[RawIntelligenceItem]) -> Optional[RawIntelligenceItem]:
         if not items:
             return None
-        return max(items, key=lambda item: item.published_at or item.collected_at)
+        return max(items, key=lambda item: self._safe_dt_key(item.published_at or item.collected_at))
+
+    @staticmethod
+    def _safe_dt_key(dt: Optional[datetime]) -> datetime:
+        """Return a naive datetime suitable for comparison keys."""
+
+        if dt is None:
+            return datetime(1970, 1, 1)
+        if dt.tzinfo is not None:
+            return dt.replace(tzinfo=None)
+        return dt
 
     def _source_identifier(self, datasource: DataSource) -> str:
         payload = dict(datasource.config_payload or {})
