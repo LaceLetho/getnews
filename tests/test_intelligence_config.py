@@ -38,8 +38,8 @@ def test_get_intelligence_config_parses_nested_settings(monkeypatch):
         "intelligence_collection": {
             "extraction": {
                 "provider": "opencode-go",
-                "model": "kimi-k2.5",
-                "temperature": 0.5,
+                "model": "deepseek-v4-pro",
+                "thinking_level": "high",
                 "max_tokens": 4000,
             },
             "collection": {
@@ -55,8 +55,9 @@ def test_get_intelligence_config_parses_nested_settings(monkeypatch):
     config = manager.get_intelligence_config()
 
     assert config.extraction.provider == "opencode-go"
-    assert config.extraction.model_name == "kimi-k2.5"
-    assert config.extraction.temperature == 0.5
+    assert config.extraction.model_name == "deepseek-v4-pro"
+    assert config.extraction.thinking_level == "high"
+    assert config.extraction.temperature is None
     assert config.extraction.max_tokens == 4000
     assert config.collection.interval_minutes == 60
     assert config.collection.ttl_days == 30

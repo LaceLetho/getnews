@@ -119,11 +119,15 @@ class IntelligenceExtractor:
         self.prompt_version = PROMPT_VERSION
         self.schema_version = SCHEMA_VERSION
         self.batch_size = max(1, int(getattr(config.extraction, "batch_size", 20) or 20))
+        options: Dict[str, Any] = {}
+        thinking_level = getattr(config.extraction, "thinking_level", None)
+        if thinking_level:
+            options["thinking_level"] = thinking_level
         self.runtime = resolve_model_runtime(
             ModelConfig(
                 provider=config.extraction.provider,
                 name=config.extraction.model_name,
-                options={},
+                options=options,
             )
         )
         self.model_name = self.runtime.name
@@ -204,13 +208,20 @@ class IntelligenceExtractor:
         if self.client is None:
             raise RuntimeError("intelligence extraction client is not initialized")
 
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=cast(Any, self._build_messages(batch)),
-            temperature=self.config.extraction.temperature,
-            max_tokens=self.config.extraction.max_tokens,
-            response_format={"type": "json_object"},
-        )
+        temperature = self.config.extraction.temperature
+        call_kwargs: Dict[str, Any] = {
+            "model": self.model_name,
+            "messages": cast(Any, self._build_messages(batch)),
+            "max_tokens": self.config.extraction.max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        if temperature is not None:
+            call_kwargs["temperature"] = temperature
+        extra_body = self._build_extra_body()
+        if extra_body:
+            call_kwargs["extra_body"] = extra_body
+
+        response = self.client.chat.completions.create(**call_kwargs)
         content = _extract_response_content(response)
         return self._parse_result(content)
 
@@ -238,6 +249,14 @@ class IntelligenceExtractor:
                 ),
             },
         ]
+
+    def _build_extra_body(self) -> Optional[Dict[str, Any]]:
+        thinking_level = getattr(self.config.extraction, "thinking_level", None)
+        if not thinking_level or thinking_level == "disabled":
+            return None
+        if self.runtime.provider_name == "opencode-go" and self.model_name == "deepseek-v4-pro":
+            return {"thinking": {"type": "enabled"}}
+        return {"thinking": {"type": thinking_level}}
 
     def _load_prompt(self) -> str:
         if self._cached_prompt is not None:

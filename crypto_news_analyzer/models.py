@@ -448,10 +448,11 @@ class IntelligenceExtractionConfig:
     """Intelligence extraction model configuration."""
 
     provider: str = "opencode-go"
-    model_name: str = "kimi-k2.5"
-    temperature: float = 0.5
+    model_name: str = "deepseek-v4-pro"
+    thinking_level: Optional[str] = None
+    temperature: Optional[float] = None
     max_tokens: int = 4000
-    batch_size: int = 20
+    batch_size: int = 200
 
     def __post_init__(self):
         self.validate()
@@ -465,16 +466,21 @@ class IntelligenceExtractionConfig:
             raise ValueError("intelligence extraction provider must be opencode-go")
         if not model_name:
             raise ValueError("model_name不能为空")
-        if not isinstance(self.temperature, (int, float)):
+        if self.temperature is not None and not isinstance(self.temperature, (int, float)):
             raise ValueError("temperature必须是数字")
         if self.max_tokens <= 0:
             raise ValueError("max_tokens必须大于0")
         if self.batch_size <= 0:
             raise ValueError("batch_size必须大于0")
 
+        thinking_level = self.thinking_level
+        options: Dict[str, Any] = {}
+        if thinking_level:
+            options["thinking_level"] = thinking_level
+
         try:
             validated = validate_model_config(
-                {"provider": provider, "name": model_name, "options": {}},
+                {"provider": provider, "name": model_name, "options": options},
                 "intelligence_collection.extraction",
             )
         except LLMRegistryError as exc:
@@ -482,7 +488,8 @@ class IntelligenceExtractionConfig:
 
         self.provider = validated.provider
         self.model_name = validated.name
-        self.temperature = float(self.temperature)
+        if self.temperature is not None:
+            self.temperature = float(self.temperature)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceExtractionConfig":
@@ -490,19 +497,24 @@ class IntelligenceExtractionConfig:
         return cls(
             provider=payload.get("provider", "opencode-go"),
             model_name=payload.get("model_name", payload.get("model", "")),
-            temperature=payload.get("temperature", 0.5),
+            thinking_level=payload.get("thinking_level"),
+            temperature=payload.get("temperature"),
             max_tokens=payload.get("max_tokens", 4000),
-            batch_size=payload.get("batch_size", 20),
+            batch_size=payload.get("batch_size", 200),
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result: Dict[str, Any] = {
             "provider": self.provider,
             "model": self.model_name,
-            "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "batch_size": self.batch_size,
         }
+        if self.thinking_level:
+            result["thinking_level"] = self.thinking_level
+        if self.temperature is not None:
+            result["temperature"] = self.temperature
+        return result
 
 
 @dataclass

@@ -51,12 +51,12 @@ class FakeIntelligenceRepository:
         return set(raw_item_ids) & self.existing_ids
 
 
-def _config(batch_size: int = 20):
+def _config(batch_size: int = 200):
     config = IntelligenceConfig(
         extraction=IntelligenceExtractionConfig(
             provider="opencode-go",
-            model_name="kimi-k2.5",
-            temperature=0.1,
+            model_name="deepseek-v4-pro",
+            thinking_level="high",
             max_tokens=2000,
             batch_size=batch_size,
         )
@@ -196,7 +196,7 @@ def test_extracts_channel_and_slang_from_same_raw_item():
     assert slang.term == "土区礼品卡"
     call = cast(FakeOpenAIClient, extractor.client).completions.calls[0]
     assert call["response_format"] == {"type": "json_object"}
-    assert call["model"] == "kimi-k2.5"
+    assert call["model"] == "deepseek-v4-pro"
 
 
 def test_records_prompt_model_schema_versions():
@@ -221,7 +221,7 @@ def test_records_prompt_model_schema_versions():
         },
     )
 
-    assert observations[0].model_name == "kimi-k2.5"
+    assert observations[0].model_name == "deepseek-v4-pro"
     assert observations[0].prompt_version == PROMPT_VERSION
     assert observations[0].schema_version == SCHEMA_VERSION
 

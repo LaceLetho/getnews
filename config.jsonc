@@ -38,10 +38,10 @@
   "intelligence_collection": {
     "extraction": {
       "provider": "opencode-go",
-      "model": "kimi-k2.5",
-      "temperature": 0.5,
+      "model": "deepseek-v4-pro",
+      "thinking_level": "high",
       "max_tokens": 4000,
-      "batch_size": 20
+      "batch_size": 200
     },
     "collection": {
       "interval_minutes": 60,

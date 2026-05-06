@@ -554,8 +554,8 @@ class ConfigManager:
             "intelligence_collection": {
                 "extraction": {
                     "provider": "opencode-go",
-                    "model": "kimi-k2.5",
-                    "temperature": 0.5,
+                    "model": "deepseek-v4-pro",
+                    "thinking_level": "high",
                     "max_tokens": 4000,
                 },
                 "collection": {
