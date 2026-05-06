@@ -237,6 +237,24 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
     ) -> List[CanonicalIntelligenceEntry]:
         return []
 
+    def count_semantic_search_candidates(
+        self,
+        query_embedding: List[float],
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        entries = list(self.canonical_entries.values())
+        if entry_type:
+            entries = [e for e in entries if e.entry_type == entry_type]
+        if primary_label:
+            entries = [e for e in entries if e.primary_label == primary_label]
+        if window:
+            entries = [
+                e for e in entries if e.last_seen_at and e.last_seen_at >= window
+            ]
+        return len(entries)
+
     def semantic_search(
         self,
         query_embedding: List[float],
@@ -244,6 +262,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
         self.search_calls += 1
         entries = list(self.canonical_entries.values())
@@ -259,7 +278,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
             (e, e.confidence) for e in entries
         ]
         results.sort(key=lambda x: x[1], reverse=True)
-        return results[:limit]
+        return results[offset : offset + limit]
 
     def save_related_candidate(
         self,

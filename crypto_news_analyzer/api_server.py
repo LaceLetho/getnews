@@ -399,6 +399,8 @@ class IntelligenceSearchResultItem(BaseModel):
 class IntelligenceSearchResponse(BaseModel):
     results: list[IntelligenceSearchResultItem]
     total: int
+    page: int
+    page_size: int
 
 
 class IntelligenceLabelResponseItem(BaseModel):
@@ -1369,19 +1371,25 @@ def create_api_server(
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
     ):
-        """Semantic search across canonical intelligence entries."""
+        """Semantic search across canonical intelligence entries with pagination."""
         controller = _get_controller(req)
         service = _build_intelligence_search_service(controller)
 
         window_cutoff = _parse_window_param(window)
 
-        results = service.semantic_search(
+        page = max(1, page)
+        page_size = max(1, min(page_size, 100))
+
+        results, total = service.semantic_search(
             query_text=q,
             entry_type=entry_type if entry_type else None,
             primary_label=primary_label if primary_label else None,
             window=window_cutoff,
-            limit=20,
+            page=page,
+            page_size=page_size,
         )
 
         return IntelligenceSearchResponse(
@@ -1401,7 +1409,9 @@ def create_api_server(
                 )
                 for entry, score in results
             ],
-            total=len(results),
+            total=total,
+            page=page,
+            page_size=page_size,
         )
 
     @app.get("/intelligence/raw/{raw_item_id}", response_model=IntelligenceRawItemResponse)

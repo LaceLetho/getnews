@@ -225,7 +225,7 @@ def test_pipeline_creates_related_candidates_after_embedding_search():
             return candidate.display_name
 
         def semantic_search(self, **kwargs):
-            return [(entry, 1.0), (related, 0.82)]
+            return [(entry, 1.0), (related, 0.82)], 2
 
     pipeline = IntelligencePipeline(
         FakeFactory([FakeCrawler([_raw(content_hash="related", external_id="200")])]),

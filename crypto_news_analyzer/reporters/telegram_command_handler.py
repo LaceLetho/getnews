@@ -1112,18 +1112,28 @@ class TelegramCommandHandler:
 
             if not args:
                 await message.reply_text(
-                    "❌ 参数错误\n\n用法: /intel_search <query>\n示例: /intel_search GPT plus购买渠道"
+                    "❌ 参数错误\n\n"
+                    "用法: /intel_search <query> [page]\n"
+                    "示例: /intel_search GPT plus购买渠道\n"
+                    "       /intel_search GPT plus购买渠道 2"
                 )
                 return
+
+            page = 1
+            if args[-1].isdigit():
+                page = max(1, int(args.pop()))
 
             query = " ".join(args).strip()
             if not query:
                 await message.reply_text(
-                    "❌ 参数错误\n\n用法: /intel_search <query>\n示例: /intel_search GPT plus购买渠道"
+                    "❌ 参数错误\n\n"
+                    "用法: /intel_search <query> [page]\n"
+                    "示例: /intel_search GPT plus购买渠道\n"
+                    "       /intel_search GPT plus购买渠道 2"
                 )
                 return
 
-            response = self.handle_intel_search_command(user_id, username, chat_id, query)
+            response = self.handle_intel_search_command(user_id, username, chat_id, query, page)
             await message.reply_text(response, parse_mode="Markdown")
 
         except Exception as e:
@@ -2226,9 +2236,17 @@ class TelegramCommandHandler:
         return "\n".join(parts)
 
     def _format_intelligence_search_results(
-        self, query: str, results: List[tuple[Any, float]]
+        self,
+        query: str,
+        results: List[tuple[Any, float]],
+        total: int = 0,
+        page: int = 1,
+        page_size: int = 20,
     ) -> str:
         if not results:
+            if total > 0 and page > 1:
+                total_pages = max(1, (total + page_size - 1) // page_size)
+                return f"第 {page} 页已超出范围（共 {total_pages} 页）。\n👉 查看第一页: `/intel_search {query}`"
             return "No entries found."
 
         lines = [f"🔎 *情报搜索*\n查询: {query}\n"]
@@ -2238,6 +2256,14 @@ class TelegramCommandHandler:
             )
             if getattr(entry, "explanation", None):
                 lines.append(f"   {entry.explanation}")
+
+        if total > 0:
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            footer = f"\n📄 *共 {total} 条 | 第 {page}/{total_pages} 页*"
+            if page < total_pages:
+                footer += f"\n👉 下一页: `/intel_search {query} {page + 1}`"
+            lines.append(footer)
+
         return "\n".join(lines)
 
     def _format_intelligence_recent_results(
@@ -2374,7 +2400,7 @@ class TelegramCommandHandler:
             return f"❌ 执行失败\n\n{str(e)}"
 
     def handle_intel_search_command(
-        self, user_id: str, username: str, chat_id: str, query: str
+        self, user_id: str, username: str, chat_id: str, query: str, page: int = 1
     ) -> str:
         try:
             service = self._get_intelligence_search_service()
@@ -2385,8 +2411,11 @@ class TelegramCommandHandler:
                 )
                 return response
 
-            results = service.semantic_search(query_text=query, limit=10)
-            response = self._format_intelligence_search_results(query, results)
+            page = max(1, page)
+            results, total = service.semantic_search(query_text=query, page=page)
+            response = self._format_intelligence_search_results(
+                query, results, total=total, page=page
+            )
             self._log_command_execution(
                 "/intel_search", user_id, username, None, bool(results), response
             )
@@ -2850,8 +2879,9 @@ class TelegramCommandHandler:
             "例如先用 /intel_labels 查看 label，再用 /intel_recent 24 支付。\n"
         )
         help_text.append(
-            "/intel_search <query> - 语义搜索情报条目\n"
+            "/intel_search <query> [page] - 语义搜索情报条目\n"
             "例如 /intel_search GPT plus购买渠道。\n"
+            "     /intel_search GPT plus购买渠道 2\n"
         )
         help_text.append(
             "/intel_detail <entry_id> [raw] - 查看情报条目详情\n"

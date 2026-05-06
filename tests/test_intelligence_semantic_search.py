@@ -122,12 +122,12 @@ def test_semantic_search_filters_by_type_label_and_time_window(tmp_path: Path):
             repository.save_canonical_entry(entry)
             repository.update_embedding(entry.id, [1.0, 0.0, 0.0], "test-embedding-model")
 
-        results = service.semantic_search(
+        results, _total = service.semantic_search(
             "AI slang",
             entry_type=EntryType.SLANG.value,
             primary_label=PrimaryLabel.AI.value,
             window_days=2,
-            limit=10,
+            page_size=10,
         )
 
         assert [entry.id for entry, _score in results] == [matching.id]

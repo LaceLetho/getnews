@@ -65,30 +65,48 @@ class IntelligenceSearchService:
         primary_label: Optional[str] = None,
         window_days: Optional[int] = None,
         window: Optional[datetime] = None,
-        limit: int = 20,
-    ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
-        """Search canonical intelligence entries by query embedding."""
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Tuple[List[Tuple[CanonicalIntelligenceEntry, float]], int]:
+        """Search canonical intelligence entries by query embedding.
+
+        Returns (results, total_count) tuple.
+        """
 
         normalized_query = str(query_text or "").strip()
         if not normalized_query:
-            return []
+            return [], 0
 
         query_embedding = self.embedding_service.generate_embedding(normalized_query)
         if query_embedding is None:
             logger.warning("Intelligence query embedding generation failed")
-            return []
+            return [], 0
 
         if window is None and window_days is not None:
             bounded_days = max(1, int(window_days))
             window = datetime.utcnow() - timedelta(days=bounded_days)
 
-        return self.intelligence_repository.semantic_search(
+        bounded_page = max(1, page)
+        bounded_page_size = max(1, min(page_size, 100))
+        offset = (bounded_page - 1) * bounded_page_size
+
+        total = self.intelligence_repository.count_semantic_search_candidates(
             query_embedding=query_embedding,
             entry_type=entry_type,
             primary_label=primary_label,
             window=window,
-            limit=max(1, int(limit)),
         )
+
+        results = self.intelligence_repository.semantic_search(
+            query_embedding=query_embedding,
+            entry_type=entry_type,
+            primary_label=primary_label,
+            window=window,
+            limit=bounded_page_size,
+            offset=offset,
+        )
+
+        return results, total
 
     def batch_generate_embeddings(
         self,

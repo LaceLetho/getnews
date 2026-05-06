@@ -645,6 +645,19 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         rows = self._data.get_canonical_intelligence_entries_missing_embeddings(limit)
         return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
 
+    def count_semantic_search_candidates(
+        self,
+        query_embedding: List[float],
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        return self._data.count_semantic_search_canonical_intelligence_entries(
+            entry_type=entry_type,
+            primary_label=primary_label,
+            window=window,
+        )
+
     def semantic_search(
         self,
         query_embedding: List[float],
@@ -652,6 +665,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
         rows = self._data.semantic_search_canonical_intelligence_entries(
             query_embedding=query_embedding,
@@ -659,6 +673,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
             primary_label=primary_label,
             window=window,
             limit=limit,
+            offset=offset,
         )
         return [(CanonicalIntelligenceEntry.from_dict(row), score) for row, score in rows]
 

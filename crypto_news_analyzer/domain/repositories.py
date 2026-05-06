@@ -486,6 +486,17 @@ class IntelligenceRepository(ABC):
         pass
 
     @abstractmethod
+    def count_semantic_search_candidates(
+        self,
+        query_embedding: List[float],
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        """Count canonical entries that have embeddings and match optional filters."""
+        pass
+
+    @abstractmethod
     def semantic_search(
         self,
         query_embedding: List[float],
@@ -493,6 +504,7 @@ class IntelligenceRepository(ABC):
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
         pass
 

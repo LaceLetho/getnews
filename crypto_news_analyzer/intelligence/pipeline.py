@@ -194,10 +194,10 @@ class IntelligencePipeline:
             if not query_text:
                 continue
             try:
-                results = self.search_service.semantic_search(
+                results, _ = self.search_service.semantic_search(
                     query_text=query_text,
                     entry_type=entry.entry_type,
-                    limit=6,
+                    page_size=6,
                 )
             except Exception:
                 self.logger.debug(

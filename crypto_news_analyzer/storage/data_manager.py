@@ -2727,6 +2727,33 @@ class DataManager:
                 for row in cursor.fetchall()
             ]
 
+    def count_semantic_search_canonical_intelligence_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        params: List[Any] = []
+        filters = ["embedding IS NOT NULL"]
+        if entry_type:
+            filters.append("entry_type = ?")
+            params.append(entry_type)
+        if primary_label:
+            filters.append("primary_label = ?")
+            params.append(primary_label)
+        if window:
+            filters.append("last_seen_at >= ?")
+            params.append(window.isoformat())
+        query = (
+            "SELECT COUNT(*) AS count FROM intelligence_canonical_entries WHERE "
+            + " AND ".join(filters)
+        )
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(self._sql(query), tuple(params))
+            row = cursor.fetchone()
+            return int(row["count"] if self.backend == "postgres" else row[0]) if row else 0
+
     def semantic_search_canonical_intelligence_entries(
         self,
         query_embedding: List[float],
@@ -2734,6 +2761,7 @@ class DataManager:
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> List[Tuple[Dict[str, Any], float]]:
         filters = ["embedding IS NOT NULL"]
         params: List[Any] = []
@@ -2747,7 +2775,9 @@ class DataManager:
             filters.append("last_seen_at >= ?")
             params.append(window.isoformat())
         if self.backend == "postgres":
-            params = [self._pgvector_literal(query_embedding), *params, max(1, limit)]
+            bounded_limit = max(1, limit)
+            bounded_offset = max(0, offset)
+            params = [self._pgvector_literal(query_embedding), *params, bounded_limit, bounded_offset]
             query = f"""
                 SELECT *,
                        similarity
@@ -2763,7 +2793,7 @@ class DataManager:
                     FROM intelligence_canonical_entries
                     WHERE {' AND '.join(filters)}
                 ) ranked_entries
-                ORDER BY boosted_similarity DESC, updated_at DESC LIMIT ?
+                ORDER BY boosted_similarity DESC, updated_at DESC LIMIT ? OFFSET ?
             """
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -2791,7 +2821,8 @@ class DataManager:
                 row.get("last_seen_at"),
             )
             scored.append((row, score))
-        return sorted(scored, key=lambda item: item[1], reverse=True)[: max(1, limit)]
+        scored.sort(key=lambda item: item[1], reverse=True)
+        return scored[max(0, offset) : max(0, offset) + max(1, limit)]
 
     def save_intelligence_related_candidate(
         self, entry_id_a: str, entry_id_b: str, similarity_score: float, relationship_type: str

@@ -148,10 +148,13 @@ def test_intel_search_handler_rejects_missing_arguments():
 def test_intel_search_business_method_formats_ranked_results():
     repository = Mock()
     service = Mock()
-    service.semantic_search.return_value = [
-        (_make_entry(display_name="Seller One", confidence=0.91), 0.873),
-        (_make_entry(id="intel-2", display_name="Seller Two", confidence=0.84), 0.811),
-    ]
+    service.semantic_search.return_value = (
+        [
+            (_make_entry(display_name="Seller One", confidence=0.91), 0.873),
+            (_make_entry(id="intel-2", display_name="Seller Two", confidence=0.84), 0.811),
+        ],
+        2,
+    )
     handler: Any = _make_handler(
         SimpleNamespace(
             intelligence_repository=repository, intelligence_search_service=service
@@ -160,7 +163,7 @@ def test_intel_search_business_method_formats_ranked_results():
 
     response = handler.handle_intel_search_command("1", "tester", "chat_1", "GPT plus购买渠道")
 
-    service.semantic_search.assert_called_once_with(query_text="GPT plus购买渠道", limit=10)
+    service.semantic_search.assert_called_once_with(query_text="GPT plus购买渠道", page=1)
     assert "Seller One" in response
     assert "Seller Two" in response
     assert "相似度" in response
