@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from typing import Any, Dict, List, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from crypto_news_analyzer.analyzers.intelligence_extractor import (
     PROMPT_VERSION,
@@ -22,7 +22,11 @@ class FakeChatCompletions:
         self.calls.append(kwargs)
         payload = self.payloads.pop(0)
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload, ensure_ascii=False)))]
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content=json.dumps(payload, ensure_ascii=False))
+                )
+            ]
         )
 
 
@@ -33,21 +37,28 @@ class FakeOpenAIClient:
 
 
 class FakeIntelligenceRepository:
-    def __init__(self):
+    def __init__(self, existing_ids: Optional[List[str]] = None):
         self.saved_observations: List[Any] = []
+        self.existing_ids = set(existing_ids or [])
 
     def save_observation(self, observation: Any) -> str:
         self.saved_observations.append(observation)
         return str(observation.id)
 
+    def get_raw_item_ids_with_existing_observations(
+        self, raw_item_ids: List[str], prompt_version: str
+    ) -> set[str]:
+        return set(raw_item_ids) & self.existing_ids
 
-def _config():
+
+def _config(batch_size: int = 20):
     config = IntelligenceConfig(
         extraction=IntelligenceExtractionConfig(
             provider="opencode-go",
             model_name="kimi-k2.5",
             temperature=0.1,
             max_tokens=2000,
+            batch_size=batch_size,
         )
     )
     return config
@@ -177,7 +188,9 @@ def test_extracts_channel_and_slang_from_same_raw_item():
         EntryType.CHANNEL.value,
         EntryType.SLANG.value,
     }
-    channel = next(observation for observation in observations if observation.entry_type == "channel")
+    channel = next(
+        observation for observation in observations if observation.entry_type == "channel"
+    )
     slang = next(observation for observation in observations if observation.entry_type == "slang")
     assert channel.channel_handles == ["@seller"]
     assert slang.term == "土区礼品卡"
@@ -323,3 +336,128 @@ def test_entry_type_dispatch_is_channel_vs_slang():
     assert channel.term is None
     assert slang.term == "币圈担保"
     assert slang.channel_handles == []
+
+
+def test_multi_item_batch_maps_observations_by_raw_item_id():
+    repository = FakeIntelligenceRepository()
+    extractor = IntelligenceExtractor(
+        _config(batch_size=20), repository=cast(IntelligenceRepository, cast(object, repository))
+    )
+    extractor.client = FakeOpenAIClient(
+        [
+            {
+                "channels": [],
+                "slangs": [
+                    {
+                        "raw_item_id": "raw-2",
+                        "term": "土区礼品卡",
+                        "normalized_term": "土区礼品卡",
+                        "literal_meaning": "土耳其区礼品卡",
+                        "contextual_meaning": "跨区订阅支付术语",
+                        "usage_quote": "土区礼品卡",
+                        "aliases_or_variants": [],
+                        "detected_language": "zh-CN",
+                        "primary_label": PrimaryLabel.PAYMENT.value,
+                        "secondary_tags": [],
+                        "confidence": 0.9,
+                    }
+                ],
+            }
+        ]
+    )
+
+    observations = extractor.extract(
+        [_raw_item("第一条无关", "raw-1"), _raw_item("土区礼品卡", "raw-2")]
+    )
+
+    assert len(observations) == 1
+    assert observations[0].raw_item_id == "raw-2"
+    assert repository.saved_observations == observations
+
+
+def test_multi_item_batch_skips_unknown_raw_item_id_without_fallback():
+    repository = FakeIntelligenceRepository()
+    extractor = IntelligenceExtractor(
+        _config(batch_size=20), repository=cast(IntelligenceRepository, cast(object, repository))
+    )
+    extractor.client = FakeOpenAIClient(
+        [
+            {
+                "channels": [],
+                "slangs": [
+                    {
+                        "raw_item_id": "missing-raw",
+                        "term": "土区礼品卡",
+                        "normalized_term": "土区礼品卡",
+                        "literal_meaning": "土耳其区礼品卡",
+                        "contextual_meaning": "跨区订阅支付术语",
+                        "usage_quote": "土区礼品卡",
+                        "aliases_or_variants": [],
+                        "detected_language": "zh-CN",
+                        "primary_label": PrimaryLabel.PAYMENT.value,
+                        "secondary_tags": [],
+                        "confidence": 0.9,
+                    }
+                ],
+            }
+        ]
+    )
+
+    observations = extractor.extract(
+        [_raw_item("第一条", "raw-1"), _raw_item("第二条", "raw-2")]
+    )
+
+    assert observations == []
+    assert repository.saved_observations == []
+
+
+def test_extract_skips_already_extracted_raw_item_ids():
+    repository = FakeIntelligenceRepository(existing_ids=["raw-1"])
+    extractor = IntelligenceExtractor(
+        _config(batch_size=20), repository=cast(IntelligenceRepository, cast(object, repository))
+    )
+    extractor.client = FakeOpenAIClient(
+        [
+            {
+                "channels": [],
+                "slangs": [
+                    {
+                        "raw_item_id": "raw-2",
+                        "term": "土区礼品卡",
+                        "normalized_term": "土区礼品卡",
+                        "literal_meaning": "土耳其区礼品卡",
+                        "contextual_meaning": "跨区订阅支付术语",
+                        "usage_quote": "土区礼品卡",
+                        "aliases_or_variants": [],
+                        "detected_language": "zh-CN",
+                        "primary_label": PrimaryLabel.PAYMENT.value,
+                        "secondary_tags": [],
+                        "confidence": 0.9,
+                    }
+                ],
+            }
+        ]
+    )
+
+    observations = extractor.extract(
+        [_raw_item("已处理", "raw-1"), _raw_item("土区礼品卡", "raw-2")]
+    )
+
+    call = cast(FakeOpenAIClient, extractor.client).completions.calls[0]
+    sent_items = json.loads(call["messages"][1]["content"])["items"]
+    assert [item["id"] for item in sent_items] == ["raw-2"]
+    assert len(observations) == 1
+    assert observations[0].raw_item_id == "raw-2"
+
+
+def test_extract_returns_empty_without_client_call_when_all_raw_items_already_extracted():
+    repository = FakeIntelligenceRepository(existing_ids=["raw-1"])
+    extractor = IntelligenceExtractor(
+        _config(batch_size=20), repository=cast(IntelligenceRepository, cast(object, repository))
+    )
+    extractor.client = FakeOpenAIClient([])
+
+    observations = extractor.extract([_raw_item("已处理", "raw-1")])
+
+    assert observations == []
+    assert cast(FakeOpenAIClient, extractor.client).completions.calls == []

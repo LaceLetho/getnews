@@ -6,7 +6,7 @@ These adapters wrap the existing DataManager and CacheManager.
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Tuple, cast
+from typing import List, Optional, Dict, Any, Tuple, Set, cast
 
 from ..domain.models import (
     AnalysisRequest,
@@ -574,6 +574,13 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
     def get_observations_by_raw_item(self, raw_item_id: str) -> List[ExtractionObservation]:
         rows = self._data.get_intelligence_observations_by_raw_item(raw_item_id)
         return [ExtractionObservation.from_dict(row) for row in rows]
+
+    def get_raw_item_ids_with_existing_observations(
+        self, raw_item_ids: List[str], prompt_version: str
+    ) -> Set[str]:
+        return self._data.get_raw_item_ids_with_existing_observations(
+            raw_item_ids, prompt_version
+        )
 
     def get_uncanonicalized_observations(self, limit: int) -> List[ExtractionObservation]:
         rows = self._data.get_uncanonicalized_intelligence_observations(limit)

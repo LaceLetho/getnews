@@ -11,7 +11,7 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -2428,6 +2428,26 @@ class DataManager:
                 (raw_item_id,),
             )
             return [self._serialize_intelligence_observation_row(row) for row in cursor.fetchall()]
+
+    def get_raw_item_ids_with_existing_observations(
+        self, raw_item_ids: List[str], prompt_version: str
+    ) -> Set[str]:
+        if not raw_item_ids:
+            return set()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ", ".join(["?"] * len(raw_item_ids))
+            cursor.execute(
+                self._sql(
+                    f"SELECT DISTINCT raw_item_id FROM intelligence_extraction_observations "
+                    f"WHERE raw_item_id IN ({placeholders}) AND prompt_version = ?"
+                ),
+                (*raw_item_ids, prompt_version),
+            )
+            return {
+                row["raw_item_id"] if isinstance(row, dict) else row[0]
+                for row in cursor.fetchall()
+            }
 
     def get_uncanonicalized_intelligence_observations(self, limit: int) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:

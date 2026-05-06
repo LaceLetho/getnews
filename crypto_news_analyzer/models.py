@@ -451,6 +451,7 @@ class IntelligenceExtractionConfig:
     model_name: str = "kimi-k2.5"
     temperature: float = 0.5
     max_tokens: int = 4000
+    batch_size: int = 20
 
     def __post_init__(self):
         self.validate()
@@ -468,6 +469,8 @@ class IntelligenceExtractionConfig:
             raise ValueError("temperature必须是数字")
         if self.max_tokens <= 0:
             raise ValueError("max_tokens必须大于0")
+        if self.batch_size <= 0:
+            raise ValueError("batch_size必须大于0")
 
         try:
             validated = validate_model_config(
@@ -489,6 +492,7 @@ class IntelligenceExtractionConfig:
             model_name=payload.get("model_name", payload.get("model", "")),
             temperature=payload.get("temperature", 0.5),
             max_tokens=payload.get("max_tokens", 4000),
+            batch_size=payload.get("batch_size", 20),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -497,6 +501,7 @@ class IntelligenceExtractionConfig:
             "model": self.model_name,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
+            "batch_size": self.batch_size,
         }
 
 

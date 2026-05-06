@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import Mock
+from typing import Any, List, Optional, Tuple
 
 import pytest
 from fastapi.testclient import TestClient
@@ -147,6 +146,16 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         self, raw_item_id: str
     ) -> List[ExtractionObservation]:
         return []
+
+    def get_raw_item_ids_with_existing_observations(
+        self, raw_item_ids: List[str], prompt_version: str
+    ) -> set[str]:
+        return {
+            observation.raw_item_id
+            for observation in self.observations.values()
+            if observation.raw_item_id in raw_item_ids
+            and observation.prompt_version == prompt_version
+        }
 
     def get_uncanonicalized_observations(
         self, limit: int

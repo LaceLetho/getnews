@@ -9,7 +9,7 @@ Version: 1.0.0
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Set
 
 from .models import (
     AnalysisRequest,
@@ -423,6 +423,12 @@ class IntelligenceRepository(ABC):
 
     @abstractmethod
     def get_observations_by_raw_item(self, raw_item_id: str) -> List[ExtractionObservation]:
+        pass
+
+    @abstractmethod
+    def get_raw_item_ids_with_existing_observations(
+        self, raw_item_ids: List[str], prompt_version: str
+    ) -> Set[str]:
         pass
 
     @abstractmethod

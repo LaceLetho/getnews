@@ -1,10 +1,10 @@
 """Structured intelligence extraction from raw forum/chat text."""
 
+import hashlib
 import json
 import logging
 import os
 import re
-import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, cast
 
@@ -24,6 +24,8 @@ except ImportError:  # pragma: no cover - dependency presence is environment-spe
 PROMPT_VERSION = "1.0.0"
 SCHEMA_VERSION = "1.0.0"
 DEFAULT_PROMPT_PATH = Path("prompts/intelligence_extraction_prompt.md")
+
+_prompt_cache: Dict[str, str] = {}
 
 _PRIMARY_LABEL_VALUES = {label.value for label in PrimaryLabel}
 _SECRET_MARKERS = (
@@ -49,6 +51,7 @@ _SECRET_MARKERS = (
 class ChannelObservation(BaseModel):
     """LLM channel-intelligence observation payload."""
 
+    raw_item_id: str = Field(default="")
     channel_name: str = Field(default="")
     channel_description: str = Field(default="")
     channel_urls: List[str] = Field(default_factory=list)
@@ -73,6 +76,7 @@ class ChannelObservation(BaseModel):
 class SlangObservation(BaseModel):
     """LLM slang-intelligence observation payload."""
 
+    raw_item_id: str = Field(default="")
     term: str = Field(default="")
     normalized_term: str = Field(default="")
     literal_meaning: str = Field(default="")
@@ -114,7 +118,7 @@ class IntelligenceExtractor:
         self.logger = logging.getLogger(__name__)
         self.prompt_version = PROMPT_VERSION
         self.schema_version = SCHEMA_VERSION
-        self.batch_size = max(1, int(getattr(config.extraction, "batch_size", 1) or 1))
+        self.batch_size = max(1, int(getattr(config.extraction, "batch_size", 20) or 20))
         self.runtime = resolve_model_runtime(
             ModelConfig(
                 provider=config.extraction.provider,
@@ -123,7 +127,8 @@ class IntelligenceExtractor:
             )
         )
         self.model_name = self.runtime.name
-        self.conversation_id = str(uuid.uuid4())
+        self.conversation_id = self._build_deterministic_conversation_id()
+        self._cached_prompt: Optional[str] = None
         self.client: Any = None
 
         api_key = os.getenv(self.runtime.provider.env_var, "").strip()
@@ -131,6 +136,10 @@ class IntelligenceExtractor:
             self.client = self._build_client(self.runtime, api_key)
         elif not mock_mode and not api_key:
             self.logger.warning("未提供 intelligence extraction 所需的 OPENCODE_API_KEY")
+
+    def _build_deterministic_conversation_id(self) -> str:
+        seed = f"{self.runtime.provider_name}:{self.model_name}:{self.prompt_version}"
+        return hashlib.sha256(seed.encode()).hexdigest()[:16]
 
     def _build_client(self, runtime: ResolvedModelRuntime, api_key: str):
         """Build an OpenAI-compatible client using provider registry metadata."""
@@ -158,9 +167,31 @@ class IntelligenceExtractor:
         if not raw_items:
             return []
 
+        pending_ids = {item.id for item in raw_items}
+        if self.repository is not None:
+            already_extracted = self.repository.get_raw_item_ids_with_existing_observations(
+                list(pending_ids), self.prompt_version
+            )
+            pending_ids -= already_extracted
+            if already_extracted:
+                self.logger.info(
+                    "Skipping %d/%d raw items already extracted with prompt_version=%s",
+                    len(already_extracted),
+                    len(raw_items),
+                    self.prompt_version,
+                )
+
+        pending_items = [item for item in raw_items if item.id in pending_ids]
+        if not pending_items:
+            return []
+
         observations: List[ExtractionObservation] = []
-        for batch in _chunks(raw_items, self.batch_size):
-            result = self._mock_extract_batch(batch) if self.mock_mode else self._extract_batch(batch)
+        for batch in _chunks(pending_items, self.batch_size):
+            result = (
+                self._mock_extract_batch(batch)
+                if self.mock_mode
+                else self._extract_batch(batch)
+            )
             batch_observations = self._result_to_observations(result, batch)
             for observation in batch_observations:
                 if self.repository is not None:
@@ -209,7 +240,16 @@ class IntelligenceExtractor:
         ]
 
     def _load_prompt(self) -> str:
-        return self.prompt_path.read_text(encoding="utf-8")
+        if self._cached_prompt is not None:
+            return self._cached_prompt
+        cache_key = str(self.prompt_path.resolve())
+        if cache_key in _prompt_cache:
+            self._cached_prompt = _prompt_cache[cache_key]
+            return self._cached_prompt
+        content = self.prompt_path.read_text(encoding="utf-8")
+        _prompt_cache[cache_key] = content
+        self._cached_prompt = content
+        return content
 
     def _parse_result(self, content: str) -> IntelligenceExtractionResult:
         try:
@@ -225,53 +265,62 @@ class IntelligenceExtractor:
         batch: Sequence[RawIntelligenceItem],
     ) -> List[ExtractionObservation]:
         observations: List[ExtractionObservation] = []
+        batch_by_id = {item.id: item for item in batch}
         for channel in result.channels:
-            sanitized = _sanitize_channel_observation(channel)
-            if sanitized is None:
+            sanitized_channel = _sanitize_channel_observation(channel)
+            if sanitized_channel is None:
                 continue
-            raw_item = _select_raw_item_for_channel(sanitized, batch)
+            raw_item = _resolve_observation_raw_item(
+                sanitized_channel.raw_item_id, batch_by_id, batch
+            )
+            if raw_item is None:
+                continue
             observations.append(
                 ExtractionObservation.create(
                     raw_item_id=raw_item.id,
                     entry_type=EntryType.CHANNEL.value,
-                    confidence=sanitized.confidence,
+                    confidence=sanitized_channel.confidence,
                     model_name=self.model_name,
                     prompt_version=self.prompt_version,
                     schema_version=self.schema_version,
-                    channel_name=sanitized.channel_name.strip() or None,
-                    channel_description=sanitized.channel_description.strip() or None,
-                    channel_urls=sanitized.channel_urls,
-                    channel_handles=sanitized.channel_handles,
-                    channel_domains=sanitized.channel_domains,
-                    primary_label=_normalize_primary_label(sanitized.primary_label),
-                    secondary_tags=sanitized.secondary_tags,
+                    channel_name=sanitized_channel.channel_name.strip() or None,
+                    channel_description=sanitized_channel.channel_description.strip() or None,
+                    channel_urls=sanitized_channel.channel_urls,
+                    channel_handles=sanitized_channel.channel_handles,
+                    channel_domains=sanitized_channel.channel_domains,
+                    primary_label=_normalize_primary_label(sanitized_channel.primary_label),
+                    secondary_tags=sanitized_channel.secondary_tags,
                     is_canonicalized=False,
                 )
             )
 
         for slang in result.slangs:
-            sanitized = _sanitize_slang_observation(slang)
-            if sanitized is None:
+            sanitized_slang = _sanitize_slang_observation(slang)
+            if sanitized_slang is None:
                 continue
-            raw_item = _select_raw_item_for_slang(sanitized, batch)
+            raw_item = _resolve_observation_raw_item(
+                sanitized_slang.raw_item_id, batch_by_id, batch
+            )
+            if raw_item is None:
+                continue
             observations.append(
                 ExtractionObservation.create(
                     raw_item_id=raw_item.id,
                     entry_type=EntryType.SLANG.value,
-                    confidence=sanitized.confidence,
+                    confidence=sanitized_slang.confidence,
                     model_name=self.model_name,
                     prompt_version=self.prompt_version,
                     schema_version=self.schema_version,
-                    term=sanitized.term.strip(),
-                    normalized_term=sanitized.normalized_term.strip(),
-                    literal_meaning=sanitized.literal_meaning.strip() or None,
-                    contextual_meaning=sanitized.contextual_meaning.strip() or None,
+                    term=sanitized_slang.term.strip(),
+                    normalized_term=sanitized_slang.normalized_term.strip(),
+                    literal_meaning=sanitized_slang.literal_meaning.strip() or None,
+                    contextual_meaning=sanitized_slang.contextual_meaning.strip() or None,
                     usage_example_raw_item_id=raw_item.id,
-                    usage_quote=sanitized.usage_quote.strip() or None,
-                    aliases_or_variants=sanitized.aliases_or_variants,
-                    detected_language=sanitized.detected_language.strip() or None,
-                    primary_label=_normalize_primary_label(sanitized.primary_label),
-                    secondary_tags=sanitized.secondary_tags,
+                    usage_quote=sanitized_slang.usage_quote.strip() or None,
+                    aliases_or_variants=sanitized_slang.aliases_or_variants,
+                    detected_language=sanitized_slang.detected_language.strip() or None,
+                    primary_label=_normalize_primary_label(sanitized_slang.primary_label),
+                    secondary_tags=sanitized_slang.secondary_tags,
                     is_canonicalized=False,
                 )
             )
@@ -283,10 +332,11 @@ class IntelligenceExtractor:
         channels: List[ChannelObservation] = []
         slangs: List[SlangObservation] = []
         for item in batch:
-            raw_text = item.raw_text
+            raw_text = item.raw_text or ""
             if "币圈担保" in raw_text:
                 slangs.append(
                     SlangObservation(
+                        raw_item_id=item.id,
                         term="币圈担保",
                         normalized_term="币圈担保",
                         literal_meaning="加密货币圈内的第三方担保",
@@ -301,6 +351,7 @@ class IntelligenceExtractor:
             if "土区礼品卡" in raw_text:
                 slangs.append(
                     SlangObservation(
+                        raw_item_id=item.id,
                         term="土区礼品卡",
                         normalized_term="土区礼品卡",
                         literal_meaning="土耳其区礼品卡",
@@ -316,6 +367,7 @@ class IntelligenceExtractor:
             if handles:
                 channels.append(
                     ChannelObservation(
+                        raw_item_id=item.id,
                         channel_name=handles[0],
                         channel_description="原文中出现的卖家或频道联系入口",
                         channel_handles=handles,
@@ -364,6 +416,19 @@ def _filter_public_values(values: List[str]) -> List[str]:
     return [value for value in values if not _contains_secret(value)]
 
 
+def _resolve_observation_raw_item(
+    raw_item_id: str,
+    batch_by_id: Dict[str, RawIntelligenceItem],
+    batch: Sequence[RawIntelligenceItem],
+) -> Optional[RawIntelligenceItem]:
+    normalized_id = str(raw_item_id or "").strip()
+    if normalized_id in batch_by_id:
+        return batch_by_id[normalized_id]
+    if len(batch) == 1:
+        return batch[0]
+    return None
+
+
 def _sanitize_channel_observation(
     observation: ChannelObservation,
 ) -> Optional[ChannelObservation]:
@@ -403,7 +468,9 @@ def _sanitize_slang_observation(observation: SlangObservation) -> Optional[Slang
             "contextual_meaning": ""
             if _contains_secret(observation.contextual_meaning)
             else observation.contextual_meaning,
-            "usage_quote": "" if _contains_secret(observation.usage_quote) else observation.usage_quote,
+            "usage_quote": ""
+            if _contains_secret(observation.usage_quote)
+            else observation.usage_quote,
             "aliases_or_variants": _filter_public_values(observation.aliases_or_variants),
             "secondary_tags": _filter_public_values(observation.secondary_tags),
             "primary_label": _normalize_primary_label(observation.primary_label),
@@ -412,36 +479,3 @@ def _sanitize_slang_observation(observation: SlangObservation) -> Optional[Slang
     if not sanitized.normalized_term:
         sanitized = sanitized.model_copy(update={"normalized_term": sanitized.term})
     return sanitized
-
-
-def _select_raw_item_for_channel(
-    observation: ChannelObservation,
-    batch: Sequence[RawIntelligenceItem],
-) -> RawIntelligenceItem:
-    needles = [
-        observation.channel_name,
-        *observation.channel_handles,
-        *observation.channel_urls,
-        *observation.channel_domains,
-    ]
-    return _select_raw_item_by_needles(needles, batch)
-
-
-def _select_raw_item_for_slang(
-    observation: SlangObservation,
-    batch: Sequence[RawIntelligenceItem],
-) -> RawIntelligenceItem:
-    needles = [observation.term, observation.normalized_term, observation.usage_quote]
-    return _select_raw_item_by_needles(needles, batch)
-
-
-def _select_raw_item_by_needles(
-    needles: Sequence[str],
-    batch: Sequence[RawIntelligenceItem],
-) -> RawIntelligenceItem:
-    normalized_needles = [str(needle).strip().lower() for needle in needles if str(needle).strip()]
-    for item in batch:
-        text = item.raw_text.lower()
-        if any(needle in text for needle in normalized_needles):
-            return item
-    return batch[0]

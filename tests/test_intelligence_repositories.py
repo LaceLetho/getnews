@@ -46,6 +46,9 @@ def test_intelligence_repository_implements_contract_and_round_trips(tmp_path: P
         )
         assert repository.save_observation(observation) == observation.id
         assert repository.get_observations_by_raw_item(raw.id)[0].id == observation.id
+        assert repository.get_raw_item_ids_with_existing_observations([raw.id], "p1") == {raw.id}
+        assert repository.get_raw_item_ids_with_existing_observations([raw.id], "other") == set()
+        assert repository.get_raw_item_ids_with_existing_observations([], "p1") == set()
         assert repository.get_uncanonicalized_observations(10)[0].id == observation.id
         assert repository.mark_observation_canonicalized(observation.id) is True
         assert repository.get_uncanonicalized_observations(10) == []
@@ -148,5 +151,69 @@ def test_intelligence_schema_created_without_audit_tables(tmp_path: Path):
         assert {"embedding", "embedding_model", "embedding_updated_at"}.issubset(columns)
         assert "idx_intelligence_canonical_entries_type_key" in indexes
         assert not any("audit" in table for table in tables)
+    finally:
+        manager.close()
+
+
+def test_existing_observation_lookup_handles_dict_rows(tmp_path: Path):
+    manager = DataManager(StorageConfig(database_path=str(tmp_path / "dict-row.db")))
+    try:
+        raw = RawIntelligenceItem.create(
+            source_type="telegram",
+            source_id="chat-1",
+            raw_text="alpha",
+            content_hash="hash-dict",
+            expires_at=datetime.utcnow() + timedelta(days=30),
+        )
+        observation = ExtractionObservation.create(
+            raw_item_id=raw.id,
+            entry_type=EntryType.CHANNEL.value,
+            confidence=0.8,
+            model_name="model-a",
+            prompt_version="p1",
+            schema_version="s1",
+            channel_name="Alpha",
+        )
+        manager.upsert_raw_intelligence_item(raw.to_dict())
+        manager.upsert_intelligence_observation(observation.to_dict())
+
+        original_get_connection = manager._get_connection
+
+        class DictRowCursor:
+            def __init__(self, cursor):
+                self.cursor = cursor
+
+            def execute(self, *args, **kwargs):
+                return self.cursor.execute(*args, **kwargs)
+
+            def fetchall(self):
+                rows = self.cursor.fetchall()
+                return [dict(row) for row in rows]
+
+        class DictRowConnection:
+            def __init__(self, connection):
+                self.connection = connection
+
+            def cursor(self):
+                return DictRowCursor(self.connection.cursor())
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class DictRowContext:
+            def __enter__(self):
+                self.inner = original_get_connection()
+                connection = self.inner.__enter__()
+                return DictRowConnection(connection)
+
+            def __exit__(self, exc_type, exc, tb):
+                return self.inner.__exit__(exc_type, exc, tb)
+
+        manager._get_connection = lambda: DictRowContext()
+
+        assert manager.get_raw_item_ids_with_existing_observations([raw.id], "p1") == {raw.id}
     finally:
         manager.close()

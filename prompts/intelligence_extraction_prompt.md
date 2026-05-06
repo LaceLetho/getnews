@@ -30,6 +30,7 @@
 {
   "channels": [
     {
+      "raw_item_id": "必须原样复制来源 items[].id",
       "channel_name": "渠道/群组/卖家名称；未知则为空字符串",
       "channel_description": "基于上下文的一句话描述",
       "channel_urls": ["公开 URL 或邀请链接"],
@@ -42,6 +43,7 @@
   ],
   "slangs": [
     {
+      "raw_item_id": "必须原样复制来源 items[].id",
       "term": "原文术语",
       "normalized_term": "规范化术语",
       "literal_meaning": "字面意思",
@@ -69,12 +71,14 @@
 3. 可以记录公开 Telegram handle（如 `@seller`）和公开邀请链接；不要记录私密令牌或登录凭证。
 4. 不要复用市场新闻分析分类；本任务只抽取渠道和黑话。
 5. 同一 raw item 可同时产出 channel 和 slang observations。
-6. 如果一个词只是普通词汇且没有行业语境，不要抽取。
+6. 每个 observation 必须包含 `raw_item_id`，值必须来自输入 `items[].id`；不要编造不存在的 ID。
+7. 如果一个词只是普通词汇且没有行业语境，不要抽取。
 
 # Few-Shot Examples
 
 ## Example A
 Input:
+`id=example-a`
 `找币圈担保，U 到账后再放号，群里有中介。`
 
 Output:
@@ -83,6 +87,7 @@ Output:
   "channels": [],
   "slangs": [
     {
+      "raw_item_id": "example-a",
       "term": "币圈担保",
       "normalized_term": "币圈担保",
       "literal_meaning": "加密货币圈内的担保服务",
@@ -100,6 +105,7 @@ Output:
 
 ## Example B
 Input:
+`id=example-b`
 `GPT Plus 土区礼品卡现货，走 @seller，支持支付宝。`
 
 Output:
@@ -107,6 +113,7 @@ Output:
 {
   "channels": [
     {
+      "raw_item_id": "example-b",
       "channel_name": "@seller",
       "channel_description": "提供 GPT Plus 土耳其区礼品卡/订阅交易的公开 Telegram 联系入口",
       "channel_urls": [],
@@ -119,6 +126,7 @@ Output:
   ],
   "slangs": [
     {
+      "raw_item_id": "example-b",
       "term": "土区礼品卡",
       "normalized_term": "土区礼品卡",
       "literal_meaning": "土耳其区礼品卡",
@@ -136,6 +144,7 @@ Output:
 
 ## Example C
 Input:
+`id=example-c`
 `api_key=sk-xxx password=abc，不要发群里。`
 
 Output:
