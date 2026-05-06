@@ -2768,13 +2768,13 @@ class DataManager:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(self._sql(query), tuple(params))
-                return [
-                    (
-                        self._serialize_canonical_intelligence_entry_row(conn, row),
-                        float(row["boosted_similarity"]),
-                    )
-                    for row in cursor.fetchall()
-                ]
+                results: List[Tuple[Dict[str, Any], float]] = []
+                for row in cursor.fetchall():
+                    serialized = self._serialize_canonical_intelligence_entry_row(conn, row)
+                    serialized.pop("similarity", None)
+                    serialized.pop("boosted_similarity", None)
+                    results.append((serialized, float(row["boosted_similarity"])))
+                return results
         rows = self.list_canonical_intelligence_entries(entry_type, primary_label, window, 1, 10000)
         scored = []
         for row in rows:
