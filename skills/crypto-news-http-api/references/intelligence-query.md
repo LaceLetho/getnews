@@ -37,7 +37,7 @@ Filter by primary classification. Valid labels:
 
 ### page / page_size
 
-Integer pagination for `/intelligence/entries`. Defaults: `page=1`, `page_size=20`. Maximum `page_size` is `100`.
+Integer pagination for `/intelligence/entries` and `/intelligence/search`. Defaults: `page=1`, `page_size=20`. Maximum `page_size` is `100`.
 
 ---
 
@@ -179,6 +179,8 @@ Semantic search across canonical intelligence entries. Embeds the query text and
 | `entry_type` | string | No | all types |
 | `primary_label` | string | No | all labels |
 | `window` | string | No | all time |
+| `page` | integer | No | 1 |
+| `page_size` | integer | No | 20 |
 
 ### Response (200)
 
@@ -199,7 +201,9 @@ Semantic search across canonical intelligence entries. Embeds the query text and
       "similarity_score": 0.9234
     }
   ],
-  "total": 3
+  "total": 25,
+  "page": 1,
+  "page_size": 20
 }
 ```
 
@@ -209,7 +213,7 @@ Semantic search across canonical intelligence entries. Embeds the query text and
 
 ```bash
 curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/search?q=GPT%20plus%E8%B4%AD%E4%B9%B0%E6%B8%A0%E9%81%93&window=7d"
+  "https://news.tradao.xyz/intelligence/search?q=GPT%20plus%E8%B4%AD%E4%B9%B0%E6%B8%A0%E9%81%93&window=7d&page=1&page_size=10"
 ```
 
 ---

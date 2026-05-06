@@ -112,7 +112,7 @@ Five synchronous endpoints provide access to canonical knowledge entries, search
 - `GET /intelligence/entries` — List canonical entries with time window, type, and label filters, paginated
 - `GET /intelligence/labels` — List searchable primary labels
 - `GET /intelligence/entries/{entry_id}` — Get a single entry with optional raw evidence text (`include_raw=true`)
-- `GET /intelligence/search` — Semantic search using `q` parameter, ranked by vector similarity + recency + confidence
+- `GET /intelligence/search` — Semantic search using `q` parameter, ranked by vector similarity + recency + confidence, paginated
 - `GET /intelligence/raw/{raw_item_id}` — Get original raw text for a collected item (30-day TTL)
 
 These endpoints are synchronous — no async job/poll flow. Results return immediately.
@@ -147,7 +147,7 @@ Supported HTTP routes:
 - `GET /intelligence/entries` - List intelligence entries (synchronous, Bearer-protected)
 - `GET /intelligence/labels` - List searchable intelligence primary labels
 - `GET /intelligence/entries/{entry_id}` - Get intelligence entry detail with optional raw evidence
-- `GET /intelligence/search` - Semantic search across intelligence entries
+- `GET /intelligence/search` - Semantic search across intelligence entries (paginated with `page`/`page_size`)
 - `GET /intelligence/raw/{raw_item_id}` - Get raw intelligence item by ID
 
 ## Non-Goals
