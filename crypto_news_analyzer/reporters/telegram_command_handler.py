@@ -19,6 +19,8 @@ import logging
 import math
 import os
 import hashlib
+import secrets
+import time
 import threading
 from urllib.parse import urlsplit, urlunsplit
 from typing import Dict, Any, List, Optional
@@ -26,8 +28,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
-from telegram import Update, BotCommand
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
 from ..datasource_payloads import (
     DataSourcePayloadValidationError,
@@ -119,6 +121,9 @@ class TelegramCommandHandler:
         # 需求6.3: 缓存用户名到user_id的映射以避免重复API调用
         self._username_cache: Dict[str, str] = {}
 
+        # Intel callback pagination state cache
+        self._callback_state: Dict[str, dict] = {}
+
         self._load_authorized_users()
 
         self.logger.info("Telegram命令处理器初始化完成")
@@ -190,6 +195,8 @@ class TelegramCommandHandler:
         application.add_handler(CommandHandler("intel_labels", self._handle_intel_labels_command))
         application.add_handler(CommandHandler("intel_search", self._handle_intel_search_command))
         application.add_handler(CommandHandler("intel_detail", self._handle_intel_detail_command))
+        application.add_handler(CommandHandler("intel_ignored", self._handle_intel_ignored_command))
+        application.add_handler(CommandHandler("intel_unignore", self._handle_intel_unignore_command))
         application.add_handler(CommandHandler("market", self._handle_market_command))
         application.add_handler(CommandHandler("status", self._handle_status_command))
         application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
@@ -204,7 +211,303 @@ class TelegramCommandHandler:
         )
         application.add_handler(CommandHandler("help", self._handle_help_command))
         application.add_handler(CommandHandler("start", self._handle_start_command))
+        application.add_handler(
+            CallbackQueryHandler(
+                self._handle_intel_callback_query, pattern=r"^intel:(d|i|u|p):"
+            )
+        )
         return application
+
+    def _generate_callback_token(self) -> str:
+        return secrets.token_urlsafe(8)[:10]
+
+    def _cleanup_expired_callback_state(self) -> None:
+        now = time.time()
+        expired_tokens = [
+            token
+            for token, payload in self._callback_state.items()
+            if now - float(payload.get("stored_at", 0.0)) > 900
+        ]
+        for token in expired_tokens:
+            self._callback_state.pop(token, None)
+
+    def _store_callback_state(self, token: str, state: dict) -> None:
+        self._cleanup_expired_callback_state()
+        payload = dict(state)
+        payload["stored_at"] = time.time()
+        self._callback_state[token] = payload
+
+    def _get_callback_state(self, token: str) -> Optional[dict]:
+        state = self._callback_state.get(token)
+        if state is None:
+            return None
+
+        stored_at = float(state.get("stored_at", 0.0))
+        if time.time() - stored_at > 900:
+            self._callback_state.pop(token, None)
+            return None
+
+        return dict(state)
+
+    def _build_intel_detail_callback_data(self, entry_id: str) -> str:
+        return f"intel:d:{entry_id}"
+
+    def _build_intel_ignore_callback_data(self, entry_id: str) -> str:
+        return f"intel:i:{entry_id}"
+
+    def _build_intel_unignore_callback_data(self, entry_id: str) -> str:
+        return f"intel:u:{entry_id}"
+
+    def _build_intel_pagination_callback_data(self, token: str, page: int) -> str:
+        return f"intel:p:{token}:{max(1, int(page))}"
+
+    def _build_intelligence_result_reply_markup(
+        self,
+        entries: List[Any],
+        token: str,
+        page: int,
+        total_pages: int,
+        action: str = "ignore",
+    ) -> InlineKeyboardMarkup:
+        keyboard: List[List[InlineKeyboardButton]] = []
+        for entry in entries:
+            if action == "unignore":
+                action_button = InlineKeyboardButton(
+                    "恢复",
+                    callback_data=self._build_intel_unignore_callback_data(entry.id),
+                )
+            else:
+                action_button = InlineKeyboardButton(
+                    "忽略",
+                    callback_data=self._build_intel_ignore_callback_data(entry.id),
+                )
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        "详情",
+                        callback_data=self._build_intel_detail_callback_data(entry.id),
+                    ),
+                    action_button,
+                ]
+            )
+
+        pagination_row: List[InlineKeyboardButton] = []
+        if page > 1:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    "上一页",
+                    callback_data=self._build_intel_pagination_callback_data(
+                        token, page - 1
+                    ),
+                )
+            )
+        if page < total_pages:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    "下一页",
+                    callback_data=self._build_intel_pagination_callback_data(
+                        token, page + 1
+                    ),
+                )
+            )
+        if pagination_row:
+            keyboard.append(pagination_row)
+
+        return InlineKeyboardMarkup(keyboard)
+
+    async def _handle_intel_detail_callback(
+        self,
+        callback_query: Any,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+    ) -> str:
+        repository = self._get_intelligence_repository()
+        if repository is None:
+            return "❌ 情报仓储未初始化"
+
+        entry = repository.get_canonical_entry_by_id(entry_id)
+        if entry is None:
+            return "Entry not found"
+
+        response = self._format_intelligence_detail(entry)
+        await callback_query.message.reply_text(response, parse_mode="Markdown")
+        return "已显示详情"
+
+    async def _handle_intel_ignore_callback(
+        self,
+        callback_query: Any,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+    ) -> str:
+        repository = self._get_intelligence_repository()
+        if repository is None:
+            return "❌ 情报仓储未初始化"
+
+        entry = repository.get_canonical_entry_by_id(entry_id)
+        if entry is None:
+            return "条目未找到"
+
+        repository.ignore_canonical_entry(entry_id, ignored_by=f"telegram:{user_id}")
+        display_name = getattr(entry, "display_name", entry_id) or entry_id
+        return f"已忽略：{display_name}"
+
+    async def _handle_intel_unignore_callback(
+        self,
+        callback_query: Any,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+    ) -> str:
+        repository = self._get_intelligence_repository()
+        display_name = entry_id
+        if repository is not None:
+            entry = repository.get_canonical_entry_by_id(entry_id)
+            display_name = getattr(entry, "display_name", entry_id) or entry_id
+            repository.unignore_canonical_entry(entry_id)
+        return f"已恢复：{display_name}"
+
+    async def _handle_intel_pagination_callback(
+        self,
+        callback_query: Any,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        state: dict,
+        page: int,
+    ) -> str:
+        kind = str(state.get("kind", "")).strip()
+        if kind == "search":
+            payload = self.handle_intel_search_command(
+                user_id,
+                username,
+                chat_id,
+                str(state.get("query", "")),
+                page,
+                return_markup=True,
+            )
+        elif kind == "ignored":
+            payload = self.handle_intel_ignored_command(
+                user_id,
+                username,
+                chat_id,
+                page,
+                return_markup=True,
+            )
+        else:
+            payload = self.handle_intel_recent_command(
+                user_id,
+                username,
+                chat_id,
+                int(state.get("window_hours", 24)),
+                str(state.get("label", "")) or None,
+                page,
+                return_markup=True,
+            )
+
+        response_text = payload["text"] if isinstance(payload, dict) else str(payload)
+        reply_markup = payload.get("reply_markup") if isinstance(payload, dict) else None
+        try:
+            await callback_query.message.edit_text(
+                response_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
+            )
+        except Exception:
+            await callback_query.message.reply_text(
+                response_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
+            )
+        return "已更新分页"
+
+    async def _handle_intel_callback_query(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        callback_query = getattr(update, "callback_query", None)
+        if callback_query is None:
+            return
+
+        try:
+            user = callback_query.from_user
+            message = callback_query.message
+            chat = message.chat if message is not None else None
+            user_id = str(getattr(user, "id", ""))
+            username = getattr(user, "username", None) or getattr(user, "first_name", "") or ""
+            chat_id = str(getattr(chat, "id", "")) if chat is not None else ""
+
+            if not self.is_authorized_user(user_id, username):
+                await callback_query.answer("未授权")
+                return
+
+            allowed, error_msg = self.check_rate_limit(user_id)
+            if not allowed:
+                await callback_query.answer(error_msg or "速率限制")
+                return
+
+            data = str(getattr(callback_query, "data", ""))
+            if data.startswith("intel:d:"):
+                entry_id = data.split(":", 2)[2]
+                ack = await self._handle_intel_detail_callback(
+                    callback_query, user_id, username, chat_id, entry_id
+                )
+                await callback_query.answer(ack)
+                return
+
+            if data.startswith("intel:i:"):
+                entry_id = data.split(":", 2)[2]
+                ack = await self._handle_intel_ignore_callback(
+                    callback_query, user_id, username, chat_id, entry_id
+                )
+                await callback_query.answer(ack)
+                return
+
+            if data.startswith("intel:u:"):
+                entry_id = data.split(":", 2)[2]
+                ack = await self._handle_intel_unignore_callback(
+                    callback_query, user_id, username, chat_id, entry_id
+                )
+                await callback_query.answer(ack)
+                return
+
+            if data.startswith("intel:p:"):
+                parts = data.split(":", 3)
+                if len(parts) != 4:
+                    await callback_query.answer("翻页已过期，请重新执行命令")
+                    return
+
+                token = parts[2]
+                try:
+                    page = max(1, int(parts[3]))
+                except ValueError:
+                    page = 1
+
+                state = self._get_callback_state(token)
+                if not state:
+                    await callback_query.answer("翻页已过期，请重新执行命令")
+                    return
+
+                if str(state.get("chat_id", "")) != chat_id or str(state.get("user_id", "")) != user_id:
+                    await callback_query.answer("翻页已过期，请重新执行命令")
+                    return
+
+                ack = await self._handle_intel_pagination_callback(
+                    callback_query, user_id, username, chat_id, state, page
+                )
+                await callback_query.answer(ack)
+                return
+
+            await callback_query.answer("未知操作，请重新执行命令")
+        except Exception as e:
+            self.logger.error(f"Failed to handle intel callback query: {e}")
+            try:
+                await callback_query.answer("处理回调失败")
+            except Exception:
+                pass
 
     def _load_authorized_users(self) -> None:
         """
@@ -625,6 +928,8 @@ class TelegramCommandHandler:
                 BotCommand("intel_labels", "查看可搜索情报标签"),
                 BotCommand("intel_search", "搜索情报条目"),
                 BotCommand("intel_detail", "查看情报条目详情"),
+                BotCommand("intel_ignored", "查看已忽略情报条目"),
+                BotCommand("intel_unignore", "恢复已忽略情报条目"),
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
                 BotCommand("tokens", "查看LLM token使用统计"),
@@ -983,10 +1288,26 @@ class TelegramCommandHandler:
                 )
                 return
 
-            response = self.handle_intel_recent_command(
-                user_id, username, chat_id, window_hours, label or None, page
+            payload = self.handle_intel_recent_command(
+                user_id,
+                username,
+                chat_id,
+                window_hours,
+                label or None,
+                page,
+                return_markup=True,
             )
-            await message.reply_text(response, parse_mode="Markdown")
+            if isinstance(payload, dict):
+                response_text = payload.get("text", "")
+                reply_markup = payload.get("reply_markup")
+            else:
+                response_text = str(payload)
+                reply_markup = None
+            await message.reply_text(
+                response_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
+            )
 
         except Exception as e:
             error_msg = f"处理/intel_recent命令时发生错误: {str(e)}"
@@ -1133,8 +1454,20 @@ class TelegramCommandHandler:
                 )
                 return
 
-            response = self.handle_intel_search_command(user_id, username, chat_id, query, page)
-            await message.reply_text(response, parse_mode="Markdown")
+            payload = self.handle_intel_search_command(
+                user_id, username, chat_id, query, page, return_markup=True
+            )
+            if isinstance(payload, dict):
+                response_text = payload.get("text", "")
+                reply_markup = payload.get("reply_markup")
+            else:
+                response_text = str(payload)
+                reply_markup = None
+            await message.reply_text(
+                response_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
+            )
 
         except Exception as e:
             error_msg = f"处理/intel_search命令时发生错误: {str(e)}"
@@ -1208,6 +1541,147 @@ class TelegramCommandHandler:
 
         except Exception as e:
             error_msg = f"处理/intel_detail命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_intel_ignored_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+        message = getattr(update, "effective_message", None) or update.message
+
+        if message is None:
+            self.logger.error("/intel_ignored update has no effective message")
+            return
+
+        args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+        page = 1
+        if args and args[-1].isdigit():
+            page = max(1, int(args[-1]))
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/intel_ignored",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list",
+                )
+                self._log_command_execution(
+                    "/intel_ignored", user_id, username, None, False, response
+                )
+                return
+
+            self._log_authorization_attempt(
+                command="/intel_ignored",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True,
+            )
+
+            payload = self.handle_intel_ignored_command(
+                user_id, username, chat_id, page, return_markup=True
+            )
+            if isinstance(payload, dict):
+                response_text = payload.get("text", "")
+                reply_markup = payload.get("reply_markup")
+            else:
+                response_text = str(payload)
+                reply_markup = None
+            await message.reply_text(
+                response_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
+            )
+
+        except Exception as e:
+            error_msg = f"处理/intel_ignored命令时发生错误: {str(e)}"
+            self.logger.error(
+                f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_intel_unignore_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+        message = getattr(update, "effective_message", None) or update.message
+
+        if message is None:
+            self.logger.error("/intel_unignore update has no effective message")
+            return
+
+        args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await message.reply_text(response)
+                self._log_authorization_attempt(
+                    command="/intel_unignore",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list",
+                )
+                self._log_command_execution(
+                    "/intel_unignore", user_id, username, None, False, response
+                )
+                return
+
+            self._log_authorization_attempt(
+                command="/intel_unignore",
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True,
+            )
+
+            if not args:
+                await message.reply_text(
+                    "❌ 参数错误\n\n用法: /intel_unignore <entry_id>\n示例: /intel_unignore intel-123"
+                )
+                return
+
+            response = self.handle_intel_unignore_command(
+                user_id, username, chat_id, args[0]
+            )
+            await message.reply_text(response, parse_mode="Markdown")
+
+        except Exception as e:
+            error_msg = f"处理/intel_unignore命令时发生错误: {str(e)}"
             self.logger.error(
                 f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
@@ -2187,7 +2661,22 @@ class TelegramCommandHandler:
 
     def _format_intelligence_labels(self) -> str:
         lines = ["🏷️ *可搜索情报标签*\n"]
-        for item in PrimaryLabel:
+        repository = self._get_intelligence_repository()
+        if repository is None:
+            items = list(PrimaryLabel)
+        elif (
+            repository.count_canonical_entries() == 0
+            and repository.count_ignored_canonical_entries() == 0
+        ):
+            items = list(PrimaryLabel)
+        else:
+            items = [
+                item
+                for item in PrimaryLabel
+                if repository.count_canonical_entries(primary_label=item.value) > 0
+            ]
+
+        for item in items:
             if item.name == item.value:
                 lines.append(f"• `{item.value}`")
             else:
@@ -2252,10 +2741,11 @@ class TelegramCommandHandler:
         lines = [f"🔎 *情报搜索*\n查询: {query}\n"]
         for index, (entry, score) in enumerate(results, start=1):
             lines.append(
-                f"{index}. *{entry.display_name}* | 标签: {entry.primary_label or '无'} | 置信度: {float(getattr(entry, 'confidence', 0.0)):.2f} | 相似度: {float(score):.3f}"
+                f"{index}. {entry.display_name} | {entry.entry_type} | {entry.primary_label or '无'} | {float(getattr(entry, 'confidence', 0.0)):.2f}"
             )
             if getattr(entry, "explanation", None):
                 lines.append(f"   {entry.explanation}")
+            lines.append(f"   相似度: {float(score):.3f}")
 
         if total > 0:
             total_pages = max(1, (total + page_size - 1) // page_size)
@@ -2283,9 +2773,7 @@ class TelegramCommandHandler:
         lines = ["📌 *最近情报条目*\n"]
         for index, entry in enumerate(entries, start=1):
             lines.append(
-                f"{index}. *{entry.display_name}* | ID: `{entry.id}` | "
-                f"类型: {entry.entry_type} | 标签: {entry.primary_label or '无'} | "
-                f"置信度: {float(getattr(entry, 'confidence', 0.0)):.2f}"
+                f"{index}. {entry.display_name} | {entry.entry_type} | {entry.primary_label or '无'} | {float(getattr(entry, 'confidence', 0.0)):.2f}"
             )
             if getattr(entry, "explanation", None):
                 lines.append(f"   {entry.explanation}")
@@ -2327,7 +2815,8 @@ class TelegramCommandHandler:
         window_hours: int,
         label: Optional[str] = None,
         page: int = 1,
-    ) -> str:
+        return_markup: bool = False,
+    ) -> Any:
         try:
             repository = self._get_intelligence_repository()
             if repository is None:
@@ -2370,10 +2859,31 @@ class TelegramCommandHandler:
                 window_hours=window_hours,
                 label=label or "",
             )
+            payload = None
+            if return_markup and entries:
+                token = self._generate_callback_token()
+                self._store_callback_state(
+                    token,
+                    {
+                        "kind": "recent",
+                        "window_hours": window_hours,
+                        "label": label or "",
+                        "page_size": 20,
+                        "page": page,
+                        "chat_id": chat_id,
+                        "user_id": user_id,
+                    },
+                )
+                payload = {
+                    "text": response,
+                    "reply_markup": self._build_intelligence_result_reply_markup(
+                        entries, token, page, total_pages, action="ignore"
+                    ),
+                }
             self._log_command_execution(
                 "/intel_recent", user_id, username, None, bool(entries), response
             )
-            return response
+            return payload if payload is not None else response
         except Exception as e:
             error_msg = f"查询最近情报失败: {str(e)}"
             self.logger.error(error_msg)
@@ -2400,8 +2910,14 @@ class TelegramCommandHandler:
             return f"❌ 执行失败\n\n{str(e)}"
 
     def handle_intel_search_command(
-        self, user_id: str, username: str, chat_id: str, query: str, page: int = 1
-    ) -> str:
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        query: str,
+        page: int = 1,
+        return_markup: bool = False,
+    ) -> Any:
         try:
             service = self._get_intelligence_search_service()
             if service is None:
@@ -2413,18 +2929,144 @@ class TelegramCommandHandler:
 
             page = max(1, page)
             results, total = service.semantic_search(query_text=query, page=page)
+            total_pages = max(1, (total + 20 - 1) // 20) if total > 0 else 1
+            if page > total_pages:
+                page = total_pages
+                results, total = service.semantic_search(query_text=query, page=page)
+                total_pages = max(1, (total + 20 - 1) // 20) if total > 0 else 1
             response = self._format_intelligence_search_results(
                 query, results, total=total, page=page
             )
+            if return_markup and results:
+                token = self._generate_callback_token()
+                self._store_callback_state(
+                    token,
+                    {
+                        "kind": "search",
+                        "query": query,
+                        "page_size": 20,
+                        "page": page,
+                        "chat_id": chat_id,
+                        "user_id": user_id,
+                    },
+                )
+                entries = [entry for entry, _ in results]
             self._log_command_execution(
                 "/intel_search", user_id, username, None, bool(results), response
             )
+            if return_markup and results:
+                return {
+                    "text": response,
+                    "reply_markup": self._build_intelligence_result_reply_markup(
+                        entries, token, page, total_pages, action="ignore"
+                    ),
+                }
             return response
         except Exception as e:
             error_msg = f"情报搜索失败: {str(e)}"
             self.logger.error(error_msg)
             self._log_command_execution(
                 "/intel_search", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
+    def handle_intel_ignored_command(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        page: int = 1,
+        return_markup: bool = False,
+    ) -> Any:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                response = "❌ 情报仓储未初始化\n\n请先完成情报模块配置。"
+                self._log_command_execution(
+                    "/intel_ignored", user_id, username, None, False, response
+                )
+                return response
+
+            page = max(1, page)
+            total = repository.count_ignored_canonical_entries()
+            total_pages = max(1, (total + 20 - 1) // 20) if total > 0 else 1
+            if page > total_pages:
+                page = total_pages
+            entries = repository.list_ignored_canonical_entries(
+                page=page - 1,
+                page_size=20,
+            )
+            response = self._format_intelligence_recent_results(
+                entries,
+                total=total,
+                page=page,
+                page_size=20,
+            )
+            if return_markup and entries:
+                token = self._generate_callback_token()
+                self._store_callback_state(
+                    token,
+                    {
+                        "kind": "ignored",
+                        "page_size": 20,
+                        "page": page,
+                        "chat_id": chat_id,
+                        "user_id": user_id,
+                    },
+                )
+            self._log_command_execution(
+                "/intel_ignored", user_id, username, None, bool(entries), response
+            )
+            if return_markup and entries:
+                return {
+                    "text": response,
+                    "reply_markup": self._build_intelligence_result_reply_markup(
+                        entries, token, page, total_pages, action="unignore"
+                    ),
+                }
+            return response
+        except Exception as e:
+            error_msg = f"查询已忽略情报失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_ignored", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
+    def handle_intel_unignore_command(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+    ) -> str:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                response = "❌ 情报仓储未初始化\n\n请先完成情报模块配置。"
+                self._log_command_execution(
+                    "/intel_unignore", user_id, username, None, False, response
+                )
+                return response
+
+            restored = repository.unignore_canonical_entry(entry_id)
+            if restored is None:
+                response = "Entry not found"
+                self._log_command_execution(
+                    "/intel_unignore", user_id, username, None, False, response
+                )
+                return response
+
+            response = f"已恢复：{getattr(restored, 'display_name', entry_id) or entry_id}"
+            self._log_command_execution(
+                "/intel_unignore", user_id, username, None, True, response
+            )
+            return response
+        except Exception as e:
+            error_msg = f"恢复忽略情报失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_unignore", user_id, username, None, False, error_msg
             )
             return f"❌ 执行失败\n\n{str(e)}"
 
@@ -2886,6 +3528,14 @@ class TelegramCommandHandler:
         help_text.append(
             "/intel_detail <entry_id> [raw] - 查看情报条目详情\n"
             "加 raw 可返回 TTL 内原始证据。\n"
+        )
+        help_text.append(
+            "/intel_ignored [page] - 查看已忽略情报条目\n"
+            "例如 /intel_ignored 2。\n"
+        )
+        help_text.append(
+            "/intel_unignore <entry_id> - 恢复已忽略情报条目\n"
+            "例如 /intel_unignore intel-123。\n"
         )
 
         if "status" in user_permissions:

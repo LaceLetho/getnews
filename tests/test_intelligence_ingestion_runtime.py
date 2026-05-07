@@ -10,6 +10,7 @@ from crypto_news_analyzer.domain.models import (
     RawIntelligenceItem,
 )
 from crypto_news_analyzer.execution_coordinator import MainController
+from crypto_news_analyzer.intelligence.merge import IntelligenceMergeEngine
 from crypto_news_analyzer.intelligence.pipeline import IntelligencePipeline
 
 
@@ -56,6 +57,8 @@ class MemoryIntelligenceRepository:
     def __init__(self, sources):
         self.datasource_repository = MemoryDataSourceRepository(sources)
         self.raw_items = {}
+        self.canonical_entries = {}
+        self.canonicalized_observation_ids = set()
         self.checkpoints = {}
         self.saved_checkpoints = []
 
@@ -83,6 +86,49 @@ class MemoryIntelligenceRepository:
 
     def get_checkpoint(self, source_type, source_id):
         return self.checkpoints.get((source_type, source_id))
+
+    def upsert_canonical_entry(self, entry):
+        self.canonical_entries[entry.id] = entry
+        return entry.id
+
+    def save_canonical_entry(self, entry):
+        return self.upsert_canonical_entry(entry)
+
+    def get_canonical_entry_by_id(self, entry_id):
+        return self.canonical_entries.get(entry_id)
+
+    def get_canonical_entry_by_normalized_key(self, entry_type, normalized_key):
+        entry_type = str(entry_type).strip().lower()
+        normalized_key = str(normalized_key).strip().lower()
+        for entry in self.canonical_entries.values():
+            if entry.entry_type == entry_type and entry.normalized_key == normalized_key:
+                return entry
+        return None
+
+    def mark_observation_canonicalized(self, observation_id):
+        self.canonicalized_observation_ids.add(observation_id)
+        return True
+
+    def ignore_canonical_entry(self, entry_id, ignored_by=None):
+        entry = self.canonical_entries.get(entry_id)
+        if entry is None:
+            return None
+        entry.is_ignored = True
+        entry.ignored_at = datetime.utcnow()
+        entry.ignored_by = ignored_by
+        return entry
+
+    def unignore_canonical_entry(self, entry_id):
+        entry = self.canonical_entries.get(entry_id)
+        if entry is None:
+            return None
+        entry.is_ignored = False
+        entry.ignored_at = None
+        entry.ignored_by = None
+        return entry
+
+    def save_related_candidate(self, *args, **kwargs):
+        return None
 
 
 class FakeFactory:
@@ -121,6 +167,148 @@ def _pipeline(sources, crawlers, repository=None):
         merge_engine,
         search_service,
     )
+
+
+def _canonical_field_snapshot(entry):
+    return {
+        "display_name": entry.display_name,
+        "explanation": entry.explanation,
+        "usage_summary": entry.usage_summary,
+        "primary_label": entry.primary_label,
+        "secondary_tags": list(entry.secondary_tags),
+        "confidence": entry.confidence,
+        "aliases": list(entry.aliases),
+        "evidence_count": entry.evidence_count,
+        "last_seen_at": entry.last_seen_at,
+        "latest_raw_item_id": entry.latest_raw_item_id,
+        "updated_at": entry.updated_at,
+    }
+
+
+def test_ignored_canonical_entry_is_not_updated_by_new_evidence():
+    source = DataSource.create(
+        name="TG Alpha",
+        source_type="telegram_group",
+        config_payload={"chat_id": "chat-1"},
+    )
+    repository = MemoryIntelligenceRepository([source])
+    entry = CanonicalIntelligenceEntry.create(
+        entry_type="channel",
+        normalized_key="alpha",
+        display_name="Alpha Original",
+        explanation="original explanation",
+        usage_summary="original usage",
+        primary_label="crypto",
+        secondary_tags=["original"],
+        confidence=0.5,
+        aliases=["alpha-original"],
+        evidence_count=1,
+        last_seen_at=datetime.utcnow() - timedelta(days=1),
+        latest_raw_item_id="raw-original",
+    )
+    repository.upsert_canonical_entry(entry)
+    repository.ignore_canonical_entry(entry.id, ignored_by="operator")
+    ignored_snapshot = _canonical_field_snapshot(entry)
+
+    raw_item = _raw(content_hash="ignored-new", external_id="201")
+    observation = ExtractionObservation.create(
+        raw_item_id=raw_item.id,
+        entry_type="channel",
+        confidence=0.95,
+        model_name="new-model",
+        prompt_version="2",
+        schema_version="2",
+        channel_name="Alpha Updated",
+        channel_description="new explanation",
+        channel_handles=["alpha"],
+        usage_quote="new usage",
+        aliases_or_variants=["alpha-new"],
+        primary_label="社媒",
+        secondary_tags=["new"],
+    )
+    extractor = Mock(config=SimpleNamespace(collection=SimpleNamespace(backfill_hours=24)))
+    extractor.extract.return_value = [observation]
+    search_service = Mock()
+    search_service.batch_generate_embeddings.return_value = 1
+    pipeline = IntelligencePipeline(
+        FakeFactory([FakeCrawler([raw_item])]),
+        repository,
+        extractor,
+        IntelligenceMergeEngine(repository),
+        search_service,
+    )
+
+    result = pipeline.run_intelligence_collection_once()
+
+    assert result["canonical_entries"] == 1
+    assert result["embeddings_updated"] == 0
+    assert observation.is_canonicalized is True
+    assert observation.id in repository.canonicalized_observation_ids
+    assert len(repository.canonical_entries) == 1
+    persisted = repository.get_canonical_entry_by_id(entry.id)
+    assert _canonical_field_snapshot(persisted) == ignored_snapshot
+    search_service.batch_generate_embeddings.assert_not_called()
+
+
+def test_unignored_entry_resumes_future_ingestion_updates():
+    source = DataSource.create(
+        name="TG Alpha",
+        source_type="telegram_group",
+        config_payload={"chat_id": "chat-1"},
+    )
+    repository = MemoryIntelligenceRepository([source])
+    entry = CanonicalIntelligenceEntry.create(
+        entry_type="channel",
+        normalized_key="alpha",
+        display_name="Alpha Original",
+        confidence=0.5,
+        aliases=["alpha-original"],
+        evidence_count=1,
+        latest_raw_item_id="raw-original",
+    )
+    repository.upsert_canonical_entry(entry)
+    repository.ignore_canonical_entry(entry.id, ignored_by="operator")
+    repository.unignore_canonical_entry(entry.id)
+
+    raw_item = _raw(content_hash="unignored-new", external_id="202")
+    observation = ExtractionObservation.create(
+        raw_item_id=raw_item.id,
+        entry_type="channel",
+        confidence=0.9,
+        model_name="new-model",
+        prompt_version="2",
+        schema_version="2",
+        channel_name="Alpha Updated",
+        channel_handles=["alpha"],
+        aliases_or_variants=["alpha-new"],
+        secondary_tags=["fresh"],
+    )
+    extractor = Mock(config=SimpleNamespace(collection=SimpleNamespace(backfill_hours=24)))
+    extractor.extract.return_value = [observation]
+    search_service = Mock()
+    search_service.batch_generate_embeddings.return_value = 1
+    pipeline = IntelligencePipeline(
+        FakeFactory([FakeCrawler([raw_item])]),
+        repository,
+        extractor,
+        IntelligenceMergeEngine(repository),
+        search_service,
+    )
+
+    result = pipeline.run_intelligence_collection_once()
+
+    persisted = repository.get_canonical_entry_by_id(entry.id)
+    assert result["canonical_entries"] == 1
+    assert result["embeddings_updated"] == 1
+    assert observation.is_canonicalized is True
+    assert len(repository.canonical_entries) == 1
+    assert persisted.is_ignored is False
+    assert persisted.evidence_count == 2
+    assert persisted.confidence == 0.7
+    assert persisted.latest_raw_item_id == raw_item.id
+    assert "alpha-new" in persisted.aliases
+    assert "fresh" in persisted.secondary_tags
+    search_service.batch_generate_embeddings.assert_called_once_with([persisted])
 
 
 def test_first_run_uses_24h_backfill_then_checkpoint_incremental_window():

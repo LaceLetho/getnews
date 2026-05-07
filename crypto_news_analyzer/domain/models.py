@@ -841,6 +841,9 @@ class CanonicalIntelligenceEntry:
     prompt_version: Optional[str] = None
     model_name: Optional[str] = None
     schema_version: Optional[str] = None
+    is_ignored: bool = False
+    ignored_at: Optional[datetime] = None
+    ignored_by: Optional[str] = None
     embedding: Optional[List[float]] = None
     embedding_model: Optional[str] = None
     embedding_updated_at: Optional[datetime] = None
@@ -896,6 +899,7 @@ class CanonicalIntelligenceEntry:
         for key in (
             "first_seen_at",
             "last_seen_at",
+            "ignored_at",
             "embedding_updated_at",
             "created_at",
             "updated_at",
@@ -909,6 +913,7 @@ class CanonicalIntelligenceEntry:
         for key in (
             "first_seen_at",
             "last_seen_at",
+            "ignored_at",
             "embedding_updated_at",
             "created_at",
             "updated_at",

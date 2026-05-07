@@ -638,6 +638,47 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
             window=window,
         )
 
+    def ignore_canonical_entry(
+        self, entry_id: str, ignored_by: Optional[str] = None
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        row = self._data.ignore_canonical_intelligence_entry(entry_id, ignored_by)
+        return CanonicalIntelligenceEntry.from_dict(row) if row else None
+
+    def unignore_canonical_entry(
+        self, entry_id: str
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        row = self._data.unignore_canonical_intelligence_entry(entry_id)
+        return CanonicalIntelligenceEntry.from_dict(row) if row else None
+
+    def list_ignored_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        page: int = 0,
+        page_size: int = 20,
+    ) -> List[CanonicalIntelligenceEntry]:
+        rows = self._data.list_ignored_canonical_intelligence_entries(
+            entry_type=entry_type,
+            primary_label=primary_label,
+            window=window,
+            page=page,
+            page_size=page_size,
+        )
+        return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
+
+    def count_ignored_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        return self._data.count_ignored_canonical_intelligence_entries(
+            entry_type=entry_type,
+            primary_label=primary_label,
+            window=window,
+        )
+
     def update_embedding(self, entry_id: str, embedding: List[float], model: str) -> bool:
         return self._data.update_canonical_intelligence_embedding(entry_id, embedding, model)
 

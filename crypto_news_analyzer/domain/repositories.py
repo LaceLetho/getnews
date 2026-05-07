@@ -478,6 +478,38 @@ class IntelligenceRepository(ABC):
         pass
 
     @abstractmethod
+    def ignore_canonical_entry(
+        self, entry_id: str, ignored_by: Optional[str] = None
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def unignore_canonical_entry(
+        self, entry_id: str
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def list_ignored_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        page: int = 0,
+        page_size: int = 20,
+    ) -> List[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def count_ignored_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        pass
+
+    @abstractmethod
     def update_embedding(self, entry_id: str, embedding: List[float], model: str) -> bool:
         pass
 

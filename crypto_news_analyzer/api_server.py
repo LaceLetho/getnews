@@ -349,6 +349,9 @@ class IntelligenceEntryResponse(BaseModel):
     schema_version: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    is_ignored: bool = False
+    ignored_at: Optional[str] = None
+    ignored_by: Optional[str] = None
 
 
 class IntelligenceListResponse(BaseModel):
@@ -378,6 +381,9 @@ class IntelligenceEntryDetailResponse(BaseModel):
     schema_version: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    is_ignored: bool = False
+    ignored_at: Optional[str] = None
+    ignored_by: Optional[str] = None
     raw_available: bool = False
     raw_evidence: Optional[Any] = None
 
@@ -394,6 +400,17 @@ class IntelligenceSearchResultItem(BaseModel):
     confidence: float = 0.0
     evidence_count: int = 1
     similarity_score: float = 0.0
+    is_ignored: bool = False
+    ignored_at: Optional[str] = None
+    ignored_by: Optional[str] = None
+
+
+class IntelligenceIgnoreResponse(BaseModel):
+    success: bool
+    entry_id: str
+    is_ignored: bool
+    ignored_at: Optional[str] = None
+    ignored_by: Optional[str] = None
 
 
 class IntelligenceSearchResponse(BaseModel):
@@ -421,6 +438,14 @@ class IntelligenceRawItemResponse(BaseModel):
     is_expired: bool = False
 
 
+class IntelligenceIgnoreRequest(BaseModel):
+    ignored_by: Optional[str] = None
+
+
+def _datetime_to_iso(value: Optional[datetime]) -> Optional[str]:
+    return value.isoformat() if value is not None else None
+
+
 def _canonical_entry_to_response(entry: Any) -> IntelligenceEntryResponse:
     return IntelligenceEntryResponse(
         id=entry.id,
@@ -441,6 +466,36 @@ def _canonical_entry_to_response(entry: Any) -> IntelligenceEntryResponse:
         schema_version=entry.schema_version,
         created_at=entry.created_at.isoformat() if entry.created_at else None,
         updated_at=entry.updated_at.isoformat() if entry.updated_at else None,
+        is_ignored=bool(getattr(entry, "is_ignored", False)),
+        ignored_at=_datetime_to_iso(cast(Optional[datetime], getattr(entry, "ignored_at", None))),
+        ignored_by=getattr(entry, "ignored_by", None),
+    )
+
+
+def _canonical_entry_to_detail_response(entry: Any) -> IntelligenceEntryDetailResponse:
+    return IntelligenceEntryDetailResponse(
+        id=entry.id,
+        entry_id=entry.id,
+        entry_type=entry.entry_type,
+        normalized_key=entry.normalized_key,
+        display_name=entry.display_name,
+        explanation=entry.explanation,
+        usage_summary=getattr(entry, "usage_summary", None),
+        primary_label=entry.primary_label,
+        secondary_tags=list(entry.secondary_tags),
+        confidence=entry.confidence,
+        first_seen_at=entry.first_seen_at.isoformat() if entry.first_seen_at else None,
+        last_seen_at=entry.last_seen_at.isoformat() if entry.last_seen_at else None,
+        evidence_count=entry.evidence_count,
+        aliases=list(getattr(entry, "aliases", [])),
+        model_name=entry.model_name,
+        prompt_version=entry.prompt_version,
+        schema_version=entry.schema_version,
+        created_at=entry.created_at.isoformat() if entry.created_at else None,
+        updated_at=entry.updated_at.isoformat() if entry.updated_at else None,
+        is_ignored=bool(getattr(entry, "is_ignored", False)),
+        ignored_at=_datetime_to_iso(cast(Optional[datetime], getattr(entry, "ignored_at", None))),
+        ignored_by=getattr(entry, "ignored_by", None),
     )
 
 
@@ -602,12 +657,6 @@ def _semantic_search_job_urls(job_id: str) -> tuple[str, str]:
         f"{SEMANTIC_SEARCH_ROUTE_PATH}/{job_id}",
         f"{SEMANTIC_SEARCH_ROUTE_PATH}/{job_id}/result",
     )
-
-
-def _datetime_to_iso(value: Optional[datetime]) -> Optional[str]:
-    if value is None:
-        return None
-    return value.isoformat()
 
 
 def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
@@ -1296,19 +1345,121 @@ def create_api_server(
             page_size=page_size,
         )
 
+    @app.get("/intelligence/entries/ignored", response_model=IntelligenceListResponse)
+    async def list_ignored_intelligence_entries(
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+        window: Optional[str] = None,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ):
+        """List ignored canonical intelligence entries with pagination."""
+        repository = _get_intelligence_repository(req)
+        window_cutoff = _parse_window_param(window)
+
+        page = max(1, page)
+        page_size = max(1, min(page_size, 100))
+
+        entries = repository.list_ignored_canonical_entries(
+            entry_type=entry_type if entry_type else None,
+            primary_label=primary_label if primary_label else None,
+            window=window_cutoff,
+            page=page - 1,
+            page_size=page_size,
+        )
+        total = repository.count_ignored_canonical_entries(
+            entry_type=entry_type if entry_type else None,
+            primary_label=primary_label if primary_label else None,
+            window=window_cutoff,
+        )
+
+        return IntelligenceListResponse(
+            entries=[_canonical_entry_to_response(e) for e in entries],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+
     @app.get("/intelligence/labels", response_model=IntelligenceLabelsResponse)
     async def list_intelligence_labels(
+        req: Request,
         _: Annotated[str, Depends(verify_api_key)],
     ):
         """List searchable primary labels for intelligence queries."""
-        return IntelligenceLabelsResponse(
-            labels=[
+        repository = _get_intelligence_repository(req)
+        if (
+            repository.count_canonical_entries() == 0
+            and repository.count_ignored_canonical_entries() == 0
+        ):
+            labels = [
                 IntelligenceLabelResponseItem(name=item.name, value=item.value)
                 for item in PrimaryLabel
             ]
+        else:
+            labels = []
+            for item in PrimaryLabel:
+                if repository.count_canonical_entries(primary_label=item.value) <= 0:
+                    continue
+                labels.append(
+                    IntelligenceLabelResponseItem(name=item.name, value=item.value)
+                )
+        return IntelligenceLabelsResponse(labels=labels)
+
+    @app.post("/intelligence/entries/{entry_id}/ignore", response_model=IntelligenceIgnoreResponse)
+    async def ignore_intelligence_entry(
+        entry_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+        payload: Optional[IntelligenceIgnoreRequest] = None,
+    ):
+        repository = _get_intelligence_repository(req)
+        ignored_by = None
+        if payload is not None:
+            ignored_by = payload.ignored_by
+        if ignored_by is None:
+            ignored_by = "api"
+        entry = repository.ignore_canonical_entry(entry_id, ignored_by)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Intelligence entry not found")
+        return IntelligenceIgnoreResponse(
+            success=True,
+            entry_id=entry.id,
+            is_ignored=bool(getattr(entry, "is_ignored", False)),
+            ignored_at=_datetime_to_iso(
+                cast(Optional[datetime], getattr(entry, "ignored_at", None))
+            ),
+            ignored_by=getattr(entry, "ignored_by", None),
         )
 
-    @app.get("/intelligence/entries/{entry_id}", response_model=IntelligenceEntryDetailResponse)
+    @app.post(
+        "/intelligence/entries/{entry_id}/unignore",
+        response_model=IntelligenceIgnoreResponse,
+    )
+    async def unignore_intelligence_entry(
+        entry_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        repository = _get_intelligence_repository(req)
+        entry = repository.unignore_canonical_entry(entry_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Intelligence entry not found")
+        return IntelligenceIgnoreResponse(
+            success=True,
+            entry_id=entry.id,
+            is_ignored=bool(getattr(entry, "is_ignored", False)),
+            ignored_at=_datetime_to_iso(
+                cast(Optional[datetime], getattr(entry, "ignored_at", None))
+            ),
+            ignored_by=getattr(entry, "ignored_by", None),
+        )
+
+    @app.get(
+        "/intelligence/entries/{entry_id}",
+        response_model=IntelligenceEntryDetailResponse,
+    )
     async def get_intelligence_entry_detail(
         entry_id: str,
         req: Request,
@@ -1321,27 +1472,7 @@ def create_api_server(
         if entry is None:
             raise HTTPException(status_code=404, detail="Intelligence entry not found")
 
-        response = IntelligenceEntryDetailResponse(
-            id=entry.id,
-            entry_id=entry.id,
-            entry_type=entry.entry_type,
-            normalized_key=entry.normalized_key,
-            display_name=entry.display_name,
-            explanation=entry.explanation,
-            usage_summary=getattr(entry, "usage_summary", None),
-            primary_label=entry.primary_label,
-            secondary_tags=list(entry.secondary_tags),
-            confidence=entry.confidence,
-            first_seen_at=entry.first_seen_at.isoformat() if entry.first_seen_at else None,
-            last_seen_at=entry.last_seen_at.isoformat() if entry.last_seen_at else None,
-            evidence_count=entry.evidence_count,
-            aliases=list(getattr(entry, "aliases", [])),
-            model_name=entry.model_name,
-            prompt_version=entry.prompt_version,
-            schema_version=entry.schema_version,
-            created_at=entry.created_at.isoformat() if entry.created_at else None,
-            updated_at=entry.updated_at.isoformat() if entry.updated_at else None,
-        )
+        response = _canonical_entry_to_detail_response(entry)
 
         if include_raw and entry.latest_raw_item_id:
             raw_item = repository.get_raw_item_by_id(entry.latest_raw_item_id)
@@ -1354,9 +1485,15 @@ def create_api_server(
                         "raw_text": raw_item.raw_text,
                         "source_type": raw_item.source_type,
                         "source_url": raw_item.source_url,
-                        "published_at": raw_item.published_at.isoformat() if raw_item.published_at else None,
-                        "collected_at": raw_item.collected_at.isoformat() if raw_item.collected_at else None,
-                        "expires_at": raw_item.expires_at.isoformat() if raw_item.expires_at else None,
+                        "published_at": (
+                            raw_item.published_at.isoformat() if raw_item.published_at else None
+                        ),
+                        "collected_at": (
+                            raw_item.collected_at.isoformat() if raw_item.collected_at else None
+                        ),
+                        "expires_at": (
+                            raw_item.expires_at.isoformat() if raw_item.expires_at else None
+                        ),
                     }
                 else:
                     response.raw_available = False
@@ -1406,6 +1543,11 @@ def create_api_server(
                     confidence=entry.confidence,
                     evidence_count=entry.evidence_count,
                     similarity_score=round(score, 4),
+                    is_ignored=bool(getattr(entry, "is_ignored", False)),
+                    ignored_at=_datetime_to_iso(
+                        cast(Optional[datetime], getattr(entry, "ignored_at", None))
+                    ),
+                    ignored_by=getattr(entry, "ignored_by", None),
                 )
                 for entry, score in results
             ],

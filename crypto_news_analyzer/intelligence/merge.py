@@ -46,6 +46,12 @@ class IntelligenceMergeEngine:
                 observation.entry_type,
                 normalized_key,
             )
+            if existing is not None and existing.is_ignored:
+                self.intelligence_repository.mark_observation_canonicalized(observation.id)
+                observation.is_canonicalized = True
+                canonical_entries.append(existing)
+                continue
+
             if existing is None:
                 entry = self._new_entry_from_observation(observation, normalized_key)
             else:

@@ -194,7 +194,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         page: int = 1,
         page_size: int = 100,
     ) -> List[CanonicalIntelligenceEntry]:
-        entries = list(self.canonical_entries.values())
+        entries = [e for e in self.canonical_entries.values() if not e.is_ignored]
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
         if primary_label:
@@ -216,7 +216,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
     ) -> int:
-        entries = list(self.canonical_entries.values())
+        entries = [e for e in self.canonical_entries.values() if not e.is_ignored]
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
         if primary_label:
@@ -225,6 +225,66 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
             entries = [
                 e for e in entries if e.last_seen_at and e.last_seen_at >= window
             ]
+        return len(entries)
+
+    def ignore_canonical_entry(
+        self, entry_id: str, ignored_by: Optional[str] = None
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        entry = self.canonical_entries.get(entry_id)
+        if entry is None:
+            return None
+        from datetime import datetime as dt
+        entry.is_ignored = True
+        entry.ignored_at = dt.utcnow()
+        entry.ignored_by = ignored_by
+        return entry
+
+    def unignore_canonical_entry(
+        self, entry_id: str
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        entry = self.canonical_entries.get(entry_id)
+        if entry is None:
+            return None
+        entry.is_ignored = False
+        entry.ignored_at = None
+        entry.ignored_by = None
+        return entry
+
+    def list_ignored_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        page: int = 0,
+        page_size: int = 20,
+    ) -> List[CanonicalIntelligenceEntry]:
+        entries = [e for e in self.canonical_entries.values() if e.is_ignored]
+        if entry_type:
+            entries = [e for e in entries if e.entry_type == entry_type]
+        if primary_label:
+            entries = [e for e in entries if e.primary_label == primary_label]
+        if window:
+            entries = [e for e in entries if e.last_seen_at and e.last_seen_at >= window]
+        entries.sort(
+            key=lambda e: e.last_seen_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        start = page * page_size
+        return entries[start : start + page_size]
+
+    def count_ignored_canonical_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        entries = [e for e in self.canonical_entries.values() if e.is_ignored]
+        if entry_type:
+            entries = [e for e in entries if e.entry_type == entry_type]
+        if primary_label:
+            entries = [e for e in entries if e.primary_label == primary_label]
+        if window:
+            entries = [e for e in entries if e.last_seen_at and e.last_seen_at >= window]
         return len(entries)
 
     def update_embedding(
@@ -245,6 +305,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         window: Optional[datetime] = None,
     ) -> int:
         entries = list(self.canonical_entries.values())
+        entries = [e for e in entries if not e.is_ignored]
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
         if primary_label:
@@ -266,6 +327,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
     ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
         self.search_calls += 1
         entries = list(self.canonical_entries.values())
+        entries = [e for e in entries if not e.is_ignored]
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
         if primary_label:
@@ -442,6 +504,18 @@ def test_intelligence_labels_unauthorized_returns_401(
     assert response.status_code == 401
 
 
+def test_intelligence_ignore_and_unignore_unauthorized_returns_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        ignore_response = client.post("/intelligence/entries/entry-001/ignore")
+        unignore_response = client.post("/intelligence/entries/entry-001/unignore")
+    assert ignore_response.status_code == 401
+    assert unignore_response.status_code == 401
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Tests: GET /intelligence/entries
 # ──────────────────────────────────────────────────────────────────────
@@ -578,6 +652,116 @@ def test_list_entries_respects_pagination(
         assert len(data["entries"]) == 1
 
 
+def test_ignore_entry_hides_from_entries_and_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    ignored = _make_canonical_entry(
+        entry_id="entry-ignored",
+        display_name="Ignored Entry",
+        normalized_key="ignored-key",
+        primary_label=PrimaryLabel.AI.value,
+    )
+    visible = _make_canonical_entry(
+        entry_id="entry-visible",
+        display_name="Visible Entry",
+        normalized_key="visible-key",
+        primary_label=PrimaryLabel.AI.value,
+        last_seen_at=_utcnow() - timedelta(minutes=5),
+    )
+    repo.save_canonical_entry(ignored)
+    repo.save_canonical_entry(visible)
+
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        ignore_response = client.post(
+            "/intelligence/entries/entry-ignored/ignore",
+            headers=_authorized_headers(),
+            json={"ignored_by": "operator-id"},
+        )
+        detail_response = client.get(
+            "/intelligence/entries/entry-ignored", headers=_authorized_headers()
+        )
+        list_response = client.get("/intelligence/entries", headers=_authorized_headers())
+        search_response = client.get(
+            "/intelligence/search?q=ignored", headers=_authorized_headers()
+        )
+        labels_response = client.get("/intelligence/labels", headers=_authorized_headers())
+
+    assert ignore_response.status_code == 200
+    ignore_data = ignore_response.json()
+    assert ignore_data == {
+        "success": True,
+        "entry_id": "entry-ignored",
+        "is_ignored": True,
+        "ignored_at": ignore_data["ignored_at"],
+        "ignored_by": "operator-id",
+    }
+    assert detail_response.status_code == 200
+    detail_data = detail_response.json()
+    assert detail_data["is_ignored"] is True
+    assert detail_data["ignored_by"] == "operator-id"
+    assert detail_data["ignored_at"] is not None
+    assert list_response.status_code == 200
+    assert [item["entry_id"] for item in list_response.json()["entries"]] == [
+        "entry-visible"
+    ]
+    assert search_response.status_code == 200
+    assert [item["entry_id"] for item in search_response.json()["results"]] == [
+        "entry-visible"
+    ]
+    assert labels_response.status_code == 200
+
+
+def test_ignore_unignore_auth_missing_and_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    entry = _make_canonical_entry(entry_id="entry-idempotent", display_name="Idempotent")
+    repo.save_canonical_entry(entry)
+
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        missing_ignore = client.post(
+            "/intelligence/entries/nonexistent/ignore", headers=_authorized_headers()
+        )
+        missing_unignore = client.post(
+            "/intelligence/entries/nonexistent/unignore", headers=_authorized_headers()
+        )
+        unauthorized_ignore = client.post("/intelligence/entries/entry-idempotent/ignore")
+        unauthorized_unignore = client.post("/intelligence/entries/entry-idempotent/unignore")
+        first_ignore = client.post(
+            "/intelligence/entries/entry-idempotent/ignore",
+            headers=_authorized_headers(),
+            json={"ignored_by": "user-a"},
+        )
+        second_ignore = client.post(
+            "/intelligence/entries/entry-idempotent/ignore",
+            headers=_authorized_headers(),
+        )
+        first_unignore = client.post(
+            "/intelligence/entries/entry-idempotent/unignore",
+            headers=_authorized_headers(),
+        )
+        second_unignore = client.post(
+            "/intelligence/entries/entry-idempotent/unignore",
+            headers=_authorized_headers(),
+        )
+
+    assert missing_ignore.status_code == 404
+    assert missing_unignore.status_code == 404
+    assert unauthorized_ignore.status_code == 401
+    assert unauthorized_unignore.status_code == 401
+    assert first_ignore.status_code == 200
+    assert first_ignore.json()["ignored_by"] == "user-a"
+    assert second_ignore.status_code == 200
+    assert second_ignore.json()["ignored_by"] == "api"
+    assert first_unignore.status_code == 200
+    assert first_unignore.json()["is_ignored"] is False
+    assert second_unignore.status_code == 200
+    assert second_unignore.json()["is_ignored"] is False
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Tests: GET /intelligence/labels
 # ──────────────────────────────────────────────────────────────────────
@@ -628,6 +812,41 @@ def test_get_entry_detail_returns_full_entry(
     assert data["display_name"] == "Full Entry"
     assert data["evidence_count"] == 3
     assert data["raw_available"] is False
+
+
+def test_ignored_entries_list_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    ignored_entry = _make_canonical_entry(
+        entry_id="ignored",
+        display_name="Ignored List Entry",
+        normalized_key="ignored-list-key",
+        primary_label=PrimaryLabel.CRYPTO.value,
+    )
+    visible_entry = _make_canonical_entry(
+        entry_id="visible-list",
+        display_name="Visible List Entry",
+        normalized_key="visible-list-key",
+        primary_label=PrimaryLabel.AI.value,
+    )
+    repo.save_canonical_entry(ignored_entry)
+    repo.save_canonical_entry(visible_entry)
+    repo.ignore_canonical_entry("ignored", ignored_by="operator-id")
+
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        response = client.get(
+            "/intelligence/entries/ignored", headers=_authorized_headers()
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert [item["entry_id"] for item in data["entries"]] == ["ignored"]
+    assert data["entries"][0]["is_ignored"] is True
+    assert data["entries"][0]["ignored_by"] == "operator-id"
+    assert data["entries"][0]["ignored_at"] is not None
 
 
 def test_get_entry_detail_not_found_returns_404(
@@ -836,6 +1055,70 @@ def test_semantic_search_filters_by_entry_type(
     data = response.json()
     assert data["total"] == 1
     assert data["results"][0]["entry_type"] == "slang"
+
+
+def test_semantic_search_excludes_ignored_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+
+    visible = _make_canonical_entry(
+        entry_id="entry-visible",
+        display_name="Visible Entry",
+        normalized_key="visible-entry",
+        confidence=0.9,
+    )
+    ignored = _make_canonical_entry(
+        entry_id="entry-ignored",
+        display_name="Ignored Entry",
+        normalized_key="ignored-entry",
+        confidence=0.99,
+    )
+    repo.save_canonical_entry(visible)
+    repo.save_canonical_entry(ignored)
+    repo.ignore_canonical_entry(ignored.id)
+
+    controller = _FakeController(
+        intelligence_repository=repo, embedding_service=_FakeEmbeddingService()
+    )
+    with _build_test_app(monkeypatch, controller) as client:
+        response = client.get(
+            "/intelligence/search?q=GPT%20plus%E8%B4%AD%E4%B9%B0%E6%B8%A0%E9%81%93",
+            headers=_authorized_headers(),
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert [item["entry_id"] for item in data["results"]] == ["entry-visible"]
+
+
+def test_semantic_search_all_ignored_returns_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+
+    entry = _make_canonical_entry(
+        entry_id="entry-ignored-only",
+        display_name="Ignored Only",
+        normalized_key="ignored-only",
+    )
+    repo.save_canonical_entry(entry)
+    repo.ignore_canonical_entry(entry.id)
+
+    controller = _FakeController(
+        intelligence_repository=repo, embedding_service=_FakeEmbeddingService()
+    )
+    with _build_test_app(monkeypatch, controller) as client:
+        response = client.get(
+            "/intelligence/search?q=GPT%20plus%E8%B4%AD%E4%B9%B0%E6%B8%A0%E9%81%93",
+            headers=_authorized_headers(),
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 0
+    assert data["results"] == []
 
 
 def test_semantic_search_respects_hour_window(

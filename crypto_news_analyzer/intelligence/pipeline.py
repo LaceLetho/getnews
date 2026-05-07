@@ -181,7 +181,10 @@ class IntelligencePipeline:
     def _generate_embeddings(self, canonical_entries: Sequence[Any]) -> int:
         if not canonical_entries or self.search_service is None:
             return 0
-        return int(self.search_service.batch_generate_embeddings(canonical_entries) or 0)
+        active_entries = [entry for entry in canonical_entries if not getattr(entry, "is_ignored", False)]
+        if not active_entries:
+            return 0
+        return int(self.search_service.batch_generate_embeddings(active_entries) or 0)
 
     def _create_related_candidates(self, canonical_entries: Sequence[Any]) -> None:
         if not canonical_entries or self.search_service is None:

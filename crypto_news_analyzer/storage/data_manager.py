@@ -489,6 +489,9 @@ class DataManager:
                 prompt_version TEXT,
                 model_name TEXT,
                 schema_version TEXT,
+                is_ignored BOOLEAN NOT NULL DEFAULT FALSE,
+                ignored_at {datetime_type},
+                ignored_by TEXT,
                 embedding {embedding_type},
                 embedding_model TEXT,
                 embedding_updated_at {datetime_type},
@@ -539,28 +542,100 @@ class DataManager:
             cursor.execute("DROP INDEX IF EXISTS idx_intelligence_raw_items_dedupe")
 
         for statement in [
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_source ON raw_intelligence_items (source_type, source_id)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_expires_at ON raw_intelligence_items (expires_at)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_content_hash ON raw_intelligence_items (content_hash)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_collected_at ON raw_intelligence_items (collected_at)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_external_id ON raw_intelligence_items (external_id)",
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_raw_items_external_dedupe ON raw_intelligence_items (source_type, source_id, external_id) WHERE external_id IS NOT NULL",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_raw_item_id ON intelligence_extraction_observations (raw_item_id)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_entry_type ON intelligence_extraction_observations (entry_type)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_primary_label ON intelligence_extraction_observations (primary_label)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_confidence ON intelligence_extraction_observations (confidence)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_is_canonicalized ON intelligence_extraction_observations (is_canonicalized)",
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_type_key ON intelligence_canonical_entries (entry_type, normalized_key)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_entry_type ON intelligence_canonical_entries (entry_type)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_primary_label ON intelligence_canonical_entries (primary_label)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_last_seen_at ON intelligence_canonical_entries (last_seen_at)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_embedding_model ON intelligence_canonical_entries (embedding_model)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_aliases_alias ON intelligence_aliases (alias)",
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_related_candidates_pair ON intelligence_related_candidates (entry_id_a, entry_id_b)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_related_candidates_entry_id_a ON intelligence_related_candidates (entry_id_a)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_related_candidates_entry_id_b ON intelligence_related_candidates (entry_id_b)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_crawl_checkpoints_status ON intelligence_crawl_checkpoints (status)",
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_crawl_checkpoints_updated_at ON intelligence_crawl_checkpoints (updated_at)",
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_source "
+                "ON raw_intelligence_items (source_type, source_id)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_expires_at "
+                "ON raw_intelligence_items (expires_at)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_content_hash "
+                "ON raw_intelligence_items (content_hash)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_collected_at "
+                "ON raw_intelligence_items (collected_at)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_external_id "
+                "ON raw_intelligence_items (external_id)"
+            ),
+            (
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "idx_intelligence_raw_items_external_dedupe "
+                "ON raw_intelligence_items (source_type, source_id, external_id) "
+                "WHERE external_id IS NOT NULL"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_raw_item_id "
+                "ON intelligence_extraction_observations (raw_item_id)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_entry_type "
+                "ON intelligence_extraction_observations (entry_type)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_primary_label "
+                "ON intelligence_extraction_observations (primary_label)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_confidence "
+                "ON intelligence_extraction_observations (confidence)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_observations_is_canonicalized "
+                "ON intelligence_extraction_observations (is_canonicalized)"
+            ),
+            (
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_type_key "
+                "ON intelligence_canonical_entries (entry_type, normalized_key)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_entry_type "
+                "ON intelligence_canonical_entries (entry_type)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_primary_label "
+                "ON intelligence_canonical_entries (primary_label)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_last_seen_at "
+                "ON intelligence_canonical_entries (last_seen_at)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_is_ignored "
+                "ON intelligence_canonical_entries (is_ignored)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_embedding_model "
+                "ON intelligence_canonical_entries (embedding_model)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_aliases_alias "
+                "ON intelligence_aliases (alias)"
+            ),
+            (
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_related_candidates_pair "
+                "ON intelligence_related_candidates (entry_id_a, entry_id_b)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_related_candidates_entry_id_a "
+                "ON intelligence_related_candidates (entry_id_a)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_related_candidates_entry_id_b "
+                "ON intelligence_related_candidates (entry_id_b)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_crawl_checkpoints_status "
+                "ON intelligence_crawl_checkpoints (status)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_crawl_checkpoints_updated_at "
+                "ON intelligence_crawl_checkpoints (updated_at)"
+            ),
         ]:
             cursor.execute(statement)
 
@@ -2496,6 +2571,9 @@ class DataManager:
             "prompt_version",
             "model_name",
             "schema_version",
+            "is_ignored",
+            "ignored_at",
+            "ignored_by",
             "embedding",
             "embedding_model",
             "embedding_updated_at",
@@ -2552,6 +2630,7 @@ class DataManager:
 
     def _serialize_canonical_intelligence_entry_row(self, conn: Any, row: Any) -> Dict[str, Any]:
         data = {key: self._dt_out(row[key]) for key in row.keys()}
+        data["is_ignored"] = bool(data.get("is_ignored", False))
         data["secondary_tags"] = self._json_load(data.get("secondary_tags"), [])
         data["embedding"] = self._json_load(data.get("embedding"), data.get("embedding"))
         if isinstance(data.get("embedding"), str) and data["embedding"].startswith("["):
@@ -2595,7 +2674,8 @@ class DataManager:
         page_size: int = 100,
     ) -> List[Dict[str, Any]]:
         params: List[Any] = []
-        filters = []
+        filters = ["is_ignored = ?"]
+        params.append(False)
         if entry_type:
             filters.append("entry_type = ?")
             params.append(entry_type)
@@ -2640,7 +2720,8 @@ class DataManager:
         window: Optional[datetime] = None,
     ) -> int:
         params: List[Any] = []
-        filters = []
+        filters = ["is_ignored = ?"]
+        params.append(False)
         if entry_type:
             filters.append("entry_type = ?")
             params.append(entry_type)
@@ -2734,7 +2815,8 @@ class DataManager:
         window: Optional[datetime] = None,
     ) -> int:
         params: List[Any] = []
-        filters = ["embedding IS NOT NULL"]
+        filters = ["embedding IS NOT NULL", "is_ignored = ?"]
+        params.append(False)
         if entry_type:
             filters.append("entry_type = ?")
             params.append(entry_type)
@@ -2763,8 +2845,8 @@ class DataManager:
         limit: int = 20,
         offset: int = 0,
     ) -> List[Tuple[Dict[str, Any], float]]:
-        filters = ["embedding IS NOT NULL"]
-        params: List[Any] = []
+        filters = ["embedding IS NOT NULL", "is_ignored = ?"]
+        params: List[Any] = [False]
         if entry_type:
             filters.append("entry_type = ?")
             params.append(entry_type)
@@ -2777,7 +2859,12 @@ class DataManager:
         if self.backend == "postgres":
             bounded_limit = max(1, limit)
             bounded_offset = max(0, offset)
-            params = [self._pgvector_literal(query_embedding), *params, bounded_limit, bounded_offset]
+            params = [
+                self._pgvector_literal(query_embedding),
+                *params,
+                bounded_limit,
+                bounded_offset,
+            ]
             query = f"""
                 SELECT *,
                        similarity
@@ -2823,6 +2910,127 @@ class DataManager:
             scored.append((row, score))
         scored.sort(key=lambda item: item[1], reverse=True)
         return scored[max(0, offset) : max(0, offset) + max(1, limit)]
+
+    def ignore_canonical_intelligence_entry(
+        self, entry_id: str, ignored_by: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        now = datetime.utcnow().isoformat()
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(
+                        "UPDATE intelligence_canonical_entries "
+                        "SET is_ignored = ?, ignored_at = ?, ignored_by = ? "
+                        "WHERE id = ?"
+                    ),
+                    (True, now, ignored_by, entry_id),
+                )
+                if cursor.rowcount == 0:
+                    conn.commit()
+                    return None
+                cursor.execute(
+                    self._sql(
+                        "SELECT * FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"
+                    ),
+                    (entry_id,),
+                )
+                row = cursor.fetchone()
+                conn.commit()
+                return (
+                    self._serialize_canonical_intelligence_entry_row(conn, row)
+                    if row else None
+                )
+
+    def unignore_canonical_intelligence_entry(
+        self, entry_id: str
+    ) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(
+                        "UPDATE intelligence_canonical_entries "
+                        "SET is_ignored = ?, ignored_at = NULL, ignored_by = NULL "
+                        "WHERE id = ?"
+                    ),
+                    (False, entry_id),
+                )
+                if cursor.rowcount == 0:
+                    conn.commit()
+                    return None
+                cursor.execute(
+                    self._sql(
+                        "SELECT * FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"
+                    ),
+                    (entry_id,),
+                )
+                row = cursor.fetchone()
+                conn.commit()
+                return (
+                    self._serialize_canonical_intelligence_entry_row(conn, row)
+                    if row else None
+                )
+
+    def list_ignored_canonical_intelligence_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+        page: int = 0,
+        page_size: int = 20,
+    ) -> List[Dict[str, Any]]:
+        params: List[Any] = []
+        filters = ["is_ignored = ?"]
+        params.append(True)
+        if entry_type:
+            filters.append("entry_type = ?")
+            params.append(entry_type)
+        if primary_label:
+            filters.append("primary_label = ?")
+            params.append(primary_label)
+        if window:
+            filters.append("last_seen_at >= ?")
+            params.append(window.isoformat())
+        query = "SELECT * FROM intelligence_canonical_entries"
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        query += " ORDER BY last_seen_at DESC, updated_at DESC LIMIT ? OFFSET ?"
+        params.extend([max(1, page_size), max(0, page) * max(1, page_size)])
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(self._sql(query), tuple(params))
+            return [
+                self._serialize_canonical_intelligence_entry_row(conn, row)
+                for row in cursor.fetchall()
+            ]
+
+    def count_ignored_canonical_intelligence_entries(
+        self,
+        entry_type: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        window: Optional[datetime] = None,
+    ) -> int:
+        params: List[Any] = []
+        filters = ["is_ignored = ?"]
+        params.append(True)
+        if entry_type:
+            filters.append("entry_type = ?")
+            params.append(entry_type)
+        if primary_label:
+            filters.append("primary_label = ?")
+            params.append(primary_label)
+        if window:
+            filters.append("last_seen_at >= ?")
+            params.append(window.isoformat())
+        query = "SELECT COUNT(*) AS count FROM intelligence_canonical_entries"
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(self._sql(query), tuple(params))
+            row = cursor.fetchone()
+            return int(row["count"] if self.backend == "postgres" else row[0]) if row else 0
 
     def save_intelligence_related_candidate(
         self, entry_id_a: str, entry_id_b: str, similarity_score: float, relationship_type: str

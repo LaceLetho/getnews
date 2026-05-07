@@ -217,3 +217,130 @@ def test_existing_observation_lookup_handles_dict_rows(tmp_path: Path):
         assert manager.get_raw_item_ids_with_existing_observations([raw.id], "p1") == {raw.id}
     finally:
         manager.close()
+
+
+def test_intelligence_repository_ignore_lifecycle(tmp_path: Path):
+    manager, repository = _build_repository(tmp_path / "intelligence-ignore.db")
+    try:
+        raw = RawIntelligenceItem.create(
+            source_type="telegram",
+            source_id="chat-1",
+            raw_text="ignore me",
+            content_hash="hash-ignore",
+            expires_at=datetime.utcnow() + timedelta(days=30),
+        )
+        repository.save_raw_item(raw)
+
+        entry = CanonicalIntelligenceEntry.create(
+            entry_type=EntryType.CHANNEL.value,
+            normalized_key="https://t.me/ignoreme",
+            display_name="Ignore Me",
+        )
+        repository.save_canonical_entry(entry)
+
+        # Default: not ignored
+        loaded = repository.get_canonical_entry_by_id(entry.id)
+        assert loaded is not None
+        assert loaded.is_ignored is False
+        assert loaded.ignored_at is None
+        assert loaded.ignored_by is None
+
+        # Ignore
+        ignored = repository.ignore_canonical_entry(entry.id, ignored_by="telegram:123")
+        assert ignored is not None
+        assert ignored.is_ignored is True
+        assert ignored.ignored_at is not None
+        assert ignored.ignored_by == "telegram:123"
+
+        # List excludes ignored
+        visible = repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)
+        assert all(e.id != entry.id for e in visible)
+
+        # Count excludes ignored
+        assert repository.count_canonical_entries(entry_type=EntryType.CHANNEL.value) == 0
+
+        # Exact lookups still return ignored
+        by_id = repository.get_canonical_entry_by_id(entry.id)
+        assert by_id is not None
+        assert by_id.is_ignored is True
+
+        by_key = repository.get_canonical_entry_by_normalized_key(
+            EntryType.CHANNEL.value, "https://t.me/ignoreme"
+        )
+        assert by_key is not None
+        assert by_key.is_ignored is True
+
+        # Unignore
+        unignored = repository.unignore_canonical_entry(entry.id)
+        assert unignored is not None
+        assert unignored.is_ignored is False
+        assert unignored.ignored_at is None
+        assert unignored.ignored_by is None
+
+        # List includes again
+        visible_again = repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)
+        assert any(e.id == entry.id for e in visible_again)
+
+        # List ignored is empty after unignore
+        assert repository.list_ignored_canonical_entries() == []
+        assert repository.count_ignored_canonical_entries() == 0
+
+    finally:
+        manager.close()
+
+
+def test_intelligence_repository_ignore_missing_and_idempotent(tmp_path: Path):
+    manager, repository = _build_repository(tmp_path / "intelligence-ignore-idem.db")
+    try:
+        # Ignore missing ID
+        assert repository.ignore_canonical_entry("nonexistent-id") is None
+
+        # Unignore missing ID
+        assert repository.unignore_canonical_entry("nonexistent-id") is None
+
+        # Create entry for idempotent tests
+        raw = RawIntelligenceItem.create(
+            source_type="telegram",
+            source_id="chat-1",
+            raw_text="idempotent",
+            content_hash="hash-idem",
+            expires_at=datetime.utcnow() + timedelta(days=30),
+        )
+        repository.save_raw_item(raw)
+
+        entry = CanonicalIntelligenceEntry.create(
+            entry_type=EntryType.SLANG.value,
+            normalized_key="test-term",
+            display_name="Test Term",
+        )
+        repository.save_canonical_entry(entry)
+
+        # Ignore, then ignore again (idempotent)
+        first = repository.ignore_canonical_entry(entry.id, ignored_by="user-a")
+        assert first is not None
+        assert first.is_ignored is True
+        assert first.ignored_by == "user-a"
+        assert first.ignored_at is not None
+
+        second = repository.ignore_canonical_entry(entry.id, ignored_by="user-b")
+        assert second is not None
+        assert second.is_ignored is True
+        # ignored_by is overwritten (latest caller wins)
+        assert second.ignored_by == "user-b"
+
+        # Unignore, then unignore again (idempotent)
+        first_un = repository.unignore_canonical_entry(entry.id)
+        assert first_un is not None
+        assert first_un.is_ignored is False
+        assert first_un.ignored_at is None
+        assert first_un.ignored_by is None
+
+        second_un = repository.unignore_canonical_entry(entry.id)
+        assert second_un is not None
+        assert second_un.is_ignored is False
+        assert second_un.ignored_at is None
+        assert second_un.ignored_by is None
+
+    finally:
+        manager.close()
+
