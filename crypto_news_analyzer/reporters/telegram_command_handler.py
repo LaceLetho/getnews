@@ -284,7 +284,7 @@ class TelegramCommandHandler:
             explanation = f"{explanation[:200]}..."
 
         return (
-            f"📊 *{display_name}* [{index}/{total}]\n"
+            f"*{display_name}* [{index}/{total}]\n"
             f"类型: {entry_type} | 标签: {label} | 置信度: {confidence_text}\n"
             f"{explanation}"
         ).strip()
@@ -396,7 +396,11 @@ class TelegramCommandHandler:
         if entry is None:
             return "Entry not found"
 
-        response = self._format_intelligence_detail(entry)
+        raw_item = None
+        if getattr(entry, "latest_raw_item_id", None):
+            raw_item = repository.get_raw_item_by_id(entry.latest_raw_item_id)
+
+        response = self._build_intelligence_raw_response(entry, raw_item)
         await callback_query.message.reply_text(response, parse_mode="Markdown")
         return "已显示详情"
 
