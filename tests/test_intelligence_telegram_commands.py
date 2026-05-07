@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
-from telegram import InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler
 
 from crypto_news_analyzer.domain.models import PrimaryLabel
@@ -122,8 +121,16 @@ def test_authorized_intel_recent_handler_dispatches_business_method():
     handler: Any = _make_handler()
     handler.is_authorized_user = Mock(return_value=True)
     handler.handle_intel_recent_command = Mock(
-        return_value={"text": "📌 *最近情报条目*", "reply_markup": Mock()}
+        return_value={
+            "entries": [_make_entry()],
+            "total": 1,
+            "page": 1,
+            "total_pages": 1,
+            "kind": "recent",
+            "state_data": {"chat_id": "chat_1", "user_id": "1"},
+        }
     )
+    handler._send_intel_page = AsyncMock(return_value=[101, 102])
     handler._log_authorization_attempt = Mock()
     handler._log_command_execution = Mock()
 
@@ -135,8 +142,8 @@ def test_authorized_intel_recent_handler_dispatches_business_method():
     handler.handle_intel_recent_command.assert_called_once_with(
         "1", "tester", "chat_1", 24, "账号交易", 1, return_markup=True
     )
-    update.message.reply_text.assert_awaited_once()
-    assert update.message.reply_text.await_args.kwargs["reply_markup"] is not None
+    handler._send_intel_page.assert_awaited_once()
+    update.message.reply_text.assert_not_awaited()
 
 
 def test_unauthorized_intel_search_handler_does_not_query_repository():
@@ -191,14 +198,16 @@ def test_intel_search_business_method_formats_ranked_results():
 
     response = handler.handle_intel_search_command("1", "tester", "chat_1", "GPT plus购买渠道")
 
-    service.semantic_search.assert_called_once_with(query_text="GPT plus购买渠道", page=1)
+    service.semantic_search.assert_called_once_with(
+        query_text="GPT plus购买渠道", page=1, page_size=handler.INTEL_PAGE_SIZE
+    )
     assert "Seller One" in response
     assert "Seller Two" in response
     assert "相似度" in response
     assert "intel-1" not in response
 
 
-def test_intel_search_business_method_builds_inline_keyboard():
+def test_intel_search_business_method_returns_page_payload():
     repository = Mock()
     service = Mock()
     service.semantic_search.return_value = (
@@ -218,15 +227,14 @@ def test_intel_search_business_method_builds_inline_keyboard():
         "1", "tester", "chat_1", "GPT plus购买渠道", return_markup=True
     )
 
-    assert isinstance(payload["reply_markup"], InlineKeyboardMarkup)
-    first_row = payload["reply_markup"].inline_keyboard[0]
-    assert first_row[0].text == "详情"
-    assert first_row[1].text == "忽略"
-    assert first_row[0].callback_data == "intel:d:intel-1"
-    assert first_row[1].callback_data == "intel:i:intel-1"
+    assert payload["entries"][0].id == "intel-1"
+    assert payload["total"] == 2
+    assert payload["page"] == 1
+    assert payload["kind"] == "search"
+    assert payload["state_data"]["query"] == "GPT plus购买渠道"
 
 
-def test_intel_recent_business_method_builds_inline_keyboard_and_state():
+def test_intel_recent_business_method_returns_page_payload_and_state_data():
     repository = Mock()
     repository.list_canonical_entries.return_value = [
         _make_entry(display_name="Seller One", confidence=0.93),
@@ -239,14 +247,14 @@ def test_intel_recent_business_method_builds_inline_keyboard_and_state():
         "1", "tester", "chat_1", 24, "账号交易", return_markup=True
     )
 
-    assert isinstance(payload["reply_markup"], InlineKeyboardMarkup)
-    assert handler._callback_state
-    token, state = next(iter(handler._callback_state.items()))
-    assert state["kind"] == "recent"
-    assert state["chat_id"] == "chat_1"
-    assert state["user_id"] == "1"
-    assert payload["reply_markup"].inline_keyboard[0][0].callback_data == "intel:d:intel-1"
-    assert payload["reply_markup"].inline_keyboard[0][1].callback_data == "intel:i:intel-1"
+    assert payload["entries"][0].id == "intel-1"
+    assert payload["total"] == 2
+    assert payload["page"] == 1
+    assert payload["kind"] == "recent"
+    assert payload["state_data"]["kind"] == "recent"
+    assert payload["state_data"]["chat_id"] == "chat_1"
+    assert payload["state_data"]["user_id"] == "1"
+    assert handler._callback_state == {}
 
 
 def test_intel_recent_business_method_formats_markdown_list():
@@ -270,7 +278,7 @@ def test_intel_recent_business_method_formats_markdown_list():
     assert "共 2 条" in response
 
 
-def test_intel_ignored_business_method_builds_restore_keyboard():
+def test_intel_ignored_business_method_returns_restore_page_payload():
     repository = Mock()
     repository.count_ignored_canonical_entries.return_value = 2
     repository.list_ignored_canonical_entries.return_value = [
@@ -283,10 +291,13 @@ def test_intel_ignored_business_method_builds_restore_keyboard():
         "1", "tester", "chat_1", 1, return_markup=True
     )
 
-    repository.list_ignored_canonical_entries.assert_called_once_with(page=0, page_size=20)
-    assert isinstance(payload["reply_markup"], InlineKeyboardMarkup)
-    assert payload["reply_markup"].inline_keyboard[0][1].text == "恢复"
-    assert payload["reply_markup"].inline_keyboard[0][1].callback_data == "intel:u:intel-1"
+    repository.list_ignored_canonical_entries.assert_called_once_with(
+        page=0, page_size=handler.INTEL_PAGE_SIZE
+    )
+    assert payload["entries"][0].id == "intel-1"
+    assert payload["total"] == 2
+    assert payload["kind"] == "ignored"
+    assert payload["state_data"]["kind"] == "ignored"
 
 
 def test_intel_unignore_business_method_restores_entry():
@@ -392,15 +403,26 @@ def test_authorized_intel_callback_dispatches_pagination_for_ignored_lists():
     handler.is_authorized_user = Mock(return_value=True)
     handler.check_rate_limit = Mock(return_value=(True, None))
     handler.handle_intel_ignored_command = Mock(
-        return_value={"text": "📌 *最近情报条目*", "reply_markup": Mock()}
+        return_value={
+            "entries": [_make_entry(display_name="Ignored One")],
+            "total": 1,
+            "page": 2,
+            "total_pages": 2,
+            "kind": "ignored",
+            "state_data": {"kind": "ignored", "chat_id": "chat_1", "user_id": "1"},
+        }
     )
+    handler._send_intel_page = AsyncMock(return_value=[201, 202])
+    bot = SimpleNamespace(delete_message=AsyncMock())
+    handler.application = SimpleNamespace(bot=bot)
 
     update = _make_callback_update(data="intel:p:tok123:2")
     handler._callback_state["tok123"] = {
         "kind": "ignored",
-        "page_size": 20,
+        "page_size": handler.INTEL_PAGE_SIZE,
         "chat_id": "chat_1",
         "user_id": "1",
+        "sent_message_ids": [101, 102],
         "stored_at": time.time(),
     }
     context = SimpleNamespace()
@@ -410,7 +432,9 @@ def test_authorized_intel_callback_dispatches_pagination_for_ignored_lists():
     handler.handle_intel_ignored_command.assert_called_once_with(
         "1", "tester", "chat_1", 2, return_markup=True
     )
-    update.callback_query.message.edit_text.assert_awaited_once()
+    assert bot.delete_message.await_count == 2
+    handler._send_intel_page.assert_awaited_once()
+    update.callback_query.message.edit_text.assert_not_awaited()
 
 
 def test_unauthorized_intel_callback_does_not_ignore_entry():

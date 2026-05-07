@@ -70,6 +70,8 @@ class TelegramCommandHandler:
     处理用户通过Telegram发送的命令，支持手动触发系统执行。
     """
 
+    INTEL_PAGE_SIZE = 5
+
     def __init__(
         self,
         bot_token: str,
@@ -261,16 +263,51 @@ class TelegramCommandHandler:
     def _build_intel_pagination_callback_data(self, token: str, page: int) -> str:
         return f"intel:p:{token}:{max(1, int(page))}"
 
-    def _build_intelligence_result_reply_markup(
+    @staticmethod
+    def _telegram_chat_id(chat_id: str) -> Any:
+        chat_id_value = str(chat_id).strip()
+        if chat_id_value.lstrip("-").isdigit():
+            return int(chat_id_value)
+        return chat_id_value
+
+    def _format_intel_entry_text(self, entry: Any, index: int, total: int) -> str:
+        display_name = getattr(entry, "display_name", "") or getattr(entry, "id", "未知条目")
+        entry_type = getattr(entry, "entry_type", "unknown") or "unknown"
+        label = getattr(entry, "primary_label", "") or "未分类"
+        confidence = getattr(entry, "confidence", None)
+        if isinstance(confidence, (float, int)):
+            confidence_text = f"{confidence:.2f}"
+        else:
+            confidence_text = str(confidence or "N/A")
+        explanation = str(getattr(entry, "explanation", "") or "").strip()
+        if len(explanation) > 200:
+            explanation = f"{explanation[:200]}..."
+
+        return (
+            f"📊 *{display_name}* [{index}/{total}]\n"
+            f"类型: {entry_type} | 标签: {label} | 置信度: {confidence_text}\n"
+            f"{explanation}"
+        ).strip()
+
+    async def _send_intel_page(
         self,
+        chat_id: str,
         entries: List[Any],
-        token: str,
         page: int,
         total_pages: int,
+        total: int,
+        kind: str,
+        state_data: dict,
         action: str = "ignore",
-    ) -> InlineKeyboardMarkup:
-        keyboard: List[List[InlineKeyboardButton]] = []
-        for entry in entries:
+    ) -> List[int]:
+        sent_message_ids: List[int] = []
+        chat_id_value = self._telegram_chat_id(chat_id)
+        page_offset = (max(1, page) - 1) * self.INTEL_PAGE_SIZE
+        if self.application is None:
+            raise RuntimeError("Telegram application is not initialized")
+        bot = self.application.bot
+
+        for offset, entry in enumerate(entries, start=1):
             if action == "unignore":
                 action_button = InlineKeyboardButton(
                     "恢复",
@@ -281,39 +318,67 @@ class TelegramCommandHandler:
                     "忽略",
                     callback_data=self._build_intel_ignore_callback_data(entry.id),
                 )
-            keyboard.append(
-                [
-                    InlineKeyboardButton(
-                        "详情",
-                        callback_data=self._build_intel_detail_callback_data(entry.id),
-                    ),
-                    action_button,
-                ]
-            )
 
+            message = await bot.send_message(
+                chat_id=chat_id_value,
+                text=self._format_intel_entry_text(entry, page_offset + offset, total),
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "详情",
+                                callback_data=self._build_intel_detail_callback_data(entry.id),
+                            ),
+                            action_button,
+                        ]
+                    ]
+                ),
+                parse_mode="Markdown",
+                disable_notification=True,
+            )
+            sent_message_ids.append(int(message.message_id))
+
+        token = self._generate_callback_token()
         pagination_row: List[InlineKeyboardButton] = []
         if page > 1:
             pagination_row.append(
                 InlineKeyboardButton(
                     "上一页",
-                    callback_data=self._build_intel_pagination_callback_data(
-                        token, page - 1
-                    ),
+                    callback_data=self._build_intel_pagination_callback_data(token, page - 1),
                 )
             )
         if page < total_pages:
             pagination_row.append(
                 InlineKeyboardButton(
                     "下一页",
-                    callback_data=self._build_intel_pagination_callback_data(
-                        token, page + 1
-                    ),
+                    callback_data=self._build_intel_pagination_callback_data(token, page + 1),
                 )
             )
-        if pagination_row:
-            keyboard.append(pagination_row)
 
-        return InlineKeyboardMarkup(keyboard)
+        footer_markup = InlineKeyboardMarkup([pagination_row]) if pagination_row else None
+        footer = f"📄 *共 {total} 条 | 第 {page}/{total_pages} 页*"
+        footer_message = await bot.send_message(
+            chat_id=chat_id_value,
+            text=footer,
+            reply_markup=footer_markup,
+            parse_mode="Markdown",
+            disable_notification=True,
+        )
+        sent_message_ids.append(int(footer_message.message_id))
+
+        state_payload = dict(state_data)
+        state_payload.update(
+            {
+                "kind": kind,
+                "page": page,
+                "page_size": self.INTEL_PAGE_SIZE,
+                "total": total,
+                "total_pages": total_pages,
+                "sent_message_ids": sent_message_ids,
+            }
+        )
+        self._store_callback_state(token, state_payload)
+        return sent_message_ids
 
     async def _handle_intel_detail_callback(
         self,
@@ -409,20 +474,34 @@ class TelegramCommandHandler:
                 return_markup=True,
             )
 
-        response_text = payload["text"] if isinstance(payload, dict) else str(payload)
-        reply_markup = payload.get("reply_markup") if isinstance(payload, dict) else None
-        try:
-            await callback_query.message.edit_text(
-                response_text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
-            )
-        except Exception:
-            await callback_query.message.reply_text(
-                response_text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
-            )
+        old_message_ids = [int(msg_id) for msg_id in state.get("sent_message_ids", [])]
+        chat_id_value = self._telegram_chat_id(chat_id)
+        if self.application is None:
+            raise RuntimeError("Telegram application is not initialized")
+        bot = self.application.bot
+        for msg_id in old_message_ids:
+            try:
+                await bot.delete_message(
+                    chat_id=chat_id_value,
+                    message_id=msg_id,
+                )
+            except Exception as e:
+                self.logger.debug(f"Failed to delete intel page message {msg_id}: {e}")
+
+        if not isinstance(payload, dict):
+            await callback_query.message.reply_text(str(payload), parse_mode="Markdown")
+            return "已更新分页"
+
+        await self._send_intel_page(
+            chat_id=chat_id,
+            entries=payload.get("entries", []),
+            page=int(payload.get("page", page)),
+            total_pages=int(payload.get("total_pages", 1)),
+            total=int(payload.get("total", 0)),
+            kind=str(payload.get("kind", kind)),
+            state_data=payload.get("state_data", {}),
+            action="unignore" if kind == "ignored" else "ignore",
+        )
         return "已更新分页"
 
     async def _handle_intel_callback_query(
@@ -1298,16 +1377,18 @@ class TelegramCommandHandler:
                 return_markup=True,
             )
             if isinstance(payload, dict):
-                response_text = payload.get("text", "")
-                reply_markup = payload.get("reply_markup")
+                await self._send_intel_page(
+                    chat_id=chat_id,
+                    entries=payload.get("entries", []),
+                    page=int(payload.get("page", page)),
+                    total_pages=int(payload.get("total_pages", 1)),
+                    total=int(payload.get("total", 0)),
+                    kind=str(payload.get("kind", "recent")),
+                    state_data=payload.get("state_data", {}),
+                )
             else:
                 response_text = str(payload)
-                reply_markup = None
-            await message.reply_text(
-                response_text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
-            )
+                await message.reply_text(response_text, parse_mode="Markdown")
 
         except Exception as e:
             error_msg = f"处理/intel_recent命令时发生错误: {str(e)}"
@@ -1458,16 +1539,18 @@ class TelegramCommandHandler:
                 user_id, username, chat_id, query, page, return_markup=True
             )
             if isinstance(payload, dict):
-                response_text = payload.get("text", "")
-                reply_markup = payload.get("reply_markup")
+                await self._send_intel_page(
+                    chat_id=chat_id,
+                    entries=payload.get("entries", []),
+                    page=int(payload.get("page", page)),
+                    total_pages=int(payload.get("total_pages", 1)),
+                    total=int(payload.get("total", 0)),
+                    kind=str(payload.get("kind", "search")),
+                    state_data=payload.get("state_data", {}),
+                )
             else:
                 response_text = str(payload)
-                reply_markup = None
-            await message.reply_text(
-                response_text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
-            )
+                await message.reply_text(response_text, parse_mode="Markdown")
 
         except Exception as e:
             error_msg = f"处理/intel_search命令时发生错误: {str(e)}"
@@ -1602,16 +1685,19 @@ class TelegramCommandHandler:
                 user_id, username, chat_id, page, return_markup=True
             )
             if isinstance(payload, dict):
-                response_text = payload.get("text", "")
-                reply_markup = payload.get("reply_markup")
+                await self._send_intel_page(
+                    chat_id=chat_id,
+                    entries=payload.get("entries", []),
+                    page=int(payload.get("page", page)),
+                    total_pages=int(payload.get("total_pages", 1)),
+                    total=int(payload.get("total", 0)),
+                    kind=str(payload.get("kind", "ignored")),
+                    state_data=payload.get("state_data", {}),
+                    action="unignore",
+                )
             else:
                 response_text = str(payload)
-                reply_markup = None
-            await message.reply_text(
-                response_text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
-            )
+                await message.reply_text(response_text, parse_mode="Markdown")
 
         except Exception as e:
             error_msg = f"处理/intel_ignored命令时发生错误: {str(e)}"
@@ -2839,9 +2925,13 @@ class TelegramCommandHandler:
                 primary_label=primary_label,
                 window=cutoff,
                 page=page,
-                page_size=20,
+                page_size=self.INTEL_PAGE_SIZE,
             )
-            total_pages = max(1, (total + 20 - 1) // 20) if total > 0 else 1
+            total_pages = (
+                max(1, (total + self.INTEL_PAGE_SIZE - 1) // self.INTEL_PAGE_SIZE)
+                if total > 0
+                else 1
+            )
             if page > total_pages:
                 page = total_pages
                 entries = repository.list_canonical_entries(
@@ -2849,41 +2939,38 @@ class TelegramCommandHandler:
                     primary_label=primary_label,
                     window=cutoff,
                     page=page,
-                    page_size=20,
+                    page_size=self.INTEL_PAGE_SIZE,
                 )
             response = self._format_intelligence_recent_results(
                 entries,
                 total=total,
                 page=page,
-                page_size=20,
+                page_size=self.INTEL_PAGE_SIZE,
                 window_hours=window_hours,
                 label=label or "",
             )
-            payload = None
-            if return_markup and entries:
-                token = self._generate_callback_token()
-                self._store_callback_state(
-                    token,
-                    {
-                        "kind": "recent",
-                        "window_hours": window_hours,
-                        "label": label or "",
-                        "page_size": 20,
-                        "page": page,
-                        "chat_id": chat_id,
-                        "user_id": user_id,
-                    },
-                )
-                payload = {
-                    "text": response,
-                    "reply_markup": self._build_intelligence_result_reply_markup(
-                        entries, token, page, total_pages, action="ignore"
-                    ),
-                }
             self._log_command_execution(
                 "/intel_recent", user_id, username, None, bool(entries), response
             )
-            return payload if payload is not None else response
+            if return_markup:
+                state_data = {
+                    "kind": "recent",
+                    "window_hours": window_hours,
+                    "label": label or "",
+                    "page_size": self.INTEL_PAGE_SIZE,
+                    "page": page,
+                    "chat_id": chat_id,
+                    "user_id": user_id,
+                }
+                return {
+                    "entries": entries,
+                    "total": total,
+                    "page": page,
+                    "total_pages": total_pages,
+                    "kind": "recent",
+                    "state_data": state_data,
+                }
+            return response
         except Exception as e:
             error_msg = f"查询最近情报失败: {str(e)}"
             self.logger.error(error_msg)
@@ -2928,38 +3015,46 @@ class TelegramCommandHandler:
                 return response
 
             page = max(1, page)
-            results, total = service.semantic_search(query_text=query, page=page)
-            total_pages = max(1, (total + 20 - 1) // 20) if total > 0 else 1
+            results, total = service.semantic_search(
+                query_text=query, page=page, page_size=self.INTEL_PAGE_SIZE
+            )
+            total_pages = (
+                max(1, (total + self.INTEL_PAGE_SIZE - 1) // self.INTEL_PAGE_SIZE)
+                if total > 0
+                else 1
+            )
             if page > total_pages:
                 page = total_pages
-                results, total = service.semantic_search(query_text=query, page=page)
-                total_pages = max(1, (total + 20 - 1) // 20) if total > 0 else 1
+                results, total = service.semantic_search(
+                    query_text=query, page=page, page_size=self.INTEL_PAGE_SIZE
+                )
+                total_pages = (
+                    max(1, (total + self.INTEL_PAGE_SIZE - 1) // self.INTEL_PAGE_SIZE)
+                    if total > 0
+                    else 1
+                )
             response = self._format_intelligence_search_results(
                 query, results, total=total, page=page
             )
-            if return_markup and results:
-                token = self._generate_callback_token()
-                self._store_callback_state(
-                    token,
-                    {
+            entries = [entry for entry, _ in results]
+            self._log_command_execution(
+                "/intel_search", user_id, username, None, bool(results), response
+            )
+            if return_markup:
+                return {
+                    "entries": entries,
+                    "total": total,
+                    "page": page,
+                    "total_pages": total_pages,
+                    "kind": "search",
+                    "state_data": {
                         "kind": "search",
                         "query": query,
-                        "page_size": 20,
+                        "page_size": self.INTEL_PAGE_SIZE,
                         "page": page,
                         "chat_id": chat_id,
                         "user_id": user_id,
                     },
-                )
-                entries = [entry for entry, _ in results]
-            self._log_command_execution(
-                "/intel_search", user_id, username, None, bool(results), response
-            )
-            if return_markup and results:
-                return {
-                    "text": response,
-                    "reply_markup": self._build_intelligence_result_reply_markup(
-                        entries, token, page, total_pages, action="ignore"
-                    ),
                 }
             return response
         except Exception as e:
@@ -2989,40 +3084,40 @@ class TelegramCommandHandler:
 
             page = max(1, page)
             total = repository.count_ignored_canonical_entries()
-            total_pages = max(1, (total + 20 - 1) // 20) if total > 0 else 1
+            total_pages = (
+                max(1, (total + self.INTEL_PAGE_SIZE - 1) // self.INTEL_PAGE_SIZE)
+                if total > 0
+                else 1
+            )
             if page > total_pages:
                 page = total_pages
             entries = repository.list_ignored_canonical_entries(
                 page=page - 1,
-                page_size=20,
+                page_size=self.INTEL_PAGE_SIZE,
             )
             response = self._format_intelligence_recent_results(
                 entries,
                 total=total,
                 page=page,
-                page_size=20,
+                page_size=self.INTEL_PAGE_SIZE,
             )
-            if return_markup and entries:
-                token = self._generate_callback_token()
-                self._store_callback_state(
-                    token,
-                    {
+            self._log_command_execution(
+                "/intel_ignored", user_id, username, None, bool(entries), response
+            )
+            if return_markup:
+                return {
+                    "entries": entries,
+                    "total": total,
+                    "page": page,
+                    "total_pages": total_pages,
+                    "kind": "ignored",
+                    "state_data": {
                         "kind": "ignored",
-                        "page_size": 20,
+                        "page_size": self.INTEL_PAGE_SIZE,
                         "page": page,
                         "chat_id": chat_id,
                         "user_id": user_id,
                     },
-                )
-            self._log_command_execution(
-                "/intel_ignored", user_id, username, None, bool(entries), response
-            )
-            if return_markup and entries:
-                return {
-                    "text": response,
-                    "reply_markup": self._build_intelligence_result_reply_markup(
-                        entries, token, page, total_pages, action="unignore"
-                    ),
                 }
             return response
         except Exception as e:
