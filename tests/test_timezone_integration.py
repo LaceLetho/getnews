@@ -165,7 +165,7 @@ class TestTimezoneIntegration(unittest.TestCase):
             max_concurrent_executions=1,
             command_rate_limit={
                 "max_commands_per_hour": 10,
-                "cooldown_minutes": 5
+                "cooldown_seconds": 5
             }
         )
         

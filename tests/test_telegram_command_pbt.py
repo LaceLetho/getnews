@@ -78,7 +78,7 @@ def telegram_command_config_strategy(draw):
         max_concurrent_executions=1,
         command_rate_limit={
             "max_commands_per_hour": 10,
-            "cooldown_minutes": 5
+            "cooldown_seconds": 5
         }
     )
 
@@ -288,7 +288,7 @@ def test_property_18_rate_limit_consistency(
         max_concurrent_executions=1,
         command_rate_limit={
             "max_commands_per_hour": 10,
-            "cooldown_minutes": 0  # 禁用冷却时间以便快速测试
+            "cooldown_seconds": 0  # 禁用冷却时间以便快速测试
         }
     )
     

@@ -919,7 +919,7 @@ class TelegramCommandConfig:
         if self.command_rate_limit is None:
             self.command_rate_limit = {
                 "max_commands_per_hour": 10,
-                "cooldown_minutes": 5,
+                "cooldown_seconds": 1,
             }
 
 

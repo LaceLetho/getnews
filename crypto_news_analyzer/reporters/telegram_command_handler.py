@@ -748,13 +748,13 @@ class TelegramCommandHandler:
             return False, f"已达到每小时命令限制 ({max_per_hour} 次)，请稍后再试"
 
         # 检查冷却时间（仅针对/analyze命令）
-        cooldown_minutes = self.config.command_rate_limit.get("cooldown_minutes", 5)
-        minutes_since_last = (
+        cooldown_seconds = self.config.command_rate_limit.get("cooldown_seconds", 1)
+        seconds_since_last = (
             now - state.last_analyze_command_time
-        ).total_seconds() / 60
-        if minutes_since_last < cooldown_minutes:
-            remaining = cooldown_minutes - minutes_since_last
-            return False, f"命令冷却中，请等待 {remaining:.1f} 分钟"
+        ).total_seconds()
+        if seconds_since_last < cooldown_seconds:
+            remaining = cooldown_seconds - seconds_since_last
+            return False, f"命令冷却中，请等待 {remaining:.1f} 秒"
 
         # 更新状态（仅更新/analyze命令的时间戳）
         state.command_count += 1
@@ -4129,5 +4129,5 @@ def create_default_command_config() -> TelegramCommandConfig:
         authorized_users=[],
         execution_timeout_minutes=30,
         max_concurrent_executions=1,
-        command_rate_limit={"max_commands_per_hour": 10, "cooldown_minutes": 5},
+        command_rate_limit={"max_commands_per_hour": 10, "cooldown_seconds": 1},
     )

@@ -57,7 +57,7 @@
     "max_concurrent_executions": 1,
     "command_rate_limit": {
       "max_commands_per_hour": 120,
-      "cooldown_minutes": 1
+      "cooldown_seconds": 1
     }
   },
   "semantic_search": {

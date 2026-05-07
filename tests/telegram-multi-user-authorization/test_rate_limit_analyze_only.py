@@ -13,7 +13,7 @@ def mock_config():
     config.enabled = True
     config.command_rate_limit = {
         "max_commands_per_hour": 10,
-        "cooldown_minutes": 5,
+        "cooldown_seconds": 5,
     }
     return config
 

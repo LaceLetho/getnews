@@ -274,7 +274,7 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 
 为防止滥用，系统实施了速率限制：
 - 每小时最多执行命令次数（默认：120次）
-- 命令冷却时间（默认：5分钟）
+- 命令冷却时间（默认：1秒）
 
 可在 `config.jsonc` 的 `telegram_commands.command_rate_limit` 中调整。
 

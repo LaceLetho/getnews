@@ -12,7 +12,7 @@ from crypto_news_analyzer.reporters.telegram_command_handler import TelegramComm
 def mock_config():
     config = Mock()
     config.enabled = True
-    config.command_rate_limit = {"max_commands_per_hour": 10, "cooldown_minutes": 5}
+    config.command_rate_limit = {"max_commands_per_hour": 10, "cooldown_seconds": 5}
     return config
 
 

@@ -705,7 +705,7 @@ class MainController:
             ),
             command_rate_limit=telegram_commands.get(
                 "command_rate_limit",
-                {"max_commands_per_hour": 10, "cooldown_minutes": 5},
+                {"max_commands_per_hour": 10, "cooldown_seconds": 1},
             ),
         )
 

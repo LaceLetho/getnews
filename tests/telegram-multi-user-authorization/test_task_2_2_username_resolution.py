@@ -39,7 +39,7 @@ def create_test_handler(env_value: str = "") -> TelegramCommandHandler:
         max_concurrent_executions=1,
         command_rate_limit={
             "max_commands_per_hour": 10,
-            "cooldown_minutes": 5
+            "cooldown_seconds": 5
         }
     )
     
