@@ -270,8 +270,23 @@ class TelegramCommandHandler:
             return int(chat_id_value)
         return chat_id_value
 
+    @staticmethod
+    def _escape_markdown_v1(text: str) -> str:
+        """Escape user-generated content for Telegram MarkdownV1 parse mode.
+
+        Escapes special characters that would be interpreted as formatting:
+        * (bold), _ (italic), ` (code), [ ] (links).
+        """
+        if not isinstance(text, str):
+            text = str(text)
+        for char in ("\\", "`", "*", "_", "[", "]"):
+            text = text.replace(char, "\\" + char)
+        return text
+
     def _format_intel_entry_text(self, entry: Any, index: int, total: int) -> str:
-        display_name = getattr(entry, "display_name", "") or getattr(entry, "id", "未知条目")
+        display_name = self._escape_markdown_v1(
+            getattr(entry, "display_name", "") or getattr(entry, "id", "未知条目")
+        )
         entry_type = getattr(entry, "entry_type", "unknown") or "unknown"
         label = getattr(entry, "primary_label", "") or "未分类"
         confidence = getattr(entry, "confidence", None)
@@ -282,6 +297,7 @@ class TelegramCommandHandler:
         explanation = str(getattr(entry, "explanation", "") or "").strip()
         if len(explanation) > 200:
             explanation = f"{explanation[:200]}..."
+        explanation = self._escape_markdown_v1(explanation)
 
         return (
             f"*{display_name}* [{index}/{total}]\n"
@@ -2789,12 +2805,13 @@ class TelegramCommandHandler:
             if getattr(entry, "last_seen_at", None)
             else "未知"
         )
+        esc = self._escape_markdown_v1
         return (
-            f"• *{entry.display_name}*\n"
-            f"  - 标签: {entry.primary_label or '无'}\n"
-            f"  - 说明: {entry.explanation or entry.usage_summary or '无'}\n"
+            f"• *{esc(entry.display_name)}*\n"
+            f"  - 标签: {esc(entry.primary_label or '无')}\n"
+            f"  - 说明: {esc(entry.explanation or entry.usage_summary or '无')}\n"
             f"  - 置信度: {float(getattr(entry, 'confidence', 0.0)):.2f}\n"
-            f"  - 最后出现: {last_seen}\n"
+            f"  - 最后出现: {esc(last_seen)}\n"
             f"  - 来源数: {int(getattr(entry, 'evidence_count', 0) or 0)}"
         )
 
@@ -2804,22 +2821,29 @@ class TelegramCommandHandler:
             if getattr(entry, "last_seen_at", None)
             else "未知"
         )
+        esc = self._escape_markdown_v1
+        explanation = esc(
+            getattr(entry, "explanation", None)
+            or getattr(entry, "usage_summary", None)
+            or "无"
+        )
         parts = [
             "📌 *情报详情*",
-            f"*名称:* {entry.display_name}",
-            f"*类型:* {entry.entry_type}",
-            f"*标签:* {entry.primary_label or '无'}",
-            f"*说明:* {entry.explanation or entry.usage_summary or '无'}",
+            f"*名称:* {esc(entry.display_name)}",
+            f"*类型:* {esc(entry.entry_type)}",
+            f"*标签:* {esc(entry.primary_label or '无')}",
+            f"*说明:* {explanation}",
             f"*置信度:* {float(getattr(entry, 'confidence', 0.0)):.2f}",
-            f"*最后出现:* {last_seen}",
+            f"*最后出现:* {esc(last_seen)}",
             f"*来源数:* {int(getattr(entry, 'evidence_count', 0) or 0)}",
         ]
         if getattr(entry, "aliases", None):
-            parts.append(f"*别名:* {', '.join(entry.aliases)}")
+            escaped_aliases = ", ".join(esc(a) for a in entry.aliases)
+            parts.append(f"*别名:* {escaped_aliases}")
         if raw_text is not None:
             parts.append("")
             parts.append("*Raw evidence:*")
-            parts.append(raw_text)
+            parts.append(esc(raw_text))
         return "\n".join(parts)
 
     def _format_intelligence_search_results(
@@ -2838,11 +2862,12 @@ class TelegramCommandHandler:
 
         lines = [f"🔎 *情报搜索*\n查询: {query}\n"]
         for index, (entry, score) in enumerate(results, start=1):
+            esc = self._escape_markdown_v1
             lines.append(
-                f"{index}. {entry.display_name} | {entry.entry_type} | {entry.primary_label or '无'} | {float(getattr(entry, 'confidence', 0.0)):.2f}"
+                f"{index}. {esc(entry.display_name)} | {esc(entry.entry_type)} | {esc(entry.primary_label or '无')} | {float(getattr(entry, 'confidence', 0.0)):.2f}"
             )
             if getattr(entry, "explanation", None):
-                lines.append(f"   {entry.explanation}")
+                lines.append(f"   {esc(entry.explanation)}")
             lines.append(f"   相似度: {float(score):.3f}")
 
         if total > 0:
@@ -2870,11 +2895,12 @@ class TelegramCommandHandler:
 
         lines = ["📌 *最近情报条目*\n"]
         for index, entry in enumerate(entries, start=1):
+            esc = self._escape_markdown_v1
             lines.append(
-                f"{index}. {entry.display_name} | {entry.entry_type} | {entry.primary_label or '无'} | {float(getattr(entry, 'confidence', 0.0)):.2f}"
+                f"{index}. {esc(entry.display_name)} | {esc(entry.entry_type)} | {esc(entry.primary_label or '无')} | {float(getattr(entry, 'confidence', 0.0)):.2f}"
             )
             if getattr(entry, "explanation", None):
-                lines.append(f"   {entry.explanation}")
+                lines.append(f"   {esc(entry.explanation)}")
 
         if total > 0:
             total_pages = max(1, (total + page_size - 1) // page_size)
