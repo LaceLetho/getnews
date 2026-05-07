@@ -384,6 +384,7 @@ class IntelligenceEntryDetailResponse(BaseModel):
     is_ignored: bool = False
     ignored_at: Optional[str] = None
     ignored_by: Optional[str] = None
+    source: Optional[str] = None
     raw_available: bool = False
     raw_evidence: Optional[Any] = None
 
@@ -505,6 +506,41 @@ def _as_naive_utc(value: Optional[datetime]) -> Optional[datetime]:
     if value.tzinfo is None:
         return value
     return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _build_source_display(raw_item: Any) -> str:
+    """Build a human-readable source display string from a RawIntelligenceItem."""
+    source_type = getattr(raw_item, "source_type", "") or ""
+    source_url = getattr(raw_item, "source_url", "") or ""
+    chat_id = getattr(raw_item, "chat_id", "") or ""
+    thread_id = getattr(raw_item, "thread_id", "") or ""
+    topic_id = getattr(raw_item, "topic_id", "") or ""
+
+    if source_type == "telegram_group":
+        base = "Telegram群组"
+        if chat_id:
+            base += f"({chat_id})"
+        if thread_id:
+            base += f" [thread:{thread_id}]"
+        return base
+
+    if source_type == "v2ex":
+        base = "V2EX帖子"
+        if topic_id:
+            base += f"(#{topic_id})"
+        return base
+
+    if source_url:
+        from urllib.parse import urlparse
+
+        try:
+            parsed = urlparse(source_url)
+            domain = parsed.netloc or source_url
+            return f"{source_type} ({domain})"
+        except Exception:
+            return f"{source_type} ({source_url})"
+
+    return source_type or "未知"
 
 
 def _is_expired(expires_at: Optional[datetime], now: Optional[datetime] = None) -> bool:
@@ -1474,29 +1510,34 @@ def create_api_server(
 
         response = _canonical_entry_to_detail_response(entry)
 
-        if include_raw and entry.latest_raw_item_id:
+        # Always fetch source info from latest raw item (if available)
+        raw_item = None
+        if entry.latest_raw_item_id:
             raw_item = repository.get_raw_item_by_id(entry.latest_raw_item_id)
             if raw_item:
-                is_expired = _is_expired(raw_item.expires_at)
-                if not is_expired and raw_item.raw_text:
-                    response.raw_available = True
-                    response.raw_evidence = {
-                        "raw_item_id": raw_item.id,
-                        "raw_text": raw_item.raw_text,
-                        "source_type": raw_item.source_type,
-                        "source_url": raw_item.source_url,
-                        "published_at": (
-                            raw_item.published_at.isoformat() if raw_item.published_at else None
-                        ),
-                        "collected_at": (
-                            raw_item.collected_at.isoformat() if raw_item.collected_at else None
-                        ),
-                        "expires_at": (
-                            raw_item.expires_at.isoformat() if raw_item.expires_at else None
-                        ),
-                    }
-                else:
-                    response.raw_available = False
+                response.source = _build_source_display(raw_item)
+
+        if include_raw and raw_item:
+            is_expired = _is_expired(raw_item.expires_at)
+            if not is_expired and raw_item.raw_text:
+                response.raw_available = True
+                response.raw_evidence = {
+                    "raw_item_id": raw_item.id,
+                    "raw_text": raw_item.raw_text,
+                    "source_type": raw_item.source_type,
+                    "source_url": raw_item.source_url,
+                    "published_at": (
+                        raw_item.published_at.isoformat() if raw_item.published_at else None
+                    ),
+                    "collected_at": (
+                        raw_item.collected_at.isoformat() if raw_item.collected_at else None
+                    ),
+                    "expires_at": (
+                        raw_item.expires_at.isoformat() if raw_item.expires_at else None
+                    ),
+                }
+            else:
+                response.raw_available = False
 
         return response
 

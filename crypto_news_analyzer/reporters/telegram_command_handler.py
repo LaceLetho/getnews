@@ -421,10 +421,13 @@ class TelegramCommandHandler:
             return "Entry not found"
 
         raw_item = None
+        source = None
         if getattr(entry, "latest_raw_item_id", None):
             raw_item = repository.get_raw_item_by_id(entry.latest_raw_item_id)
+            if raw_item:
+                source = self._build_source_display(raw_item)
 
-        response = self._build_intelligence_raw_response(entry, raw_item)
+        response = self._build_intelligence_raw_response(entry, raw_item, source=source)
         await callback_query.message.reply_text(response, parse_mode="Markdown")
         return "已显示详情"
 
@@ -2815,7 +2818,42 @@ class TelegramCommandHandler:
             f"  - 来源数: {int(getattr(entry, 'evidence_count', 0) or 0)}"
         )
 
-    def _format_intelligence_detail(self, entry: Any, raw_text: Optional[str] = None) -> str:
+    def _build_source_display(self, raw_item: Any) -> str:
+        source_type = getattr(raw_item, "source_type", "") or ""
+        source_url = getattr(raw_item, "source_url", "") or ""
+        chat_id = getattr(raw_item, "chat_id", "") or ""
+        thread_id = getattr(raw_item, "thread_id", "") or ""
+        topic_id = getattr(raw_item, "topic_id", "") or ""
+
+        if source_type == "telegram_group":
+            base = "Telegram群组"
+            if chat_id:
+                base += f"({chat_id})"
+            if thread_id:
+                base += f" [thread:{thread_id}]"
+            return base
+
+        if source_type == "v2ex":
+            base = "V2EX帖子"
+            if topic_id:
+                base += f"(#{topic_id})"
+            return base
+
+        if source_url:
+            from urllib.parse import urlparse
+
+            try:
+                parsed = urlparse(source_url)
+                domain = parsed.netloc or source_url
+                return f"{source_type} ({domain})"
+            except Exception:
+                return f"{source_type} ({source_url})"
+
+        return source_type or "未知"
+
+    def _format_intelligence_detail(
+        self, entry: Any, raw_text: Optional[str] = None, source: Optional[str] = None
+    ) -> str:
         last_seen = (
             format_datetime_utc8(entry.last_seen_at)
             if getattr(entry, "last_seen_at", None)
@@ -2837,6 +2875,8 @@ class TelegramCommandHandler:
             f"*最后出现:* {esc(last_seen)}",
             f"*来源数:* {int(getattr(entry, 'evidence_count', 0) or 0)}",
         ]
+        if source:
+            parts.append(f"*来源:* {esc(source)}")
         if getattr(entry, "aliases", None):
             escaped_aliases = ", ".join(esc(a) for a in entry.aliases)
             parts.append(f"*别名:* {escaped_aliases}")
@@ -2914,7 +2954,9 @@ class TelegramCommandHandler:
 
         return "\n".join(lines)
 
-    def _build_intelligence_raw_response(self, entry: Any, raw_item: Optional[Any]) -> str:
+    def _build_intelligence_raw_response(
+        self, entry: Any, raw_item: Optional[Any], source: Optional[str] = None
+    ) -> str:
         raw_text = None
         raw_available = False
         if raw_item is not None:
@@ -2926,7 +2968,7 @@ class TelegramCommandHandler:
             if raw_available:
                 raw_text = raw_item.raw_text
 
-        response = self._format_intelligence_detail(entry, raw_text=raw_text)
+        response = self._format_intelligence_detail(entry, raw_text=raw_text, source=source)
         if raw_item is not None and not raw_available:
             response += "\n\n⚠️ raw evidence expired"
         return response
@@ -3229,17 +3271,20 @@ class TelegramCommandHandler:
                 return response
 
             raw_item = None
-            if include_raw and getattr(entry, "latest_raw_item_id", None):
+            source = None
+            if getattr(entry, "latest_raw_item_id", None):
                 raw_item = repository.get_raw_item_by_id(entry.latest_raw_item_id)
+                if raw_item:
+                    source = self._build_source_display(raw_item)
 
-            response = (
-                self._build_intelligence_raw_response(entry, raw_item)
-                if include_raw
-                else self._format_intelligence_detail(entry)
-            )
+            if include_raw and raw_item:
+                response = self._build_intelligence_raw_response(entry, raw_item, source=source)
+            else:
+                response = self._format_intelligence_detail(entry, source=source)
+
             log_response = response
             if include_raw and raw_item is not None:
-                log_response = self._format_intelligence_detail(entry)
+                log_response = self._format_intelligence_detail(entry, source=source)
                 log_response += "\n\n[raw evidence returned; omitted from command history]"
             self._log_command_execution(
                 "/intel_detail", user_id, username, None, True, log_response

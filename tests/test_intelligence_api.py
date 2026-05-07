@@ -952,7 +952,8 @@ def test_include_raw_false_does_not_query_repository(
     assert response.status_code == 200
     data = response.json()
     assert data["raw_available"] is False
-    assert repo.get_by_id_calls == 0
+    # Source info is always fetched from raw item (even with include_raw=false)
+    assert repo.get_by_id_calls == 1
 
 
 def test_include_raw_only_if_entry_has_raw_item_id(
