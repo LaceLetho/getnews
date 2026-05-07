@@ -2794,7 +2794,7 @@ class TelegramCommandHandler:
             if item.name == item.value:
                 lines.append(f"• `{item.value}`")
             else:
-                lines.append(f"• `{item.value}` ({item.name})")
+                lines.append(f"• `{item.value}` ({self._escape_markdown_v1(item.name)})")
         lines.append("")
         lines.append("用法: `/intel_recent 24 支付`")
         return "\n".join(lines)
