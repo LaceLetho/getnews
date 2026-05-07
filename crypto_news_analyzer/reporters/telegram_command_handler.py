@@ -300,13 +300,16 @@ class TelegramCommandHandler:
         state_data: dict,
         action: str = "ignore",
     ) -> List[int]:
-        sent_message_ids: List[int] = []
         chat_id_value = self._telegram_chat_id(chat_id)
         page_offset = (max(1, page) - 1) * self.INTEL_PAGE_SIZE
         if self.application is None:
             raise RuntimeError("Telegram application is not initialized")
         bot = self.application.bot
 
+        token = self._generate_callback_token()
+
+        # Fire all entry messages concurrently (1 RTT, not N RTTs)
+        entry_tasks = []
         for offset, entry in enumerate(entries, start=1):
             if action == "unignore":
                 action_button = InlineKeyboardButton(
@@ -319,26 +322,29 @@ class TelegramCommandHandler:
                     callback_data=self._build_intel_ignore_callback_data(entry.id),
                 )
 
-            message = await bot.send_message(
-                chat_id=chat_id_value,
-                text=self._format_intel_entry_text(entry, page_offset + offset, total),
-                reply_markup=InlineKeyboardMarkup(
-                    [
+            entry_tasks.append(
+                bot.send_message(
+                    chat_id=chat_id_value,
+                    text=self._format_intel_entry_text(entry, page_offset + offset, total),
+                    reply_markup=InlineKeyboardMarkup(
                         [
-                            InlineKeyboardButton(
-                                "详情",
-                                callback_data=self._build_intel_detail_callback_data(entry.id),
-                            ),
-                            action_button,
+                            [
+                                InlineKeyboardButton(
+                                    "详情",
+                                    callback_data=self._build_intel_detail_callback_data(entry.id),
+                                ),
+                                action_button,
+                            ]
                         ]
-                    ]
-                ),
-                parse_mode="Markdown",
-                disable_notification=True,
+                    ),
+                    parse_mode="Markdown",
+                    disable_notification=True,
+                )
             )
-            sent_message_ids.append(int(message.message_id))
 
-        token = self._generate_callback_token()
+        entry_messages = await asyncio.gather(*entry_tasks)
+
+        # Send footer sequentially after entries (guarantees it appears last)
         pagination_row: List[InlineKeyboardButton] = []
         if page > 1:
             pagination_row.append(
@@ -364,6 +370,8 @@ class TelegramCommandHandler:
             parse_mode="Markdown",
             disable_notification=True,
         )
+
+        sent_message_ids = [int(msg.message_id) for msg in entry_messages]
         sent_message_ids.append(int(footer_message.message_id))
 
         state_payload = dict(state_data)
