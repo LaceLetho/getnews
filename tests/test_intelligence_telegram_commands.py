@@ -61,9 +61,7 @@ def _make_handler(coordinator: Any = None) -> Any:
 def _make_update(user_id="1", username="tester", chat_id="chat_1", chat_type="private"):
     message = SimpleNamespace(reply_text=AsyncMock())
     return SimpleNamespace(
-        effective_user=SimpleNamespace(
-            id=user_id, username=username, first_name=username
-        ),
+        effective_user=SimpleNamespace(id=user_id, username=username, first_name=username),
         effective_chat=SimpleNamespace(id=chat_id, type=chat_type),
         message=message,
         effective_message=message,
@@ -108,6 +106,7 @@ def test_build_application_registers_intelligence_commands():
     assert any("intel_search" in commands for commands in registered_commands)
     assert any("intel_detail" in commands for commands in registered_commands)
     assert any("intel_follow" in commands for commands in registered_commands)
+    assert any("intel_following" in commands for commands in registered_commands)
     assert any("intel_unfollow" in commands for commands in registered_commands)
     assert any("intel_ignored" in commands for commands in registered_commands)
     assert any("intel_unignore" in commands for commands in registered_commands)
@@ -196,9 +195,7 @@ def test_intel_search_business_method_formats_ranked_results():
         2,
     )
     handler: Any = _make_handler(
-        SimpleNamespace(
-            intelligence_repository=repository, intelligence_search_service=service
-        )
+        SimpleNamespace(intelligence_repository=repository, intelligence_search_service=service)
     )
 
     response = handler.handle_intel_search_command("1", "tester", "chat_1", "GPT plus购买渠道")
@@ -226,9 +223,7 @@ def test_intel_search_business_method_returns_page_payload():
         2,
     )
     handler: Any = _make_handler(
-        SimpleNamespace(
-            intelligence_repository=repository, intelligence_search_service=service
-        )
+        SimpleNamespace(intelligence_repository=repository, intelligence_search_service=service)
     )
 
     payload = handler.handle_intel_search_command(
@@ -297,6 +292,60 @@ def test_intel_recent_business_method_formats_markdown_list():
     assert "共 2 条" in response
 
 
+def test_authorized_intel_following_handler_dispatches_business_method():
+    handler: Any = _make_handler()
+    handler.is_authorized_user = Mock(return_value=True)
+    handler.handle_intel_following_command = Mock(
+        return_value={
+            "entries": [_make_entry()],
+            "total": 1,
+            "page": 1,
+            "total_pages": 1,
+            "kind": "following",
+            "state_data": {"chat_id": "chat_1", "user_id": "1"},
+        }
+    )
+    handler._send_intel_page = AsyncMock(return_value=[101, 102])
+    handler._log_authorization_attempt = Mock()
+    handler._log_command_execution = Mock()
+
+    update = _make_update()
+    context = SimpleNamespace(args=["100", "支付"])
+
+    asyncio.run(handler._handle_intel_following_command(update, context))
+
+    handler.handle_intel_following_command.assert_called_once_with(
+        "1", "tester", "chat_1", 100, "支付", 1, return_markup=True
+    )
+    handler._send_intel_page.assert_awaited_once()
+    send_page_call = handler._send_intel_page.await_args
+    assert send_page_call is not None
+    assert send_page_call.kwargs["action"] == "unfollow"
+    update.message.reply_text.assert_not_awaited()
+
+
+def test_intel_following_business_method_lists_followed_entries():
+    repository = Mock()
+    repository.list_canonical_entries.return_value = [
+        _make_entry(display_name="Seller One", confidence=0.93),
+        _make_entry(id="intel-2", display_name="Seller Two", confidence=0.82),
+    ]
+    repository.count_canonical_entries.return_value = 2
+    handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
+
+    payload = handler.handle_intel_following_command(
+        "1", "tester", "chat_1", 100, "支付", return_markup=True
+    )
+
+    assert payload["entries"][0].id == "intel-1"
+    assert payload["total"] == 2
+    assert payload["kind"] == "following"
+    assert payload["state_data"]["kind"] == "following"
+    assert repository.count_canonical_entries.call_args.kwargs["tracking_scope"] == "following"
+    assert repository.list_canonical_entries.call_args.kwargs["tracking_scope"] == "following"
+    repository.mark_discovery_presented.assert_not_called()
+
+
 def test_intel_recent_page_renders_follow_buttons():
     handler: Any = _make_handler()
     bot = SimpleNamespace(
@@ -353,9 +402,7 @@ def test_intel_ignored_business_method_returns_restore_page_payload():
     ]
     handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
 
-    payload = handler.handle_intel_ignored_command(
-        "1", "tester", "chat_1", 1, return_markup=True
-    )
+    payload = handler.handle_intel_ignored_command("1", "tester", "chat_1", 1, return_markup=True)
 
     repository.list_ignored_canonical_entries.assert_called_once_with(
         page=0, page_size=handler.INTEL_PAGE_SIZE
@@ -390,9 +437,7 @@ def test_authorized_intel_labels_handler_dispatches_business_method():
     asyncio.run(handler._handle_intel_labels_command(update, context))
 
     handler.handle_intel_labels_command.assert_called_once_with("1", "tester", "chat_1")
-    update.message.reply_text.assert_awaited_once_with(
-        "🏷️ *可搜索情报标签*", parse_mode="Markdown"
-    )
+    update.message.reply_text.assert_awaited_once_with("🏷️ *可搜索情报标签*", parse_mode="Markdown")
 
 
 def test_intel_labels_business_method_formats_primary_label_values():
@@ -569,7 +614,12 @@ def test_authorized_intel_callback_dispatches_detail_evidence_pagination():
             "page": 2,
             "total_pages": 2,
             "total": 6,
-            "state_data": {"kind": "detail", "entry_id": "intel-1", "chat_id": "chat_1", "user_id": "1"},
+            "state_data": {
+                "kind": "detail",
+                "entry_id": "intel-1",
+                "chat_id": "chat_1",
+                "user_id": "1",
+            },
         }
     )
     handler._send_intel_detail_payload = AsyncMock()
