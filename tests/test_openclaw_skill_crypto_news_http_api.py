@@ -11,6 +11,7 @@ ANALYZE_WORKFLOW_PATH = REFERENCE_DIR / "analyze-workflow.md"
 DATASOURCE_MANAGEMENT_PATH = REFERENCE_DIR / "datasource-management.md"
 OPERATIONS_AND_MAINTENANCE_PATH = REFERENCE_DIR / "operations-and-maintenance.md"
 SEMANTIC_SEARCH_PATH = REFERENCE_DIR / "semantic-search.md"
+INTELLIGENCE_QUERY_PATH = REFERENCE_DIR / "intelligence-query.md"
 
 
 def _read_text(path: Path) -> str:
@@ -60,6 +61,7 @@ def test_skill_paths_target_crypto_news_http_api_files() -> None:
     assert DATASOURCE_MANAGEMENT_PATH == REFERENCE_DIR / "datasource-management.md"
     assert OPERATIONS_AND_MAINTENANCE_PATH == REFERENCE_DIR / "operations-and-maintenance.md"
     assert SEMANTIC_SEARCH_PATH == REFERENCE_DIR / "semantic-search.md"
+    assert INTELLIGENCE_QUERY_PATH == REFERENCE_DIR / "intelligence-query.md"
 
     for path in [
         PUBLISH_SCRIPT_PATH,
@@ -68,6 +70,7 @@ def test_skill_paths_target_crypto_news_http_api_files() -> None:
         DATASOURCE_MANAGEMENT_PATH,
         OPERATIONS_AND_MAINTENANCE_PATH,
         SEMANTIC_SEARCH_PATH,
+        INTELLIGENCE_QUERY_PATH,
     ]:
         assert path.exists(), f"Missing shipped skill file: {path}"
 
@@ -78,7 +81,7 @@ def test_skill_requires_frontmatter_required_sections_and_reference_links() -> N
     assert frontmatter.get("name") == "crypto-news-http-api"
     assert (
         frontmatter.get("description")
-        == "Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, or health checks from OpenClaw."
+        == "Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, intelligence operations, or health checks from OpenClaw."
     )
     assert "primaryEnv: API_KEY" in frontmatter.get("metadata", "")
     assert body.startswith("# Crypto News HTTP API Skill")
@@ -90,6 +93,7 @@ def test_skill_requires_frontmatter_required_sections_and_reference_links() -> N
         "Analyze Workflow",
         "Semantic Search",
         "Datasource Management",
+        "Intelligence Query",
         "Telegram Webhook",
         "Endpoint Index",
         "Non-Goals",
@@ -101,6 +105,7 @@ def test_skill_requires_frontmatter_required_sections_and_reference_links() -> N
         "references/analyze-workflow.md",
         "references/semantic-search.md",
         "references/datasource-management.md",
+        "references/intelligence-query.md",
         "references/operations-and-maintenance.md",
     ]:
         assert reference in body, f"Missing reference-file pointer: {reference}"
@@ -122,6 +127,17 @@ def test_skill_endpoint_index_lists_only_supported_live_http_routes() -> None:
         "GET /datasources",
         "DELETE /datasources/{id}",
         "POST /telegram/webhook",
+        "GET /intelligence/entries",
+        "GET /intelligence/discovery",
+        "GET /intelligence/entries/ignored",
+        "GET /intelligence/labels",
+        "GET /intelligence/entries/{entry_id}",
+        "POST /intelligence/entries/{entry_id}/ignore",
+        "POST /intelligence/entries/{entry_id}/unignore",
+        "POST /intelligence/entries/{entry_id}/follow",
+        "POST /intelligence/entries/{entry_id}/unfollow",
+        "GET /intelligence/search",
+        "GET /intelligence/raw/{raw_item_id}",
     ]:
         assert endpoint in endpoint_index, f"Missing supported endpoint: {endpoint}"
 
@@ -268,6 +284,34 @@ def test_skill_datasource_management_covers_crud_tags_and_redaction_rules() -> N
         assert expected in datasource_management, f"Missing datasource contract: {expected}"
 
 
+def test_skill_intelligence_query_section_covers_current_routes_and_state() -> None:
+    _frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
+    intelligence_query = _section(body, "Intelligence Query")
+
+    for expected in [
+        "All intelligence routes require Bearer auth",
+        "`GET /intelligence/entries`",
+        "`GET /intelligence/discovery`",
+        "`GET /intelligence/entries/ignored`",
+        "`GET /intelligence/labels`",
+        "`GET /intelligence/entries/{entry_id}`",
+        "`POST /intelligence/entries/{entry_id}/ignore`",
+        "`POST /intelligence/entries/{entry_id}/unignore`",
+        "`POST /intelligence/entries/{entry_id}/follow`",
+        "`POST /intelligence/entries/{entry_id}/unfollow`",
+        "`GET /intelligence/search`",
+        "`GET /intelligence/raw/{raw_item_id}`",
+        "no async job/poll flow",
+        "`tracking_scope`",
+        "`following`",
+        "`discovery`",
+        "`all`",
+        "Invalid values return `400`",
+        "Ignored entries are excluded",
+    ]:
+        assert expected in intelligence_query, f"Missing intelligence API contract: {expected}"
+
+
 def test_skill_telegram_webhook_is_maintainer_oriented_integration_surface() -> None:
     _frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
     webhook_section = _section(body, "Telegram Webhook")
@@ -286,6 +330,7 @@ def test_skill_updating_guidance_prefers_code_and_tests_when_prose_drifts() -> N
     updating = _section(body, "Updating")
 
     assert "`api_server.py`" in updating
+    assert "`tests/test_intelligence_api.py`" in updating
     assert "`docs/AI_ANALYZE_API_GUIDE.md`" in updating
     assert "`docs/SEMANTIC_SEARCH_API_GUIDE.md`" in updating
     assert "code and tests first, then reference files, then guides" in updating
@@ -396,3 +441,36 @@ def test_semantic_search_reference_covers_async_contract_limits_and_backfill() -
         "trust code and tests over prose",
     ]:
         assert expected in semantic_reference, f"Missing semantic reference contract: {expected}"
+
+
+def test_intelligence_query_reference_covers_current_routes_state_and_errors() -> None:
+    intelligence_reference = _read_text(INTELLIGENCE_QUERY_PATH)
+
+    for expected in [
+        "GET /intelligence/entries",
+        "GET /intelligence/discovery",
+        "GET /intelligence/entries/ignored",
+        "GET /intelligence/labels",
+        "POST /intelligence/entries/{entry_id}/ignore",
+        "POST /intelligence/entries/{entry_id}/unignore",
+        "POST /intelligence/entries/{entry_id}/follow",
+        "POST /intelligence/entries/{entry_id}/unfollow",
+        "GET /intelligence/entries/{entry_id}",
+        "GET /intelligence/search",
+        "GET /intelligence/raw/{raw_item_id}",
+        "All endpoints require Bearer authentication",
+        "synchronous",
+        "`tracking_scope`",
+        "`following`",
+        "`discovery`",
+        "`all`",
+        "Ignored entries are excluded",
+        "marks the returned entries as presented",
+        "`evidence_page`",
+        "`evidence_page_size`",
+        "Missing `q` returns `422 Unprocessable Entity`",
+        "`400` | Invalid `tracking_scope`",
+        "`503` | Intelligence repository, embedding service, or storage config is not initialized",
+        "separate from async `POST /semantic-search`",
+    ]:
+        assert expected in intelligence_reference, f"Missing intelligence reference contract: {expected}"

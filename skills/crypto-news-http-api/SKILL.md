@@ -1,6 +1,6 @@
 ---
 name: crypto-news-http-api
-description: Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, or health checks from OpenClaw.
+description: Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, intelligence operations, or health checks from OpenClaw.
 metadata: { openclaw: { skillKey: crypto-news-http-api, primaryEnv: API_KEY } }
 ---
 
@@ -18,7 +18,7 @@ Typical triggers:
 - Run asynchronous semantic search for a freeform topic query
 - Poll an API job until it finishes and then fetch the final result
 - Create, list, or delete datasources through the HTTP API
-- Query hidden-channel intelligence entries (canonical knowledge, semantic search, raw evidence)
+- Query and manage hidden-channel intelligence entries (discovery, following, ignored entries, semantic search, raw evidence)
 - Check service health before or after an API workflow
 
 ## Quick Reference
@@ -105,21 +105,31 @@ List responses include only safe summaries. For `rest_api` type datasources, sec
 
 ## Intelligence Query
 
-Query the hidden-channel intelligence knowledge base built by the private ingestion pipeline. All intelligence routes require Bearer auth.
+Query and manage the hidden-channel intelligence knowledge base built by the private ingestion pipeline. All intelligence routes require Bearer auth.
 
-Five synchronous endpoints provide access to canonical knowledge entries, searchable labels, and raw evidence:
+Synchronous endpoints provide access to canonical knowledge entries, discovery candidates, searchable labels, and raw evidence:
 
-- `GET /intelligence/entries` — List canonical entries with time window, type, and label filters, paginated
+- `GET /intelligence/entries` — List canonical entries with time window, type, label, and `tracking_scope` filters, paginated
+- `GET /intelligence/discovery` — List unseen, untracked slang entries and mark returned entries as presented
+- `GET /intelligence/entries/ignored` — List ignored canonical entries
 - `GET /intelligence/labels` — List searchable primary labels
-- `GET /intelligence/entries/{entry_id}` — Get a single entry with optional raw evidence text (`include_raw=true`)
-- `GET /intelligence/search` — Semantic search using `q` parameter, ranked by vector similarity + recency + confidence, paginated
+- `GET /intelligence/entries/{entry_id}` — Get a single entry with optional latest raw evidence (`include_raw=true`) plus paginated evidence context groups
+- `POST /intelligence/entries/{entry_id}/ignore` — Hide an entry from normal list/search/labels; optional JSON body: `{"ignored_by":"operator-id"}`
+- `POST /intelligence/entries/{entry_id}/unignore` — Restore an ignored entry
+- `POST /intelligence/entries/{entry_id}/follow` — Enable tracking for an entry
+- `POST /intelligence/entries/{entry_id}/unfollow` — Disable tracking for an entry
+- `GET /intelligence/search` — Semantic search using required `q` parameter, ranked by vector similarity plus repository scoring, paginated
 - `GET /intelligence/raw/{raw_item_id}` — Get original raw text for a collected item (30-day TTL)
 
-These endpoints are synchronous — no async job/poll flow. Results return immediately.
+These endpoints are synchronous; there is no async job/poll flow. Results return immediately.
 
-Raw text is byte-for-byte original within 30-day TTL. After TTL, `raw_text` is `null` and `is_expired` is `true`. Canonical structured knowledge remains queryable indefinitely.
+Raw text is byte-for-byte original within the TTL window. After expiration, `raw_text` is `null` and `is_expired` is `true`. Canonical structured knowledge remains queryable indefinitely.
 
-The `window` parameter accepts `<N>h` (hours) or `<N>d` (days), e.g. `7d`, `24h`. Entry types are `channel` and `slang`. Primary labels: `AI`, `crypto`, plus several Chinese-category labels (see reference for full enum).
+The `window` parameter accepts `<N>h` (hours) or `<N>d` (days), e.g. `7d`, `24h`; invalid values are ignored by the current implementation. Entry types are `channel` and `slang`. Primary labels are `AI`, `crypto`, `DARK_WEB`, `ACCOUNT_TRADING`, `PAYMENT`, `GAME`, `ECOMMERCE`, `SOCIAL_MEDIA`, `DEVELOPER_TOOLS`, and `OTHER` values; see the reference for exact API string values.
+
+The `tracking_scope` parameter is supported by `/intelligence/entries` and `/intelligence/search`. Valid values are `following`, `discovery`, and `all`; default is `following`. Invalid values return `400`.
+
+Ignored entries are excluded from normal `/intelligence/entries`, `/intelligence/search`, and `/intelligence/labels` results. Use `/intelligence/entries/ignored` to review them, then `/unignore` to restore them.
 
 For full parameter details, response schemas, and examples, see the [Intelligence Query Reference](references/intelligence-query.md).
 
@@ -145,8 +155,14 @@ Supported HTTP routes:
 - `DELETE /datasources/{id}` - Delete a datasource
 - `POST /telegram/webhook` - Telegram webhook receiver
 - `GET /intelligence/entries` - List intelligence entries (synchronous, Bearer-protected)
+- `GET /intelligence/discovery` - List unseen untracked intelligence slang entries and mark them presented
+- `GET /intelligence/entries/ignored` - List ignored intelligence entries
 - `GET /intelligence/labels` - List searchable intelligence primary labels
 - `GET /intelligence/entries/{entry_id}` - Get intelligence entry detail with optional raw evidence
+- `POST /intelligence/entries/{entry_id}/ignore` - Ignore an intelligence entry
+- `POST /intelligence/entries/{entry_id}/unignore` - Restore an ignored intelligence entry
+- `POST /intelligence/entries/{entry_id}/follow` - Enable tracking for an intelligence entry
+- `POST /intelligence/entries/{entry_id}/unfollow` - Disable tracking for an intelligence entry
 - `GET /intelligence/search` - Semantic search across intelligence entries (paginated with `page`/`page_size`)
 - `GET /intelligence/raw/{raw_item_id}` - Get raw intelligence item by ID
 
@@ -163,6 +179,6 @@ These surfaces exist but are intentionally excluded from this API-focused skill.
 
 ## Updating
 
-Keep this skill aligned with the live HTTP routes in `api_server.py`, the AI Analyze API Guide at `docs/AI_ANALYZE_API_GUIDE.md`, and the semantic search guide at `docs/SEMANTIC_SEARCH_API_GUIDE.md`.
+Keep this skill aligned with the live HTTP routes in `api_server.py`, `tests/test_intelligence_api.py`, the AI Analyze API Guide at `docs/AI_ANALYZE_API_GUIDE.md`, and the semantic search guide at `docs/SEMANTIC_SEARCH_API_GUIDE.md`.
 
 When documentation disagrees with implementation, trust the code and tests over prose docs. Source precedence: code and tests first, then reference files, then guides.
