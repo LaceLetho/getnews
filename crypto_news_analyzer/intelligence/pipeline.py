@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
@@ -129,13 +130,13 @@ class IntelligencePipeline:
         kept_items: List[RawIntelligenceItem] = []
         skipped_matches: Dict[str, List[str]] = {}
         for item in items:
-            normalized_text = self._normalize_slang_text(item.raw_text or "")
-            untracked_matches = self._matching_terms(normalized_text, untracked_terms)
+            raw_text = item.raw_text or ""
+            untracked_matches = self._matching_terms(raw_text, untracked_terms)
             if not untracked_matches:
                 kept_items.append(item)
                 continue
 
-            followed_matches = self._matching_terms(normalized_text, followed_terms)
+            followed_matches = self._matching_terms(raw_text, followed_terms)
             if followed_matches:
                 kept_items.append(item)
                 continue
@@ -219,8 +220,23 @@ class IntelligencePipeline:
     def _normalize_slang_text(self, value: str) -> str:
         return IntelligenceMergeEngine.normalize_slang_key(self.merge_engine, value)
 
-    def _matching_terms(self, normalized_text: str, terms: Dict[str, str]) -> List[str]:
-        return [terms[term] for term in sorted(terms) if term and term in normalized_text]
+    def _matching_terms(self, raw_text: str, terms: Dict[str, str]) -> List[str]:
+        normalized_text = self._normalize_slang_text(raw_text)
+        lowered_text = str(raw_text or "").lower()
+        matches: List[str] = []
+        for term in sorted(terms):
+            if not term:
+                continue
+            if self._is_short_ascii_term(term):
+                if re.search(rf"(?<![a-z0-9_]){re.escape(term)}(?![a-z0-9_])", lowered_text):
+                    matches.append(terms[term])
+                continue
+            if term in normalized_text:
+                matches.append(terms[term])
+        return matches
+
+    def _is_short_ascii_term(self, term: str) -> bool:
+        return len(term) <= 3 and re.fullmatch(r"[a-z0-9_]+", term) is not None
 
     def _list_intelligence_datasources(self) -> List[DataSource]:
         datasource_repository = self._datasource_repository()
@@ -346,7 +362,7 @@ class IntelligencePipeline:
                 self.merge_engine.create_related_candidates(entry, candidate, float(score))
 
     def _run_ttl_cleanup(self) -> int:
-        cutoff_time = datetime.now(timezone.utc)
+        cutoff_time = datetime.utcnow()
         expiring_items = self.intelligence_repository.get_raw_items_expiring_before(cutoff_time)
         expiring_with_text = [item for item in expiring_items if getattr(item, "raw_text", None)]
         purged_count = int(self.intelligence_repository.purge_raw_text_older_than(cutoff_time) or 0)

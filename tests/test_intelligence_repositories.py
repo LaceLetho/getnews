@@ -239,6 +239,35 @@ def test_entry_evidence_links_keep_multiple_raw_anchors(tmp_path: Path):
         manager.close()
 
 
+def test_runtime_bootstrap_backfills_missing_entry_evidence_links(tmp_path: Path):
+    db_path = tmp_path / "intelligence-evidence-backfill.db"
+    manager, repository = _build_repository(db_path)
+    try:
+        raw = _raw_item(1, datetime(2026, 1, 1, 12, 0, 0))
+        repository.save_raw_item(raw)
+        observation = _observation(raw, 1)
+        repository.save_observation(observation)
+        entry = CanonicalIntelligenceEntry.create(
+            entry_type=EntryType.CHANNEL.value,
+            normalized_key="https://t.me/alpha",
+            display_name="Alpha",
+            latest_raw_item_id=raw.id,
+        )
+        repository.save_canonical_entry(entry)
+        assert repository.list_entry_evidence_anchors(entry.id, page=1, page_size=10) == []
+    finally:
+        manager.close()
+
+    manager, repository = _build_repository(db_path)
+    try:
+        anchors = repository.list_entry_evidence_anchors(entry.id, page=1, page_size=10)
+
+        assert [anchor.raw_item_id for anchor in anchors] == [raw.id]
+        assert [anchor.observation_id for anchor in anchors] == [observation.id]
+    finally:
+        manager.close()
+
+
 def test_entry_evidence_context_window_returns_deterministic_nearby_rows(tmp_path: Path):
     manager, repository = _build_repository(tmp_path / "intelligence-evidence-context.db")
     try:

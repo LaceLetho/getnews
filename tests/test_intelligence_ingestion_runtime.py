@@ -57,7 +57,11 @@ class MemoryDataSourceRepository:
         self.sources = list(sources)
 
     def list(self, source_type=None):
-        return [source for source in self.sources if source_type is None or source.source_type == source_type]
+        return [
+            source
+            for source in self.sources
+            if source_type is None or source.source_type == source_type
+        ]
 
 
 class MemoryIntelligenceRepository:
@@ -209,7 +213,9 @@ def _pipeline(sources, crawlers, repository=None):
     search_service = Mock()
     search_service.batch_generate_embeddings.return_value = 1
     return (
-        IntelligencePipeline(FakeFactory(crawlers), repository, extractor, merge_engine, search_service),
+        IntelligencePipeline(
+            FakeFactory(crawlers), repository, extractor, merge_engine, search_service
+        ),
         repository,
         extractor,
         merge_engine,
@@ -370,8 +376,8 @@ def test_first_run_uses_24h_backfill_then_checkpoint_incremental_window():
     pipeline, repository, *_ = _pipeline([source], [FakeCrawler([item]), FakeCrawler([])])
 
     first = pipeline.run_intelligence_collection_once()
-    repository.checkpoints[("telegram_group", "chat-1")].last_crawled_at = datetime.utcnow() - timedelta(
-        minutes=30
+    repository.checkpoints[("telegram_group", "chat-1")].last_crawled_at = (
+        datetime.utcnow() - timedelta(minutes=30)
     )
     second = pipeline.run_intelligence_collection_once()
 
@@ -382,7 +388,9 @@ def test_first_run_uses_24h_backfill_then_checkpoint_incremental_window():
 
 
 def test_per_source_error_isolated_and_other_sources_continue():
-    bad = DataSource.create(name="bad", source_type="telegram_group", config_payload={"chat_id": "bad"})
+    bad = DataSource.create(
+        name="bad", source_type="telegram_group", config_payload={"chat_id": "bad"}
+    )
     good = DataSource.create(name="good", source_type="v2ex", config_payload={"name": "crypto"})
     pipeline, _repository, extractor, _merge, _search = _pipeline(
         [bad, good],
@@ -559,6 +567,36 @@ def test_mixed_followed_and_untracked_slang_raw_item_is_retained():
     assert extractor.extract.call_args.args[0] == [mixed]
 
 
+def test_short_ascii_untracked_slang_does_not_match_inside_words():
+    source = DataSource.create(
+        name="TG Alpha",
+        source_type="telegram_group",
+        config_payload={"chat_id": "chat-1"},
+    )
+    repository = MemoryIntelligenceRepository([source])
+    repository.upsert_canonical_entry(
+        CanonicalIntelligenceEntry.create(
+            entry_type="slang",
+            normalized_key="ai",
+            display_name="AI",
+            tracking_enabled=False,
+        )
+    )
+
+    kept = _raw(content_hash="paid", raw_text="paid channel 有新消息")
+    skipped = _raw(content_hash="ai", raw_text="AI 代付渠道")
+    pipeline, _repository, extractor, _merge, _search = _pipeline(
+        [source],
+        [FakeCrawler([kept, skipped])],
+        repository=repository,
+    )
+
+    result = pipeline.run_intelligence_collection_once()
+
+    assert result["skipped_untracked_slang_items"] == 1
+    assert extractor.extract.call_args.args[0] == [kept]
+
+
 def test_ignored_slang_raw_items_are_skipped_before_extraction():
     source = DataSource.create(
         name="TG Alpha",
@@ -614,7 +652,9 @@ def test_run_crawl_only_invokes_intelligence_pipeline_when_configured(tmp_path, 
     controller._history_file = str(tmp_path / "history.json")
     controller._intelligence_pipeline = Mock()
     controller._intelligence_pipeline.run_intelligence_collection_once.return_value = {"errors": []}
-    monkeypatch.setattr(controller, "validate_prerequisites", lambda validation_scope: {"valid": True})
+    monkeypatch.setattr(
+        controller, "validate_prerequisites", lambda validation_scope: {"valid": True}
+    )
     monkeypatch.setattr(
         controller,
         "_execute_crawling_stage",

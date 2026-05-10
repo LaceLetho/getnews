@@ -165,6 +165,7 @@ class IntelligenceMergeEngine:
         for entry in self.intelligence_repository.list_canonical_entries(
             entry_type=observation.entry_type,
             page_size=1000,
+            tracking_scope="all",
         ):
             entry_aliases = {
                 self._normalize_alias_for_entry_type(entry.entry_type, alias)

@@ -18,3 +18,23 @@ ON intelligence_entry_evidence_links (entry_id, observed_at);
 
 CREATE INDEX IF NOT EXISTS idx_intelligence_entry_evidence_raw_item
 ON intelligence_entry_evidence_links (raw_item_id);
+
+INSERT INTO intelligence_entry_evidence_links
+    (entry_id, observation_id, raw_item_id, observed_at)
+SELECT
+    entry.id,
+    observation.id,
+    entry.latest_raw_item_id,
+    observation.created_at
+FROM intelligence_canonical_entries AS entry
+JOIN intelligence_extraction_observations AS observation
+  ON observation.raw_item_id = entry.latest_raw_item_id
+WHERE entry.latest_raw_item_id IS NOT NULL
+  AND observation.id = (
+      SELECT observation_inner.id
+      FROM intelligence_extraction_observations AS observation_inner
+      WHERE observation_inner.raw_item_id = entry.latest_raw_item_id
+      ORDER BY observation_inner.created_at ASC, observation_inner.id ASC
+      LIMIT 1
+  )
+ON CONFLICT (entry_id, raw_item_id) DO NOTHING;

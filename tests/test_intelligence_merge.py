@@ -281,6 +281,38 @@ def test_untracked_slang_semantic_match_auto_merges_without_duplicate(tmp_path: 
         manager.close()
 
 
+def test_untracked_slang_alias_match_merges_without_duplicate(tmp_path: Path):
+    manager, repository = _build_repository(tmp_path / "merge-untracked-slang-alias.db")
+    try:
+        existing = _slang_entry(
+            repository,
+            normalized_key="diamondhands",
+            display_name="diamond hands",
+            primary_label=PrimaryLabel.CRYPTO.value,
+            aliases=["diamond hands"],
+            tracking_enabled=False,
+        )
+        observation = _slang_observation(
+            repository,
+            _raw(repository, "untracked alias"),
+            term="diamond hand",
+            normalized_term="diamond hand",
+            aliases=["diamond hands"],
+            primary_label=PrimaryLabel.CRYPTO.value,
+        )
+
+        IntelligenceMergeEngine(repository).canonicalize_observations([observation])
+        canonical = repository.list_canonical_entries(
+            entry_type=EntryType.SLANG.value, tracking_scope="all"
+        )
+
+        assert len(canonical) == 1
+        assert canonical[0].id == existing.id
+        assert canonical[0].evidence_count == 2
+    finally:
+        manager.close()
+
+
 @pytest.mark.parametrize(
     ("candidate_score", "candidate_label", "ignored", "candidate_type"),
     [

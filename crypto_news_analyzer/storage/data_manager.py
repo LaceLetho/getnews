@@ -670,6 +670,30 @@ class DataManager:
             ),
         ]:
             cursor.execute(statement)
+        self._backfill_intelligence_evidence_links(cursor)
+
+    def _backfill_intelligence_evidence_links(self, cursor: Any) -> None:
+        cursor.execute(self._sql("""
+            INSERT INTO intelligence_entry_evidence_links
+                (entry_id, observation_id, raw_item_id, observed_at)
+            SELECT
+                entry.id,
+                observation.id,
+                entry.latest_raw_item_id,
+                observation.created_at
+            FROM intelligence_canonical_entries AS entry
+            JOIN intelligence_extraction_observations AS observation
+              ON observation.raw_item_id = entry.latest_raw_item_id
+            WHERE entry.latest_raw_item_id IS NOT NULL
+              AND observation.id = (
+                  SELECT observation_inner.id
+                  FROM intelligence_extraction_observations AS observation_inner
+                  WHERE observation_inner.raw_item_id = entry.latest_raw_item_id
+                  ORDER BY observation_inner.created_at ASC, observation_inner.id ASC
+                  LIMIT 1
+              )
+            ON CONFLICT(entry_id, raw_item_id) DO NOTHING
+            """))
 
     def _ensure_intelligence_tracking_columns(self, cursor: Any) -> None:
         if self.backend == "postgres":
@@ -2813,8 +2837,7 @@ class DataManager:
                 (entry_id, max(1, page_size), max(0, page - 1) * max(1, page_size)),
             )
             return [
-                self._serialize_intelligence_evidence_anchor_row(row)
-                for row in cursor.fetchall()
+                self._serialize_intelligence_evidence_anchor_row(row) for row in cursor.fetchall()
             ]
 
     def count_intelligence_entry_evidence_anchors(self, entry_id: str) -> int:
