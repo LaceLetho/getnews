@@ -3050,8 +3050,8 @@ class DataManager:
         if tracking_scope not in {"following", "discovery", "all"}:
             raise ValueError("tracking_scope must be one of: following, discovery, all")
         if tracking_scope == "following":
-            filters.append("(entry_type != ? OR tracking_enabled = ?)")
-            params.extend(["slang", True])
+            filters.append("tracking_enabled = ?")
+            params.append(True)
         elif tracking_scope == "discovery":
             filters.extend(
                 [

@@ -597,7 +597,7 @@ def test_intelligence_repository_ignore_missing_and_idempotent(tmp_path: Path):
         manager.close()
 
 
-def test_tracking_scope_defaults_hide_untracked_slang_but_keep_channels(tmp_path: Path):
+def test_tracking_scope_defaults_hide_untracked_entries(tmp_path: Path):
     manager, repository = _build_repository(tmp_path / "intelligence-tracking-list.db")
     try:
         channel = CanonicalIntelligenceEntry.create(
@@ -622,13 +622,12 @@ def test_tracking_scope_defaults_hide_untracked_slang_but_keep_channels(tmp_path
             assert repository.update_embedding(entry.id, [1.0, 0.0, 0.0], "test-embedding") is True
 
         default_ids = {entry.id for entry in repository.list_canonical_entries()}
-        assert default_ids == {channel.id, tracked_slang.id}
-        assert repository.count_canonical_entries() == 2
+        assert default_ids == {tracked_slang.id}
+        assert repository.count_canonical_entries() == 1
         assert {entry.id for entry, _ in repository.semantic_search([1.0, 0.0, 0.0], limit=10)} == {
-            channel.id,
             tracked_slang.id,
         }
-        assert repository.count_semantic_search_candidates([1.0, 0.0, 0.0]) == 2
+        assert repository.count_semantic_search_candidates([1.0, 0.0, 0.0]) == 1
 
         all_ids = {entry.id for entry in repository.list_canonical_entries(tracking_scope="all")}
         assert all_ids == {channel.id, untracked_slang.id, tracked_slang.id}
@@ -709,12 +708,18 @@ def test_follow_unfollow_toggles_tracking_without_altering_ignore_state(tmp_path
             normalized_key="based",
             display_name="Based",
         )
+        channel_entry = CanonicalIntelligenceEntry.create(
+            entry_type=EntryType.CHANNEL.value,
+            normalized_key="https://t.me/nmfunbotfunbot",
+            display_name="@nmfunbotfunbot",
+        )
         ignored_entry = CanonicalIntelligenceEntry.create(
             entry_type=EntryType.SLANG.value,
             normalized_key="ignored-based",
             display_name="Ignored Based",
         )
         repository.save_canonical_entry(entry)
+        repository.save_canonical_entry(channel_entry)
         repository.save_canonical_entry(ignored_entry)
         ignored = repository.ignore_canonical_entry(ignored_entry.id, ignored_by="tester")
         assert ignored is not None
@@ -730,6 +735,13 @@ def test_follow_unfollow_toggles_tracking_without_altering_ignore_state(tmp_path
         assert unfollowed.tracking_enabled is False
         assert unfollowed.is_ignored is False
         assert unfollowed.discovery_presented_at is None
+
+        unfollowed_channel = repository.unfollow_canonical_entry(channel_entry.id)
+        assert unfollowed_channel is not None
+        assert unfollowed_channel.tracking_enabled is False
+        assert channel_entry.id not in {
+            item.id for item in repository.list_canonical_entries(tracking_scope="following")
+        }
 
         followed_ignored = repository.follow_canonical_entry(ignored_entry.id)
         assert followed_ignored is not None

@@ -371,11 +371,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         self, entries: List[CanonicalIntelligenceEntry], tracking_scope: str
     ) -> List[CanonicalIntelligenceEntry]:
         if tracking_scope == "following":
-            return [
-                entry
-                for entry in entries
-                if entry.entry_type != EntryType.SLANG.value or entry.tracking_enabled
-            ]
+            return [entry for entry in entries if entry.tracking_enabled]
         if tracking_scope == "discovery":
             return [
                 entry
@@ -815,7 +811,6 @@ def test_list_entries_defaults_to_following_tracking_scope(
 
     assert default_response.status_code == 200
     assert [item["entry_id"] for item in default_response.json()["entries"]] == [
-        "channel-untracked",
         "sl-followed",
     ]
     assert all_response.status_code == 200
@@ -1498,7 +1493,6 @@ def test_semantic_search_defaults_to_following_tracking_scope(
 
     assert default_response.status_code == 200
     assert [item["entry_id"] for item in default_response.json()["results"]] == [
-        "search-channel",
         "search-followed",
     ]
     assert discovery_response.status_code == 200
