@@ -450,6 +450,22 @@ def test_extract_skips_already_extracted_raw_item_ids():
     assert observations[0].raw_item_id == "raw-2"
 
 
+def test_extract_prompt_payload_only_contains_provided_raw_items():
+    repository = FakeIntelligenceRepository()
+    extractor = IntelligenceExtractor(
+        _config(batch_size=20), repository=cast(IntelligenceRepository, cast(object, repository))
+    )
+    extractor.client = FakeOpenAIClient([{"channels": [], "slangs": []}])
+
+    observations = extractor.extract([_raw_item("保留：币圈担保", "kept-raw")])
+
+    call = cast(FakeOpenAIClient, extractor.client).completions.calls[0]
+    sent_items = json.loads(call["messages"][1]["content"])["items"]
+    assert observations == []
+    assert [item["id"] for item in sent_items] == ["kept-raw"]
+    assert "未跟踪黑话" not in sent_items[0]["raw_text"]
+
+
 def test_extract_returns_empty_without_client_call_when_all_raw_items_already_extracted():
     repository = FakeIntelligenceRepository(existing_ids=["raw-1"])
     extractor = IntelligenceExtractor(

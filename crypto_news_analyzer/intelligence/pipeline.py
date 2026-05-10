@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
-from ..domain.models import CheckpointStatus, DataSource, IntelligenceCrawlCheckpoint, RawIntelligenceItem
-
+from ..domain.models import (
+    CheckpointStatus,
+    DataSource,
+    EntryType,
+    IntelligenceCrawlCheckpoint,
+    RawIntelligenceItem,
+)
+from .merge import IntelligenceMergeEngine
 
 INTELLIGENCE_SOURCE_TYPES = ("telegram_group", "v2ex")
 
@@ -29,6 +36,9 @@ class IntelligencePipeline:
         self.extractor = extractor
         self.merge_engine = merge_engine
         self.search_service = search_service
+        set_search_service = getattr(self.merge_engine, "set_search_service", None)
+        if callable(set_search_service) and self.search_service is not None:
+            set_search_service(self.search_service)
         self.logger = logging.getLogger(__name__)
         self.backfill_hours = self._resolve_backfill_hours(extractor)
 
@@ -43,6 +53,7 @@ class IntelligencePipeline:
             "observations": 0,
             "canonical_entries": 0,
             "embeddings_updated": 0,
+            "skipped_untracked_slang_items": 0,
             "raw_text_purged": 0,
             "errors": [],
         }
@@ -57,11 +68,14 @@ class IntelligencePipeline:
                     "observations",
                     "canonical_entries",
                     "embeddings_updated",
+                    "skipped_untracked_slang_items",
                 ):
                     result[key] += int(source_result.get(key, 0))
             except Exception as exc:
                 result["success"] = False
-                error_msg = f"Intelligence source {datasource.source_type}:{datasource.name} failed: {exc}"
+                error_msg = (
+                    f"Intelligence source {datasource.source_type}:{datasource.name} failed: {exc}"
+                )
                 result["errors"].append(error_msg)
                 self.logger.exception(error_msg)
                 self._save_error_checkpoint(datasource, str(exc))
@@ -83,7 +97,8 @@ class IntelligencePipeline:
         )
         items = list(crawler.crawl(config_payload) or [])
         new_items = self._save_new_items(items)
-        observations = list(self.extractor.extract(new_items) or []) if new_items else []
+        extract_items, skipped_untracked_slang_items = self._filter_untracked_slang_items(new_items)
+        observations = list(self.extractor.extract(extract_items) or []) if extract_items else []
         canonical_entries = (
             list(self.merge_engine.canonicalize_observations(observations) or [])
             if observations
@@ -99,7 +114,129 @@ class IntelligencePipeline:
             "observations": len(observations),
             "canonical_entries": len(canonical_entries),
             "embeddings_updated": embeddings_updated,
+            "skipped_untracked_slang_items": skipped_untracked_slang_items,
         }
+
+    def _filter_untracked_slang_items(
+        self, items: Sequence[RawIntelligenceItem]
+    ) -> Tuple[List[RawIntelligenceItem], int]:
+        if not items:
+            return [], 0
+
+        untracked_terms, followed_terms = self._slang_filter_terms()
+        if not untracked_terms:
+            return list(items), 0
+
+        kept_items: List[RawIntelligenceItem] = []
+        skipped_matches: Dict[str, List[str]] = {}
+        for item in items:
+            raw_text = item.raw_text or ""
+            untracked_matches = self._matching_terms(raw_text, untracked_terms)
+            if not untracked_matches:
+                kept_items.append(item)
+                continue
+
+            followed_matches = self._matching_terms(raw_text, followed_terms)
+            if followed_matches:
+                kept_items.append(item)
+                continue
+
+            skipped_matches[item.id] = untracked_matches
+
+        if skipped_matches:
+            self.logger.info(
+                "Skipped %d intelligence raw items matching untracked/ignored slang terms: %s",
+                len(skipped_matches),
+                skipped_matches,
+            )
+
+        return kept_items, len(skipped_matches)
+
+    def _slang_filter_terms(self) -> Tuple[Dict[str, str], Dict[str, str]]:
+        entries = self._list_slang_entries_for_filter()
+        untracked_terms: Dict[str, str] = {}
+        followed_terms: Dict[str, str] = {}
+
+        for entry in entries:
+            if getattr(entry, "entry_type", "") != EntryType.SLANG.value:
+                continue
+            target = (
+                untracked_terms
+                if getattr(entry, "is_ignored", False)
+                or not getattr(entry, "tracking_enabled", False)
+                else followed_terms
+            )
+            for raw_term in self._slang_entry_terms(entry):
+                normalized_term = self._normalize_slang_text(raw_term)
+                if normalized_term:
+                    target.setdefault(normalized_term, str(raw_term))
+
+        return untracked_terms, followed_terms
+
+    def _list_slang_entries_for_filter(self) -> List[Any]:
+        entries_by_id: Dict[str, Any] = {}
+        list_entries = getattr(self.intelligence_repository, "list_canonical_entries", None)
+        if callable(list_entries):
+            canonical_entries = cast(
+                Iterable[Any],
+                list_entries(
+                    entry_type=EntryType.SLANG.value,
+                    page=1,
+                    page_size=10000,
+                    tracking_scope="all",
+                )
+                or [],
+            )
+            for entry in canonical_entries:
+                entries_by_id[getattr(entry, "id", str(id(entry)))] = entry
+
+        list_ignored = getattr(self.intelligence_repository, "list_ignored_canonical_entries", None)
+        if callable(list_ignored):
+            ignored_entries = cast(
+                Iterable[Any],
+                list_ignored(
+                    entry_type=EntryType.SLANG.value,
+                    page=1,
+                    page_size=10000,
+                )
+                or [],
+            )
+            for entry in ignored_entries:
+                entries_by_id[getattr(entry, "id", str(id(entry)))] = entry
+
+        return list(entries_by_id.values())
+
+    def _slang_entry_terms(self, entry: Any) -> List[str]:
+        return [
+            str(term)
+            for term in [
+                getattr(entry, "display_name", ""),
+                getattr(entry, "normalized_key", ""),
+                *list(getattr(entry, "aliases", []) or []),
+            ]
+            if str(term or "").strip()
+        ]
+
+    def _normalize_slang_text(self, value: str) -> str:
+        return IntelligenceMergeEngine.normalize_slang_key(self.merge_engine, value)
+
+    def _matching_terms(self, raw_text: str, terms: Dict[str, str]) -> List[str]:
+        normalized_text = self._normalize_slang_text(raw_text)
+        lowered_text = str(raw_text or "").lower()
+        matches: List[str] = []
+        for term in sorted(terms):
+            if not term:
+                continue
+            if self._is_short_ascii_term(term):
+                if re.search(rf"(?<![a-z0-9_]){re.escape(term)}(?![a-z0-9_])", lowered_text):
+                    matches.append(terms[term])
+                continue
+            if term in normalized_text:
+                matches.append(terms[term])
+        return matches
+
+    def _is_short_ascii_term(self, term: str) -> bool:
+        return len(term) <= 3 and re.fullmatch(r"[a-z0-9_]+", term) is not None
 
     def _list_intelligence_datasources(self) -> List[DataSource]:
         datasource_repository = self._datasource_repository()
@@ -149,7 +286,9 @@ class IntelligencePipeline:
 
         return new_items
 
-    def _existing_dedupe_keys(self, items: Sequence[RawIntelligenceItem]) -> Set[Tuple[str, str, str]]:
+    def _existing_dedupe_keys(
+        self, items: Sequence[RawIntelligenceItem]
+    ) -> Set[Tuple[str, str, str]]:
         keys: Set[Tuple[str, str, str]] = set()
         source_pairs = {(item.source_type, item.source_id or "") for item in items}
         for source_type, source_id in source_pairs:
@@ -181,7 +320,9 @@ class IntelligencePipeline:
     def _generate_embeddings(self, canonical_entries: Sequence[Any]) -> int:
         if not canonical_entries or self.search_service is None:
             return 0
-        active_entries = [entry for entry in canonical_entries if not getattr(entry, "is_ignored", False)]
+        active_entries = [
+            entry for entry in canonical_entries if not getattr(entry, "is_ignored", False)
+        ]
         if not active_entries:
             return 0
         return int(self.search_service.batch_generate_embeddings(active_entries) or 0)
@@ -221,7 +362,7 @@ class IntelligencePipeline:
                 self.merge_engine.create_related_candidates(entry, candidate, float(score))
 
     def _run_ttl_cleanup(self) -> int:
-        cutoff_time = datetime.now(timezone.utc)
+        cutoff_time = datetime.utcnow()
         expiring_items = self.intelligence_repository.get_raw_items_expiring_before(cutoff_time)
         expiring_with_text = [item for item in expiring_items if getattr(item, "raw_text", None)]
         purged_count = int(self.intelligence_repository.purge_raw_text_older_than(cutoff_time) or 0)
@@ -271,7 +412,9 @@ class IntelligencePipeline:
     def _latest_item(self, items: Sequence[RawIntelligenceItem]) -> Optional[RawIntelligenceItem]:
         if not items:
             return None
-        return max(items, key=lambda item: self._safe_dt_key(item.published_at or item.collected_at))
+        return max(
+            items, key=lambda item: self._safe_dt_key(item.published_at or item.collected_at)
+        )
 
     @staticmethod
     def _safe_dt_key(dt: Optional[datetime]) -> datetime:

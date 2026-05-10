@@ -71,6 +71,7 @@ class TelegramCommandHandler:
     """
 
     INTEL_PAGE_SIZE = 5
+    INTEL_EVIDENCE_PAGE_SIZE = 5
 
     def __init__(
         self,
@@ -197,6 +198,8 @@ class TelegramCommandHandler:
         application.add_handler(CommandHandler("intel_labels", self._handle_intel_labels_command))
         application.add_handler(CommandHandler("intel_search", self._handle_intel_search_command))
         application.add_handler(CommandHandler("intel_detail", self._handle_intel_detail_command))
+        application.add_handler(CommandHandler("intel_follow", self._handle_intel_follow_command))
+        application.add_handler(CommandHandler("intel_unfollow", self._handle_intel_unfollow_command))
         application.add_handler(CommandHandler("intel_ignored", self._handle_intel_ignored_command))
         application.add_handler(CommandHandler("intel_unignore", self._handle_intel_unignore_command))
         application.add_handler(CommandHandler("market", self._handle_market_command))
@@ -215,7 +218,7 @@ class TelegramCommandHandler:
         application.add_handler(CommandHandler("start", self._handle_start_command))
         application.add_handler(
             CallbackQueryHandler(
-                self._handle_intel_callback_query, pattern=r"^intel:(d|i|u|p):"
+                self._handle_intel_callback_query, pattern=r"^intel:(d|f|uf|i|u|p):"
             )
         )
         return application
@@ -259,6 +262,12 @@ class TelegramCommandHandler:
 
     def _build_intel_unignore_callback_data(self, entry_id: str) -> str:
         return f"intel:u:{entry_id}"
+
+    def _build_intel_follow_callback_data(self, entry_id: str) -> str:
+        return f"intel:f:{entry_id}"
+
+    def _build_intel_unfollow_callback_data(self, entry_id: str) -> str:
+        return f"intel:uf:{entry_id}"
 
     def _build_intel_pagination_callback_data(self, token: str, page: int) -> str:
         return f"intel:p:{token}:{max(1, int(page))}"
@@ -331,6 +340,16 @@ class TelegramCommandHandler:
                 action_button = InlineKeyboardButton(
                     "恢复",
                     callback_data=self._build_intel_unignore_callback_data(entry.id),
+                )
+            elif action == "follow":
+                action_button = InlineKeyboardButton(
+                    "关注",
+                    callback_data=self._build_intel_follow_callback_data(entry.id),
+                )
+            elif action == "unfollow":
+                action_button = InlineKeyboardButton(
+                    "取消关注",
+                    callback_data=self._build_intel_unfollow_callback_data(entry.id),
                 )
             else:
                 action_button = InlineKeyboardButton(
@@ -431,6 +450,36 @@ class TelegramCommandHandler:
         await callback_query.message.reply_text(response, parse_mode="Markdown")
         return "已显示详情"
 
+    async def _handle_intel_follow_callback(
+        self,
+        callback_query: Any,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+    ) -> str:
+        response = self.handle_intel_follow_command(user_id, username, chat_id, entry_id)
+        await callback_query.message.reply_text(response, parse_mode="Markdown")
+        repository = self._get_intelligence_repository()
+        entry = repository.get_canonical_entry_by_id(entry_id) if repository is not None else None
+        name = getattr(entry, "display_name", entry_id) if entry is not None else entry_id
+        return f"已关注：{name}"
+
+    async def _handle_intel_unfollow_callback(
+        self,
+        callback_query: Any,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+    ) -> str:
+        response = self.handle_intel_unfollow_command(user_id, username, chat_id, entry_id)
+        await callback_query.message.reply_text(response, parse_mode="Markdown")
+        repository = self._get_intelligence_repository()
+        entry = repository.get_canonical_entry_by_id(entry_id) if repository is not None else None
+        name = getattr(entry, "display_name", entry_id) if entry is not None else entry_id
+        return f"已取消关注：{name}"
+
     async def _handle_intel_ignore_callback(
         self,
         callback_query: Any,
@@ -473,7 +522,7 @@ class TelegramCommandHandler:
         user_id: str,
         username: str,
         chat_id: str,
-        state: dict,
+        state: dict[str, Any],
         page: int,
     ) -> str:
         kind = str(state.get("kind", "")).strip()
@@ -492,6 +541,16 @@ class TelegramCommandHandler:
                 username,
                 chat_id,
                 page,
+                return_markup=True,
+            )
+        elif kind == "detail":
+            payload = self.handle_intel_detail_command(
+                user_id,
+                username,
+                chat_id,
+                str(state.get("entry_id", "")),
+                include_raw=False,
+                evidence_page=page,
                 return_markup=True,
             )
         else:
@@ -523,6 +582,10 @@ class TelegramCommandHandler:
             await callback_query.message.reply_text(str(payload), parse_mode="Markdown")
             return "已更新分页"
 
+        if kind == "detail":
+            await self._send_intel_detail_payload(callback_query.message, payload)
+            return "已更新详情"
+
         await self._send_intel_page(
             chat_id=chat_id,
             entries=payload.get("entries", []),
@@ -531,8 +594,9 @@ class TelegramCommandHandler:
             total=int(payload.get("total", 0)),
             kind=str(payload.get("kind", kind)),
             state_data=payload.get("state_data", {}),
-            action="unignore" if kind == "ignored" else "ignore",
+            action="unignore" if kind == "ignored" else "follow" if kind == "recent" else "ignore",
         )
+        self._mark_intel_discovery_presented(payload)
         return "已更新分页"
 
     async def _handle_intel_callback_query(
@@ -571,6 +635,22 @@ class TelegramCommandHandler:
             if data.startswith("intel:i:"):
                 entry_id = data.split(":", 2)[2]
                 ack = await self._handle_intel_ignore_callback(
+                    callback_query, user_id, username, chat_id, entry_id
+                )
+                await callback_query.answer(ack)
+                return
+
+            if data.startswith("intel:f:"):
+                entry_id = data.split(":", 2)[2]
+                ack = await self._handle_intel_follow_callback(
+                    callback_query, user_id, username, chat_id, entry_id
+                )
+                await callback_query.answer(ack)
+                return
+
+            if data.startswith("intel:uf:"):
+                entry_id = data.split(":", 2)[2]
+                ack = await self._handle_intel_unfollow_callback(
                     callback_query, user_id, username, chat_id, entry_id
                 )
                 await callback_query.answer(ack)
@@ -1038,6 +1118,8 @@ class TelegramCommandHandler:
                 BotCommand("intel_labels", "查看可搜索情报标签"),
                 BotCommand("intel_search", "搜索情报条目"),
                 BotCommand("intel_detail", "查看情报条目详情"),
+                BotCommand("intel_follow", "关注发现的情报条目"),
+                BotCommand("intel_unfollow", "取消关注情报条目"),
                 BotCommand("intel_ignored", "查看已忽略情报条目"),
                 BotCommand("intel_unignore", "恢复已忽略情报条目"),
                 BotCommand("market", "获取当前市场现状快照"),
@@ -1416,7 +1498,9 @@ class TelegramCommandHandler:
                     total=int(payload.get("total", 0)),
                     kind=str(payload.get("kind", "recent")),
                     state_data=payload.get("state_data", {}),
+                    action="follow",
                 )
+                self._mark_intel_discovery_presented(payload)
             else:
                 response_text = str(payload)
                 await message.reply_text(response_text, parse_mode="Markdown")
@@ -1649,14 +1733,100 @@ class TelegramCommandHandler:
             include_raw = len(args) > 1 and args[1].lower() == "raw"
 
             response = self.handle_intel_detail_command(
-                user_id, username, chat_id, entry_id, include_raw
+                user_id, username, chat_id, entry_id, include_raw, return_markup=not include_raw
             )
-            await message.reply_text(response, parse_mode="Markdown")
+            if isinstance(response, dict):
+                await self._send_intel_detail_payload(message, response)
+            else:
+                await message.reply_text(response, parse_mode="Markdown")
 
         except Exception as e:
             error_msg = f"处理/intel_detail命令时发生错误: {str(e)}"
             self.logger.error(
                 f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
+            )
+            await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_intel_follow_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        await self._handle_intel_tracking_command(
+            update,
+            context,
+            command="/intel_follow",
+            usage="用法: /intel_follow <entry_id>\n示例: /intel_follow intel-123",
+            business_handler=self.handle_intel_follow_command,
+        )
+
+    async def _handle_intel_unfollow_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        await self._handle_intel_tracking_command(
+            update,
+            context,
+            command="/intel_unfollow",
+            usage="用法: /intel_unfollow <entry_id>\n示例: /intel_unfollow intel-123",
+            business_handler=self.handle_intel_unfollow_command,
+        )
+
+    async def _handle_intel_tracking_command(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        command: str,
+        usage: str,
+        business_handler: Any,
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_type = chat_context.chat_type
+        chat_id = chat_context.chat_id
+        message = getattr(update, "effective_message", None) or update.message
+        if message is None:
+            self.logger.error(f"{command} update has no effective message")
+            return
+
+        args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+        try:
+            if not self.is_authorized_user(user_id, username):
+                response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
+                await message.reply_text(response)
+                self._log_authorization_attempt(
+                    command=command,
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    authorized=False,
+                    reason="user not in authorized list",
+                )
+                self._log_command_execution(command, user_id, username, None, False, response)
+                return
+
+            self._log_authorization_attempt(
+                command=command,
+                user_id=user_id,
+                username=username,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                authorized=True,
+            )
+            if not args:
+                await message.reply_text(f"❌ 参数错误\n\n{usage}")
+                return
+
+            response = business_handler(user_id, username, chat_id, args[0])
+            await message.reply_text(response, parse_mode="Markdown")
+        except Exception as e:
+            self.logger.error(
+                f"处理{command}命令时发生错误: {str(e)}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
 
@@ -2973,6 +3143,180 @@ class TelegramCommandHandler:
             response += "\n\n⚠️ raw evidence expired"
         return response
 
+    def _raw_item_text_available(self, raw_item: Any) -> bool:
+        expires_at = getattr(raw_item, "expires_at", None)
+        if expires_at is None:
+            return False
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return bool(expires_at > datetime.now(timezone.utc) and getattr(raw_item, "raw_text", None))
+
+    def _format_evidence_raw_item(self, raw_item: Any, anchor: bool = False) -> str:
+        esc = self._escape_markdown_v1
+        prefix = "锚点" if anchor else "上下文"
+        source = esc(self._build_source_display(raw_item))
+        published_at = getattr(raw_item, "published_at", None) or getattr(raw_item, "collected_at", None)
+        published_text = format_datetime_utc8(published_at) if published_at else "未知"
+        raw_text = str(getattr(raw_item, "raw_text", "") or "").strip()
+        if not self._raw_item_text_available(raw_item):
+            raw_text = "raw evidence expired"
+        if len(raw_text) > 500:
+            raw_text = f"{raw_text[:500]}..."
+        raw_item_id = self._escape_markdown_v1(getattr(raw_item, "id", "unknown"))
+        return (
+            f"  - *{prefix}:* `{raw_item_id}` | {source} | {esc(published_text)}\n"
+            f"    {esc(raw_text)}"
+        )
+
+    def _format_intelligence_evidence_groups(
+        self,
+        entry: Any,
+        evidence_groups: List[dict],
+        evidence_page: int,
+        evidence_total: int,
+    ) -> str:
+        total_pages = (
+            max(1, (evidence_total + self.INTEL_EVIDENCE_PAGE_SIZE - 1) // self.INTEL_EVIDENCE_PAGE_SIZE)
+            if evidence_total > 0
+            else 1
+        )
+        parts = [self._format_intelligence_detail(entry), ""]
+        parts.append(f"🧾 *证据组* 第 {evidence_page}/{total_pages} 页，共 {evidence_total} 组")
+        if not evidence_groups:
+            parts.append("暂无可展示证据组。")
+            return "\n".join(parts)
+
+        for index, group in enumerate(evidence_groups, start=1):
+            parts.append("")
+            observation_id = self._escape_markdown_v1(group.get("observation_id") or "unknown")
+            parts.append(f"*证据 {index}:* observation `{observation_id}`")
+            anchor = group.get("anchor_raw_item")
+            if anchor is not None:
+                parts.append(self._format_evidence_raw_item(anchor, anchor=True))
+            for raw_item in group.get("neighboring_raw_items", []):
+                parts.append(self._format_evidence_raw_item(raw_item, anchor=False))
+            if group.get("warning"):
+                parts.append(f"  - ⚠️ {self._escape_markdown_v1(str(group['warning']))}")
+        return "\n".join(parts)
+
+    def _build_intel_detail_payload(
+        self,
+        repository: Any,
+        entry: Any,
+        entry_id: str,
+        evidence_page: int,
+        chat_id: str,
+        user_id: str,
+    ) -> dict:
+        evidence_page = max(1, evidence_page)
+        evidence_total = repository.count_entry_evidence_anchors(entry_id)
+        total_pages = (
+            max(1, (evidence_total + self.INTEL_EVIDENCE_PAGE_SIZE - 1) // self.INTEL_EVIDENCE_PAGE_SIZE)
+            if evidence_total > 0
+            else 1
+        )
+        if evidence_page > total_pages:
+            evidence_page = total_pages
+        anchors = repository.list_entry_evidence_anchors(
+            entry_id=entry_id,
+            page=evidence_page,
+            page_size=self.INTEL_EVIDENCE_PAGE_SIZE,
+        )
+        evidence_groups = []
+        for anchor in anchors:
+            context_window = repository.get_entry_evidence_context_window(
+                entry_id=entry_id,
+                raw_item_id=anchor.raw_item_id,
+                before=10,
+                after=10,
+            )
+            context_items = list(getattr(context_window, "items", []) or [])
+            anchor_raw_item = next(
+                (item for item in context_items if getattr(item, "id", None) == anchor.raw_item_id),
+                None,
+            )
+            if anchor_raw_item is None:
+                anchor_raw_item = repository.get_raw_item_by_id(anchor.raw_item_id)
+            evidence_groups.append(
+                {
+                    "observation_id": anchor.observation_id,
+                    "raw_item_id": anchor.raw_item_id,
+                    "anchor_raw_item": anchor_raw_item,
+                    "neighboring_raw_items": [
+                        item for item in context_items if getattr(item, "id", None) != anchor.raw_item_id
+                    ],
+                    "warning": None
+                    if anchor_raw_item and self._raw_item_text_available(anchor_raw_item)
+                    else "raw evidence expired",
+                }
+            )
+        response = self._format_intelligence_evidence_groups(
+            entry,
+            evidence_groups=evidence_groups,
+            evidence_page=evidence_page,
+            evidence_total=evidence_total,
+        )
+        return {
+            "text": response,
+            "entry_id": entry_id,
+            "page": evidence_page,
+            "total_pages": total_pages,
+            "total": evidence_total,
+            "state_data": {
+                "kind": "detail",
+                "entry_id": entry_id,
+                "chat_id": chat_id,
+                "user_id": user_id,
+            },
+        }
+
+    async def _send_intel_detail_payload(self, message: Any, payload: dict) -> None:
+        token = self._generate_callback_token()
+        page = int(payload.get("page", 1))
+        total_pages = int(payload.get("total_pages", 1))
+        pagination_row: List[InlineKeyboardButton] = []
+        if page > 1:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    "上一页",
+                    callback_data=self._build_intel_pagination_callback_data(token, page - 1),
+                )
+            )
+        if page < total_pages:
+            pagination_row.append(
+                InlineKeyboardButton(
+                    "下一页",
+                    callback_data=self._build_intel_pagination_callback_data(token, page + 1),
+                )
+            )
+        markup = InlineKeyboardMarkup([pagination_row]) if pagination_row else None
+        sent_message = await message.reply_text(
+            str(payload.get("text", "")),
+            reply_markup=markup,
+            parse_mode="Markdown",
+        )
+        state_payload = dict(payload.get("state_data", {}))
+        state_payload.update(
+            {
+                "page": page,
+                "page_size": self.INTEL_EVIDENCE_PAGE_SIZE,
+                "total": int(payload.get("total", 0)),
+                "total_pages": total_pages,
+                "sent_message_ids": [int(getattr(sent_message, "message_id", 0) or 0)],
+            }
+        )
+        self._store_callback_state(token, state_payload)
+
+    def _mark_intel_discovery_presented(self, payload: dict) -> None:
+        if str(payload.get("kind", "")) != "recent":
+            return
+        entry_ids = list(payload.get("mark_discovery_presented_ids", []) or [])
+        if not entry_ids:
+            return
+        repository = self._get_intelligence_repository()
+        if repository is not None:
+            repository.mark_discovery_presented(entry_ids)
+
     def handle_intel_recent_command(
         self,
         user_id: str,
@@ -2999,6 +3343,7 @@ class TelegramCommandHandler:
                 entry_type=None,
                 primary_label=primary_label,
                 window=cutoff,
+                tracking_scope="discovery",
             )
             entries = repository.list_canonical_entries(
                 entry_type=None,
@@ -3006,6 +3351,7 @@ class TelegramCommandHandler:
                 window=cutoff,
                 page=page,
                 page_size=self.INTEL_PAGE_SIZE,
+                tracking_scope="discovery",
             )
             total_pages = (
                 max(1, (total + self.INTEL_PAGE_SIZE - 1) // self.INTEL_PAGE_SIZE)
@@ -3020,6 +3366,7 @@ class TelegramCommandHandler:
                     window=cutoff,
                     page=page,
                     page_size=self.INTEL_PAGE_SIZE,
+                    tracking_scope="discovery",
                 )
             response = self._format_intelligence_recent_results(
                 entries,
@@ -3049,7 +3396,9 @@ class TelegramCommandHandler:
                     "total_pages": total_pages,
                     "kind": "recent",
                     "state_data": state_data,
+                    "mark_discovery_presented_ids": [entry.id for entry in entries],
                 }
+            repository.mark_discovery_presented([entry.id for entry in entries])
             return response
         except Exception as e:
             error_msg = f"查询最近情报失败: {str(e)}"
@@ -3096,7 +3445,10 @@ class TelegramCommandHandler:
 
             page = max(1, page)
             results, total = service.semantic_search(
-                query_text=query, page=page, page_size=self.INTEL_PAGE_SIZE
+                query_text=query,
+                page=page,
+                page_size=self.INTEL_PAGE_SIZE,
+                tracking_scope="following",
             )
             total_pages = (
                 max(1, (total + self.INTEL_PAGE_SIZE - 1) // self.INTEL_PAGE_SIZE)
@@ -3106,7 +3458,10 @@ class TelegramCommandHandler:
             if page > total_pages:
                 page = total_pages
                 results, total = service.semantic_search(
-                    query_text=query, page=page, page_size=self.INTEL_PAGE_SIZE
+                    query_text=query,
+                    page=page,
+                    page_size=self.INTEL_PAGE_SIZE,
+                    tracking_scope="following",
                 )
                 total_pages = (
                     max(1, (total + self.INTEL_PAGE_SIZE - 1) // self.INTEL_PAGE_SIZE)
@@ -3245,6 +3600,80 @@ class TelegramCommandHandler:
             )
             return f"❌ 执行失败\n\n{str(e)}"
 
+    def handle_intel_follow_command(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+    ) -> str:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                response = "❌ 情报仓储未初始化\n\n请先完成情报模块配置。"
+                self._log_command_execution(
+                    "/intel_follow", user_id, username, None, False, response
+                )
+                return response
+
+            followed = repository.follow_canonical_entry(entry_id)
+            if followed is None:
+                response = "Entry not found"
+                self._log_command_execution(
+                    "/intel_follow", user_id, username, None, False, response
+                )
+                return response
+
+            response = f"已关注：{getattr(followed, 'display_name', entry_id) or entry_id}"
+            self._log_command_execution(
+                "/intel_follow", user_id, username, None, True, response
+            )
+            return response
+        except Exception as e:
+            error_msg = f"关注情报失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_follow", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
+    def handle_intel_unfollow_command(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+    ) -> str:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                response = "❌ 情报仓储未初始化\n\n请先完成情报模块配置。"
+                self._log_command_execution(
+                    "/intel_unfollow", user_id, username, None, False, response
+                )
+                return response
+
+            unfollowed = repository.unfollow_canonical_entry(entry_id)
+            if unfollowed is None:
+                response = "Entry not found"
+                self._log_command_execution(
+                    "/intel_unfollow", user_id, username, None, False, response
+                )
+                return response
+
+            response = f"已取消关注：{getattr(unfollowed, 'display_name', entry_id) or entry_id}"
+            self._log_command_execution(
+                "/intel_unfollow", user_id, username, None, True, response
+            )
+            return response
+        except Exception as e:
+            error_msg = f"取消关注情报失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_unfollow", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
     def handle_intel_detail_command(
         self,
         user_id: str,
@@ -3252,7 +3681,9 @@ class TelegramCommandHandler:
         chat_id: str,
         entry_id: str,
         include_raw: bool = False,
-    ) -> str:
+        evidence_page: int = 1,
+        return_markup: bool = False,
+    ) -> Any:
         try:
             repository = self._get_intelligence_repository()
             if repository is None:
@@ -3279,6 +3710,16 @@ class TelegramCommandHandler:
 
             if include_raw and raw_item:
                 response = self._build_intelligence_raw_response(entry, raw_item, source=source)
+            elif return_markup:
+                payload = self._build_intel_detail_payload(
+                    repository=repository,
+                    entry=entry,
+                    entry_id=entry_id,
+                    evidence_page=evidence_page,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                )
+                response = str(payload.get("text", ""))
             else:
                 response = self._format_intelligence_detail(entry, source=source)
 
@@ -3289,6 +3730,8 @@ class TelegramCommandHandler:
             self._log_command_execution(
                 "/intel_detail", user_id, username, None, True, log_response
             )
+            if return_markup and not include_raw:
+                return payload
             return response
         except Exception as e:
             error_msg = f"情报详情查询失败: {str(e)}"

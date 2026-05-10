@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import Mock
 
 from crypto_news_analyzer.domain.models import (
@@ -14,12 +15,18 @@ from crypto_news_analyzer.intelligence.merge import IntelligenceMergeEngine
 from crypto_news_analyzer.intelligence.pipeline import IntelligencePipeline
 
 
-def _raw(source_type="telegram_group", source_id="chat-1", content_hash="hash-1", external_id=None):
+def _raw(
+    source_type="telegram_group",
+    source_id="chat-1",
+    content_hash="hash-1",
+    external_id=None,
+    raw_text=None,
+):
     return RawIntelligenceItem.create(
         source_type=source_type,
         source_id=source_id,
         external_id=external_id,
-        raw_text=f"raw {content_hash}",
+        raw_text=raw_text or f"raw {content_hash}",
         content_hash=content_hash,
         expires_at=datetime.utcnow() + timedelta(days=30),
     )
@@ -50,7 +57,11 @@ class MemoryDataSourceRepository:
         self.sources = list(sources)
 
     def list(self, source_type=None):
-        return [source for source in self.sources if source_type is None or source.source_type == source_type]
+        return [
+            source
+            for source in self.sources
+            if source_type is None or source.source_type == source_type
+        ]
 
 
 class MemoryIntelligenceRepository:
@@ -87,7 +98,7 @@ class MemoryIntelligenceRepository:
     def get_checkpoint(self, source_type, source_id):
         return self.checkpoints.get((source_type, source_id))
 
-    def upsert_canonical_entry(self, entry):
+    def upsert_canonical_entry(self, entry, **kwargs):
         self.canonical_entries[entry.id] = entry
         return entry.id
 
@@ -104,6 +115,47 @@ class MemoryIntelligenceRepository:
             if entry.entry_type == entry_type and entry.normalized_key == normalized_key:
                 return entry
         return None
+
+    def list_canonical_entries(
+        self,
+        entry_type=None,
+        primary_label=None,
+        window=None,
+        page=1,
+        page_size=100,
+        tracking_scope="following",
+    ):
+        entries = []
+        for entry in self.canonical_entries.values():
+            if entry_type is not None and entry.entry_type != entry_type:
+                continue
+            if primary_label is not None and entry.primary_label != primary_label:
+                continue
+            if tracking_scope == "following" and not entry.tracking_enabled:
+                continue
+            if tracking_scope == "ignored" and not entry.is_ignored:
+                continue
+            entries.append(entry)
+        start = max(0, page - 1) * page_size
+        return entries[start : start + page_size]
+
+    def list_ignored_canonical_entries(
+        self,
+        entry_type=None,
+        primary_label=None,
+        window=None,
+        page=1,
+        page_size=100,
+    ):
+        entries = [
+            entry
+            for entry in self.canonical_entries.values()
+            if entry.is_ignored
+            and (entry_type is None or entry.entry_type == entry_type)
+            and (primary_label is None or entry.primary_label == primary_label)
+        ]
+        start = max(0, page - 1) * page_size
+        return entries[start : start + page_size]
 
     def mark_observation_canonicalized(self, observation_id):
         self.canonicalized_observation_ids.add(observation_id)
@@ -161,7 +213,9 @@ def _pipeline(sources, crawlers, repository=None):
     search_service = Mock()
     search_service.batch_generate_embeddings.return_value = 1
     return (
-        IntelligencePipeline(FakeFactory(crawlers), repository, extractor, merge_engine, search_service),
+        IntelligencePipeline(
+            FakeFactory(crawlers), repository, extractor, merge_engine, search_service
+        ),
         repository,
         extractor,
         merge_engine,
@@ -302,6 +356,7 @@ def test_unignored_entry_resumes_future_ingestion_updates():
     assert result["embeddings_updated"] == 1
     assert observation.is_canonicalized is True
     assert len(repository.canonical_entries) == 1
+    assert persisted is not None
     assert persisted.is_ignored is False
     assert persisted.evidence_count == 2
     assert persisted.confidence == 0.7
@@ -321,8 +376,8 @@ def test_first_run_uses_24h_backfill_then_checkpoint_incremental_window():
     pipeline, repository, *_ = _pipeline([source], [FakeCrawler([item]), FakeCrawler([])])
 
     first = pipeline.run_intelligence_collection_once()
-    repository.checkpoints[("telegram_group", "chat-1")].last_crawled_at = datetime.utcnow() - timedelta(
-        minutes=30
+    repository.checkpoints[("telegram_group", "chat-1")].last_crawled_at = (
+        datetime.utcnow() - timedelta(minutes=30)
     )
     second = pipeline.run_intelligence_collection_once()
 
@@ -333,7 +388,9 @@ def test_first_run_uses_24h_backfill_then_checkpoint_incremental_window():
 
 
 def test_per_source_error_isolated_and_other_sources_continue():
-    bad = DataSource.create(name="bad", source_type="telegram_group", config_payload={"chat_id": "bad"})
+    bad = DataSource.create(
+        name="bad", source_type="telegram_group", config_payload={"chat_id": "bad"}
+    )
     good = DataSource.create(name="good", source_type="v2ex", config_payload={"name": "crypto"})
     pipeline, _repository, extractor, _merge, _search = _pipeline(
         [bad, good],
@@ -428,6 +485,146 @@ def test_pipeline_creates_related_candidates_after_embedding_search():
     merge_engine.create_related_candidates.assert_called_once_with(entry, related, 0.82)
 
 
+def test_untracked_slang_raw_items_are_skipped_before_extraction():
+    source = DataSource.create(
+        name="TG Alpha",
+        source_type="telegram_group",
+        config_payload={"chat_id": "chat-1"},
+    )
+    repository = MemoryIntelligenceRepository([source])
+    repository.upsert_canonical_entry(
+        CanonicalIntelligenceEntry.create(
+            entry_type="slang",
+            normalized_key="tqcard",
+            display_name="土区卡",
+            aliases=["TQ Card"],
+            tracking_enabled=False,
+        )
+    )
+    repository.upsert_canonical_entry(
+        CanonicalIntelligenceEntry.create(
+            entry_type="channel",
+            normalized_key="alpha-channel",
+            display_name="Alpha Channel",
+            tracking_enabled=False,
+        )
+    )
+
+    skipped = _raw(content_hash="skip", raw_text="收 T.Q. card，价格好")
+    kept_channel_only = _raw(content_hash="channel", raw_text="Alpha Channel 有新盘口")
+    kept_unrelated = _raw(content_hash="keep", raw_text="普通情报继续分析")
+    pipeline, _repository, extractor, _merge, _search = _pipeline(
+        [source],
+        [FakeCrawler([skipped, kept_channel_only, kept_unrelated])],
+        repository=repository,
+    )
+
+    result = pipeline.run_intelligence_collection_once()
+
+    assert result["items_new"] == 3
+    assert result["skipped_untracked_slang_items"] == 1
+    sent_items = extractor.extract.call_args.args[0]
+    assert [item.id for item in sent_items] == [kept_channel_only.id, kept_unrelated.id]
+
+
+def test_mixed_followed_and_untracked_slang_raw_item_is_retained():
+    source = DataSource.create(
+        name="TG Alpha",
+        source_type="telegram_group",
+        config_payload={"chat_id": "chat-1"},
+    )
+    repository = MemoryIntelligenceRepository([source])
+    repository.upsert_canonical_entry(
+        CanonicalIntelligenceEntry.create(
+            entry_type="slang",
+            normalized_key="tqcard",
+            display_name="土区卡",
+            aliases=["TQ Card"],
+            tracking_enabled=False,
+        )
+    )
+    repository.upsert_canonical_entry(
+        CanonicalIntelligenceEntry.create(
+            entry_type="slang",
+            normalized_key="biquandanbao",
+            display_name="币圈担保",
+            aliases=["担保"],
+            tracking_enabled=True,
+        )
+    )
+
+    mixed = _raw(content_hash="mixed", raw_text="TQ card 交易只走币圈担保")
+    pipeline, _repository, extractor, _merge, _search = _pipeline(
+        [source],
+        [FakeCrawler([mixed])],
+        repository=repository,
+    )
+
+    result = pipeline.run_intelligence_collection_once()
+
+    assert result["skipped_untracked_slang_items"] == 0
+    extractor.extract.assert_called_once()
+    assert extractor.extract.call_args.args[0] == [mixed]
+
+
+def test_short_ascii_untracked_slang_does_not_match_inside_words():
+    source = DataSource.create(
+        name="TG Alpha",
+        source_type="telegram_group",
+        config_payload={"chat_id": "chat-1"},
+    )
+    repository = MemoryIntelligenceRepository([source])
+    repository.upsert_canonical_entry(
+        CanonicalIntelligenceEntry.create(
+            entry_type="slang",
+            normalized_key="ai",
+            display_name="AI",
+            tracking_enabled=False,
+        )
+    )
+
+    kept = _raw(content_hash="paid", raw_text="paid channel 有新消息")
+    skipped = _raw(content_hash="ai", raw_text="AI 代付渠道")
+    pipeline, _repository, extractor, _merge, _search = _pipeline(
+        [source],
+        [FakeCrawler([kept, skipped])],
+        repository=repository,
+    )
+
+    result = pipeline.run_intelligence_collection_once()
+
+    assert result["skipped_untracked_slang_items"] == 1
+    assert extractor.extract.call_args.args[0] == [kept]
+
+
+def test_ignored_slang_raw_items_are_skipped_before_extraction():
+    source = DataSource.create(
+        name="TG Alpha",
+        source_type="telegram_group",
+        config_payload={"chat_id": "chat-1"},
+    )
+    repository = MemoryIntelligenceRepository([source])
+    ignored = CanonicalIntelligenceEntry.create(
+        entry_type="slang",
+        normalized_key="blacku",
+        display_name="黑U",
+        tracking_enabled=True,
+    )
+    repository.upsert_canonical_entry(ignored)
+    repository.ignore_canonical_entry(ignored.id, ignored_by="operator")
+    raw_item = _raw(content_hash="ignored-slang", raw_text="有人在收黑 U")
+    pipeline, _repository, extractor, _merge, _search = _pipeline(
+        [source],
+        [FakeCrawler([raw_item])],
+        repository=repository,
+    )
+
+    result = pipeline.run_intelligence_collection_once()
+
+    assert result["skipped_untracked_slang_items"] == 1
+    extractor.extract.assert_not_called()
+
+
 class FakeIngestionRepository:
     def __init__(self):
         self.saved = []
@@ -450,12 +647,14 @@ class FakeIngestionRepository:
 def test_run_crawl_only_invokes_intelligence_pipeline_when_configured(tmp_path, monkeypatch):
     controller = MainController(config_path=str(tmp_path / "config.jsonc"))
     controller._initialized = True
-    controller.config_manager = SimpleNamespace(get_time_window_hours=lambda: 24)
+    controller.config_manager = cast(Any, SimpleNamespace(get_time_window_hours=lambda: 24))
     controller.ingestion_repository = FakeIngestionRepository()
     controller._history_file = str(tmp_path / "history.json")
     controller._intelligence_pipeline = Mock()
     controller._intelligence_pipeline.run_intelligence_collection_once.return_value = {"errors": []}
-    monkeypatch.setattr(controller, "validate_prerequisites", lambda validation_scope: {"valid": True})
+    monkeypatch.setattr(
+        controller, "validate_prerequisites", lambda validation_scope: {"valid": True}
+    )
     monkeypatch.setattr(
         controller,
         "_execute_crawling_stage",

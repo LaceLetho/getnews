@@ -67,6 +67,7 @@ class IntelligenceSearchService:
         window: Optional[datetime] = None,
         page: int = 1,
         page_size: int = 20,
+        tracking_scope: str = "following",
     ) -> Tuple[List[Tuple[CanonicalIntelligenceEntry, float]], int]:
         """Search canonical intelligence entries by query embedding.
 
@@ -95,6 +96,7 @@ class IntelligenceSearchService:
             entry_type=entry_type,
             primary_label=primary_label,
             window=window,
+            tracking_scope=tracking_scope,
         )
 
         results = self.intelligence_repository.semantic_search(
@@ -104,6 +106,7 @@ class IntelligenceSearchService:
             window=window,
             limit=bounded_page_size,
             offset=offset,
+            tracking_scope=tracking_scope,
         )
 
         return results, total

@@ -844,6 +844,8 @@ class CanonicalIntelligenceEntry:
     is_ignored: bool = False
     ignored_at: Optional[datetime] = None
     ignored_by: Optional[str] = None
+    tracking_enabled: bool = False
+    discovery_presented_at: Optional[datetime] = None
     embedding: Optional[List[float]] = None
     embedding_model: Optional[str] = None
     embedding_updated_at: Optional[datetime] = None
@@ -870,6 +872,8 @@ class CanonicalIntelligenceEntry:
         self.confidence = float(self.confidence)
         if self.evidence_count < 0:
             raise ValueError("evidence_count cannot be negative")
+        self.is_ignored = bool(self.is_ignored)
+        self.tracking_enabled = False if self.is_ignored else bool(self.tracking_enabled)
         self.secondary_tags = _validate_json_list(self.secondary_tags, "secondary_tags")
         self.aliases = _validate_json_list(self.aliases, "aliases")
         if self.embedding is not None:
@@ -884,6 +888,8 @@ class CanonicalIntelligenceEntry:
         **kwargs: Any,
     ) -> "CanonicalIntelligenceEntry":
         now = datetime.utcnow()
+        if "tracking_enabled" not in kwargs:
+            kwargs["tracking_enabled"] = str(entry_type).strip().lower() == EntryType.CHANNEL.value
         return cls(
             id=str(uuid.uuid4()),
             entry_type=entry_type,
@@ -900,6 +906,7 @@ class CanonicalIntelligenceEntry:
             "first_seen_at",
             "last_seen_at",
             "ignored_at",
+            "discovery_presented_at",
             "embedding_updated_at",
             "created_at",
             "updated_at",
@@ -914,11 +921,16 @@ class CanonicalIntelligenceEntry:
             "first_seen_at",
             "last_seen_at",
             "ignored_at",
+            "discovery_presented_at",
             "embedding_updated_at",
             "created_at",
             "updated_at",
         ):
             payload[key] = _parse_optional_datetime(payload.get(key))
+        if "tracking_enabled" not in payload:
+            payload["tracking_enabled"] = (
+                str(payload.get("entry_type", "")).strip().lower() == EntryType.CHANNEL.value
+            )
         return cls(**payload)
 
 

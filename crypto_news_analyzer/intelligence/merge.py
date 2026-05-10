@@ -1,9 +1,4 @@
-"""Conservative merge engine for extracted intelligence observations.
-
-Only exact normalized identifiers are allowed to merge into canonical entries.
-Semantic similarity is represented as a related-candidate edge and never as an
-identity merge decision.
-"""
+"""Conservative merge engine for extracted intelligence observations."""
 
 from __future__ import annotations
 
@@ -16,11 +11,22 @@ from ..domain.models import CanonicalIntelligenceEntry, EntryType, ExtractionObs
 
 
 class IntelligenceMergeEngine:
-    """Canonicalize extraction observations using exact normalized keys only."""
+    """Canonicalize extraction observations using exact keys and guarded slang semantics."""
 
-    def __init__(self, intelligence_repository: Any, confidence_threshold: float = 0.6):
+    SLANG_SEMANTIC_MERGE_THRESHOLD = 0.92
+
+    def __init__(
+        self,
+        intelligence_repository: Any,
+        confidence_threshold: float = 0.6,
+        search_service: Any = None,
+    ):
         self.intelligence_repository = intelligence_repository
         self.confidence_threshold = float(confidence_threshold)
+        self.search_service = search_service
+
+    def set_search_service(self, search_service: Any) -> None:
+        self.search_service = search_service
 
     def canonicalize_observations(
         self, observations: List[ExtractionObservation]
@@ -53,11 +59,26 @@ class IntelligenceMergeEngine:
                 continue
 
             if existing is None:
+                existing = self._find_existing_by_alias(observation)
+
+            if existing is not None and existing.is_ignored:
+                self.intelligence_repository.mark_observation_canonicalized(observation.id)
+                observation.is_canonicalized = True
+                canonical_entries.append(existing)
+                continue
+
+            if existing is None:
+                existing = self._find_semantic_slang_match(observation)
+
+            if existing is None:
                 entry = self._new_entry_from_observation(observation, normalized_key)
             else:
                 entry = self._merge_observation_into_entry(existing, observation)
 
-            self.intelligence_repository.upsert_canonical_entry(entry)
+            self.intelligence_repository.upsert_canonical_entry(
+                entry,
+                observation_id=observation.id,
+            )
             self.intelligence_repository.mark_observation_canonicalized(observation.id)
             observation.is_canonicalized = True
             canonical_entries.append(entry)
@@ -124,6 +145,93 @@ class IntelligenceMergeEngine:
             return self.normalize_slang_key(observation.normalized_term or observation.term or "")
         return self.normalize_channel_key(observation)
 
+    def _find_existing_by_alias(
+        self, observation: ExtractionObservation
+    ) -> CanonicalIntelligenceEntry | None:
+        if observation.entry_type != EntryType.SLANG.value:
+            return None
+
+        aliases = self._aliases_from_observation(observation)
+        if not aliases:
+            return None
+
+        normalized_aliases = {
+            self._normalize_alias_for_entry_type(observation.entry_type, alias) for alias in aliases
+        }
+        normalized_aliases.discard("")
+        if not normalized_aliases:
+            return None
+
+        for entry in self.intelligence_repository.list_canonical_entries(
+            entry_type=observation.entry_type,
+            page_size=1000,
+            tracking_scope="all",
+        ):
+            entry_aliases = {
+                self._normalize_alias_for_entry_type(entry.entry_type, alias)
+                for alias in entry.aliases
+            }
+            if normalized_aliases.intersection(entry_aliases):
+                return entry
+        return None
+
+    def _find_semantic_slang_match(
+        self, observation: ExtractionObservation
+    ) -> CanonicalIntelligenceEntry | None:
+        if observation.entry_type != EntryType.SLANG.value or self.search_service is None:
+            return None
+
+        primary_label = str(observation.primary_label or "").strip()
+        if not primary_label:
+            return None
+
+        query_text = self._semantic_text_for_observation(observation)
+        if not query_text:
+            return None
+
+        try:
+            results, _ = self.search_service.semantic_search(
+                query_text=query_text,
+                entry_type=EntryType.SLANG.value,
+                primary_label=primary_label,
+                tracking_scope="all",
+                page_size=6,
+            )
+        except Exception:
+            return None
+
+        best_entry: CanonicalIntelligenceEntry | None = None
+        best_score = 0.0
+        for candidate, score in list(results or []):
+            candidate_score = float(score)
+            if candidate_score < self.SLANG_SEMANTIC_MERGE_THRESHOLD:
+                continue
+            if candidate.entry_type != EntryType.SLANG.value:
+                continue
+            if candidate.is_ignored:
+                continue
+            if str(candidate.primary_label or "").strip() != primary_label:
+                continue
+            if candidate_score > best_score:
+                best_entry = candidate
+                best_score = candidate_score
+        return best_entry
+
+    def _semantic_text_for_observation(self, observation: ExtractionObservation) -> str:
+        parts = [
+            observation.term or observation.normalized_term or "",
+            observation.literal_meaning or "",
+            observation.contextual_meaning or "",
+            " ".join(observation.aliases_or_variants or []),
+            observation.primary_label or "",
+        ]
+        return " ".join(part.strip() for part in parts if str(part or "").strip())
+
+    def _normalize_alias_for_entry_type(self, entry_type: str, alias: str) -> str:
+        if entry_type == EntryType.SLANG.value:
+            return self.normalize_slang_key(alias)
+        return str(alias or "").strip().lower()
+
     def _new_entry_from_observation(
         self, observation: ExtractionObservation, normalized_key: str
     ) -> CanonicalIntelligenceEntry:
@@ -167,7 +275,9 @@ class IntelligenceMergeEngine:
             ]
         )
         entry.latest_raw_item_id = observation.raw_item_id
-        entry.aliases = self.merge_aliases(entry.aliases, self._aliases_from_observation(observation))
+        entry.aliases = self.merge_aliases(
+            entry.aliases, self._aliases_from_observation(observation)
+        )
         entry.secondary_tags = self.merge_aliases(entry.secondary_tags, observation.secondary_tags)
         entry.prompt_version = observation.prompt_version or entry.prompt_version
         entry.model_name = observation.model_name or entry.model_name
@@ -251,7 +361,11 @@ class IntelligenceMergeEngine:
         parse_target = raw if re.match(r"^[a-z][a-z0-9+.-]*://", raw) else f"https://{raw}"
         parsed = urlparse(parse_target)
         host = self._strip_www(parsed.netloc or parsed.path.split("/", 1)[0])
-        path = parsed.path if parsed.netloc else ("/" + parsed.path.split("/", 1)[1] if "/" in parsed.path else "")
+        path = (
+            parsed.path
+            if parsed.netloc
+            else ("/" + parsed.path.split("/", 1)[1] if "/" in parsed.path else "")
+        )
         path = path.rstrip("/")
         return f"{host}{path}"
 

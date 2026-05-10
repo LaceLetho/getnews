@@ -352,6 +352,8 @@ class IntelligenceEntryResponse(BaseModel):
     is_ignored: bool = False
     ignored_at: Optional[str] = None
     ignored_by: Optional[str] = None
+    tracking_enabled: bool = False
+    discovery_presented_at: Optional[str] = None
 
 
 class IntelligenceListResponse(BaseModel):
@@ -359,6 +361,36 @@ class IntelligenceListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class IntelligenceDiscoveryResponse(BaseModel):
+    entries: list[IntelligenceEntryResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class IntelligenceRawEvidenceItemResponse(BaseModel):
+    raw_item_id: str
+    raw_text: Optional[str] = None
+    source_type: str
+    source_url: Optional[str] = None
+    source: Optional[str] = None
+    published_at: Optional[str] = None
+    collected_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    is_expired: bool = False
+
+
+class IntelligenceEvidenceGroupResponse(BaseModel):
+    observation_id: str
+    raw_item_id: str
+    observed_at: Optional[str] = None
+    published_at: Optional[str] = None
+    collected_at: Optional[str] = None
+    anchor_raw_item: Optional[IntelligenceRawEvidenceItemResponse] = None
+    neighboring_raw_items: list[IntelligenceRawEvidenceItemResponse] = Field(default_factory=list)
+    warning: Optional[str] = None
 
 
 class IntelligenceEntryDetailResponse(BaseModel):
@@ -384,9 +416,15 @@ class IntelligenceEntryDetailResponse(BaseModel):
     is_ignored: bool = False
     ignored_at: Optional[str] = None
     ignored_by: Optional[str] = None
+    tracking_enabled: bool = False
+    discovery_presented_at: Optional[str] = None
     source: Optional[str] = None
     raw_available: bool = False
     raw_evidence: Optional[Any] = None
+    evidence_groups: list[IntelligenceEvidenceGroupResponse] = Field(default_factory=list)
+    evidence_page: int = 1
+    evidence_page_size: int = 5
+    evidence_total: int = 0
 
 
 class IntelligenceSearchResultItem(BaseModel):
@@ -404,6 +442,7 @@ class IntelligenceSearchResultItem(BaseModel):
     is_ignored: bool = False
     ignored_at: Optional[str] = None
     ignored_by: Optional[str] = None
+    tracking_enabled: bool = False
 
 
 class IntelligenceIgnoreResponse(BaseModel):
@@ -412,6 +451,13 @@ class IntelligenceIgnoreResponse(BaseModel):
     is_ignored: bool
     ignored_at: Optional[str] = None
     ignored_by: Optional[str] = None
+
+
+class IntelligenceTrackingResponse(BaseModel):
+    success: bool
+    entry_id: str
+    tracking_enabled: bool
+    is_ignored: bool
 
 
 class IntelligenceSearchResponse(BaseModel):
@@ -470,6 +516,10 @@ def _canonical_entry_to_response(entry: Any) -> IntelligenceEntryResponse:
         is_ignored=bool(getattr(entry, "is_ignored", False)),
         ignored_at=_datetime_to_iso(cast(Optional[datetime], getattr(entry, "ignored_at", None))),
         ignored_by=getattr(entry, "ignored_by", None),
+        tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
+        discovery_presented_at=_datetime_to_iso(
+            cast(Optional[datetime], getattr(entry, "discovery_presented_at", None))
+        ),
     )
 
 
@@ -497,7 +547,49 @@ def _canonical_entry_to_detail_response(entry: Any) -> IntelligenceEntryDetailRe
         is_ignored=bool(getattr(entry, "is_ignored", False)),
         ignored_at=_datetime_to_iso(cast(Optional[datetime], getattr(entry, "ignored_at", None))),
         ignored_by=getattr(entry, "ignored_by", None),
+        tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
+        discovery_presented_at=_datetime_to_iso(
+            cast(Optional[datetime], getattr(entry, "discovery_presented_at", None))
+        ),
     )
+
+
+def _validate_tracking_scope(tracking_scope: str) -> str:
+    normalized_scope = str(tracking_scope or "following").strip().lower()
+    if normalized_scope not in {"following", "discovery", "all"}:
+        raise HTTPException(
+            status_code=400,
+            detail="tracking_scope must be one of: following, discovery, all",
+        )
+    return normalized_scope
+
+
+def _raw_item_to_evidence_response(raw_item: Any) -> IntelligenceRawEvidenceItemResponse:
+    is_expired = _is_expired(getattr(raw_item, "expires_at", None))
+    raw_text = getattr(raw_item, "raw_text", None)
+    if is_expired or not raw_text:
+        raw_text = None
+    return IntelligenceRawEvidenceItemResponse(
+        raw_item_id=raw_item.id,
+        raw_text=raw_text,
+        source_type=raw_item.source_type,
+        source_url=raw_item.source_url,
+        source=_build_source_display(raw_item),
+        published_at=_datetime_to_iso(raw_item.published_at),
+        collected_at=_datetime_to_iso(raw_item.collected_at),
+        expires_at=_datetime_to_iso(raw_item.expires_at),
+        is_expired=is_expired,
+    )
+
+
+def _evidence_warning(raw_item: Optional[Any]) -> Optional[str]:
+    if raw_item is None:
+        return "Evidence raw item is unavailable; it may have been purged."
+    if _is_expired(getattr(raw_item, "expires_at", None)):
+        return "Evidence raw text is unavailable because the raw item expired."
+    if not getattr(raw_item, "raw_text", None):
+        return "Evidence raw text is unavailable because it has been purged."
+    return None
 
 
 def _as_naive_utc(value: Optional[datetime]) -> Optional[datetime]:
@@ -1351,12 +1443,14 @@ def create_api_server(
         window: Optional[str] = None,
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
+        tracking_scope: str = "following",
         page: int = 1,
         page_size: int = 20,
     ):
         """List canonical intelligence entries with pagination."""
         repository = _get_intelligence_repository(req)
         window_cutoff = _parse_window_param(window)
+        normalized_tracking_scope = _validate_tracking_scope(tracking_scope)
 
         page = max(1, page)
         page_size = max(1, min(page_size, 100))
@@ -1367,11 +1461,13 @@ def create_api_server(
             window=window_cutoff,
             page=page,
             page_size=page_size,
+            tracking_scope=normalized_tracking_scope,
         )
         total = repository.count_canonical_entries(
             entry_type=entry_type if entry_type else None,
             primary_label=primary_label if primary_label else None,
             window=window_cutoff,
+            tracking_scope=normalized_tracking_scope,
         )
 
         return IntelligenceListResponse(
@@ -1380,6 +1476,45 @@ def create_api_server(
             page=page,
             page_size=page_size,
         )
+
+    @app.get("/intelligence/discovery", response_model=IntelligenceDiscoveryResponse)
+    async def discover_intelligence_entries(
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+        window: Optional[str] = None,
+        primary_label: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ):
+        """Return unseen untracked slang entries for discovery."""
+        repository = _get_intelligence_repository(req)
+        window_cutoff = _parse_window_param(window)
+
+        page = max(1, page)
+        page_size = max(1, min(page_size, 100))
+
+        entries = repository.list_canonical_entries(
+            entry_type="slang",
+            primary_label=primary_label if primary_label else None,
+            window=window_cutoff,
+            page=page,
+            page_size=page_size,
+            tracking_scope="discovery",
+        )
+        total = repository.count_canonical_entries(
+            entry_type="slang",
+            primary_label=primary_label if primary_label else None,
+            window=window_cutoff,
+            tracking_scope="discovery",
+        )
+        response = IntelligenceDiscoveryResponse(
+            entries=[_canonical_entry_to_response(e) for e in entries],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+        repository.mark_discovery_presented([entry.id for entry in entries])
+        return response
 
     @app.get("/intelligence/entries/ignored", response_model=IntelligenceListResponse)
     async def list_ignored_intelligence_entries(
@@ -1492,6 +1627,46 @@ def create_api_server(
             ignored_by=getattr(entry, "ignored_by", None),
         )
 
+    @app.post(
+        "/intelligence/entries/{entry_id}/follow",
+        response_model=IntelligenceTrackingResponse,
+    )
+    async def follow_intelligence_entry(
+        entry_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        repository = _get_intelligence_repository(req)
+        entry = repository.follow_canonical_entry(entry_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Intelligence entry not found")
+        return IntelligenceTrackingResponse(
+            success=True,
+            entry_id=entry.id,
+            tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
+            is_ignored=bool(getattr(entry, "is_ignored", False)),
+        )
+
+    @app.post(
+        "/intelligence/entries/{entry_id}/unfollow",
+        response_model=IntelligenceTrackingResponse,
+    )
+    async def unfollow_intelligence_entry(
+        entry_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        repository = _get_intelligence_repository(req)
+        entry = repository.unfollow_canonical_entry(entry_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="Intelligence entry not found")
+        return IntelligenceTrackingResponse(
+            success=True,
+            entry_id=entry.id,
+            tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
+            is_ignored=bool(getattr(entry, "is_ignored", False)),
+        )
+
     @app.get(
         "/intelligence/entries/{entry_id}",
         response_model=IntelligenceEntryDetailResponse,
@@ -1501,6 +1676,8 @@ def create_api_server(
         req: Request,
         _: Annotated[str, Depends(verify_api_key)],
         include_raw: bool = False,
+        evidence_page: int = 1,
+        evidence_page_size: int = 5,
     ):
         """Get a single intelligence entry by ID with optional raw evidence."""
         repository = _get_intelligence_repository(req)
@@ -1509,6 +1686,52 @@ def create_api_server(
             raise HTTPException(status_code=404, detail="Intelligence entry not found")
 
         response = _canonical_entry_to_detail_response(entry)
+        evidence_page = max(1, evidence_page)
+        evidence_page_size = max(1, min(evidence_page_size, 100))
+        response.evidence_page = evidence_page
+        response.evidence_page_size = evidence_page_size
+        response.evidence_total = repository.count_entry_evidence_anchors(entry_id)
+        anchors = repository.list_entry_evidence_anchors(
+            entry_id=entry_id,
+            page=evidence_page,
+            page_size=evidence_page_size,
+        )
+        evidence_groups: list[IntelligenceEvidenceGroupResponse] = []
+        for anchor in anchors:
+            context_window = repository.get_entry_evidence_context_window(
+                entry_id=entry_id,
+                raw_item_id=anchor.raw_item_id,
+                before=10,
+                after=10,
+            )
+            context_items = context_window.items if context_window is not None else []
+            anchor_raw_item = next(
+                (item for item in context_items if item.id == anchor.raw_item_id),
+                None,
+            )
+            if anchor_raw_item is None:
+                anchor_raw_item = repository.get_raw_item_by_id(anchor.raw_item_id)
+            evidence_groups.append(
+                IntelligenceEvidenceGroupResponse(
+                    observation_id=anchor.observation_id,
+                    raw_item_id=anchor.raw_item_id,
+                    observed_at=_datetime_to_iso(anchor.observed_at),
+                    published_at=_datetime_to_iso(anchor.published_at),
+                    collected_at=_datetime_to_iso(anchor.collected_at),
+                    anchor_raw_item=(
+                        _raw_item_to_evidence_response(anchor_raw_item)
+                        if anchor_raw_item is not None
+                        else None
+                    ),
+                    neighboring_raw_items=[
+                        _raw_item_to_evidence_response(item)
+                        for item in context_items
+                        if item.id != anchor.raw_item_id
+                    ],
+                    warning=_evidence_warning(anchor_raw_item),
+                )
+            )
+        response.evidence_groups = evidence_groups
 
         # Always fetch source info from latest raw item (if available)
         raw_item = None
@@ -1549,6 +1772,7 @@ def create_api_server(
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[str] = None,
+        tracking_scope: str = "following",
         page: int = 1,
         page_size: int = 20,
     ):
@@ -1557,6 +1781,7 @@ def create_api_server(
         service = _build_intelligence_search_service(controller)
 
         window_cutoff = _parse_window_param(window)
+        normalized_tracking_scope = _validate_tracking_scope(tracking_scope)
 
         page = max(1, page)
         page_size = max(1, min(page_size, 100))
@@ -1568,6 +1793,7 @@ def create_api_server(
             window=window_cutoff,
             page=page,
             page_size=page_size,
+            tracking_scope=normalized_tracking_scope,
         )
 
         return IntelligenceSearchResponse(
@@ -1589,6 +1815,7 @@ def create_api_server(
                         cast(Optional[datetime], getattr(entry, "ignored_at", None))
                     ),
                     ignored_by=getattr(entry, "ignored_by", None),
+                    tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
                 )
                 for entry, score in results
             ],
