@@ -24,6 +24,8 @@ from ..domain.repositories import (
     AnalysisRepository,
     DataSourceRepository,
     IngestionRepository,
+    IntelligenceEvidenceAnchor,
+    IntelligenceRawContextWindow,
     IntelligenceRepository,
     ContentRepository,
     CacheRepository,
@@ -33,6 +35,12 @@ from ..storage.data_manager import DataManager
 from ..storage.cache_manager import SentMessageCacheManager
 from ..utils.errors import StorageError, UnsupportedBackendError
 from ..models import StorageConfig, ContentItem, CrawlStatus
+
+
+def _parse_optional_datetime(value: Any) -> Optional[datetime]:
+    if value is None or isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value))
 
 
 class SQLiteAnalysisRepository(AnalysisRepository):
@@ -589,8 +597,12 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
     def mark_observation_canonicalized(self, observation_id: str) -> bool:
         return self._data.mark_intelligence_observation_canonicalized(observation_id)
 
-    def save_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
-        return self._data.upsert_canonical_intelligence_entry(entry.to_dict())
+    def save_canonical_entry(
+        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
+    ) -> str:
+        return self._data.upsert_canonical_intelligence_entry(
+            entry.to_dict(), observation_id=observation_id
+        )
 
     def get_canonical_entry_by_normalized_key(
         self, entry_type: str, normalized_key: str
@@ -604,9 +616,53 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         row = self._data.get_canonical_intelligence_entry_by_id(entry_id)
         return CanonicalIntelligenceEntry.from_dict(row) if row else None
 
-    def upsert_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
+    def upsert_canonical_entry(
+        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
+    ) -> str:
         return self._data.upsert_canonical_intelligence_entry(
-            entry.to_dict(), by_normalized_key=True
+            entry.to_dict(), by_normalized_key=True, observation_id=observation_id
+        )
+
+    def save_entry_evidence_link(
+        self, entry_id: str, observation_id: str, raw_item_id: str
+    ) -> None:
+        self._data.upsert_intelligence_entry_evidence_link(
+            entry_id, observation_id, raw_item_id
+        )
+
+    def list_entry_evidence_anchors(
+        self, entry_id: str, page: int = 1, page_size: int = 20
+    ) -> List[IntelligenceEvidenceAnchor]:
+        rows = self._data.list_intelligence_entry_evidence_anchors(entry_id, page, page_size)
+        return [self._evidence_anchor_from_row(row) for row in rows]
+
+    def count_entry_evidence_anchors(self, entry_id: str) -> int:
+        return self._data.count_intelligence_entry_evidence_anchors(entry_id)
+
+    def get_entry_evidence_context_window(
+        self, entry_id: str, raw_item_id: str, before: int = 10, after: int = 10
+    ) -> Optional[IntelligenceRawContextWindow]:
+        row = self._data.get_intelligence_entry_evidence_context_window(
+            entry_id, raw_item_id, before, after
+        )
+        if row is None:
+            return None
+        return IntelligenceRawContextWindow(
+            anchor=self._evidence_anchor_from_row(row["anchor"]),
+            items=[RawIntelligenceItem.from_dict(item) for item in row["items"]],
+        )
+
+    def _evidence_anchor_from_row(self, row: Dict[str, Any]) -> IntelligenceEvidenceAnchor:
+        collected_at = _parse_optional_datetime(row.get("collected_at"))
+        if collected_at is None:
+            raise ValueError("evidence anchor collected_at is required")
+        return IntelligenceEvidenceAnchor(
+            entry_id=str(row["entry_id"]),
+            observation_id=str(row["observation_id"]),
+            raw_item_id=str(row["raw_item_id"]),
+            observed_at=_parse_optional_datetime(row.get("observed_at")),
+            published_at=_parse_optional_datetime(row.get("published_at")),
+            collected_at=collected_at,
         )
 
     def list_canonical_entries(
@@ -616,6 +672,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         window: Optional[datetime] = None,
         page: int = 1,
         page_size: int = 100,
+        tracking_scope: str = "following",
     ) -> List[CanonicalIntelligenceEntry]:
         rows = self._data.list_canonical_intelligence_entries(
             entry_type=entry_type,
@@ -623,6 +680,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
             window=window,
             page=page,
             page_size=page_size,
+            tracking_scope=tracking_scope,
         )
         return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
 
@@ -631,12 +689,25 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
+        tracking_scope: str = "following",
     ) -> int:
         return self._data.count_canonical_intelligence_entries(
             entry_type=entry_type,
             primary_label=primary_label,
             window=window,
+            tracking_scope=tracking_scope,
         )
+
+    def follow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
+        row = self._data.follow_canonical_intelligence_entry(entry_id)
+        return CanonicalIntelligenceEntry.from_dict(row) if row else None
+
+    def unfollow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
+        row = self._data.unfollow_canonical_intelligence_entry(entry_id)
+        return CanonicalIntelligenceEntry.from_dict(row) if row else None
+
+    def mark_discovery_presented(self, entry_ids: List[str]) -> int:
+        return self._data.mark_discovery_presented(entry_ids)
 
     def ignore_canonical_entry(
         self, entry_id: str, ignored_by: Optional[str] = None
@@ -692,11 +763,13 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
+        tracking_scope: str = "following",
     ) -> int:
         return self._data.count_semantic_search_canonical_intelligence_entries(
             entry_type=entry_type,
             primary_label=primary_label,
             window=window,
+            tracking_scope=tracking_scope,
         )
 
     def semantic_search(
@@ -707,6 +780,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         window: Optional[datetime] = None,
         limit: int = 20,
         offset: int = 0,
+        tracking_scope: str = "following",
     ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
         rows = self._data.semantic_search_canonical_intelligence_entries(
             query_embedding=query_embedding,
@@ -715,6 +789,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
             window=window,
             limit=limit,
             offset=offset,
+            tracking_scope=tracking_scope,
         )
         return [(CanonicalIntelligenceEntry.from_dict(row), score) for row, score in rows]
 

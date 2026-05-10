@@ -8,6 +8,7 @@ Version: 1.0.0
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple, Set
 
@@ -21,6 +22,22 @@ from .models import (
     RawIntelligenceItem,
     SemanticSearchJob,
 )
+
+
+@dataclass(frozen=True)
+class IntelligenceEvidenceAnchor:
+    entry_id: str
+    observation_id: str
+    raw_item_id: str
+    observed_at: Optional[datetime]
+    published_at: Optional[datetime]
+    collected_at: datetime
+
+
+@dataclass(frozen=True)
+class IntelligenceRawContextWindow:
+    anchor: IntelligenceEvidenceAnchor
+    items: List[RawIntelligenceItem]
 
 
 class AnalysisRepository(ABC):
@@ -440,7 +457,9 @@ class IntelligenceRepository(ABC):
         pass
 
     @abstractmethod
-    def save_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
+    def save_canonical_entry(
+        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
+    ) -> str:
         pass
 
     @abstractmethod
@@ -454,7 +473,31 @@ class IntelligenceRepository(ABC):
         pass
 
     @abstractmethod
-    def upsert_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
+    def upsert_canonical_entry(
+        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
+    ) -> str:
+        pass
+
+    @abstractmethod
+    def save_entry_evidence_link(
+        self, entry_id: str, observation_id: str, raw_item_id: str
+    ) -> None:
+        pass
+
+    @abstractmethod
+    def list_entry_evidence_anchors(
+        self, entry_id: str, page: int = 1, page_size: int = 20
+    ) -> List[IntelligenceEvidenceAnchor]:
+        pass
+
+    @abstractmethod
+    def count_entry_evidence_anchors(self, entry_id: str) -> int:
+        pass
+
+    @abstractmethod
+    def get_entry_evidence_context_window(
+        self, entry_id: str, raw_item_id: str, before: int = 10, after: int = 10
+    ) -> Optional[IntelligenceRawContextWindow]:
         pass
 
     @abstractmethod
@@ -465,6 +508,7 @@ class IntelligenceRepository(ABC):
         window: Optional[datetime] = None,
         page: int = 1,
         page_size: int = 100,
+        tracking_scope: str = "following",
     ) -> List[CanonicalIntelligenceEntry]:
         pass
 
@@ -474,7 +518,20 @@ class IntelligenceRepository(ABC):
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
+        tracking_scope: str = "following",
     ) -> int:
+        pass
+
+    @abstractmethod
+    def follow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def unfollow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def mark_discovery_presented(self, entry_ids: List[str]) -> int:
         pass
 
     @abstractmethod
@@ -524,6 +581,7 @@ class IntelligenceRepository(ABC):
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
+        tracking_scope: str = "following",
     ) -> int:
         """Count canonical entries that have embeddings and match optional filters."""
         pass
@@ -537,6 +595,7 @@ class IntelligenceRepository(ABC):
         window: Optional[datetime] = None,
         limit: int = 20,
         offset: int = 0,
+        tracking_scope: str = "following",
     ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
         pass
 

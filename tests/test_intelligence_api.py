@@ -18,7 +18,11 @@ from crypto_news_analyzer.domain.models import (
     PrimaryLabel,
     RawIntelligenceItem,
 )
-from crypto_news_analyzer.domain.repositories import IntelligenceRepository
+from crypto_news_analyzer.domain.repositories import (
+    IntelligenceEvidenceAnchor,
+    IntelligenceRepository,
+    IntelligenceRawContextWindow,
+)
 from crypto_news_analyzer.models import StorageConfig
 
 
@@ -54,6 +58,37 @@ def _make_raw_item(
     )
 
 
+def _make_observation(
+    observation_id: str,
+    raw_item_id: str,
+    entry_type: str = EntryType.SLANG.value,
+) -> ExtractionObservation:
+    if entry_type == EntryType.SLANG.value:
+        return ExtractionObservation(
+            id=observation_id,
+            raw_item_id=raw_item_id,
+            entry_type=entry_type,
+            confidence=0.82,
+            model_name="opencode-go/glm-5.1",
+            prompt_version="v1.0",
+            schema_version="v1.0",
+            term="土区礼品卡",
+            normalized_term="土区礼品卡",
+            created_at=_utcnow(),
+        )
+    return ExtractionObservation(
+        id=observation_id,
+        raw_item_id=raw_item_id,
+        entry_type=entry_type,
+        confidence=0.82,
+        model_name="opencode-go/glm-5.1",
+        prompt_version="v1.0",
+        schema_version="v1.0",
+        channel_name="Seller Channel",
+        created_at=_utcnow(),
+    )
+
+
 def _make_canonical_entry(
     entry_id: str = "entry-001",
     entry_type: str = EntryType.CHANNEL.value,
@@ -73,6 +108,8 @@ def _make_canonical_entry(
     create_kwargs: dict[str, Any] = dict(kwargs)
     if usage_summary is not None:
         create_kwargs["usage_summary"] = usage_summary
+    if "tracking_enabled" not in create_kwargs:
+        create_kwargs["tracking_enabled"] = entry_type == EntryType.CHANNEL.value
     # Use CanonicalIntelligenceEntry directly to set a custom ID
     now = _utcnow()
     return CanonicalIntelligenceEntry(
@@ -107,6 +144,11 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         self.observations: dict[str, ExtractionObservation] = {}
         self.checkpoints: dict[tuple[str, str], IntelligenceCrawlCheckpoint] = {}
         self.related_candidates: list[Any] = []
+        self.evidence_links: list[tuple[str, str, str]] = []
+        self.list_calls: list[dict[str, Any]] = []
+        self.count_calls: list[dict[str, Any]] = []
+        self.discovery_presented_calls: list[list[str]] = []
+        self.context_window_calls: list[tuple[str, str, int, int]] = []
         self.get_by_id_calls: int = 0
         self.search_calls: int = 0
 
@@ -119,9 +161,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
     ) -> List[RawIntelligenceItem]:
         return []
 
-    def get_raw_items_expiring_before(
-        self, cutoff_time: datetime
-    ) -> List[RawIntelligenceItem]:
+    def get_raw_items_expiring_before(self, cutoff_time: datetime) -> List[RawIntelligenceItem]:
         return [
             item
             for item in self.raw_items.values()
@@ -142,9 +182,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         self.observations[observation.id] = observation
         return observation.id
 
-    def get_observations_by_raw_item(
-        self, raw_item_id: str
-    ) -> List[ExtractionObservation]:
+    def get_observations_by_raw_item(self, raw_item_id: str) -> List[ExtractionObservation]:
         return []
 
     def get_raw_item_ids_with_existing_observations(
@@ -157,16 +195,18 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
             and observation.prompt_version == prompt_version
         }
 
-    def get_uncanonicalized_observations(
-        self, limit: int
-    ) -> List[ExtractionObservation]:
+    def get_uncanonicalized_observations(self, limit: int) -> List[ExtractionObservation]:
         return []
 
     def mark_observation_canonicalized(self, observation_id: str) -> bool:
         return False
 
-    def save_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
+    def save_canonical_entry(
+        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
+    ) -> str:
         self.canonical_entries[entry.id] = entry
+        if observation_id and entry.latest_raw_item_id:
+            self.save_entry_evidence_link(entry.id, observation_id, entry.latest_raw_item_id)
         return entry.id
 
     def get_canonical_entry_by_normalized_key(
@@ -177,14 +217,96 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
                 return entry
         return None
 
-    def get_canonical_entry_by_id(
-        self, entry_id: str
-    ) -> Optional[CanonicalIntelligenceEntry]:
+    def get_canonical_entry_by_id(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
         return self.canonical_entries.get(entry_id)
 
-    def upsert_canonical_entry(self, entry: CanonicalIntelligenceEntry) -> str:
+    def upsert_canonical_entry(
+        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
+    ) -> str:
         self.canonical_entries[entry.id] = entry
+        if observation_id and entry.latest_raw_item_id:
+            self.save_entry_evidence_link(entry.id, observation_id, entry.latest_raw_item_id)
         return entry.id
+
+    def save_entry_evidence_link(
+        self, entry_id: str, observation_id: str, raw_item_id: str
+    ) -> None:
+        link = (entry_id, observation_id, raw_item_id)
+        if link not in self.evidence_links:
+            self.evidence_links.append(link)
+
+    def list_entry_evidence_anchors(
+        self, entry_id: str, page: int = 1, page_size: int = 20
+    ) -> List[IntelligenceEvidenceAnchor]:
+        anchors: List[IntelligenceEvidenceAnchor] = []
+        for linked_entry_id, observation_id, raw_item_id in self.evidence_links:
+            if linked_entry_id != entry_id:
+                continue
+            raw_item = self.raw_items.get(raw_item_id)
+            if raw_item is None:
+                continue
+            observation = self.observations.get(observation_id)
+            anchors.append(
+                IntelligenceEvidenceAnchor(
+                    entry_id=linked_entry_id,
+                    observation_id=observation_id,
+                    raw_item_id=raw_item_id,
+                    observed_at=observation.created_at if observation else None,
+                    published_at=raw_item.published_at,
+                    collected_at=raw_item.collected_at,
+                )
+            )
+        anchors.sort(
+            key=lambda anchor: (
+                anchor.published_at or anchor.collected_at,
+                anchor.raw_item_id,
+            ),
+            reverse=True,
+        )
+        start = (page - 1) * page_size
+        return anchors[start : start + page_size]
+
+    def count_entry_evidence_anchors(self, entry_id: str) -> int:
+        return sum(
+            1 for linked_entry_id, _, _ in self.evidence_links if linked_entry_id == entry_id
+        )
+
+    def get_entry_evidence_context_window(
+        self, entry_id: str, raw_item_id: str, before: int = 10, after: int = 10
+    ) -> Optional[IntelligenceRawContextWindow]:
+        self.context_window_calls.append((entry_id, raw_item_id, before, after))
+        anchors = [
+            anchor
+            for anchor in self.list_entry_evidence_anchors(entry_id, page=1, page_size=1000)
+            if anchor.raw_item_id == raw_item_id
+        ]
+        if not anchors:
+            return None
+        anchor = anchors[0]
+        raw_item = self.raw_items.get(raw_item_id)
+        if raw_item is None:
+            return None
+        scoped_items = [
+            item
+            for item in self.raw_items.values()
+            if item.source_type == raw_item.source_type
+            and item.source_id == raw_item.source_id
+            and item.chat_id == raw_item.chat_id
+            and item.thread_id == raw_item.thread_id
+            and item.topic_id == raw_item.topic_id
+        ]
+        scoped_items.sort(
+            key=lambda item: (
+                item.published_at or item.collected_at,
+                item.id,
+            )
+        )
+        anchor_index = next(
+            index for index, item in enumerate(scoped_items) if item.id == raw_item_id
+        )
+        start = max(0, anchor_index - before)
+        stop = anchor_index + after + 1
+        return IntelligenceRawContextWindow(anchor=anchor, items=scoped_items[start:stop])
 
     def list_canonical_entries(
         self,
@@ -193,16 +315,26 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         window: Optional[datetime] = None,
         page: int = 1,
         page_size: int = 100,
+        tracking_scope: str = "following",
     ) -> List[CanonicalIntelligenceEntry]:
+        self.list_calls.append(
+            {
+                "entry_type": entry_type,
+                "primary_label": primary_label,
+                "window": window,
+                "page": page,
+                "page_size": page_size,
+                "tracking_scope": tracking_scope,
+            }
+        )
         entries = [e for e in self.canonical_entries.values() if not e.is_ignored]
+        entries = self._apply_tracking_scope(entries, tracking_scope)
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
         if primary_label:
             entries = [e for e in entries if e.primary_label == primary_label]
         if window:
-            entries = [
-                e for e in entries if e.last_seen_at and e.last_seen_at >= window
-            ]
+            entries = [e for e in entries if e.last_seen_at and e.last_seen_at >= window]
         entries.sort(
             key=lambda e: e.last_seen_at or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
@@ -215,17 +347,75 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
+        tracking_scope: str = "following",
     ) -> int:
+        self.count_calls.append(
+            {
+                "entry_type": entry_type,
+                "primary_label": primary_label,
+                "window": window,
+                "tracking_scope": tracking_scope,
+            }
+        )
         entries = [e for e in self.canonical_entries.values() if not e.is_ignored]
+        entries = self._apply_tracking_scope(entries, tracking_scope)
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
         if primary_label:
             entries = [e for e in entries if e.primary_label == primary_label]
         if window:
-            entries = [
-                e for e in entries if e.last_seen_at and e.last_seen_at >= window
-            ]
+            entries = [e for e in entries if e.last_seen_at and e.last_seen_at >= window]
         return len(entries)
+
+    def _apply_tracking_scope(
+        self, entries: List[CanonicalIntelligenceEntry], tracking_scope: str
+    ) -> List[CanonicalIntelligenceEntry]:
+        if tracking_scope == "following":
+            return [
+                entry
+                for entry in entries
+                if entry.entry_type != EntryType.SLANG.value or entry.tracking_enabled
+            ]
+        if tracking_scope == "discovery":
+            return [
+                entry
+                for entry in entries
+                if entry.entry_type == EntryType.SLANG.value
+                and not entry.tracking_enabled
+                and entry.discovery_presented_at is None
+            ]
+        return entries
+
+    def follow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
+        entry = self.canonical_entries.get(entry_id)
+        if entry is None:
+            return None
+        entry.tracking_enabled = True
+        return entry
+
+    def unfollow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
+        entry = self.canonical_entries.get(entry_id)
+        if entry is None:
+            return None
+        entry.tracking_enabled = False
+        return entry
+
+    def mark_discovery_presented(self, entry_ids: List[str]) -> int:
+        self.discovery_presented_calls.append(list(entry_ids))
+        marked = 0
+        now = _utcnow()
+        for entry_id in dict.fromkeys(entry_ids):
+            entry = self.canonical_entries.get(entry_id)
+            if (
+                entry is not None
+                and entry.entry_type == EntryType.SLANG.value
+                and not entry.tracking_enabled
+                and not entry.is_ignored
+                and entry.discovery_presented_at is None
+            ):
+                entry.discovery_presented_at = now
+                marked += 1
+        return marked
 
     def ignore_canonical_entry(
         self, entry_id: str, ignored_by: Optional[str] = None
@@ -234,14 +424,13 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         if entry is None:
             return None
         from datetime import datetime as dt
+
         entry.is_ignored = True
         entry.ignored_at = dt.utcnow()
         entry.ignored_by = ignored_by
         return entry
 
-    def unignore_canonical_entry(
-        self, entry_id: str
-    ) -> Optional[CanonicalIntelligenceEntry]:
+    def unignore_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
         entry = self.canonical_entries.get(entry_id)
         if entry is None:
             return None
@@ -287,14 +476,10 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
             entries = [e for e in entries if e.last_seen_at and e.last_seen_at >= window]
         return len(entries)
 
-    def update_embedding(
-        self, entry_id: str, embedding: List[float], model: str
-    ) -> bool:
+    def update_embedding(self, entry_id: str, embedding: List[float], model: str) -> bool:
         return True
 
-    def get_entries_missing_embeddings(
-        self, limit: int
-    ) -> List[CanonicalIntelligenceEntry]:
+    def get_entries_missing_embeddings(self, limit: int) -> List[CanonicalIntelligenceEntry]:
         return []
 
     def count_semantic_search_candidates(
@@ -303,17 +488,17 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
+        tracking_scope: str = "following",
     ) -> int:
         entries = list(self.canonical_entries.values())
         entries = [e for e in entries if not e.is_ignored]
+        entries = self._apply_tracking_scope(entries, tracking_scope)
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
         if primary_label:
             entries = [e for e in entries if e.primary_label == primary_label]
         if window:
-            entries = [
-                e for e in entries if e.last_seen_at and e.last_seen_at >= window
-            ]
+            entries = [e for e in entries if e.last_seen_at and e.last_seen_at >= window]
         return len(entries)
 
     def semantic_search(
@@ -324,18 +509,18 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         window: Optional[datetime] = None,
         limit: int = 20,
         offset: int = 0,
+        tracking_scope: str = "following",
     ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
         self.search_calls += 1
         entries = list(self.canonical_entries.values())
         entries = [e for e in entries if not e.is_ignored]
+        entries = self._apply_tracking_scope(entries, tracking_scope)
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
         if primary_label:
             entries = [e for e in entries if e.primary_label == primary_label]
         if window:
-            entries = [
-                e for e in entries if e.last_seen_at and e.last_seen_at >= window
-            ]
+            entries = [e for e in entries if e.last_seen_at and e.last_seen_at >= window]
         results: List[Tuple[CanonicalIntelligenceEntry, float]] = [
             (e, e.confidence) for e in entries
         ]
@@ -354,9 +539,7 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         )
 
     def save_checkpoint(self, checkpoint: IntelligenceCrawlCheckpoint) -> None:
-        self.checkpoints[
-            (checkpoint.source_type, checkpoint.source_id)
-        ] = checkpoint
+        self.checkpoints[(checkpoint.source_type, checkpoint.source_id)] = checkpoint
 
     def get_checkpoint(
         self, source_type: str, source_id: str
@@ -415,9 +598,7 @@ class _FakeController:
         )
 
     @staticmethod
-    def _normalize_manual_recipient_key(
-        manual_source: str, recipient_id: str
-    ) -> str:
+    def _normalize_manual_recipient_key(manual_source: str, recipient_id: str) -> str:
         return f"{manual_source}:{str(recipient_id).strip()}"
 
     def initialize_system(self) -> bool:
@@ -447,9 +628,7 @@ def _build_test_app(
     start_services: bool = False,
 ):
     """Build a TestClient for the intelligence API. Use as context manager."""
-    monkeypatch.setattr(
-        api_server, "MainController", lambda *_args, **_kwargs: controller
-    )
+    monkeypatch.setattr(api_server, "MainController", lambda *_args, **_kwargs: controller)
     app = api_server.create_api_server(
         "./config.jsonc",
         start_services=start_services,
@@ -516,6 +695,20 @@ def test_intelligence_ignore_and_unignore_unauthorized_returns_401(
     assert unignore_response.status_code == 401
 
 
+def test_intelligence_discovery_follow_and_unfollow_unauthorized_returns_401(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        discovery_response = client.get("/intelligence/discovery")
+        follow_response = client.post("/intelligence/entries/entry-001/follow")
+        unfollow_response = client.post("/intelligence/entries/entry-001/unfollow")
+    assert discovery_response.status_code == 401
+    assert follow_response.status_code == 401
+    assert unfollow_response.status_code == 401
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Tests: GET /intelligence/entries
 # ──────────────────────────────────────────────────────────────────────
@@ -574,13 +767,140 @@ def test_list_entries_filters_by_entry_type(
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
         response = client.get(
-            "/intelligence/entries?entry_type=slang", headers=_authorized_headers()
+            "/intelligence/entries?entry_type=slang&tracking_scope=all",
+            headers=_authorized_headers(),
         )
 
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 1
     assert data["entries"][0]["entry_type"] == "slang"
+
+
+def test_list_entries_defaults_to_following_tracking_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    followed_slang = _make_canonical_entry(
+        entry_id="sl-followed",
+        entry_type=EntryType.SLANG.value,
+        normalized_key="followed-slang",
+        display_name="Followed Slang",
+        tracking_enabled=True,
+    )
+    untracked_slang = _make_canonical_entry(
+        entry_id="sl-untracked",
+        entry_type=EntryType.SLANG.value,
+        normalized_key="untracked-slang",
+        display_name="Untracked Slang",
+        tracking_enabled=False,
+    )
+    untracked_channel = _make_canonical_entry(
+        entry_id="channel-untracked",
+        entry_type=EntryType.CHANNEL.value,
+        normalized_key="channel-untracked",
+        display_name="Untracked Channel",
+        tracking_enabled=False,
+    )
+    repo.save_canonical_entry(followed_slang)
+    repo.save_canonical_entry(untracked_slang)
+    repo.save_canonical_entry(untracked_channel)
+
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        default_response = client.get("/intelligence/entries", headers=_authorized_headers())
+        all_response = client.get(
+            "/intelligence/entries?tracking_scope=all", headers=_authorized_headers()
+        )
+
+    assert default_response.status_code == 200
+    assert [item["entry_id"] for item in default_response.json()["entries"]] == [
+        "channel-untracked",
+        "sl-followed",
+    ]
+    assert all_response.status_code == 200
+    assert {item["entry_id"] for item in all_response.json()["entries"]} == {
+        "sl-followed",
+        "sl-untracked",
+        "channel-untracked",
+    }
+    assert repo.list_calls[0]["tracking_scope"] == "following"
+    assert repo.count_calls[0]["tracking_scope"] == "following"
+    assert repo.list_calls[1]["tracking_scope"] == "all"
+
+
+def test_discovery_returns_unseen_untracked_slang_then_marks_presented(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    unseen_slang = _make_canonical_entry(
+        entry_id="sl-unseen",
+        entry_type=EntryType.SLANG.value,
+        normalized_key="unseen-slang",
+        display_name="Unseen Slang",
+        tracking_enabled=False,
+    )
+    channel = _make_canonical_entry(entry_id="channel", display_name="Channel")
+    followed_slang = _make_canonical_entry(
+        entry_id="sl-followed",
+        entry_type=EntryType.SLANG.value,
+        normalized_key="followed-slang",
+        display_name="Followed Slang",
+        tracking_enabled=True,
+    )
+    repo.save_canonical_entry(unseen_slang)
+    repo.save_canonical_entry(channel)
+    repo.save_canonical_entry(followed_slang)
+
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        first_response = client.get("/intelligence/discovery", headers=_authorized_headers())
+        second_response = client.get("/intelligence/discovery", headers=_authorized_headers())
+
+    assert first_response.status_code == 200
+    first_data = first_response.json()
+    assert first_data["total"] == 1
+    assert [item["entry_id"] for item in first_data["entries"]] == ["sl-unseen"]
+    assert first_data["entries"][0]["entry_type"] == EntryType.SLANG.value
+    assert repo.discovery_presented_calls == [["sl-unseen"], []]
+    assert second_response.status_code == 200
+    assert second_response.json()["entries"] == []
+
+
+def test_follow_and_unfollow_toggle_tracking_without_changing_ignore_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    entry = _make_canonical_entry(
+        entry_id="sl-toggle",
+        entry_type=EntryType.SLANG.value,
+        normalized_key="toggle-slang",
+        display_name="Toggle Slang",
+        tracking_enabled=False,
+    )
+    repo.save_canonical_entry(entry)
+    repo.ignore_canonical_entry("sl-toggle", ignored_by="operator-id")
+
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        follow_response = client.post(
+            "/intelligence/entries/sl-toggle/follow", headers=_authorized_headers()
+        )
+        unfollow_response = client.post(
+            "/intelligence/entries/sl-toggle/unfollow", headers=_authorized_headers()
+        )
+
+    assert follow_response.status_code == 200
+    assert follow_response.json() == {
+        "success": True,
+        "entry_id": "sl-toggle",
+        "tracking_enabled": True,
+        "is_ignored": True,
+    }
+    assert unfollow_response.status_code == 200
+    assert unfollow_response.json()["tracking_enabled"] is False
+    assert repo.canonical_entries["sl-toggle"].is_ignored is True
+    assert repo.canonical_entries["sl-toggle"].ignored_by == "operator-id"
 
 
 def test_list_entries_filters_by_primary_label(
@@ -703,13 +1023,9 @@ def test_ignore_entry_hides_from_entries_and_labels(
     assert detail_data["ignored_by"] == "operator-id"
     assert detail_data["ignored_at"] is not None
     assert list_response.status_code == 200
-    assert [item["entry_id"] for item in list_response.json()["entries"]] == [
-        "entry-visible"
-    ]
+    assert [item["entry_id"] for item in list_response.json()["entries"]] == ["entry-visible"]
     assert search_response.status_code == 200
-    assert [item["entry_id"] for item in search_response.json()["results"]] == [
-        "entry-visible"
-    ]
+    assert [item["entry_id"] for item in search_response.json()["results"]] == ["entry-visible"]
     assert labels_response.status_code == 200
 
 
@@ -777,9 +1093,7 @@ def test_list_intelligence_labels_returns_primary_label_values(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["labels"] == [
-        {"name": label.name, "value": label.value} for label in PrimaryLabel
-    ]
+    assert data["labels"] == [{"name": label.name, "value": label.value} for label in PrimaryLabel]
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -801,9 +1115,7 @@ def test_get_entry_detail_returns_full_entry(
 
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
-        response = client.get(
-            "/intelligence/entries/entry-full", headers=_authorized_headers()
-        )
+        response = client.get("/intelligence/entries/entry-full", headers=_authorized_headers())
 
     assert response.status_code == 200
     data = response.json()
@@ -812,6 +1124,98 @@ def test_get_entry_detail_returns_full_entry(
     assert data["display_name"] == "Full Entry"
     assert data["evidence_count"] == 3
     assert data["raw_available"] is False
+    assert data["evidence_page"] == 1
+    assert data["evidence_page_size"] == 5
+
+
+def test_get_entry_detail_returns_paginated_evidence_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    entry = _make_canonical_entry(
+        entry_id="entry-evidence",
+        display_name="Evidence Entry",
+        normalized_key="evidence-entry",
+        evidence_count=6,
+        latest_raw_item_id="raw-5",
+    )
+    repo.save_canonical_entry(entry)
+    for index in range(6):
+        raw_item = _make_raw_item(
+            raw_item_id=f"raw-{index}",
+            raw_text=f"raw text {index}",
+            source_url=f"https://example.com/{index}",
+            published_at=_utcnow() - timedelta(minutes=6 - index),
+        )
+        repo.save_raw_item(raw_item)
+        observation = _make_observation(f"obs-{index}", raw_item.id)
+        repo.save_observation(observation)
+        repo.save_entry_evidence_link(entry.id, observation.id, raw_item.id)
+
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        first_response = client.get(
+            "/intelligence/entries/entry-evidence", headers=_authorized_headers()
+        )
+        second_response = client.get(
+            "/intelligence/entries/entry-evidence?evidence_page=2&evidence_page_size=5",
+            headers=_authorized_headers(),
+        )
+
+    assert first_response.status_code == 200
+    first_data = first_response.json()
+    assert first_data["evidence_total"] == 6
+    assert first_data["evidence_page"] == 1
+    assert first_data["evidence_page_size"] == 5
+    assert len(first_data["evidence_groups"]) == 5
+    first_anchor_ids = [group["raw_item_id"] for group in first_data["evidence_groups"]]
+    assert first_anchor_ids == ["raw-5", "raw-4", "raw-3", "raw-2", "raw-1"]
+    first_group = first_data["evidence_groups"][0]
+    assert first_group["anchor_raw_item"]["raw_item_id"] == "raw-5"
+    assert first_group["anchor_raw_item"]["raw_text"] == "raw text 5"
+    assert "raw-5" not in [item["raw_item_id"] for item in first_group["neighboring_raw_items"]]
+    assert repo.context_window_calls[0] == ("entry-evidence", "raw-5", 10, 10)
+
+    assert second_response.status_code == 200
+    second_data = second_response.json()
+    assert second_data["evidence_page"] == 2
+    assert [group["raw_item_id"] for group in second_data["evidence_groups"]] == ["raw-0"]
+    assert set(first_anchor_ids).isdisjoint(
+        {group["raw_item_id"] for group in second_data["evidence_groups"]}
+    )
+
+
+def test_get_entry_detail_preserves_expired_evidence_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    raw_item = _make_raw_item(
+        raw_item_id="raw-purged",
+        raw_text="raw text before purge",
+        expires_at=_utcnow() + timedelta(days=1),
+    )
+    raw_item.raw_text = ""
+    repo.save_raw_item(raw_item)
+    observation = _make_observation("obs-purged", raw_item.id)
+    repo.save_observation(observation)
+    entry = _make_canonical_entry(
+        entry_id="entry-purged",
+        display_name="Purged Entry",
+        normalized_key="purged-entry",
+        evidence_count=1,
+        latest_raw_item_id="raw-purged",
+    )
+    repo.save_canonical_entry(entry)
+    repo.save_entry_evidence_link(entry.id, observation.id, raw_item.id)
+
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        response = client.get("/intelligence/entries/entry-purged", headers=_authorized_headers())
+
+    assert response.status_code == 200
+    group = response.json()["evidence_groups"][0]
+    assert group["anchor_raw_item"]["raw_text"] is None
+    assert group["warning"] == "Evidence raw text is unavailable because it has been purged."
 
 
 def test_ignored_entries_list_endpoint(
@@ -836,9 +1240,7 @@ def test_ignored_entries_list_endpoint(
 
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
-        response = client.get(
-            "/intelligence/entries/ignored", headers=_authorized_headers()
-        )
+        response = client.get("/intelligence/entries/ignored", headers=_authorized_headers())
 
     assert response.status_code == 200
     data = response.json()
@@ -855,9 +1257,7 @@ def test_get_entry_detail_not_found_returns_404(
     repo = _InMemoryIntelligenceRepository()
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
-        response = client.get(
-            "/intelligence/entries/nonexistent", headers=_authorized_headers()
-        )
+        response = client.get("/intelligence/entries/nonexistent", headers=_authorized_headers())
     assert response.status_code == 404
 
 
@@ -1004,9 +1404,7 @@ def test_semantic_search_returns_ranked_results(
     repo.save_canonical_entry(low_conf)
 
     embedding_service = _FakeEmbeddingService()
-    controller = _FakeController(
-        intelligence_repository=repo, embedding_service=embedding_service
-    )
+    controller = _FakeController(intelligence_repository=repo, embedding_service=embedding_service)
     with _build_test_app(monkeypatch, controller) as client:
         response = client.get(
             "/intelligence/search?q=GPT%20plus%E8%B4%AD%E4%B9%B0%E6%B8%A0%E9%81%93",
@@ -1043,12 +1441,10 @@ def test_semantic_search_filters_by_entry_type(
     repo.save_canonical_entry(slang)
 
     embedding_service = _FakeEmbeddingService()
-    controller = _FakeController(
-        intelligence_repository=repo, embedding_service=embedding_service
-    )
+    controller = _FakeController(intelligence_repository=repo, embedding_service=embedding_service)
     with _build_test_app(monkeypatch, controller) as client:
         response = client.get(
-            "/intelligence/search?q=slang&entry_type=slang",
+            "/intelligence/search?q=slang&entry_type=slang&tracking_scope=all",
             headers=_authorized_headers(),
         )
 
@@ -1056,6 +1452,59 @@ def test_semantic_search_filters_by_entry_type(
     data = response.json()
     assert data["total"] == 1
     assert data["results"][0]["entry_type"] == "slang"
+
+
+def test_semantic_search_defaults_to_following_tracking_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    followed_slang = _make_canonical_entry(
+        entry_id="search-followed",
+        entry_type=EntryType.SLANG.value,
+        normalized_key="search-followed",
+        display_name="Search Followed",
+        tracking_enabled=True,
+        confidence=0.9,
+    )
+    untracked_slang = _make_canonical_entry(
+        entry_id="search-untracked",
+        entry_type=EntryType.SLANG.value,
+        normalized_key="search-untracked",
+        display_name="Search Untracked",
+        tracking_enabled=False,
+        confidence=0.95,
+    )
+    untracked_channel = _make_canonical_entry(
+        entry_id="search-channel",
+        entry_type=EntryType.CHANNEL.value,
+        normalized_key="search-channel",
+        display_name="Search Channel",
+        tracking_enabled=False,
+        confidence=0.92,
+    )
+    repo.save_canonical_entry(followed_slang)
+    repo.save_canonical_entry(untracked_slang)
+    repo.save_canonical_entry(untracked_channel)
+
+    controller = _FakeController(
+        intelligence_repository=repo, embedding_service=_FakeEmbeddingService()
+    )
+    with _build_test_app(monkeypatch, controller) as client:
+        default_response = client.get("/intelligence/search?q=slang", headers=_authorized_headers())
+        discovery_response = client.get(
+            "/intelligence/search?q=slang&tracking_scope=discovery",
+            headers=_authorized_headers(),
+        )
+
+    assert default_response.status_code == 200
+    assert [item["entry_id"] for item in default_response.json()["results"]] == [
+        "search-channel",
+        "search-followed",
+    ]
+    assert discovery_response.status_code == 200
+    assert [item["entry_id"] for item in discovery_response.json()["results"]] == [
+        "search-untracked"
+    ]
 
 
 def test_semantic_search_excludes_ignored_entries(
@@ -1158,9 +1607,7 @@ def test_semantic_search_missing_q_param_returns_422(
 ) -> None:
     repo = _InMemoryIntelligenceRepository()
     embedding_service = _FakeEmbeddingService()
-    controller = _FakeController(
-        intelligence_repository=repo, embedding_service=embedding_service
-    )
+    controller = _FakeController(intelligence_repository=repo, embedding_service=embedding_service)
     with _build_test_app(monkeypatch, controller) as client:
         response = client.get("/intelligence/search", headers=_authorized_headers())
     assert response.status_code == 422
@@ -1191,9 +1638,7 @@ def test_get_raw_item_returns_full_details(
 
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
-        response = client.get(
-            "/intelligence/raw/raw-detail", headers=_authorized_headers()
-        )
+        response = client.get("/intelligence/raw/raw-detail", headers=_authorized_headers())
 
     assert response.status_code == 200
     data = response.json()
@@ -1220,9 +1665,7 @@ def test_get_raw_item_expired_returns_null_raw_text_and_is_expired_true(
 
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
-        response = client.get(
-            "/intelligence/raw/raw-expired", headers=_authorized_headers()
-        )
+        response = client.get("/intelligence/raw/raw-expired", headers=_authorized_headers())
 
     assert response.status_code == 200
     data = response.json()
@@ -1236,9 +1679,7 @@ def test_get_raw_item_not_found_returns_404(
     repo = _InMemoryIntelligenceRepository()
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
-        response = client.get(
-            "/intelligence/raw/nonexistent", headers=_authorized_headers()
-        )
+        response = client.get("/intelligence/raw/nonexistent", headers=_authorized_headers())
     assert response.status_code == 404
 
 
@@ -1266,13 +1707,9 @@ def test_semantic_search_empty_repository_returns_empty(
 ) -> None:
     repo = _InMemoryIntelligenceRepository()
     embedding_service = _FakeEmbeddingService()
-    controller = _FakeController(
-        intelligence_repository=repo, embedding_service=embedding_service
-    )
+    controller = _FakeController(intelligence_repository=repo, embedding_service=embedding_service)
     with _build_test_app(monkeypatch, controller) as client:
-        response = client.get(
-            "/intelligence/search?q=nothing", headers=_authorized_headers()
-        )
+        response = client.get("/intelligence/search?q=nothing", headers=_authorized_headers())
 
     assert response.status_code == 200
     data = response.json()
@@ -1294,7 +1731,5 @@ def test_raw_endpoint_requires_intelligence_repository(
 ) -> None:
     controller = _FakeController(intelligence_repository=None)
     with _build_test_app(monkeypatch, controller) as client:
-        response = client.get(
-            "/intelligence/raw/raw-001", headers=_authorized_headers()
-        )
+        response = client.get("/intelligence/raw/raw-001", headers=_authorized_headers())
     assert response.status_code == 503

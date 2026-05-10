@@ -492,12 +492,28 @@ class DataManager:
                 is_ignored BOOLEAN NOT NULL DEFAULT FALSE,
                 ignored_at {datetime_type},
                 ignored_by TEXT,
+                tracking_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                discovery_presented_at {datetime_type},
                 embedding {embedding_type},
                 embedding_model TEXT,
                 embedding_updated_at {datetime_type},
                 created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
                 updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (latest_raw_item_id) REFERENCES raw_intelligence_items (id) ON DELETE SET NULL
+            )
+        """)
+        self._ensure_intelligence_tracking_columns(cursor)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_entry_evidence_links (
+                entry_id TEXT NOT NULL,
+                observation_id TEXT NOT NULL,
+                raw_item_id TEXT NOT NULL,
+                observed_at {datetime_type},
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (entry_id, raw_item_id),
+                FOREIGN KEY (entry_id) REFERENCES intelligence_canonical_entries (id) ON DELETE CASCADE,
+                FOREIGN KEY (observation_id) REFERENCES intelligence_extraction_observations (id) ON DELETE CASCADE,
+                FOREIGN KEY (raw_item_id) REFERENCES raw_intelligence_items (id) ON DELETE CASCADE
             )
         """)
         cursor.execute("""
@@ -609,8 +625,24 @@ class DataManager:
                 "ON intelligence_canonical_entries (is_ignored)"
             ),
             (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_tracking "
+                "ON intelligence_canonical_entries (tracking_enabled, discovery_presented_at)"
+            ),
+            (
                 "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_embedding_model "
                 "ON intelligence_canonical_entries (embedding_model)"
+            ),
+            (
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_entry_evidence_unique "
+                "ON intelligence_entry_evidence_links (entry_id, raw_item_id)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_entry_evidence_entry_time "
+                "ON intelligence_entry_evidence_links (entry_id, observed_at)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_entry_evidence_raw_item "
+                "ON intelligence_entry_evidence_links (raw_item_id)"
             ),
             (
                 "CREATE INDEX IF NOT EXISTS idx_intelligence_aliases_alias "
@@ -638,6 +670,75 @@ class DataManager:
             ),
         ]:
             cursor.execute(statement)
+
+    def _ensure_intelligence_tracking_columns(self, cursor: Any) -> None:
+        if self.backend == "postgres":
+            cursor.execute("""
+                ALTER TABLE intelligence_canonical_entries
+                ADD COLUMN IF NOT EXISTS tracking_enabled BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+            cursor.execute("""
+                ALTER TABLE intelligence_canonical_entries
+                ADD COLUMN IF NOT EXISTS discovery_presented_at TIMESTAMPTZ
+            """)
+            return
+
+        cursor.execute("PRAGMA table_info(intelligence_canonical_entries)")
+        columns = {row[1] for row in cursor.fetchall()}
+        tracking_column_added = "tracking_enabled" not in columns
+        discovery_column_added = "discovery_presented_at" not in columns
+        if tracking_column_added:
+            cursor.execute(
+                "ALTER TABLE intelligence_canonical_entries "
+                "ADD COLUMN tracking_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+        if discovery_column_added:
+            cursor.execute(
+                "ALTER TABLE intelligence_canonical_entries "
+                "ADD COLUMN discovery_presented_at DATETIME"
+            )
+
+        if tracking_column_added:
+            cursor.execute(
+                self._sql("""
+                    UPDATE intelligence_canonical_entries
+                    SET tracking_enabled = ?
+                    WHERE is_ignored = ?
+                """),
+                (False, True),
+            )
+            cursor.execute(
+                self._sql("""
+                    UPDATE intelligence_canonical_entries
+                    SET tracking_enabled = ?
+                    WHERE is_ignored = ? AND entry_type = ?
+                """),
+                (True, False, "channel"),
+            )
+            cursor.execute(
+                self._sql("""
+                    UPDATE intelligence_canonical_entries
+                    SET tracking_enabled = ?
+                    WHERE is_ignored = ? AND entry_type = ?
+                """),
+                (False, False, "slang"),
+            )
+
+        if discovery_column_added:
+            cursor.execute(
+                self._sql("""
+                    UPDATE intelligence_canonical_entries
+                    SET discovery_presented_at = COALESCE(
+                        discovery_presented_at,
+                        ignored_at,
+                        updated_at,
+                        created_at,
+                        CURRENT_TIMESTAMP
+                    )
+                    WHERE is_ignored = ?
+                """),
+                (True,),
+            )
 
     @contextmanager
     def _get_connection(self):
@@ -2324,7 +2425,8 @@ class DataManager:
         assignments = ", ".join(f"{column} = excluded.{column}" for column in columns[1:])
         with self._lock:
             with self._get_connection() as conn:
-                conn.cursor().execute(
+                cursor = conn.cursor()
+                cursor.execute(
                     self._sql(f"""
                     INSERT INTO raw_intelligence_items ({', '.join(columns)})
                     VALUES ({', '.join(['?'] * len(columns))})
@@ -2520,8 +2622,7 @@ class DataManager:
                 (*raw_item_ids, prompt_version),
             )
             return {
-                row["raw_item_id"] if isinstance(row, dict) else row[0]
-                for row in cursor.fetchall()
+                row["raw_item_id"] if isinstance(row, dict) else row[0] for row in cursor.fetchall()
             }
 
     def get_uncanonicalized_intelligence_observations(self, limit: int) -> List[Dict[str, Any]]:
@@ -2551,7 +2652,10 @@ class DataManager:
                 return updated
 
     def upsert_canonical_intelligence_entry(
-        self, entry: Dict[str, Any], by_normalized_key: bool = False
+        self,
+        entry: Dict[str, Any],
+        by_normalized_key: bool = False,
+        observation_id: Optional[str] = None,
     ) -> str:
         json_fields = {"secondary_tags"}
         columns = [
@@ -2574,6 +2678,8 @@ class DataManager:
             "is_ignored",
             "ignored_at",
             "ignored_by",
+            "tracking_enabled",
+            "discovery_presented_at",
             "embedding",
             "embedding_model",
             "embedding_updated_at",
@@ -2591,6 +2697,8 @@ class DataManager:
                     if self.backend == "postgres"
                     else json.dumps(value)
                 )
+            elif column == "tracking_enabled":
+                value = bool(value)
             elif isinstance(value, datetime):
                 value = value.isoformat()
             values.append(value)
@@ -2599,7 +2707,8 @@ class DataManager:
         assignments = ", ".join(f"{column} = {excluded}.{column}" for column in columns[1:])
         with self._lock:
             with self._get_connection() as conn:
-                conn.cursor().execute(
+                cursor = conn.cursor()
+                cursor.execute(
                     self._sql(f"""
                     INSERT INTO intelligence_canonical_entries ({', '.join(columns)})
                     VALUES ({', '.join(['?'] * len(columns))})
@@ -2625,12 +2734,182 @@ class DataManager:
                             """),
                             (entry["id"], alias, "exact_match", entry.get("confidence", 0.0)),
                         )
+                if observation_id and entry.get("latest_raw_item_id"):
+                    self._upsert_entry_evidence_link_with_cursor(
+                        cursor,
+                        str(entry["id"]),
+                        observation_id,
+                        str(entry["latest_raw_item_id"]),
+                    )
                 conn.commit()
                 return str(entry["id"])
+
+    def _upsert_entry_evidence_link_with_cursor(
+        self, cursor: Any, entry_id: str, observation_id: str, raw_item_id: str
+    ) -> None:
+        cursor.execute(
+            self._sql("""
+            INSERT INTO intelligence_entry_evidence_links
+                (entry_id, observation_id, raw_item_id, observed_at)
+            SELECT ?, ?, ?, created_at
+            FROM intelligence_extraction_observations
+            WHERE id = ? AND raw_item_id = ?
+            ON CONFLICT(entry_id, raw_item_id) DO UPDATE SET
+                observation_id = CASE
+                    WHEN excluded.observed_at < intelligence_entry_evidence_links.observed_at
+                    THEN excluded.observation_id
+                    ELSE intelligence_entry_evidence_links.observation_id
+                END,
+                observed_at = CASE
+                    WHEN excluded.observed_at < intelligence_entry_evidence_links.observed_at
+                    THEN excluded.observed_at
+                    ELSE intelligence_entry_evidence_links.observed_at
+                END
+            """),
+            (entry_id, observation_id, raw_item_id, observation_id, raw_item_id),
+        )
+
+    def upsert_intelligence_entry_evidence_link(
+        self, entry_id: str, observation_id: str, raw_item_id: str
+    ) -> None:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                self._upsert_entry_evidence_link_with_cursor(
+                    cursor, entry_id, observation_id, raw_item_id
+                )
+                conn.commit()
+
+    def _serialize_intelligence_evidence_anchor_row(self, row: Any) -> Dict[str, Any]:
+        return {
+            "entry_id": row["entry_id"],
+            "observation_id": row["observation_id"],
+            "raw_item_id": row["raw_item_id"],
+            "observed_at": self._dt_out(row["observed_at"]),
+            "published_at": self._dt_out(row["published_at"]),
+            "collected_at": self._dt_out(row["collected_at"]),
+        }
+
+    def list_intelligence_entry_evidence_anchors(
+        self, entry_id: str, page: int = 1, page_size: int = 20
+    ) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT
+                    link.entry_id,
+                    link.observation_id,
+                    link.raw_item_id,
+                    link.observed_at,
+                    raw.published_at,
+                    raw.collected_at
+                FROM intelligence_entry_evidence_links AS link
+                JOIN raw_intelligence_items AS raw ON raw.id = link.raw_item_id
+                WHERE link.entry_id = ?
+                ORDER BY COALESCE(raw.published_at, raw.collected_at) DESC, raw.id DESC
+                LIMIT ? OFFSET ?
+                """),
+                (entry_id, max(1, page_size), max(0, page - 1) * max(1, page_size)),
+            )
+            return [
+                self._serialize_intelligence_evidence_anchor_row(row)
+                for row in cursor.fetchall()
+            ]
+
+    def count_intelligence_entry_evidence_anchors(self, entry_id: str) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql(
+                    "SELECT COUNT(*) AS total FROM intelligence_entry_evidence_links WHERE entry_id = ?"
+                ),
+                (entry_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return 0
+            return int(row["total"] if self.backend == "postgres" else row[0])
+
+    def get_intelligence_entry_evidence_context_window(
+        self, entry_id: str, raw_item_id: str, before: int = 10, after: int = 10
+    ) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT
+                    link.entry_id,
+                    link.observation_id,
+                    link.raw_item_id,
+                    link.observed_at,
+                    raw.published_at,
+                    raw.collected_at,
+                    raw.source_type,
+                    raw.source_id,
+                    raw.chat_id,
+                    raw.thread_id,
+                    raw.topic_id
+                FROM intelligence_entry_evidence_links AS link
+                JOIN raw_intelligence_items AS raw ON raw.id = link.raw_item_id
+                WHERE link.entry_id = ? AND link.raw_item_id = ?
+                LIMIT 1
+                """),
+                (entry_id, raw_item_id),
+            )
+            anchor = cursor.fetchone()
+            if not anchor:
+                return None
+
+            cursor.execute(
+                self._sql("""
+                WITH scoped AS (
+                    SELECT
+                        raw_intelligence_items.*,
+                        ROW_NUMBER() OVER (
+                            ORDER BY COALESCE(published_at, collected_at), id
+                        ) AS context_position
+                    FROM raw_intelligence_items
+                    WHERE source_type = ?
+                      AND (source_id = ? OR (source_id IS NULL AND ? IS NULL))
+                      AND (chat_id = ? OR (chat_id IS NULL AND ? IS NULL))
+                      AND (thread_id = ? OR (thread_id IS NULL AND ? IS NULL))
+                      AND (topic_id = ? OR (topic_id IS NULL AND ? IS NULL))
+                ), anchor_position AS (
+                    SELECT context_position FROM scoped WHERE id = ?
+                )
+                SELECT scoped.*
+                FROM scoped, anchor_position
+                WHERE scoped.context_position BETWEEN anchor_position.context_position - ?
+                  AND anchor_position.context_position + ?
+                ORDER BY scoped.context_position ASC
+                """),
+                (
+                    anchor["source_type"],
+                    anchor["source_id"],
+                    anchor["source_id"],
+                    anchor["chat_id"],
+                    anchor["chat_id"],
+                    anchor["thread_id"],
+                    anchor["thread_id"],
+                    anchor["topic_id"],
+                    anchor["topic_id"],
+                    raw_item_id,
+                    max(0, before),
+                    max(0, after),
+                ),
+            )
+            return {
+                "anchor": self._serialize_intelligence_evidence_anchor_row(anchor),
+                "items": [
+                    self._serialize_raw_intelligence_item_row(row) for row in cursor.fetchall()
+                ],
+            }
 
     def _serialize_canonical_intelligence_entry_row(self, conn: Any, row: Any) -> Dict[str, Any]:
         data = {key: self._dt_out(row[key]) for key in row.keys()}
         data["is_ignored"] = bool(data.get("is_ignored", False))
+        data["tracking_enabled"] = bool(data.get("tracking_enabled", False))
         data["secondary_tags"] = self._json_load(data.get("secondary_tags"), [])
         data["embedding"] = self._json_load(data.get("embedding"), data.get("embedding"))
         if isinstance(data.get("embedding"), str) and data["embedding"].startswith("["):
@@ -2672,10 +2951,12 @@ class DataManager:
         window: Optional[datetime] = None,
         page: int = 1,
         page_size: int = 100,
+        tracking_scope: str = "following",
     ) -> List[Dict[str, Any]]:
         params: List[Any] = []
         filters = ["is_ignored = ?"]
         params.append(False)
+        self._add_canonical_tracking_scope_filter(filters, params, tracking_scope)
         if entry_type:
             filters.append("entry_type = ?")
             params.append(entry_type)
@@ -2698,9 +2979,7 @@ class DataManager:
                 for row in cursor.fetchall()
             ]
 
-    def get_canonical_intelligence_entry_by_id(
-        self, entry_id: str
-    ) -> Optional[Dict[str, Any]]:
+    def get_canonical_intelligence_entry_by_id(self, entry_id: str) -> Optional[Dict[str, Any]]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -2718,10 +2997,12 @@ class DataManager:
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
+        tracking_scope: str = "following",
     ) -> int:
         params: List[Any] = []
         filters = ["is_ignored = ?"]
         params.append(False)
+        self._add_canonical_tracking_scope_filter(filters, params, tracking_scope)
         if entry_type:
             filters.append("entry_type = ?")
             params.append(entry_type)
@@ -2739,6 +3020,78 @@ class DataManager:
             cursor.execute(self._sql(query), tuple(params))
             row = cursor.fetchone()
             return int(row["count"] if self.backend == "postgres" else row[0]) if row else 0
+
+    def _add_canonical_tracking_scope_filter(
+        self, filters: List[str], params: List[Any], tracking_scope: str
+    ) -> None:
+        if tracking_scope not in {"following", "discovery", "all"}:
+            raise ValueError("tracking_scope must be one of: following, discovery, all")
+        if tracking_scope == "following":
+            filters.append("(entry_type != ? OR tracking_enabled = ?)")
+            params.extend(["slang", True])
+        elif tracking_scope == "discovery":
+            filters.extend(
+                [
+                    "entry_type = ?",
+                    "tracking_enabled = ?",
+                    "discovery_presented_at IS NULL",
+                ]
+            )
+            params.extend(["slang", False])
+
+    def follow_canonical_intelligence_entry(self, entry_id: str) -> Optional[Dict[str, Any]]:
+        return self._set_canonical_intelligence_tracking(entry_id, True)
+
+    def unfollow_canonical_intelligence_entry(self, entry_id: str) -> Optional[Dict[str, Any]]:
+        return self._set_canonical_intelligence_tracking(entry_id, False)
+
+    def _set_canonical_intelligence_tracking(
+        self, entry_id: str, tracking_enabled: bool
+    ) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(
+                        "UPDATE intelligence_canonical_entries "
+                        "SET tracking_enabled = ?, updated_at = ? WHERE id = ?"
+                    ),
+                    (tracking_enabled, datetime.utcnow().isoformat(), entry_id),
+                )
+                if cursor.rowcount == 0:
+                    conn.commit()
+                    return None
+                cursor.execute(
+                    self._sql("SELECT * FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"),
+                    (entry_id,),
+                )
+                row = cursor.fetchone()
+                conn.commit()
+                return self._serialize_canonical_intelligence_entry_row(conn, row) if row else None
+
+    def mark_discovery_presented(self, entry_ids: List[str]) -> int:
+        ids = [entry_id for entry_id in dict.fromkeys(entry_ids) if entry_id]
+        if not ids:
+            return 0
+        now = datetime.utcnow().isoformat()
+        placeholders = ", ".join("?" for _ in ids)
+        params: List[Any] = [now, "slang", False, False, *ids]
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(
+                        "UPDATE intelligence_canonical_entries "
+                        "SET discovery_presented_at = ?, updated_at = ? "
+                        "WHERE entry_type = ? AND tracking_enabled = ? AND is_ignored = ? "
+                        "AND discovery_presented_at IS NULL "
+                        f"AND id IN ({placeholders})"
+                    ),
+                    (now, *params),
+                )
+                updated = cursor.rowcount
+                conn.commit()
+                return int(updated)
 
     def update_canonical_intelligence_embedding(
         self, entry_id: str, embedding: List[float], model: str
@@ -2813,10 +3166,12 @@ class DataManager:
         entry_type: Optional[str] = None,
         primary_label: Optional[str] = None,
         window: Optional[datetime] = None,
+        tracking_scope: str = "following",
     ) -> int:
         params: List[Any] = []
         filters = ["embedding IS NOT NULL", "is_ignored = ?"]
         params.append(False)
+        self._add_canonical_tracking_scope_filter(filters, params, tracking_scope)
         if entry_type:
             filters.append("entry_type = ?")
             params.append(entry_type)
@@ -2844,9 +3199,11 @@ class DataManager:
         window: Optional[datetime] = None,
         limit: int = 20,
         offset: int = 0,
+        tracking_scope: str = "following",
     ) -> List[Tuple[Dict[str, Any], float]]:
         filters = ["embedding IS NOT NULL", "is_ignored = ?"]
         params: List[Any] = [False]
+        self._add_canonical_tracking_scope_filter(filters, params, tracking_scope)
         if entry_type:
             filters.append("entry_type = ?")
             params.append(entry_type)
@@ -2892,7 +3249,9 @@ class DataManager:
                     serialized.pop("boosted_similarity", None)
                     results.append((serialized, float(row["boosted_similarity"])))
                 return results
-        rows = self.list_canonical_intelligence_entries(entry_type, primary_label, window, 1, 10000)
+        rows = self.list_canonical_intelligence_entries(
+            entry_type, primary_label, window, 1, 10000, tracking_scope
+        )
         scored = []
         for row in rows:
             embedding = row.get("embedding")
@@ -2921,30 +3280,24 @@ class DataManager:
                 cursor.execute(
                     self._sql(
                         "UPDATE intelligence_canonical_entries "
-                        "SET is_ignored = ?, ignored_at = ?, ignored_by = ? "
+                        "SET is_ignored = ?, ignored_at = ?, ignored_by = ?, "
+                        "tracking_enabled = ?, discovery_presented_at = COALESCE(discovery_presented_at, ?) "
                         "WHERE id = ?"
                     ),
-                    (True, now, ignored_by, entry_id),
+                    (True, now, ignored_by, False, now, entry_id),
                 )
                 if cursor.rowcount == 0:
                     conn.commit()
                     return None
                 cursor.execute(
-                    self._sql(
-                        "SELECT * FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"
-                    ),
+                    self._sql("SELECT * FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"),
                     (entry_id,),
                 )
                 row = cursor.fetchone()
                 conn.commit()
-                return (
-                    self._serialize_canonical_intelligence_entry_row(conn, row)
-                    if row else None
-                )
+                return self._serialize_canonical_intelligence_entry_row(conn, row) if row else None
 
-    def unignore_canonical_intelligence_entry(
-        self, entry_id: str
-    ) -> Optional[Dict[str, Any]]:
+    def unignore_canonical_intelligence_entry(self, entry_id: str) -> Optional[Dict[str, Any]]:
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -2960,17 +3313,12 @@ class DataManager:
                     conn.commit()
                     return None
                 cursor.execute(
-                    self._sql(
-                        "SELECT * FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"
-                    ),
+                    self._sql("SELECT * FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"),
                     (entry_id,),
                 )
                 row = cursor.fetchone()
                 conn.commit()
-                return (
-                    self._serialize_canonical_intelligence_entry_row(conn, row)
-                    if row else None
-                )
+                return self._serialize_canonical_intelligence_entry_row(conn, row) if row else None
 
     def list_ignored_canonical_intelligence_entries(
         self,

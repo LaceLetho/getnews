@@ -88,6 +88,7 @@ def test_extraction_observation_validates_channel_and_slang_dispatch():
 
 
 def test_canonical_entry_and_checkpoint_round_trip_and_secret_rejection():
+    discovery_presented_at = datetime.utcnow()
     entry = CanonicalIntelligenceEntry.create(
         entry_type=EntryType.CHANNEL.value,
         normalized_key="HTTPS://T.ME/Alpha",
@@ -96,6 +97,8 @@ def test_canonical_entry_and_checkpoint_round_trip_and_secret_rejection():
         confidence=0.9,
         aliases=["alpha"],
         embedding=[0.1, 0.2, 0.3],
+        tracking_enabled=False,
+        discovery_presented_at=discovery_presented_at,
     )
     checkpoint = IntelligenceCrawlCheckpoint.create(
         source_type="telegram",
@@ -104,9 +107,10 @@ def test_canonical_entry_and_checkpoint_round_trip_and_secret_rejection():
         status=CheckpointStatus.OK.value,
     )
 
-    assert (
-        CanonicalIntelligenceEntry.from_dict(entry.to_dict()).normalized_key == "https://t.me/alpha"
-    )
+    loaded_entry = CanonicalIntelligenceEntry.from_dict(entry.to_dict())
+    assert loaded_entry.normalized_key == "https://t.me/alpha"
+    assert loaded_entry.tracking_enabled is False
+    assert loaded_entry.discovery_presented_at == discovery_presented_at
     assert IntelligenceCrawlCheckpoint.from_dict(checkpoint.to_dict()).checkpoint_data == {
         "cursor": "42"
     }
@@ -129,6 +133,31 @@ def test_canonical_entry_and_checkpoint_round_trip_and_secret_rejection():
             source_type="rest_api",
             config_payload={"V2EX_PAT": "secret"},
         )
+
+
+def test_canonical_entry_tracking_defaults_by_entry_type_and_ignore_state():
+    channel = CanonicalIntelligenceEntry.create(
+        entry_type=EntryType.CHANNEL.value,
+        normalized_key="https://t.me/channel",
+        display_name="Channel",
+    )
+    slang = CanonicalIntelligenceEntry.create(
+        entry_type=EntryType.SLANG.value,
+        normalized_key="gm",
+        display_name="GM",
+    )
+    ignored = CanonicalIntelligenceEntry.create(
+        entry_type=EntryType.CHANNEL.value,
+        normalized_key="https://t.me/ignored",
+        display_name="Ignored",
+        is_ignored=True,
+        tracking_enabled=True,
+    )
+
+    assert channel.tracking_enabled is True
+    assert slang.tracking_enabled is False
+    assert ignored.is_ignored is True
+    assert ignored.tracking_enabled is False
 
 
 def test_no_audit_domain_model_introduced():
