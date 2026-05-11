@@ -2401,7 +2401,12 @@ class TelegramCommandHandler:
                 authorized=True,
             )
 
-            responses = self.handle_datasource_list_messages()
+            purpose = None
+            context_args = getattr(context, "args", None)
+            if isinstance(context_args, (list, tuple)) and context_args:
+                raw_purpose = str(context_args[0]).strip().lower()
+                purpose = raw_purpose or None
+            responses = self.handle_datasource_list_messages(purpose=purpose)
             for response in responses:
                 await update.message.reply_text(response)
             self._log_command_execution(
@@ -2488,10 +2493,12 @@ class TelegramCommandHandler:
             try:
                 saved_datasource = repository.save(validated_payload.to_domain_datasource())
             except DataSourceAlreadyExistsError:
-                response = (
-                    "⚠️ 数据源已存在\n\n"
-                    f"数据源 '{validated_payload.source_type}:{validated_payload.name}' 已存在，不能重复创建。"
+                datasource_key = (
+                    f"{validated_payload.purpose}:"
+                    f"{validated_payload.source_type}:"
+                    f"{validated_payload.name}"
                 )
+                response = "⚠️ 数据源已存在\n\n" f"数据源 '{datasource_key}' 已存在，不能重复创建。"
                 self._log_expected_command_outcome(
                     command="/datasource_add",
                     user_id=user_id,
@@ -2512,9 +2519,13 @@ class TelegramCommandHandler:
                 return
             except ValueError as exc:
                 if "uniqueness" in str(exc).lower():
+                    datasource_key = (
+                        f"{validated_payload.purpose}:"
+                        f"{validated_payload.source_type}:"
+                        f"{validated_payload.name}"
+                    )
                     response = (
-                        "⚠️ 数据源已存在\n\n"
-                        f"数据源 '{validated_payload.source_type}:{validated_payload.name}' 已存在，不能重复创建。"
+                        "⚠️ 数据源已存在\n\n" f"数据源 '{datasource_key}' 已存在，不能重复创建。"
                     )
                     self._log_expected_command_outcome(
                         command="/datasource_add",
@@ -2540,6 +2551,7 @@ class TelegramCommandHandler:
             response = (
                 "✅ 数据源创建成功\n\n"
                 f"ID: {saved_datasource.id}\n"
+                f"用途: {saved_datasource.purpose}\n"
                 f"类型: {saved_datasource.source_type}\n"
                 f"名称: {saved_datasource.name}\n"
                 f"标签: {tags_text}"
@@ -4295,16 +4307,32 @@ class TelegramCommandHandler:
             )
             help_text.append(
                 "/datasource_add {json} - 添加数据源\n"
-                '格式: /datasource_add {"source_type":"...","tags":["..."],"config_payload":{...}}\n'
+                "格式: /datasource_add "
+                '{"purpose":"news|intelligence","source_type":"...",'
+                '"tags":["..."],"config_payload":{...}}\n'
                 "\n"
                 "示例 (RSS):\n"
-                '/datasource_add {"source_type":"rss","tags":["markets","btc"],"config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}\n'
+                "/datasource_add "
+                '{"purpose":"news","source_type":"rss","tags":["markets","btc"],'
+                '"config_payload":{"name":"CoinDesk",'
+                '"url":"https://www.coindesk.com/arc/outboundfeeds/rss/",'
+                '"description":"Industry news"}}\n'
                 "\n"
                 "示例 (X):\n"
-                '/datasource_add {"source_type":"x","tags":["whales"],"config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"list"}}\n'
+                "/datasource_add "
+                '{"purpose":"news","source_type":"x","tags":["whales"],'
+                '"config_payload":{"name":"Whale Watch",'
+                '"url":"https://x.com/i/lists/1234567890","type":"list"}}\n'
                 "\n"
                 "示例 (REST API，注意：不可内联认证信息):\n"
-                '/datasource_add {"source_type":"rest_api","tags":["news"],"config_payload":{"name":"News API","endpoint":"https://api.example.com/news","method":"GET","headers":{},"params":{},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}\n'
+                "/datasource_add "
+                '{"purpose":"news","source_type":"rest_api","tags":["news"],'
+                '"config_payload":{"name":"News API",'
+                '"endpoint":"https://api.example.com/news","method":"GET",'
+                '"headers":{},"params":{},'
+                '"response_mapping":{"title_field":"title",'
+                '"content_field":"body","url_field":"url",'
+                '"time_field":"published_at"}}}\n'
             )
             help_text.append(
                 "/datasource_delete <id> - 删除数据源\n"
@@ -4369,23 +4397,32 @@ class TelegramCommandHandler:
             self.logger.error(f"获取token统计失败: {e}")
             return f"❌ 获取统计信息失败\n\n{str(e)}"
 
-    def handle_datasource_list_command(self) -> str:
-        return "\n\n".join(self.handle_datasource_list_messages())
+    def handle_datasource_list_command(self, purpose: Optional[str] = None) -> str:
+        return "\n\n".join(self.handle_datasource_list_messages(purpose=purpose))
 
-    def handle_datasource_list_messages(self) -> List[str]:
+    def handle_datasource_list_messages(self, purpose: Optional[str] = None) -> List[str]:
         repository = getattr(self.execution_coordinator, "datasource_repository", None)
         if repository is None:
             raise ValueError("数据源仓储未初始化")
 
+        if purpose is not None and purpose not in {"news", "intelligence"}:
+            raise ValueError("purpose must be one of: news, intelligence")
+
         datasources = sorted(
-            repository.list(),
-            key=lambda datasource: (datasource.source_type, datasource.name),
+            repository.list(purpose=purpose),
+            key=lambda datasource: (datasource.purpose, datasource.source_type, datasource.name),
         )
 
         if not datasources:
-            return ["📚 数据源列表\n\n暂无已配置数据源。"]
+            title = self._datasource_list_title(purpose)
+            return [f"{title}\n\n暂无已配置数据源。"]
 
-        response_lines = ["📚 数据源列表", "", f"共 {len(datasources)} 个数据源。", ""]
+        response_lines = [
+            self._datasource_list_title(purpose),
+            "",
+            f"共 {len(datasources)} 个数据源。",
+            "",
+        ]
 
         for index, datasource in enumerate(datasources, start=1):
             response_lines.extend(self._build_datasource_list_lines(index, datasource))
@@ -4444,6 +4481,7 @@ class TelegramCommandHandler:
         tags_text = ", ".join(datasource.tags) if datasource.tags else "（无标签）"
         lines = [
             f"{index}. ID: {datasource.id}",
+            f"   用途: {datasource.purpose}",
             f"   类型: {datasource.source_type}",
             f"   名称: {datasource.name}",
             f"   标签: {tags_text}",
@@ -4518,7 +4556,9 @@ class TelegramCommandHandler:
             guidance_lines.append("- rest_api 不支持在 auth、headers、params 中内联提交密钥。")
         else:
             guidance_lines.append(
-                '- 顶层 JSON 结构: {"source_type":"rss|x|rest_api","tags":[...],"config_payload":{...}}'
+                '- 顶层 JSON 结构: {"purpose":"news|intelligence",'
+                '"source_type":"rss|x|rest_api|telegram_group|v2ex",'
+                '"tags":[...],"config_payload":{...}}'
             )
             guidance_lines.append(
                 "- rss 需要 name/url，x 需要 name/url/type，rest_api 需要 endpoint/method/response_mapping。"
@@ -4526,6 +4566,14 @@ class TelegramCommandHandler:
 
         guidance_lines.append("输入 /help 查看示例。")
         return "\n".join(guidance_lines)
+
+    @staticmethod
+    def _datasource_list_title(purpose: Optional[str]) -> str:
+        if purpose == "news":
+            return "📚 新闻数据源列表"
+        if purpose == "intelligence":
+            return "📚 渠道情报数据源列表"
+        return "📚 数据源列表"
 
     def _log_expected_command_outcome(
         self,

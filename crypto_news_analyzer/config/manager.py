@@ -300,7 +300,9 @@ class ConfigManager:
         source_type: str,
     ) -> List[RuntimeSource]:
         if self._datasource_repository is not None:
-            records = list(self._datasource_repository.list(source_type=source_type))
+            records = list(
+                self._datasource_repository.list(purpose="news", source_type=source_type)
+            )
         else:
             config_key_by_type = {
                 "rss": "rss_sources",

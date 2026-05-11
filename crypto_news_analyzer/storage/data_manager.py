@@ -226,6 +226,7 @@ class DataManager:
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS datasources (
                         id TEXT PRIMARY KEY,
+                        purpose TEXT NOT NULL,
                         source_type TEXT NOT NULL,
                         name TEXT NOT NULL,
                         config_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -331,6 +332,7 @@ class DataManager:
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS datasources (
                         id TEXT PRIMARY KEY,
+                        purpose TEXT NOT NULL,
                         source_type TEXT NOT NULL,
                         name TEXT NOT NULL,
                         config_payload TEXT NOT NULL DEFAULT '{}',
@@ -395,8 +397,8 @@ class DataManager:
                 ON ingestion_jobs (status, scheduled_at)
             """)
             cursor.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_datasources_source_name
-                ON datasources (source_type, name)
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_datasources_purpose_source_name
+                ON datasources (purpose, source_type, name)
             """)
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_datasources_created_at
@@ -2168,6 +2170,7 @@ class DataManager:
     def upsert_datasource(
         self,
         datasource_id: str,
+        purpose: str,
         source_type: str,
         name: str,
         config_payload: Optional[Dict[str, Any]] = None,
@@ -2179,6 +2182,7 @@ class DataManager:
                 self._upsert_datasource_with_connection(
                     conn=conn,
                     datasource_id=datasource_id,
+                    purpose=purpose,
                     source_type=source_type,
                     name=name,
                     config_payload=config_payload,
@@ -2191,6 +2195,7 @@ class DataManager:
         self,
         conn: Any,
         datasource_id: str,
+        purpose: str,
         source_type: str,
         name: str,
         config_payload: Optional[Dict[str, Any]] = None,
@@ -2207,9 +2212,10 @@ class DataManager:
         if self.backend == "postgres":
             cursor.execute(
                 self._sql("""
-                INSERT INTO datasources (id, source_type, name, config_payload, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO datasources (id, purpose, source_type, name, config_payload, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT (id) DO UPDATE SET
+                    purpose = EXCLUDED.purpose,
                     source_type = EXCLUDED.source_type,
                     name = EXCLUDED.name,
                     config_payload = EXCLUDED.config_payload,
@@ -2217,6 +2223,7 @@ class DataManager:
                 """),
                 (
                     datasource_id,
+                    purpose,
                     source_type,
                     name,
                     json.dumps(payload, ensure_ascii=False),
@@ -2226,9 +2233,10 @@ class DataManager:
         else:
             cursor.execute(
                 self._sql("""
-                INSERT INTO datasources (id, source_type, name, config_payload, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO datasources (id, purpose, source_type, name, config_payload, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
+                    purpose = excluded.purpose,
                     source_type = excluded.source_type,
                     name = excluded.name,
                     config_payload = excluded.config_payload,
@@ -2236,6 +2244,7 @@ class DataManager:
                 """),
                 (
                     datasource_id,
+                    purpose,
                     source_type,
                     name,
                     json.dumps(payload, ensure_ascii=False),
@@ -2278,8 +2287,9 @@ class DataManager:
                 return None
             return self._serialize_datasource_row(conn, row)
 
-    def get_datasource_by_type_and_name(
+    def get_datasource_by_purpose_type_and_name(
         self,
+        purpose: str,
         source_type: str,
         name: str,
     ) -> Optional[Dict[str, Any]]:
@@ -2288,25 +2298,35 @@ class DataManager:
             cursor.execute(
                 self._sql("""
                 SELECT * FROM datasources
-                WHERE source_type = ? AND name = ?
+                WHERE purpose = ? AND source_type = ? AND name = ?
                 LIMIT 1
                 """),
-                (source_type, name),
+                (purpose, source_type, name),
             )
             row = cursor.fetchone()
             if not row:
                 return None
             return self._serialize_datasource_row(conn, row)
 
-    def list_datasources(self, source_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_datasources(
+        self,
+        purpose: Optional[str] = None,
+        source_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             params: List[Any] = []
             query = "SELECT * FROM datasources"
+            conditions: List[str] = []
+            if purpose is not None:
+                conditions.append("purpose = ?")
+                params.append(purpose)
             if source_type is not None:
-                query += " WHERE source_type = ?"
+                conditions.append("source_type = ?")
                 params.append(source_type)
-            query += " ORDER BY source_type ASC, name ASC"
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY purpose ASC, source_type ASC, name ASC"
             cursor.execute(self._sql(query), params)
             rows = cursor.fetchall()
             return [self._serialize_datasource_row(conn, row) for row in rows]
@@ -2363,6 +2383,7 @@ class DataManager:
                     self._upsert_datasource_with_connection(
                         conn=conn,
                         datasource_id=datasource.id,
+                        purpose=datasource.purpose,
                         source_type=datasource.source_type,
                         name=datasource.name,
                         config_payload=datasource.config_payload,
@@ -2401,6 +2422,7 @@ class DataManager:
 
         return {
             "id": row["id"],
+            "purpose": row["purpose"],
             "source_type": row["source_type"],
             "name": row["name"],
             "config_payload": parsed_config_payload,

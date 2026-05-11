@@ -13,6 +13,7 @@ from crypto_news_analyzer.datasource_payloads import (
 def test_telegram_group_datasource_payload_validates_chat_target_and_normalizes():
     payload = validate_datasource_create_payload(
         {
+            "purpose": "intelligence",
             "source_type": "telegram_group",
             "name": "Crypto Alpha",
             "config_payload": {
@@ -23,6 +24,7 @@ def test_telegram_group_datasource_payload_validates_chat_target_and_normalizes(
     )
 
     assert payload.source_type == "telegram_group"
+    assert payload.purpose == "intelligence"
     assert payload.config_payload == {"name": "Crypto Alpha", "chat_id": -1001234567890}
 
 
@@ -50,6 +52,7 @@ def test_telegram_group_datasource_payload_rejects_missing_target_and_secret_fie
     with pytest.raises(DataSourcePayloadValidationError, match=message):
         validate_datasource_create_payload(
             {
+                "purpose": "intelligence",
                 "source_type": "telegram_group",
                 "name": "Crypto Alpha",
                 "config_payload": config_payload,
@@ -60,6 +63,7 @@ def test_telegram_group_datasource_payload_rejects_missing_target_and_secret_fie
 def test_v2ex_datasource_payload_validates_api_version_and_node_allowlist():
     payload = validate_datasource_create_payload(
         {
+            "purpose": "intelligence",
             "source_type": "v2ex",
             "name": "V2EX Crypto",
             "config_payload": {
@@ -72,6 +76,7 @@ def test_v2ex_datasource_payload_validates_api_version_and_node_allowlist():
     )
 
     assert payload.source_type == "v2ex"
+    assert payload.purpose == "intelligence"
     assert payload.config_payload == {
         "name": "V2EX Crypto",
         "api_version": "v2",
@@ -108,6 +113,7 @@ def test_v2ex_datasource_payload_rejects_html_scraping_fields(
     with pytest.raises(DataSourcePayloadValidationError, match=message):
         validate_datasource_create_payload(
             {
+                "purpose": "intelligence",
                 "source_type": "v2ex",
                 "name": "V2EX Crypto",
                 "config_payload": config_payload,

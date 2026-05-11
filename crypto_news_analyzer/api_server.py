@@ -29,6 +29,7 @@ from .domain.models import (
     DataSource,
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
+    DataSourcePurpose,
     Priority,
     PrimaryLabel,
     SemanticSearchJob,
@@ -306,6 +307,7 @@ class SemanticSearchJobRecord(BaseModel):
 
 
 class DataSourceCreateRequest(BaseModel):
+    purpose: str
     source_type: str
     name: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
@@ -315,6 +317,7 @@ class DataSourceCreateRequest(BaseModel):
 class DataSourceResponseItem(BaseModel):
     id: str
     name: str
+    purpose: str
     source_type: str
     tags: list[str]
     config_summary: dict[str, Any]
@@ -1131,6 +1134,7 @@ def _to_datasource_response_item(datasource: DataSource) -> DataSourceResponseIt
     return DataSourceResponseItem(
         id=datasource.id,
         name=datasource.name,
+        purpose=datasource.purpose,
         source_type=datasource.source_type,
         tags=list(datasource.tags),
         config_summary=_build_datasource_config_summary(datasource),
@@ -1213,9 +1217,7 @@ def create_api_server(
             if isinstance(repositories, dict):
                 app_state.semantic_search_repository = repositories.get("semantic_search")
 
-        app_state.intelligence_repository = getattr(
-            controller, "intelligence_repository", None
-        )
+        app_state.intelligence_repository = getattr(controller, "intelligence_repository", None)
         if app_state.intelligence_repository is None:
             repositories = getattr(controller, "_repositories", None)
             if isinstance(repositories, dict):
@@ -1573,9 +1575,7 @@ def create_api_server(
             for item in PrimaryLabel:
                 if repository.count_canonical_entries(primary_label=item.value) <= 0:
                     continue
-                labels.append(
-                    IntelligenceLabelResponseItem(name=item.name, value=item.value)
-                )
+                labels.append(IntelligenceLabelResponseItem(name=item.name, value=item.value))
         return IntelligenceLabelsResponse(labels=labels)
 
     @app.post("/intelligence/entries/{entry_id}/ignore", response_model=IntelligenceIgnoreResponse)
@@ -1880,11 +1880,17 @@ def create_api_server(
     async def list_datasources(
         _: Annotated[str, Depends(verify_api_key)],
         req: Request,
+        purpose: Optional[str] = None,
+        source_type: Optional[str] = None,
     ):
         repository = _get_datasource_repository(req)
+        if purpose is not None and purpose not in {item.value for item in DataSourcePurpose}:
+            raise HTTPException(
+                status_code=422, detail="purpose must be one of: news, intelligence"
+            )
         datasources = sorted(
-            repository.list(),
-            key=lambda datasource: (datasource.source_type, datasource.name),
+            repository.list(purpose=purpose, source_type=source_type),
+            key=lambda datasource: (datasource.purpose, datasource.source_type, datasource.name),
         )
 
         return DataSourceListResponse(

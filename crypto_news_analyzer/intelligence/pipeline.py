@@ -242,7 +242,15 @@ class IntelligencePipeline:
         datasource_repository = self._datasource_repository()
         sources: List[DataSource] = []
         for source_type in INTELLIGENCE_SOURCE_TYPES:
-            sources.extend(list(datasource_repository.list(source_type=source_type) or []))
+            sources.extend(
+                list(
+                    datasource_repository.list(
+                        purpose="intelligence",
+                        source_type=source_type,
+                    )
+                    or []
+                )
+            )
         return sources
 
     def _datasource_repository(self) -> Any:
@@ -448,5 +456,9 @@ class _ListDatasourcesAdapter:
     def __init__(self, owner: Any):
         self.owner = owner
 
-    def list(self, source_type: Optional[str] = None) -> Iterable[DataSource]:
-        return self.owner.list_datasources(source_type=source_type)
+    def list(
+        self,
+        purpose: Optional[str] = None,
+        source_type: Optional[str] = None,
+    ) -> Iterable[DataSource]:
+        return self.owner.list_datasources(purpose=purpose, source_type=source_type)

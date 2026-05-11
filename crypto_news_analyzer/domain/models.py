@@ -53,6 +53,11 @@ class DataSourceType(str, Enum):
     V2EX = "v2ex"
 
 
+class DataSourcePurpose(str, Enum):
+    NEWS = "news"
+    INTELLIGENCE = "intelligence"
+
+
 class EntryType(str, Enum):
     CHANNEL = "channel"
     SLANG = "slang"
@@ -139,10 +144,11 @@ class DataSourceInUseError(ValueError):
 
 
 class DataSourceAlreadyExistsError(ValueError):
-    def __init__(self, source_type: str, source_name: str):
+    def __init__(self, source_type: str, source_name: str, purpose: str):
+        self.purpose = purpose
         self.source_type = source_type
         self.source_name = source_name
-        super().__init__(f"Datasource '{source_type}:{source_name}' already exists")
+        super().__init__(f"Datasource '{purpose}:{source_type}:{source_name}' already exists")
 
 
 def _normalize_datasource_tags(tags: Optional[List[str]]) -> List[str]:
@@ -153,6 +159,7 @@ def _normalize_datasource_tags(tags: Optional[List[str]]) -> List[str]:
 @dataclass
 class DataSource:
     id: str
+    purpose: str
     source_type: str
     name: str
     tags: List[str] = field(default_factory=list)
@@ -164,6 +171,10 @@ class DataSource:
         if not self.id:
             raise ValueError("id is required")
 
+        normalized_purpose = str(self.purpose).strip().lower()
+        if normalized_purpose not in {item.value for item in DataSourcePurpose}:
+            raise ValueError("purpose must be one of: news, intelligence")
+
         normalized_source_type = str(self.source_type).strip().lower()
         if normalized_source_type not in {item.value for item in DataSourceType}:
             raise ValueError("source_type must be one of: rss, x, rest_api, telegram_group, v2ex")
@@ -172,6 +183,7 @@ class DataSource:
         if not normalized_name:
             raise ValueError("name is required")
 
+        self.purpose = normalized_purpose
         self.source_type = normalized_source_type
         self.name = normalized_name
         self.tags = _normalize_datasource_tags(self.tags)
@@ -180,20 +192,22 @@ class DataSource:
         )
 
     @property
-    def unique_key(self) -> tuple[str, str]:
-        return (self.source_type, self.name)
+    def unique_key(self) -> tuple[str, str, str]:
+        return (self.purpose, self.source_type, self.name)
 
     @classmethod
     def create(
         cls,
         name: str,
         source_type: str,
+        purpose: str,
         tags: Optional[List[str]] = None,
         config_payload: Optional[Dict[str, Any]] = None,
     ) -> "DataSource":
         now = datetime.utcnow()
         return cls(
             id=str(uuid.uuid4()),
+            purpose=purpose,
             source_type=source_type,
             name=name,
             tags=tags or [],
@@ -205,6 +219,7 @@ class DataSource:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
+            "purpose": self.purpose,
             "source_type": self.source_type,
             "name": self.name,
             "tags": list(self.tags),
@@ -217,6 +232,7 @@ class DataSource:
     def from_dict(cls, data: Dict[str, Any]) -> "DataSource":
         return cls(
             id=data["id"],
+            purpose=data["purpose"],
             source_type=data["source_type"],
             name=data["name"],
             tags=data.get("tags", []),

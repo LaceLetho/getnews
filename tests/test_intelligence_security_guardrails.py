@@ -29,7 +29,6 @@ from crypto_news_analyzer.reporters.telegram_command_handler import TelegramComm
 from crypto_news_analyzer.storage import repositories as storage_repositories
 from crypto_news_analyzer.models import StorageConfig, TelegramCommandConfig
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 INTELLIGENCE_ENDPOINTS = (
     ("GET", "/intelligence/entries"),
@@ -42,7 +41,12 @@ INTELLIGENCE_COMMANDS = (
     ("/intel_recent", "_handle_intel_recent_command", "handle_intel_recent_command", ["24"]),
     ("/intel_labels", "_handle_intel_labels_command", "handle_intel_labels_command", []),
     ("/intel_search", "_handle_intel_search_command", "handle_intel_search_command", ["渠道"]),
-    ("/intel_detail", "_handle_intel_detail_command", "handle_intel_detail_command", ["entry-1", "raw"]),
+    (
+        "/intel_detail",
+        "_handle_intel_detail_command",
+        "handle_intel_detail_command",
+        ["entry-1", "raw"],
+    ),
 )
 SECRET_SENTINELS = (
     "StringSession_SENTINEL_do_not_leak",
@@ -161,8 +165,7 @@ def _make_update() -> SimpleNamespace:
 
 def _route_has_api_key_dependency(route: APIRoute) -> bool:
     return any(
-        dependency.call is api_server.verify_api_key
-        for dependency in route.dependant.dependencies
+        dependency.call is api_server.verify_api_key for dependency in route.dependant.dependencies
     )
 
 
@@ -241,6 +244,7 @@ def test_intelligence_configs_and_api_summaries_do_not_expose_secrets(
     with pytest.raises(DataSourcePayloadValidationError):
         validate_datasource_create_payload(
             {
+                "purpose": "intelligence",
                 "source_type": "telegram_group",
                 "config_payload": {
                     "name": "TG Alpha",
@@ -253,6 +257,7 @@ def test_intelligence_configs_and_api_summaries_do_not_expose_secrets(
         validate_datasource_create_payload(
             {
                 "source_type": "v2ex",
+                "purpose": "intelligence",
                 "config_payload": {
                     "name": "V2EX Alpha",
                     "api_version": "v2",
@@ -266,6 +271,7 @@ def test_intelligence_configs_and_api_summaries_do_not_expose_secrets(
         DataSource.create(
             name="REST API",
             source_type="rest_api",
+            purpose="intelligence",
             config_payload={
                 "name": "REST API",
                 "endpoint": f"https://api.example.com/items?api_key={SECRET_SENTINELS[2]}",
@@ -386,6 +392,7 @@ def test_captured_logs_do_not_contain_session_or_pat_values(
     with pytest.raises(DataSourcePayloadValidationError):
         validate_datasource_create_payload(
             {
+                "purpose": "intelligence",
                 "source_type": "telegram_group",
                 "config_payload": {
                     "name": "TG Alpha",
@@ -403,7 +410,9 @@ def test_captured_logs_do_not_contain_session_or_pat_values(
 def test_raw_text_response_preserves_original_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    raw_text = "原始情报：土区礼品卡 🚀\nLine 2 with punctuation: !?,.;:'\"()[]{}\n零宽字符\u200b保留"
+    raw_text = (
+        "原始情报：土区礼品卡 🚀\nLine 2 with punctuation: !?,.;:'\"()[]{}\n零宽字符\u200b保留"
+    )
     raw_item = RawIntelligenceItem(
         id="raw-byte-exact",
         source_type="telegram_group",
@@ -439,16 +448,18 @@ def test_env_template_contains_no_real_secrets() -> None:
     template_text = env_template_path.read_text(encoding="utf-8")
 
     # Keys whose values are known defaults (not secrets) — skip these
-    _ALLOWED_DEFAULT_KEYS = frozenset({
-        "DATABASE_URL",
-        "CONFIG_PATH",
-        "LOG_LEVEL",
-        "API_HOST",
-        "API_PORT",
-        "TELEGRAM_CHANNEL_ID",
-        "EXECUTION_INTERVAL",
-        "TIME_WINDOW_HOURS",
-    })
+    _ALLOWED_DEFAULT_KEYS = frozenset(
+        {
+            "DATABASE_URL",
+            "CONFIG_PATH",
+            "LOG_LEVEL",
+            "API_HOST",
+            "API_PORT",
+            "TELEGRAM_CHANNEL_ID",
+            "EXECUTION_INTERVAL",
+            "TIME_WINDOW_HOURS",
+        }
+    )
 
     # Scan uncommented key=value lines that don't use "your_*_here" placeholders
     # and aren't in the allowed defaults list
@@ -470,21 +481,27 @@ def test_env_template_contains_no_real_secrets() -> None:
             continue
         # If a key contains KEY, TOKEN, SECRET, SESSION, PAT, AUTH, PASSWORD, or PASS
         # and the value isn't a placeholder, it's a potential secret leak
-        secret_indicator_keys = {"KEY", "TOKEN", "SECRET", "SESSION", "PAT", "AUTH", "PASSWORD", "PASS"}
+        secret_indicator_keys = {
+            "KEY",
+            "TOKEN",
+            "SECRET",
+            "SESSION",
+            "PAT",
+            "AUTH",
+            "PASSWORD",
+            "PASS",
+        }
         if any(indicator in key.upper() for indicator in secret_indicator_keys):
             violations.append(f"  line {line_number}: {key}={value}")
 
     if violations:
         pytest.fail(
             f".env.template contains {len(violations)} potential secret value(s). "
-            f"Use 'your_xxx_here' placeholder or #-comment out the line:\n"
-            + "\n".join(violations)
+            f"Use 'your_xxx_here' placeholder or #-comment out the line:\n" + "\n".join(violations)
         )
 
     # Check for real Telethon string session patterns (start with "1B" or "1A" and are long)
-    session_pattern = re.compile(
-        r"^\s*(?:TELEGRAM_STRING_SESSION)\s*=\s*1[A-Za-z0-9+/=_-]{20,}"
-    )
+    session_pattern = re.compile(r"^\s*(?:TELEGRAM_STRING_SESSION)\s*=\s*1[A-Za-z0-9+/=_-]{20,}")
     for line_number, raw_line in enumerate(template_text.splitlines(), 1):
         if session_pattern.search(raw_line):
             pytest.fail(

@@ -13,7 +13,10 @@ from crypto_news_analyzer.datasource_payloads import (
 from crypto_news_analyzer.domain.models import DataSource, DataSourceInUseError, IngestionJob
 from crypto_news_analyzer.models import RESTAPISource, RSSSource, StorageConfig, XSource
 from crypto_news_analyzer.storage.data_manager import DataManager
-from crypto_news_analyzer.storage.repositories import SQLiteContentRepository, SQLiteDataSourceRepository
+from crypto_news_analyzer.storage.repositories import (
+    SQLiteContentRepository,
+    SQLiteDataSourceRepository,
+)
 
 
 def _build_repository(db_path: Path) -> tuple[DataManager, SQLiteDataSourceRepository]:
@@ -29,6 +32,7 @@ def test_datasource_repository_create_get_and_list_round_trip_config_payload(tmp
         rss_source = DataSource.create(
             name="  CoinDesk  ",
             source_type="rss",
+            purpose="news",
             tags=[" Markets ", "markets", "Layer2"],
             config_payload={
                 "name": "CoinDesk",
@@ -39,6 +43,7 @@ def test_datasource_repository_create_get_and_list_round_trip_config_payload(tmp
         x_source = DataSource.create(
             name="Whale Watch",
             source_type="x",
+            purpose="news",
             config_payload={
                 "name": "Whale Watch",
                 "url": "https://x.com/i/lists/123",
@@ -55,16 +60,18 @@ def test_datasource_repository_create_get_and_list_round_trip_config_payload(tmp
         assert loaded.tags == ["layer2", "markets"]
         assert loaded.config_payload == rss_source.config_payload
 
-        by_unique_key = repository.get_by_type_and_name("rss", "CoinDesk")
+        by_unique_key = repository.get_by_purpose_type_and_name("news", "rss", "CoinDesk")
         assert by_unique_key is not None
         assert by_unique_key.id == saved_rss.id
 
         listed = repository.list()
-        assert [(item.source_type, item.name) for item in listed] == [
-            ("rss", "CoinDesk"),
-            ("x", "Whale Watch"),
+        assert [(item.purpose, item.source_type, item.name) for item in listed] == [
+            ("news", "rss", "CoinDesk"),
+            ("news", "x", "Whale Watch"),
         ]
-        assert [item.name for item in repository.list(source_type="rss")] == ["CoinDesk"]
+        assert [item.name for item in repository.list(purpose="news", source_type="rss")] == [
+            "CoinDesk"
+        ]
     finally:
         data_manager.close()
 
@@ -73,10 +80,10 @@ def test_datasource_repository_create_rejects_duplicate_source_type_and_name(tmp
     data_manager, repository = _build_repository(tmp_path / "datasource_repository_unique.db")
 
     try:
-        repository.save(DataSource.create(name="CoinDesk", source_type="rss"))
+        repository.save(DataSource.create(name="CoinDesk", source_type="rss", purpose="news"))
 
         with pytest.raises(ValueError, match="already exists"):
-            repository.save(DataSource.create(name="CoinDesk", source_type="rss"))
+            repository.save(DataSource.create(name="CoinDesk", source_type="rss", purpose="news"))
     finally:
         data_manager.close()
 
@@ -92,6 +99,7 @@ def test_datasource_repository_duplicate_conflict_does_not_replace_existing_row_
             DataSource.create(
                 name="CoinDesk",
                 source_type="rss",
+                purpose="news",
                 tags=["markets"],
                 config_payload={
                     "name": "CoinDesk",
@@ -103,6 +111,7 @@ def test_datasource_repository_duplicate_conflict_does_not_replace_existing_row_
         duplicate = DataSource.create(
             name="CoinDesk",
             source_type="rss",
+            purpose="news",
             tags=["replacement"],
             config_payload={
                 "name": "CoinDesk",
@@ -111,7 +120,11 @@ def test_datasource_repository_duplicate_conflict_does_not_replace_existing_row_
             },
         )
 
-        monkeypatch.setattr(repository, "get_by_type_and_name", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(
+            repository,
+            "get_by_purpose_type_and_name",
+            lambda *_args, **_kwargs: None,
+        )
 
         with pytest.raises(ValueError, match="already exists"):
             repository.save(duplicate)
@@ -137,6 +150,7 @@ def test_datasource_repository_delete_removes_row_and_tags(tmp_path: Path):
             DataSource.create(
                 name="CoinDesk",
                 source_type="rss",
+                purpose="news",
                 tags=["markets", "macro"],
                 config_payload={"name": "CoinDesk", "url": "https://example.com/rss"},
             )
@@ -172,7 +186,9 @@ def test_datasource_repository_delete_guard_blocks_matching_active_ingestion_job
     data_manager, repository = _build_repository(tmp_path / "datasource_repository_guard.db")
 
     try:
-        datasource = repository.save(DataSource.create(name="CoinDesk", source_type="rss"))
+        datasource = repository.save(
+            DataSource.create(name="CoinDesk", source_type="rss", purpose="news")
+        )
         pending_job = IngestionJob.create(source_type="rss", source_name="CoinDesk")
         data_manager.upsert_ingestion_job(
             job_id=pending_job.id,
@@ -198,7 +214,9 @@ def test_datasource_repository_delete_guard_ignores_non_active_or_non_matching_j
     data_manager, repository = _build_repository(tmp_path / "datasource_repository_guard_ignore.db")
 
     try:
-        datasource = repository.save(DataSource.create(name="CoinDesk", source_type="rss"))
+        datasource = repository.save(
+            DataSource.create(name="CoinDesk", source_type="rss", purpose="news")
+        )
 
         completed_job = IngestionJob.create(source_type="rss", source_name="CoinDesk")
         completed_job.status = "completed"
@@ -220,7 +238,9 @@ def test_datasource_repository_delete_guard_ignores_non_active_or_non_matching_j
         data_manager.close()
 
 
-def test_content_repository_get_content_items_since_passes_through_optional_max_hours(tmp_path: Path):
+def test_content_repository_get_content_items_since_passes_through_optional_max_hours(
+    tmp_path: Path,
+):
     mock_data_manager = Mock()
     repository = SQLiteContentRepository(mock_data_manager)
 
@@ -240,6 +260,7 @@ def test_content_repository_get_content_items_since_passes_through_optional_max_
 def test_datasource_payload_validation_normalizes_tags_and_translates_runtime_sources():
     rss_payload = validate_datasource_create_payload(
         {
+            "purpose": "news",
             "source_type": "rss",
             "name": "CoinDesk",
             "tags": [" Markets ", "markets", "Layer2"],
@@ -252,6 +273,7 @@ def test_datasource_payload_validation_normalizes_tags_and_translates_runtime_so
     )
     x_payload = validate_datasource_create_payload(
         {
+            "purpose": "news",
             "source_type": "x",
             "tags": ["Whales", " whales "],
             "config_payload": {
@@ -263,6 +285,7 @@ def test_datasource_payload_validation_normalizes_tags_and_translates_runtime_so
     )
     rest_api_payload = validate_datasource_create_payload(
         {
+            "purpose": "news",
             "source_type": "rest_api",
             "config_payload": {
                 "name": "Newswire API",
@@ -300,6 +323,7 @@ def test_datasource_payload_validation_rejects_unsupported_source_type():
     with pytest.raises(DataSourcePayloadValidationError, match="source_type must be one of"):
         validate_datasource_create_payload(
             {
+                "purpose": "news",
                 "source_type": "webhook",
                 "config_payload": {"name": "Webhook feed"},
             }
@@ -307,9 +331,12 @@ def test_datasource_payload_validation_rejects_unsupported_source_type():
 
 
 def test_datasource_payload_validation_rejects_malformed_rss_payload():
-    with pytest.raises(DataSourcePayloadValidationError, match=r"rss.url must be a valid http\(s\) URL"):
+    with pytest.raises(
+        DataSourcePayloadValidationError, match=r"rss.url must be a valid http\(s\) URL"
+    ):
         validate_datasource_create_payload(
             {
+                "purpose": "news",
                 "source_type": "rss",
                 "config_payload": {
                     "name": "CoinDesk",
@@ -323,6 +350,7 @@ def test_datasource_payload_validation_rejects_malformed_x_payload():
     with pytest.raises(DataSourcePayloadValidationError, match="x.type must be one of"):
         validate_datasource_create_payload(
             {
+                "purpose": "news",
                 "source_type": "x",
                 "config_payload": {
                     "name": "Whale Watch",
@@ -334,9 +362,12 @@ def test_datasource_payload_validation_rejects_malformed_x_payload():
 
 
 def test_datasource_payload_validation_rejects_non_x_domain_for_x_payload():
-    with pytest.raises(DataSourcePayloadValidationError, match=r"x.url must be a valid https://x\.com URL"):
+    with pytest.raises(
+        DataSourcePayloadValidationError, match=r"x.url must be a valid https://x\.com URL"
+    ):
         validate_datasource_create_payload(
             {
+                "purpose": "news",
                 "source_type": "x",
                 "config_payload": {
                     "name": "Whale Watch",
@@ -354,6 +385,7 @@ def test_datasource_payload_validation_rejects_malformed_rest_api_payload():
     ):
         validate_datasource_create_payload(
             {
+                "purpose": "news",
                 "source_type": "rest_api",
                 "config_payload": {
                     "name": "Newswire API",
@@ -373,6 +405,7 @@ def test_datasource_payload_validation_rejects_more_than_16_unique_tags():
     with pytest.raises(DataSourcePayloadValidationError, match="more than 16 unique values"):
         validate_datasource_create_payload(
             {
+                "purpose": "news",
                 "source_type": "rss",
                 "tags": [f"tag-{index}" for index in range(17)],
                 "config_payload": {
@@ -387,6 +420,7 @@ def test_datasource_payload_validation_rejects_tag_longer_than_32_characters():
     with pytest.raises(DataSourcePayloadValidationError, match="at most 32 characters"):
         validate_datasource_create_payload(
             {
+                "purpose": "news",
                 "source_type": "rss",
                 "tags": ["a" * 33],
                 "config_payload": {

@@ -48,6 +48,7 @@ def _rss_datasource_request(
     url: str = "https://www.coindesk.com/arc/outboundfeeds/rss/",
 ) -> dict[str, object]:
     return {
+        "purpose": "news",
         "source_type": "rss",
         "name": name,
         "tags": tags or [],
@@ -66,6 +67,7 @@ def _x_datasource_request(
     source_subtype: str = "list",
 ) -> dict[str, object]:
     return {
+        "purpose": "news",
         "source_type": "x",
         "tags": tags or [],
         "config_payload": {
@@ -85,6 +87,7 @@ def _rest_api_datasource_request(
     params: Optional[dict[str, object]] = None,
 ) -> dict[str, object]:
     return {
+        "purpose": "news",
         "source_type": "rest_api",
         "tags": tags or [],
         "config_payload": {
@@ -156,9 +159,7 @@ class _FakeCacheManager:
             )
         return len(messages)
 
-    def get_recipient_cached_titles(
-        self, recipient_key: str, anchor_time: datetime
-    ) -> list[str]:
+    def get_recipient_cached_titles(self, recipient_key: str, anchor_time: datetime) -> list[str]:
         window_start = anchor_time - timedelta(hours=48)
         return [
             str(message["title"])
@@ -361,9 +362,7 @@ def _build_test_app(
     start_scheduler: Optional[bool] = None,
     start_command_listener: Optional[bool] = None,
 ):
-    monkeypatch.setattr(
-        api_server, "MainController", lambda *_args, **_kwargs: controller
-    )
+    monkeypatch.setattr(api_server, "MainController", lambda *_args, **_kwargs: controller)
     return api_server.create_api_server(
         "./config.jsonc",
         start_services=start_services,
@@ -384,9 +383,7 @@ def _enqueue_and_run_job(
     monkeypatch: pytest.MonkeyPatch,
 ) -> str:
     app_state = _app_state(client)
-    monkeypatch.setattr(
-        app_state.analyze_executor, "submit", lambda *_args, **_kwargs: None
-    )
+    monkeypatch.setattr(app_state.analyze_executor, "submit", lambda *_args, **_kwargs: None)
     response = client.post(
         "/analyze",
         headers=_authorized_headers(),
@@ -608,9 +605,7 @@ def test_analyze_result_returns_completed_payload(
     }
 
 
-@pytest.mark.parametrize(
-    "user_id", ["", "   ", "has space", "user!", "中文", "a" * 129]
-)
+@pytest.mark.parametrize("user_id", ["", "   ", "has space", "user!", "中文", "a" * 129])
 def test_analyze_user_id_invalid_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
     user_id: str,
@@ -625,9 +620,7 @@ def test_analyze_user_id_invalid_is_rejected(
         )
 
     assert response.status_code == 422
-    assert any(
-        error["loc"] == ["body", "user_id"] for error in response.json()["detail"]
-    )
+    assert any(error["loc"] == ["body", "user_id"] for error in response.json()["detail"])
 
 
 def test_analyze_user_id_same_user_reuses_its_own_dedup_context(
@@ -640,9 +633,7 @@ def test_analyze_user_id_same_user_reuses_its_own_dedup_context(
 
     with TestClient(app) as client:
         first_job_id = _enqueue_and_run_job(client, "same-user", monkeypatch)
-        first_result = client.get(
-            f"/analyze/{first_job_id}/result", headers=_authorized_headers()
-        )
+        first_result = client.get(f"/analyze/{first_job_id}/result", headers=_authorized_headers())
         assert first_result.status_code == 200
 
         second_job_id = _enqueue_and_run_job(client, "same-user", monkeypatch)
@@ -650,9 +641,7 @@ def test_analyze_user_id_same_user_reuses_its_own_dedup_context(
         assert fake_controller.analyze_calls[0]["chat_id"] == "same-user"
         assert fake_controller.analyze_calls[0]["manual_source"] == "api"
         assert fake_controller.analyze_calls[0]["historical_titles"] == []
-        assert fake_controller.analyze_calls[1]["historical_titles"] == [
-            "title-same-user-run-1"
-        ]
+        assert fake_controller.analyze_calls[1]["historical_titles"] == ["title-same-user-run-1"]
 
         second_result = client.get(
             f"/analyze/{second_job_id}/result", headers=_authorized_headers()
@@ -670,9 +659,7 @@ def test_analyze_user_id_different_users_remain_isolated(
 
     with TestClient(app) as client:
         first_job_id = _enqueue_and_run_job(client, "user-a", monkeypatch)
-        first_result = client.get(
-            f"/analyze/{first_job_id}/result", headers=_authorized_headers()
-        )
+        first_result = client.get(f"/analyze/{first_job_id}/result", headers=_authorized_headers())
         assert first_result.status_code == 200
 
         second_job_id = _enqueue_and_run_job(client, "user-b", monkeypatch)
@@ -685,8 +672,7 @@ def test_analyze_user_id_different_users_remain_isolated(
         )
         assert second_result.status_code == 200
         assert [
-            message["recipient_key"]
-            for message in fake_controller.cache_manager.cached_messages
+            message["recipient_key"] for message in fake_controller.cache_manager.cached_messages
         ] == [
             "api:user-a",
             "api:user-b",
@@ -711,9 +697,7 @@ def test_analyze_user_id_failed_job_does_not_write_success_history_or_cache(
     assert failed_result.status_code == 200
     assert failed_result.json()["success"] is False
     assert fake_controller.cache_manager.cached_messages == []
-    assert [row["success"] for row in fake_controller.data_manager.logged_rows] == [
-        False
-    ]
+    assert [row["success"] for row in fake_controller.data_manager.logged_rows] == [False]
 
 
 def test_analyze_job_persists_across_repository_reinitialization(
@@ -726,9 +710,7 @@ def test_analyze_job_persists_across_repository_reinitialization(
 
     with TestClient(app) as client:
         app_state = _app_state(client)
-        monkeypatch.setattr(
-            app_state.analyze_executor, "submit", lambda *_args, **_kwargs: None
-        )
+        monkeypatch.setattr(app_state.analyze_executor, "submit", lambda *_args, **_kwargs: None)
 
         accepted = client.post(
             "/analyze",
@@ -743,17 +725,13 @@ def test_analyze_job_persists_across_repository_reinitialization(
         restart_repo = SQLiteAnalysisRepository(restart_manager)
         _app_state(client).analysis_repository = restart_repo
 
-        status_response = client.get(
-            f"/analyze/{job_id}", headers=_authorized_headers()
-        )
+        status_response = client.get(f"/analyze/{job_id}", headers=_authorized_headers())
         assert status_response.status_code == 200
         assert status_response.json()["job_id"] == job_id
         assert status_response.json()["status"] == "queued"
 
         api_server._run_analyze_job(job_id, _app_state(client))
-        result_response = client.get(
-            f"/analyze/{job_id}/result", headers=_authorized_headers()
-        )
+        result_response = client.get(f"/analyze/{job_id}/result", headers=_authorized_headers())
         assert result_response.status_code == 200
         assert result_response.json()["success"] is True
 
@@ -800,6 +778,7 @@ def test_datasource_create_list_and_delete_round_trip(
             "datasource": {
                 "id": rss_body["datasource"]["id"],
                 "name": "CoinDesk",
+                "purpose": "news",
                 "source_type": "rss",
                 "tags": ["layer2", "markets"],
                 "config_summary": {
@@ -836,6 +815,7 @@ def test_datasource_create_list_and_delete_round_trip(
                 {
                     "id": rest_body["datasource"]["id"],
                     "name": "Newswire API",
+                    "purpose": "news",
                     "source_type": "rest_api",
                     "tags": [],
                     "config_summary": rest_body["datasource"]["config_summary"],
@@ -843,6 +823,7 @@ def test_datasource_create_list_and_delete_round_trip(
                 {
                     "id": rss_body["datasource"]["id"],
                     "name": "CoinDesk",
+                    "purpose": "news",
                     "source_type": "rss",
                     "tags": ["layer2", "markets"],
                     "config_summary": rss_body["datasource"]["config_summary"],
@@ -850,6 +831,7 @@ def test_datasource_create_list_and_delete_round_trip(
                 {
                     "id": x_body["datasource"]["id"],
                     "name": "Whale Watch",
+                    "purpose": "news",
                     "source_type": "x",
                     "tags": ["whales"],
                     "config_summary": x_body["datasource"]["config_summary"],
@@ -867,13 +849,9 @@ def test_datasource_create_list_and_delete_round_trip(
         assert delete_response.status_code == 204
         assert delete_response.text == ""
 
-        after_delete_response = client.get(
-            "/datasources", headers=_authorized_headers()
-        )
+        after_delete_response = client.get("/datasources", headers=_authorized_headers())
         assert after_delete_response.status_code == 200
-        assert [
-            item["source_type"] for item in after_delete_response.json()["datasources"]
-        ] == [
+        assert [item["source_type"] for item in after_delete_response.json()["datasources"]] == [
             "rest_api",
             "rss",
         ]
@@ -928,9 +906,7 @@ def test_datasource_create_duplicate_returns_conflict(
 
     assert first_response.status_code == 201
     assert second_response.status_code == 409
-    assert second_response.json() == {
-        "detail": "Datasource 'rss:CoinDesk' already exists"
-    }
+    assert second_response.json() == {"detail": "Datasource 'news:rss:CoinDesk' already exists"}
 
 
 def test_datasource_delete_returns_conflict_when_active_ingestion_job_exists(
@@ -943,6 +919,7 @@ def test_datasource_delete_returns_conflict_when_active_ingestion_job_exists(
         DataSource.create(
             name="CoinDesk",
             source_type="rss",
+            purpose="news",
             config_payload={
                 "name": "CoinDesk",
                 "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
@@ -1005,16 +982,14 @@ def test_datasource_create_invalid_structural_payload_returns_validation_error(
             "/datasources",
             headers=_authorized_headers(),
             json={
+                "purpose": "news",
                 "source_type": "rss",
                 "tags": ["markets"],
             },
         )
 
     assert response.status_code == 422
-    assert any(
-        error["loc"] == ["body", "config_payload"]
-        for error in response.json()["detail"]
-    )
+    assert any(error["loc"] == ["body", "config_payload"] for error in response.json()["detail"])
 
 
 def test_create_api_server_lifespan_starts_requested_services_and_cleans_up(

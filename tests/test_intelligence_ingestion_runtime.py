@@ -56,11 +56,12 @@ class MemoryDataSourceRepository:
     def __init__(self, sources):
         self.sources = list(sources)
 
-    def list(self, source_type=None):
+    def list(self, purpose=None, source_type=None):
         return [
             source
             for source in self.sources
-            if source_type is None or source.source_type == source_type
+            if (purpose is None or source.purpose == purpose)
+            and (source_type is None or source.source_type == source_type)
         ]
 
 
@@ -243,6 +244,7 @@ def test_ignored_canonical_entry_is_not_updated_by_new_evidence():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     repository = MemoryIntelligenceRepository([source])
@@ -308,6 +310,7 @@ def test_unignored_entry_resumes_future_ingestion_updates():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     repository = MemoryIntelligenceRepository([source])
@@ -370,6 +373,7 @@ def test_first_run_uses_24h_backfill_then_checkpoint_incremental_window():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     item = _raw(content_hash="hash-1")
@@ -389,9 +393,17 @@ def test_first_run_uses_24h_backfill_then_checkpoint_incremental_window():
 
 def test_per_source_error_isolated_and_other_sources_continue():
     bad = DataSource.create(
-        name="bad", source_type="telegram_group", config_payload={"chat_id": "bad"}
+        name="bad",
+        source_type="telegram_group",
+        purpose="intelligence",
+        config_payload={"chat_id": "bad"},
     )
-    good = DataSource.create(name="good", source_type="v2ex", config_payload={"name": "crypto"})
+    good = DataSource.create(
+        name="good",
+        source_type="v2ex",
+        purpose="intelligence",
+        config_payload={"name": "crypto"},
+    )
     pipeline, _repository, extractor, _merge, _search = _pipeline(
         [bad, good],
         [FakeCrawler(error=RuntimeError("boom")), FakeCrawler([_raw("v2ex", "crypto", "hash-2")])],
@@ -409,6 +421,7 @@ def test_repeated_run_with_same_raw_item_deduplicates_before_extraction():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     item = _raw(content_hash="same")
@@ -428,6 +441,7 @@ def test_identical_text_with_different_external_ids_counts_as_new_evidence():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     first_item = _raw(content_hash="same", external_id="100")
@@ -448,6 +462,7 @@ def test_pipeline_creates_related_candidates_after_embedding_search():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     repository = MemoryIntelligenceRepository([source])
@@ -489,6 +504,7 @@ def test_untracked_slang_raw_items_are_skipped_before_extraction():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     repository = MemoryIntelligenceRepository([source])
@@ -531,6 +547,7 @@ def test_mixed_followed_and_untracked_slang_raw_item_is_retained():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     repository = MemoryIntelligenceRepository([source])
@@ -571,6 +588,7 @@ def test_short_ascii_untracked_slang_does_not_match_inside_words():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     repository = MemoryIntelligenceRepository([source])
@@ -601,6 +619,7 @@ def test_ignored_slang_raw_items_are_skipped_before_extraction():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
+        purpose="intelligence",
         config_payload={"chat_id": "chat-1"},
     )
     repository = MemoryIntelligenceRepository([source])

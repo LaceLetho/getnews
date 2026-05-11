@@ -82,12 +82,19 @@ class _DataSourceRepositoryStub:
         self._delete_error = delete_error
         self._save_error = save_error
 
-    def list(self, source_type: Optional[str] = None) -> list[DataSource]:
+    def list(
+        self,
+        purpose: Optional[str] = None,
+        source_type: Optional[str] = None,
+    ) -> list[DataSource]:
+        datasources = list(self._datasources)
+        if purpose is not None:
+            datasources = [
+                datasource for datasource in datasources if datasource.purpose == purpose
+            ]
         if source_type is None:
-            return list(self._datasources)
-        return [
-            datasource for datasource in self._datasources if datasource.source_type == source_type
-        ]
+            return datasources
+        return [datasource for datasource in datasources if datasource.source_type == source_type]
 
     def delete(self, datasource_id: str) -> bool:
         self.delete_calls.append(datasource_id)
@@ -187,9 +194,7 @@ def test_datasource_registration_build_application_includes_all_datasource_comma
         if hasattr(command_handler, "commands")
     }
 
-    assert {"datasource_list", "datasource_add", "datasource_delete"}.issubset(
-        registered_commands
-    )
+    assert {"datasource_list", "datasource_add", "datasource_delete"}.issubset(registered_commands)
 
 
 @pytest.mark.asyncio
@@ -215,6 +220,7 @@ async def test_datasource_list_returns_stable_sorted_normalized_output_for_autho
         datasources=[
             DataSource(
                 id="ds-api-1",
+                purpose="news",
                 source_type="rest_api",
                 name="API Feed",
                 tags=["api"],
@@ -222,6 +228,7 @@ async def test_datasource_list_returns_stable_sorted_normalized_output_for_autho
             ),
             DataSource(
                 id="ds-x-1",
+                purpose="news",
                 source_type="x",
                 name="Whale Watch",
                 tags=["Whales", "alpha", " whales "],
@@ -229,6 +236,7 @@ async def test_datasource_list_returns_stable_sorted_normalized_output_for_autho
             ),
             DataSource(
                 id="ds-rss-2",
+                purpose="news",
                 source_type="rss",
                 name="Beta Feed",
                 tags=[],
@@ -236,6 +244,7 @@ async def test_datasource_list_returns_stable_sorted_normalized_output_for_autho
             ),
             DataSource(
                 id="ds-rss-1",
+                purpose="news",
                 source_type="rss",
                 name="Alpha Feed",
                 tags=[" Defi ", "btc", "BTC"],
@@ -252,23 +261,27 @@ async def test_datasource_list_returns_stable_sorted_normalized_output_for_autho
         "📚 数据源列表\n\n"
         "共 4 个数据源。\n\n"
         "1. ID: ds-api-1\n"
+        "   用途: news\n"
         "   类型: rest_api\n"
         "   名称: API Feed\n"
         "   标签: api\n"
         "   接口: https://api.example.com/news\n\n"
         "2. ID: ds-rss-1\n"
+        "   用途: news\n"
         "   类型: rss\n"
         "   名称: Alpha Feed\n"
         "   标签: btc, defi\n"
         "   链接: https://example.com/alpha.xml\n"
         "   描述: alpha\n\n"
         "3. ID: ds-rss-2\n"
+        "   用途: news\n"
         "   类型: rss\n"
         "   名称: Beta Feed\n"
         "   标签: （无标签）\n"
         "   链接: https://example.com/beta.xml\n"
         "   描述: beta\n\n"
         "4. ID: ds-x-1\n"
+        "   用途: news\n"
         "   类型: x\n"
         "   名称: Whale Watch\n"
         "   标签: alpha, whales\n"
@@ -281,6 +294,7 @@ async def test_datasource_list_splits_long_response_into_telegram_safe_messages(
     datasources = [
         DataSource(
             id=f"ds-rss-{index}",
+            purpose="news",
             source_type="rss",
             name=f"RSS Feed {index:02d}",
             tags=["markets", "btc", "defi"],
@@ -300,8 +314,7 @@ async def test_datasource_list_splits_long_response_into_telegram_safe_messages(
     assert message.reply_text.call_count > 1
     sent_messages = [call.args[0] for call in message.reply_text.call_args_list]
     assert all(
-        len(sent_message) <= handler.TELEGRAM_SAFE_MESSAGE_LIMIT
-        for sent_message in sent_messages
+        len(sent_message) <= handler.TELEGRAM_SAFE_MESSAGE_LIMIT for sent_message in sent_messages
     )
     assert sent_messages[0].startswith("📚 数据源列表\n\n共 45 个数据源。")
     assert "45. ID: ds-rss-44" in "\n".join(sent_messages)
@@ -359,6 +372,7 @@ async def test_datasource_unauthorized_commands_reuse_existing_denial_behavior(
 async def test_datasource_delete_deletes_by_id_only_and_reports_success() -> None:
     datasource = DataSource(
         id="ds-123",
+        purpose="news",
         source_type="rss",
         name="CoinDesk",
         config_payload={"name": "CoinDesk", "url": "https://example.com/rss"},
@@ -373,9 +387,7 @@ async def test_datasource_delete_deletes_by_id_only_and_reports_success() -> Non
     await handler._handle_datasource_delete_command(update, context)
 
     assert repository.delete_calls == ["ds-123"]
-    message.reply_text.assert_called_once_with(
-        "✅ 数据源删除成功\n\n已删除数据源 ID: ds-123"
-    )
+    message.reply_text.assert_called_once_with("✅ 数据源删除成功\n\n已删除数据源 ID: ds-123")
 
 
 @pytest.mark.asyncio
@@ -419,6 +431,7 @@ async def test_datasource_delete_returns_conflict_when_active_ingestion_job_exis
         [
             DataSource(
                 id="ds-123",
+                purpose="news",
                 source_type="rss",
                 name="CoinDesk",
                 config_payload={"name": "CoinDesk", "url": "https://example.com/rss"},
@@ -454,7 +467,7 @@ async def test_datasource_add_rss_saves_valid_json_payload_and_returns_created_s
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"rss","tags":[" Markets ","btc","BTC"],"config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
+        text='/datasource_add {"purpose":"news","source_type":"rss","tags":[" Markets ","btc","BTC"],"config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -462,6 +475,7 @@ async def test_datasource_add_rss_saves_valid_json_payload_and_returns_created_s
 
     assert len(repository.save_calls) == 1
     saved_datasource = repository.save_calls[0]
+    assert saved_datasource.purpose == "news"
     assert saved_datasource.source_type == "rss"
     assert saved_datasource.name == "CoinDesk"
     assert saved_datasource.tags == ["btc", "markets"]
@@ -473,6 +487,7 @@ async def test_datasource_add_rss_saves_valid_json_payload_and_returns_created_s
     message.reply_text.assert_called_once_with(
         "✅ 数据源创建成功\n\n"
         f"ID: {saved_datasource.id}\n"
+        "用途: news\n"
         "类型: rss\n"
         "名称: CoinDesk\n"
         "标签: btc, markets"
@@ -489,7 +504,7 @@ async def test_datasource_add_x_saves_valid_json_payload_and_returns_created_sum
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"x","tags":[" Whales ","whales"],"config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"list"}}',
+        text='/datasource_add {"purpose":"news","source_type":"x","tags":[" Whales ","whales"],"config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"list"}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -497,6 +512,7 @@ async def test_datasource_add_x_saves_valid_json_payload_and_returns_created_sum
 
     assert len(repository.save_calls) == 1
     saved_datasource = repository.save_calls[0]
+    assert saved_datasource.purpose == "news"
     assert saved_datasource.source_type == "x"
     assert saved_datasource.name == "Whale Watch"
     assert saved_datasource.tags == ["whales"]
@@ -508,6 +524,7 @@ async def test_datasource_add_x_saves_valid_json_payload_and_returns_created_sum
     message.reply_text.assert_called_once_with(
         "✅ 数据源创建成功\n\n"
         f"ID: {saved_datasource.id}\n"
+        "用途: news\n"
         "类型: x\n"
         "名称: Whale Watch\n"
         "标签: whales"
@@ -534,7 +551,7 @@ async def test_datasource_add_rss_rejects_missing_json_with_single_syntax_error(
     message.reply_text.assert_called_once()
     response = message.reply_text.call_args.args[0]
     assert response.startswith("❌ 参数错误\n\n请输入 /datasource_add 后紧跟单个 JSON 对象。")
-    assert '"source_type":"rss|x|rest_api"' in response
+    assert '"purpose":"news|intelligence"' in response
     assert "输入 /help 查看示例。" in response
 
 
@@ -566,7 +583,7 @@ async def test_datasource_add_rss_rejects_duplicate_datasource_save_conflict() -
     handler = _create_handler()
     repository = _DataSourceRepositoryStub(
         [],
-        save_error=DataSourceAlreadyExistsError("rss", "CoinDesk"),
+        save_error=DataSourceAlreadyExistsError("rss", "CoinDesk", "news"),
     )
     handler.execution_coordinator.datasource_repository = repository
     update, message = _create_mock_update(
@@ -574,7 +591,7 @@ async def test_datasource_add_rss_rejects_duplicate_datasource_save_conflict() -
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"rss","config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
+        text='/datasource_add {"purpose":"news","source_type":"rss","config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -582,12 +599,14 @@ async def test_datasource_add_rss_rejects_duplicate_datasource_save_conflict() -
 
     assert len(repository.save_calls) == 1
     message.reply_text.assert_called_once_with(
-        "⚠️ 数据源已存在\n\n数据源 'rss:CoinDesk' 已存在，不能重复创建。"
+        "⚠️ 数据源已存在\n\n数据源 'news:rss:CoinDesk' 已存在，不能重复创建。"
     )
 
 
 @pytest.mark.asyncio
-async def test_datasource_add_rss_rejects_duplicate_datasource_save_conflict_legacy_value_error() -> None:
+async def test_datasource_add_rss_rejects_duplicate_datasource_save_conflict_legacy_value_error() -> (
+    None
+):
     handler = _create_handler()
     repository = _DataSourceRepositoryStub(
         [],
@@ -599,7 +618,7 @@ async def test_datasource_add_rss_rejects_duplicate_datasource_save_conflict_leg
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"rss","config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
+        text='/datasource_add {"purpose":"news","source_type":"rss","config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -607,7 +626,7 @@ async def test_datasource_add_rss_rejects_duplicate_datasource_save_conflict_leg
 
     assert len(repository.save_calls) == 1
     message.reply_text.assert_called_once_with(
-        "⚠️ 数据源已存在\n\n数据源 'rss:CoinDesk' 已存在，不能重复创建。"
+        "⚠️ 数据源已存在\n\n数据源 'news:rss:CoinDesk' 已存在，不能重复创建。"
     )
 
 
@@ -621,7 +640,7 @@ async def test_datasource_add_x_rejects_invalid_payload_with_explicit_validation
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"x","config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"search"}}',
+        text='/datasource_add {"purpose":"news","source_type":"x","config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"search"}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -636,7 +655,9 @@ async def test_datasource_add_x_rejects_invalid_payload_with_explicit_validation
 
 
 @pytest.mark.asyncio
-async def test_datasource_add_rest_api_saves_valid_json_payload_and_returns_created_summary() -> None:
+async def test_datasource_add_rest_api_saves_valid_json_payload_and_returns_created_summary() -> (
+    None
+):
     handler = _create_handler()
     repository = _DataSourceRepositoryStub([])
     handler.execution_coordinator.datasource_repository = repository
@@ -645,7 +666,7 @@ async def test_datasource_add_rest_api_saves_valid_json_payload_and_returns_crea
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"rest_api","tags":[" news ","api"],"config_payload":{"name":"Newswire API","endpoint":"https://api.example.com/news","method":"GET","headers":{},"params":{},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
+        text='/datasource_add {"purpose":"news","source_type":"rest_api","tags":[" news ","api"],"config_payload":{"name":"Newswire API","endpoint":"https://api.example.com/news","method":"GET","headers":{},"params":{},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -653,6 +674,7 @@ async def test_datasource_add_rest_api_saves_valid_json_payload_and_returns_crea
 
     assert len(repository.save_calls) == 1
     saved_datasource = repository.save_calls[0]
+    assert saved_datasource.purpose == "news"
     assert saved_datasource.source_type == "rest_api"
     assert saved_datasource.name == "Newswire API"
     assert saved_datasource.tags == ["api", "news"]
@@ -672,6 +694,7 @@ async def test_datasource_add_rest_api_saves_valid_json_payload_and_returns_crea
     message.reply_text.assert_called_once_with(
         "✅ 数据源创建成功\n\n"
         f"ID: {saved_datasource.id}\n"
+        "用途: news\n"
         "类型: rest_api\n"
         "名称: Newswire API\n"
         "标签: api, news"
@@ -688,7 +711,7 @@ async def test_datasource_add_rest_api_rejects_authorization_header() -> None:
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"rest_api","config_payload":{"name":"Newswire API","endpoint":"https://api.example.com/news","method":"GET","headers":{"Authorization":"Bearer super-secret"},"params":{},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
+        text='/datasource_add {"purpose":"news","source_type":"rest_api","config_payload":{"name":"Newswire API","endpoint":"https://api.example.com/news","method":"GET","headers":{"Authorization":"Bearer super-secret"},"params":{},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -709,7 +732,7 @@ async def test_datasource_add_rest_api_rejects_api_key_in_params() -> None:
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"rest_api","config_payload":{"name":"Newswire API","endpoint":"https://api.example.com/news","method":"GET","headers":{},"params":{"api_key":"super-secret"},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
+        text='/datasource_add {"purpose":"news","source_type":"rest_api","config_payload":{"name":"Newswire API","endpoint":"https://api.example.com/news","method":"GET","headers":{},"params":{"api_key":"super-secret"},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -730,7 +753,7 @@ async def test_datasource_add_rest_api_rejects_inline_auth_block() -> None:
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"rest_api","config_payload":{"name":"Newswire API","endpoint":"https://api.example.com/news","method":"POST","auth":{"type":"bearer","token":"super-secret"},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
+        text='/datasource_add {"purpose":"news","source_type":"rest_api","config_payload":{"name":"Newswire API","endpoint":"https://api.example.com/news","method":"POST","auth":{"type":"bearer","token":"super-secret"},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -751,7 +774,7 @@ async def test_datasource_add_rejects_tags_over_shared_limit() -> None:
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"rss","tags":["tag-0","tag-1","tag-2","tag-3","tag-4","tag-5","tag-6","tag-7","tag-8","tag-9","tag-10","tag-11","tag-12","tag-13","tag-14","tag-15","tag-16"],"config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
+        text='/datasource_add {"purpose":"news","source_type":"rss","tags":["tag-0","tag-1","tag-2","tag-3","tag-4","tag-5","tag-6","tag-7","tag-8","tag-9","tag-10","tag-11","tag-12","tag-13","tag-14","tag-15","tag-16"],"config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -770,12 +793,15 @@ async def test_expected_datasource_add_errors_do_not_log_as_generic_command_fail
     cases: list[tuple[str, _DataSourceRepositoryStub]] = [
         ("/datasource_add name=CoinDesk", _DataSourceRepositoryStub([])),
         (
-            '/datasource_add {"source_type":"x","config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"search"}}',
+            '/datasource_add {"purpose":"news","source_type":"x","config_payload":{"name":"Whale Watch","url":"https://x.com/i/lists/1234567890","type":"search"}}',
             _DataSourceRepositoryStub([]),
         ),
         (
-            '/datasource_add {"source_type":"rss","config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
-            _DataSourceRepositoryStub([], save_error=DataSourceAlreadyExistsError("rss", "CoinDesk")),
+            '/datasource_add {"purpose":"news","source_type":"rss","config_payload":{"name":"CoinDesk","url":"https://www.coindesk.com/arc/outboundfeeds/rss/","description":"Industry news"}}',
+            _DataSourceRepositoryStub(
+                [],
+                save_error=DataSourceAlreadyExistsError("rss", "CoinDesk", "news"),
+            ),
         ),
     ]
 
@@ -843,7 +869,7 @@ async def test_datasource_telegram_created_rest_api_visible_in_telegram_list_and
         "tester",
         "private",
         "123456789",
-        text='/datasource_add {"source_type":"rest_api","tags":["crypto","news"],"config_payload":{"name":"Crypto News API","endpoint":"https://api.crypto.com/news","method":"GET","headers":{},"params":{},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
+        text='/datasource_add {"purpose":"news","source_type":"rest_api","tags":["crypto","news"],"config_payload":{"name":"Crypto News API","endpoint":"https://api.crypto.com/news","method":"GET","headers":{},"params":{},"response_mapping":{"title_field":"title","content_field":"body","url_field":"url","time_field":"published_at"}}}',
     )
     context = Mock(spec=ContextTypes.DEFAULT_TYPE)
 
@@ -851,11 +877,13 @@ async def test_datasource_telegram_created_rest_api_visible_in_telegram_list_and
 
     assert len(repository.save_calls) == 1
     saved_datasource = repository.save_calls[0]
+    assert saved_datasource.purpose == "news"
     assert saved_datasource.source_type == "rest_api"
     assert saved_datasource.name == "Crypto News API"
     create_message.reply_text.assert_called_once_with(
         "✅ 数据源创建成功\n\n"
         f"ID: {saved_datasource.id}\n"
+        "用途: news\n"
         "类型: rest_api\n"
         "名称: Crypto News API\n"
         "标签: crypto, news"

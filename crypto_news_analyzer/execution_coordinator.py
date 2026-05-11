@@ -672,6 +672,7 @@ class MainController:
                     DataSource.create(
                         name=row["name"],
                         source_type=source_type,
+                        purpose="news",
                         config_payload=dict(row),
                     )
                 )

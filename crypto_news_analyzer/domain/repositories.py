@@ -395,11 +395,17 @@ class DataSourceRepository(ABC):
         pass
 
     @abstractmethod
-    def get_by_type_and_name(self, source_type: str, name: str) -> Optional[DataSource]:
+    def get_by_purpose_type_and_name(
+        self, purpose: str, source_type: str, name: str
+    ) -> Optional[DataSource]:
         pass
 
     @abstractmethod
-    def list(self, source_type: Optional[str] = None) -> List[DataSource]:
+    def list(
+        self,
+        purpose: Optional[str] = None,
+        source_type: Optional[str] = None,
+    ) -> List[DataSource]:
         pass
 
     @abstractmethod
@@ -541,9 +547,7 @@ class IntelligenceRepository(ABC):
         pass
 
     @abstractmethod
-    def unignore_canonical_entry(
-        self, entry_id: str
-    ) -> Optional[CanonicalIntelligenceEntry]:
+    def unignore_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
         pass
 
     @abstractmethod

@@ -125,12 +125,14 @@ def test_canonical_entry_and_checkpoint_round_trip_and_secret_rejection():
         DataSource.create(
             name="Hidden API",
             source_type="rest_api",
+            purpose="intelligence",
             config_payload={"api_key": "secret"},
         )
     with pytest.raises(ValueError, match="private credential"):
         DataSource.create(
             name="V2EX",
             source_type="rest_api",
+            purpose="intelligence",
             config_payload={"V2EX_PAT": "secret"},
         )
 

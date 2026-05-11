@@ -5,13 +5,13 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Union
 from urllib.parse import urlparse
 
-from .domain.models import DataSource, DataSourceType
+from .domain.models import DataSource, DataSourcePurpose, DataSourceType
 from .models import RESTAPISource, RSSSource, XSource
-
 
 RuntimeSource = Union[RSSSource, XSource, RESTAPISource]
 
 SUPPORTED_DATASOURCE_TYPES = {item.value for item in DataSourceType}
+SUPPORTED_DATASOURCE_PURPOSES = {item.value for item in DataSourcePurpose}
 REQUIRED_REST_API_MAPPING_FIELDS = ("title_field", "content_field", "url_field", "time_field")
 MAX_DATASOURCE_TAGS = 16
 MAX_DATASOURCE_TAG_LENGTH = 32
@@ -51,11 +51,7 @@ class TelegramDataSourceInputError(ValueError):
 
 
 def normalize_datasource_tags(tags: List[str] | None) -> List[str]:
-    normalized_tags = {
-        str(tag).strip().lower()
-        for tag in (tags or [])
-        if str(tag).strip()
-    }
+    normalized_tags = {str(tag).strip().lower() for tag in (tags or []) if str(tag).strip()}
     return sorted(normalized_tags)
 
 
@@ -77,6 +73,7 @@ def validate_datasource_tags(tags: List[str] | None) -> List[str]:
 
 @dataclass(frozen=True)
 class ValidatedDataSourcePayload:
+    purpose: str
     source_type: str
     name: str
     tags: List[str]
@@ -86,6 +83,7 @@ class ValidatedDataSourcePayload:
         return DataSource.create(
             name=self.name,
             source_type=self.source_type,
+            purpose=self.purpose,
             tags=self.tags,
             config_payload=self.config_payload,
         )
@@ -97,6 +95,11 @@ class ValidatedDataSourcePayload:
 def validate_datasource_create_payload(payload: Mapping[str, Any]) -> ValidatedDataSourcePayload:
     if not isinstance(payload, Mapping):
         raise DataSourcePayloadValidationError("Datasource payload must be an object")
+
+    raw_purpose = payload.get("purpose")
+    purpose = str(raw_purpose or "").strip().lower()
+    if purpose not in SUPPORTED_DATASOURCE_PURPOSES:
+        raise DataSourcePayloadValidationError("purpose must be one of: news, intelligence")
 
     raw_source_type = payload.get("source_type")
     source_type = str(raw_source_type or "").strip().lower()
@@ -123,6 +126,7 @@ def validate_datasource_create_payload(payload: Mapping[str, Any]) -> ValidatedD
         )
 
     return ValidatedDataSourcePayload(
+        purpose=purpose,
         source_type=source_type,
         name=config_payload["name"],
         tags=validate_datasource_tags(raw_tags),
@@ -130,7 +134,9 @@ def validate_datasource_create_payload(payload: Mapping[str, Any]) -> ValidatedD
     )
 
 
-def validate_datasource_config_payload(source_type: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+def validate_datasource_config_payload(
+    source_type: str, payload: Mapping[str, Any]
+) -> Dict[str, Any]:
     normalized_source_type = str(source_type or "").strip().lower()
     if normalized_source_type == DataSourceType.RSS.value:
         return _validate_rss_payload(payload)
@@ -143,12 +149,12 @@ def validate_datasource_config_payload(source_type: str, payload: Mapping[str, A
     if normalized_source_type == DataSourceType.V2EX.value:
         return _validate_v2ex_payload(payload)
 
-    raise DataSourcePayloadValidationError(
-        f"Unsupported datasource type: {source_type}"
-    )
+    raise DataSourcePayloadValidationError(f"Unsupported datasource type: {source_type}")
 
 
-def runtime_source_from_record(record: Union[DataSource, ValidatedDataSourcePayload, Mapping[str, Any]]) -> RuntimeSource:
+def runtime_source_from_record(
+    record: Union[DataSource, ValidatedDataSourcePayload, Mapping[str, Any]],
+) -> RuntimeSource:
     if isinstance(record, ValidatedDataSourcePayload):
         source_type = record.source_type
         config_payload = record.config_payload
@@ -188,30 +194,25 @@ def runtime_source_from_record(record: Union[DataSource, ValidatedDataSourcePayl
             response_mapping=validated_payload["response_mapping"],
         )
 
-    raise DataSourcePayloadValidationError(
-        f"Unsupported datasource type: {source_type}"
-    )
+    raise DataSourcePayloadValidationError(f"Unsupported datasource type: {source_type}")
 
 
 def parse_telegram_datasource_command_json(command_text: str, command_name: str) -> Dict[str, Any]:
     raw_command_text = str(command_text or "").strip()
     prefix = str(command_name or "").strip()
     if not raw_command_text.startswith(prefix):
-        raise TelegramDataSourceInputError(
-            f"❌ 参数错误\n\n请输入 {prefix} 后紧跟单个 JSON 对象。"
-        )
+        raise TelegramDataSourceInputError(f"❌ 参数错误\n\n请输入 {prefix} 后紧跟单个 JSON 对象。")
 
     _, separator, json_payload = raw_command_text.partition(" ")
     if not separator or not json_payload.strip():
-        raise TelegramDataSourceInputError(
-            f"❌ 参数错误\n\n请输入 {prefix} 后紧跟单个 JSON 对象。"
-        )
+        raise TelegramDataSourceInputError(f"❌ 参数错误\n\n请输入 {prefix} 后紧跟单个 JSON 对象。")
 
     try:
         parsed_payload = json.loads(json_payload)
     except json.JSONDecodeError as exc:
+        example = f'{prefix} {{"purpose":"news","source_type":"rss",' '"config_payload":{...}}'
         raise TelegramDataSourceInputError(
-            f"❌ 参数错误\n\n请输入有效的 JSON 对象，例如：{prefix} {{\"source_type\":\"rss\",\"config_payload\":{{...}}}}"
+            f"❌ 参数错误\n\n请输入有效的 JSON 对象，例如：{example}"
         ) from exc
 
     if not isinstance(parsed_payload, dict):
@@ -222,7 +223,9 @@ def parse_telegram_datasource_command_json(command_text: str, command_name: str)
     return parsed_payload
 
 
-def validate_telegram_datasource_create_payload(payload: Mapping[str, Any]) -> ValidatedDataSourcePayload:
+def validate_telegram_datasource_create_payload(
+    payload: Mapping[str, Any],
+) -> ValidatedDataSourcePayload:
     raw_source_type = str(payload.get("source_type") or "").strip().lower()
     raw_config_payload = payload.get("config_payload")
     if raw_source_type == DataSourceType.REST_API.value and isinstance(raw_config_payload, Mapping):
@@ -250,9 +253,7 @@ def _validate_telegram_group_payload(payload: Mapping[str, Any]) -> Dict[str, An
     chat_username = payload.get("chat_username")
 
     if chat_id is None and chat_username is None:
-        raise DataSourcePayloadValidationError(
-            "telegram_group requires chat_id or chat_username"
-        )
+        raise DataSourcePayloadValidationError("telegram_group requires chat_id or chat_username")
 
     if chat_id is not None and not isinstance(chat_id, (int, str)):
         raise DataSourcePayloadValidationError("telegram_group.chat_id must be a string or integer")
@@ -401,7 +402,9 @@ def _normalize_object_field(
     return dict(value)
 
 
-def _require_non_empty_string(payload: Mapping[str, Any], *, field_name: str, source_type: str) -> str:
+def _require_non_empty_string(
+    payload: Mapping[str, Any], *, field_name: str, source_type: str
+) -> str:
     value = payload.get(field_name)
     if not isinstance(value, str) or not value.strip():
         raise DataSourcePayloadValidationError(f"{source_type}.{field_name} is required")
@@ -412,7 +415,9 @@ def _require_http_url(payload: Mapping[str, Any], *, field_name: str, source_typ
     url = _require_non_empty_string(payload, field_name=field_name, source_type=source_type)
     parsed_url = urlparse(url)
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-        raise DataSourcePayloadValidationError(f"{source_type}.{field_name} must be a valid http(s) URL")
+        raise DataSourcePayloadValidationError(
+            f"{source_type}.{field_name} must be a valid http(s) URL"
+        )
     return url
 
 
@@ -486,7 +491,11 @@ def _reject_v2ex_html_scraping_fields(payload: Mapping[str, Any]) -> None:
     }
     for raw_key in payload.keys():
         normalized_key = str(raw_key).strip().lower().replace("-", "_")
-        if normalized_key in forbidden_keys or "selector" in normalized_key or normalized_key == "html":
+        if (
+            normalized_key in forbidden_keys
+            or "selector" in normalized_key
+            or normalized_key == "html"
+        ):
             raise DataSourcePayloadValidationError(
                 "v2ex payload cannot include HTML scraping or CSS selector fields"
             )

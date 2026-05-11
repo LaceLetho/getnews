@@ -486,6 +486,7 @@ class SQLiteDataSourceRepository(DataSourceRepository):
         try:
             self._data.upsert_datasource(
                 datasource_id=datasource.id,
+                purpose=datasource.purpose,
                 source_type=datasource.source_type,
                 name=datasource.name,
                 config_payload=datasource.config_payload,
@@ -494,7 +495,11 @@ class SQLiteDataSourceRepository(DataSourceRepository):
             )
         except StorageError as exc:
             if self._is_datasource_uniqueness_error(exc):
-                raise DataSourceAlreadyExistsError(datasource.source_type, datasource.name) from exc
+                raise DataSourceAlreadyExistsError(
+                    datasource.source_type,
+                    datasource.name,
+                    datasource.purpose,
+                ) from exc
             raise
 
         loaded = self.get_by_id(datasource.id)
@@ -506,9 +511,9 @@ class SQLiteDataSourceRepository(DataSourceRepository):
     def _is_datasource_uniqueness_error(error: Exception) -> bool:
         message = str(error).lower()
         uniqueness_tokens = (
-            "datasources.source_type, datasources.name",
+            "datasources.purpose, datasources.source_type, datasources.name",
             "duplicate key value violates unique constraint",
-            "idx_datasources_source_name",
+            "idx_datasources_purpose_source_name",
         )
         return any(token in message for token in uniqueness_tokens)
 
@@ -518,14 +523,24 @@ class SQLiteDataSourceRepository(DataSourceRepository):
             return None
         return DataSource.from_dict(payload)
 
-    def get_by_type_and_name(self, source_type: str, name: str) -> Optional[DataSource]:
-        payload = self._data.get_datasource_by_type_and_name(source_type=source_type, name=name)
+    def get_by_purpose_type_and_name(
+        self, purpose: str, source_type: str, name: str
+    ) -> Optional[DataSource]:
+        payload = self._data.get_datasource_by_purpose_type_and_name(
+            purpose=purpose,
+            source_type=source_type,
+            name=name,
+        )
         if payload is None:
             return None
         return DataSource.from_dict(payload)
 
-    def list(self, source_type: Optional[str] = None) -> List[DataSource]:
-        rows = self._data.list_datasources(source_type=source_type)
+    def list(
+        self,
+        purpose: Optional[str] = None,
+        source_type: Optional[str] = None,
+    ) -> List[DataSource]:
+        rows = self._data.list_datasources(purpose=purpose, source_type=source_type)
         return [DataSource.from_dict(row) for row in rows]
 
     def delete(self, datasource_id: str) -> bool:
@@ -586,9 +601,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
     def get_raw_item_ids_with_existing_observations(
         self, raw_item_ids: List[str], prompt_version: str
     ) -> Set[str]:
-        return self._data.get_raw_item_ids_with_existing_observations(
-            raw_item_ids, prompt_version
-        )
+        return self._data.get_raw_item_ids_with_existing_observations(raw_item_ids, prompt_version)
 
     def get_uncanonicalized_observations(self, limit: int) -> List[ExtractionObservation]:
         rows = self._data.get_uncanonicalized_intelligence_observations(limit)
@@ -626,9 +639,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
     def save_entry_evidence_link(
         self, entry_id: str, observation_id: str, raw_item_id: str
     ) -> None:
-        self._data.upsert_intelligence_entry_evidence_link(
-            entry_id, observation_id, raw_item_id
-        )
+        self._data.upsert_intelligence_entry_evidence_link(entry_id, observation_id, raw_item_id)
 
     def list_entry_evidence_anchors(
         self, entry_id: str, page: int = 1, page_size: int = 20
@@ -715,9 +726,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         row = self._data.ignore_canonical_intelligence_entry(entry_id, ignored_by)
         return CanonicalIntelligenceEntry.from_dict(row) if row else None
 
-    def unignore_canonical_entry(
-        self, entry_id: str
-    ) -> Optional[CanonicalIntelligenceEntry]:
+    def unignore_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
         row = self._data.unignore_canonical_intelligence_entry(entry_id)
         return CanonicalIntelligenceEntry.from_dict(row) if row else None
 

@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS datasources (
     id TEXT PRIMARY KEY,
+    purpose TEXT NOT NULL,
     source_type TEXT NOT NULL,
     name TEXT NOT NULL,
     config_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -13,8 +14,8 @@ CREATE TABLE IF NOT EXISTS datasource_tags (
     FOREIGN KEY (datasource_id) REFERENCES datasources (id) ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_datasources_source_name
-ON datasources (source_type, name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_datasources_purpose_source_name
+ON datasources (purpose, source_type, name);
 
 CREATE INDEX IF NOT EXISTS idx_datasources_created_at
 ON datasources (created_at);
