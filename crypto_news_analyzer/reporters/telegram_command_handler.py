@@ -72,6 +72,7 @@ class TelegramCommandHandler:
 
     INTEL_PAGE_SIZE = 5
     INTEL_EVIDENCE_PAGE_SIZE = 5
+    TELEGRAM_SAFE_MESSAGE_LIMIT = 4000
 
     def __init__(
         self,
@@ -2400,8 +2401,9 @@ class TelegramCommandHandler:
                 authorized=True,
             )
 
-            response = self.handle_datasource_list_command()
-            await update.message.reply_text(response)
+            responses = self.handle_datasource_list_messages()
+            for response in responses:
+                await update.message.reply_text(response)
             self._log_command_execution(
                 "/datasource_list",
                 user_id,
@@ -4368,6 +4370,9 @@ class TelegramCommandHandler:
             return f"❌ 获取统计信息失败\n\n{str(e)}"
 
     def handle_datasource_list_command(self) -> str:
+        return "\n\n".join(self.handle_datasource_list_messages())
+
+    def handle_datasource_list_messages(self) -> List[str]:
         repository = getattr(self.execution_coordinator, "datasource_repository", None)
         if repository is None:
             raise ValueError("数据源仓储未初始化")
@@ -4378,7 +4383,7 @@ class TelegramCommandHandler:
         )
 
         if not datasources:
-            return "📚 数据源列表\n\n暂无已配置数据源。"
+            return ["📚 数据源列表\n\n暂无已配置数据源。"]
 
         response_lines = ["📚 数据源列表", "", f"共 {len(datasources)} 个数据源。", ""]
 
@@ -4387,7 +4392,45 @@ class TelegramCommandHandler:
             if index < len(datasources):
                 response_lines.append("")
 
-        return "\n".join(response_lines)
+        return self._split_telegram_message("\n".join(response_lines))
+
+    def _split_telegram_message(
+        self,
+        text: str,
+        max_length: int = TELEGRAM_SAFE_MESSAGE_LIMIT,
+    ) -> List[str]:
+        if len(text) <= max_length:
+            return [text]
+
+        messages: List[str] = []
+        current_lines: List[str] = []
+        current_length = 0
+
+        for line in text.split("\n"):
+            line_length = len(line)
+
+            if line_length > max_length:
+                if current_lines:
+                    messages.append("\n".join(current_lines).rstrip())
+                    current_lines = []
+                    current_length = 0
+                for start in range(0, line_length, max_length):
+                    messages.append(line[start : start + max_length])
+                continue
+
+            projected_length = current_length + line_length + (1 if current_lines else 0)
+            if current_lines and projected_length > max_length:
+                messages.append("\n".join(current_lines).rstrip())
+                current_lines = [line]
+                current_length = line_length
+            else:
+                current_lines.append(line)
+                current_length = projected_length
+
+        if current_lines:
+            messages.append("\n".join(current_lines).rstrip())
+
+        return [message for message in messages if message]
 
     @staticmethod
     def _normalize_optional_display_text(value: Any) -> Optional[str]:

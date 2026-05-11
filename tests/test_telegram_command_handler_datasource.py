@@ -182,7 +182,9 @@ def test_datasource_registration_build_application_includes_all_datasource_comma
         handler._build_application(use_updater=False)
 
     registered_commands = {
-        next(iter(command_handler.commands)) for command_handler in application.added_handlers
+        next(iter(command_handler.commands))
+        for command_handler in application.added_handlers
+        if hasattr(command_handler, "commands")
     }
 
     assert {"datasource_list", "datasource_add", "datasource_delete"}.issubset(
@@ -272,6 +274,37 @@ async def test_datasource_list_returns_stable_sorted_normalized_output_for_autho
         "   标签: alpha, whales\n"
         "   链接: https://x.com/i/lists/1"
     )
+
+
+@pytest.mark.asyncio
+async def test_datasource_list_splits_long_response_into_telegram_safe_messages():
+    datasources = [
+        DataSource(
+            id=f"ds-rss-{index}",
+            source_type="rss",
+            name=f"RSS Feed {index:02d}",
+            tags=["markets", "btc", "defi"],
+            config_payload={
+                "url": f"https://example.com/{index:02d}/feed.xml",
+                "description": "Long datasource description " * 8,
+            },
+        )
+        for index in range(45)
+    ]
+    handler = _create_handler(datasources=datasources)
+    update, message = _create_mock_update("123456789", "tester", "private", "123456789")
+    context = Mock(spec=ContextTypes.DEFAULT_TYPE)
+
+    await handler._handle_datasource_list_command(update, context)
+
+    assert message.reply_text.call_count > 1
+    sent_messages = [call.args[0] for call in message.reply_text.call_args_list]
+    assert all(
+        len(sent_message) <= handler.TELEGRAM_SAFE_MESSAGE_LIMIT
+        for sent_message in sent_messages
+    )
+    assert sent_messages[0].startswith("📚 数据源列表\n\n共 45 个数据源。")
+    assert "45. ID: ds-rss-44" in "\n".join(sent_messages)
 
 
 @pytest.mark.asyncio
