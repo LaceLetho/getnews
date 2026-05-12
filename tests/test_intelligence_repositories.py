@@ -331,6 +331,64 @@ def test_entry_evidence_context_window_does_not_cross_conversation_scope(tmp_pat
         manager.close()
 
 
+def test_postgres_evidence_context_window_uses_typed_null_safe_matching():
+    class FakeCursor:
+        def __init__(self):
+            self.calls = []
+
+        def execute(self, query: str, params: tuple[Any, ...]):
+            self.calls.append((query, params))
+
+        def fetchone(self):
+            return {
+                "entry_id": "entry-1",
+                "observation_id": "obs-1",
+                "raw_item_id": "raw-1",
+                "observed_at": None,
+                "published_at": None,
+                "collected_at": datetime.utcnow(),
+                "source_type": "telegram_group",
+                "source_id": None,
+                "chat_id": "chat-1",
+                "thread_id": None,
+                "topic_id": None,
+            }
+
+        def fetchall(self):
+            return []
+
+    class FakeConnection:
+        def __init__(self):
+            self.cursor_instance = FakeCursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def cursor(self):
+            return self.cursor_instance
+
+    connection = FakeConnection()
+    manager = DataManager.__new__(DataManager)
+    manager.backend = "postgres"
+    manager._get_connection = lambda: connection
+
+    result = manager.get_intelligence_entry_evidence_context_window(
+        "entry-1",
+        "raw-1",
+        before=5,
+        after=5,
+    )
+
+    assert result is not None
+    context_query, context_params = connection.cursor_instance.calls[1]
+    assert "IS NOT DISTINCT FROM %s" in context_query
+    assert "%s IS NULL" not in context_query
+    assert context_params == ("telegram_group", None, "chat-1", None, None, "raw-1", 5, 5)
+
+
 def test_entry_evidence_anchor_pagination_does_not_duplicate_rows(tmp_path: Path):
     manager, repository = _build_repository(tmp_path / "intelligence-evidence-pages.db")
     try:

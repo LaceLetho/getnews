@@ -2906,8 +2906,9 @@ class DataManager:
             if not anchor:
                 return None
 
+            null_safe_match = "IS NOT DISTINCT FROM" if self.backend == "postgres" else "IS"
             cursor.execute(
-                self._sql("""
+                self._sql(f"""
                 WITH scoped AS (
                     SELECT
                         raw_intelligence_items.*,
@@ -2916,10 +2917,10 @@ class DataManager:
                         ) AS context_position
                     FROM raw_intelligence_items
                     WHERE source_type = ?
-                      AND (source_id = ? OR (source_id IS NULL AND ? IS NULL))
-                      AND (chat_id = ? OR (chat_id IS NULL AND ? IS NULL))
-                      AND (thread_id = ? OR (thread_id IS NULL AND ? IS NULL))
-                      AND (topic_id = ? OR (topic_id IS NULL AND ? IS NULL))
+                      AND source_id {null_safe_match} ?
+                      AND chat_id {null_safe_match} ?
+                      AND thread_id {null_safe_match} ?
+                      AND topic_id {null_safe_match} ?
                 ), anchor_position AS (
                     SELECT context_position FROM scoped WHERE id = ?
                 )
@@ -2932,12 +2933,8 @@ class DataManager:
                 (
                     anchor["source_type"],
                     anchor["source_id"],
-                    anchor["source_id"],
-                    anchor["chat_id"],
                     anchor["chat_id"],
                     anchor["thread_id"],
-                    anchor["thread_id"],
-                    anchor["topic_id"],
                     anchor["topic_id"],
                     raw_item_id,
                     max(0, before),
