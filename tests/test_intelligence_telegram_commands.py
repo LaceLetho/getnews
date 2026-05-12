@@ -376,6 +376,119 @@ def test_intel_recent_page_renders_follow_buttons():
     assert markup.inline_keyboard[0][1].callback_data == "intel:f:intel-1"
 
 
+def test_intel_page_detail_button_opens_web_source_url():
+    repository = Mock()
+    repository.get_raw_item_by_id.return_value = _make_raw_item(
+        source_type="v2ex",
+        source_url="https://www.v2ex.com/t/12345",
+    )
+    handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
+    bot = SimpleNamespace(
+        send_message=AsyncMock(
+            side_effect=[
+                SimpleNamespace(message_id=101),
+                SimpleNamespace(message_id=102),
+            ]
+        )
+    )
+    handler.application = SimpleNamespace(bot=bot)
+
+    asyncio.run(
+        handler._send_intel_page(
+            chat_id="chat_1",
+            entries=[_make_entry(latest_raw_item_id="raw-1")],
+            page=1,
+            total_pages=1,
+            total=1,
+            kind="recent",
+            state_data={"kind": "recent", "chat_id": "chat_1", "user_id": "1"},
+            action="follow",
+        )
+    )
+
+    markup = bot.send_message.await_args_list[0].kwargs["reply_markup"]
+    detail_button = markup.inline_keyboard[0][0]
+    assert detail_button.text == "详情"
+    assert detail_button.url == "https://www.v2ex.com/t/12345"
+    assert detail_button.callback_data is None
+
+
+def test_intel_page_detail_button_opens_telegram_message_url():
+    repository = Mock()
+    repository.get_raw_item_by_id.return_value = _make_raw_item(
+        source_type="telegram_group",
+        source_url=None,
+        chat_id="@example_group",
+        external_id="456",
+    )
+    handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
+    bot = SimpleNamespace(
+        send_message=AsyncMock(
+            side_effect=[
+                SimpleNamespace(message_id=101),
+                SimpleNamespace(message_id=102),
+            ]
+        )
+    )
+    handler.application = SimpleNamespace(bot=bot)
+
+    asyncio.run(
+        handler._send_intel_page(
+            chat_id="chat_1",
+            entries=[_make_entry(latest_raw_item_id="raw-1")],
+            page=1,
+            total_pages=1,
+            total=1,
+            kind="following",
+            state_data={"kind": "following", "chat_id": "chat_1", "user_id": "1"},
+            action="unfollow",
+        )
+    )
+
+    markup = bot.send_message.await_args_list[0].kwargs["reply_markup"]
+    detail_button = markup.inline_keyboard[0][0]
+    assert detail_button.url == "https://t.me/example_group/456"
+    assert detail_button.callback_data is None
+
+
+def test_intel_page_detail_button_falls_back_to_callback_without_source_url():
+    repository = Mock()
+    repository.get_raw_item_by_id.return_value = _make_raw_item(
+        source_type="telegram_group",
+        source_url=None,
+        chat_id="-12345",
+        external_id=None,
+    )
+    handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
+    bot = SimpleNamespace(
+        send_message=AsyncMock(
+            side_effect=[
+                SimpleNamespace(message_id=101),
+                SimpleNamespace(message_id=102),
+            ]
+        )
+    )
+    handler.application = SimpleNamespace(bot=bot)
+
+    asyncio.run(
+        handler._send_intel_page(
+            chat_id="chat_1",
+            entries=[_make_entry(latest_raw_item_id="raw-1")],
+            page=1,
+            total_pages=1,
+            total=1,
+            kind="recent",
+            state_data={"kind": "recent", "chat_id": "chat_1", "user_id": "1"},
+            action="follow",
+        )
+    )
+
+    markup = bot.send_message.await_args_list[0].kwargs["reply_markup"]
+    detail_button = markup.inline_keyboard[0][0]
+    assert detail_button.url is None
+    assert detail_button.callback_data == "intel:d:intel-1"
+
+
 def test_intel_follow_and_unfollow_business_methods_keep_ignore_state_separate():
     repository = Mock()
     repository.follow_canonical_entry.return_value = _make_entry(display_name="Seller One")

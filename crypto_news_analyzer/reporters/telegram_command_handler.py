@@ -22,7 +22,7 @@ import hashlib
 import secrets
 import time
 import threading
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -280,6 +280,85 @@ class TelegramCommandHandler:
         return f"intel:p:{token}:{max(1, int(page))}"
 
     @staticmethod
+    def _is_http_url(url: str) -> bool:
+        try:
+            parsed = urlsplit(str(url).strip())
+        except Exception:
+            return False
+        return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+    @staticmethod
+    def _normalize_telegram_username(value: str) -> Optional[str]:
+        candidate = str(value or "").strip()
+        if not candidate:
+            return None
+        if candidate.startswith("https://t.me/") or candidate.startswith("http://t.me/"):
+            path = urlsplit(candidate).path.strip("/")
+            candidate = path.split("/", 1)[0] if path else ""
+        candidate = candidate.lstrip("@").strip("/")
+        if not candidate or candidate.lstrip("-").isdigit() or candidate.startswith("+"):
+            return None
+        return candidate
+
+    @staticmethod
+    def _telegram_private_chat_path_id(value: str) -> Optional[str]:
+        candidate = str(value or "").strip()
+        if not candidate:
+            return None
+        if candidate.startswith("-100") and candidate[4:].isdigit():
+            return candidate[4:]
+        if candidate.lstrip("-").isdigit():
+            stripped = candidate.lstrip("-")
+            return stripped if stripped else None
+        return None
+
+    def _build_telegram_source_url(self, raw_item: Any) -> Optional[str]:
+        source_url = str(getattr(raw_item, "source_url", "") or "").strip()
+        if self._is_http_url(source_url):
+            return source_url
+
+        chat_ref = (
+            str(getattr(raw_item, "chat_id", "") or "").strip()
+            or str(getattr(raw_item, "source_id", "") or "").strip()
+        )
+        message_id = str(getattr(raw_item, "external_id", "") or "").strip()
+
+        username = self._normalize_telegram_username(chat_ref)
+        if username:
+            if message_id:
+                return f"https://t.me/{quote(username)}/{quote(message_id)}"
+            return f"https://t.me/{quote(username)}"
+
+        private_chat_id = self._telegram_private_chat_path_id(chat_ref)
+        if private_chat_id and message_id:
+            return f"https://t.me/c/{quote(private_chat_id)}/{quote(message_id)}"
+
+        return None
+
+    def _build_intel_entry_source_url(self, entry: Any) -> Optional[str]:
+        repository = self._get_intelligence_repository()
+        if repository is None:
+            return None
+
+        raw_item_id = getattr(entry, "latest_raw_item_id", None)
+        if not raw_item_id:
+            return None
+
+        raw_item = repository.get_raw_item_by_id(raw_item_id)
+        if raw_item is None:
+            return None
+
+        source_type = str(getattr(raw_item, "source_type", "") or "").strip().lower()
+        if source_type == "telegram_group":
+            return self._build_telegram_source_url(raw_item)
+
+        source_url = str(getattr(raw_item, "source_url", "") or "").strip()
+        if self._is_http_url(source_url):
+            return source_url
+
+        return None
+
+    @staticmethod
     def _telegram_chat_id(chat_id: str) -> Any:
         chat_id_value = str(chat_id).strip()
         if chat_id_value.lstrip("-").isdigit():
@@ -364,6 +443,15 @@ class TelegramCommandHandler:
                     callback_data=self._build_intel_ignore_callback_data(entry.id),
                 )
 
+            source_url = self._build_intel_entry_source_url(entry)
+            detail_button = (
+                InlineKeyboardButton("详情", url=source_url)
+                if source_url
+                else InlineKeyboardButton(
+                    "详情",
+                    callback_data=self._build_intel_detail_callback_data(entry.id),
+                )
+            )
             entry_tasks.append(
                 bot.send_message(
                     chat_id=chat_id_value,
@@ -371,10 +459,7 @@ class TelegramCommandHandler:
                     reply_markup=InlineKeyboardMarkup(
                         [
                             [
-                                InlineKeyboardButton(
-                                    "详情",
-                                    callback_data=self._build_intel_detail_callback_data(entry.id),
-                                ),
+                                detail_button,
                                 action_button,
                             ]
                         ]
@@ -1369,7 +1454,8 @@ class TelegramCommandHandler:
 
             if len(args) < 2:
                 await message.reply_text(
-                    "❌ 参数错误\n\n用法: /semantic_search <hours> <topic>\n示例: /semantic_search 24 BTC adoption"
+                    "❌ 参数错误\n\n用法: /semantic_search <hours> <topic>\n"
+                    "示例: /semantic_search 24 BTC adoption"
                 )
                 return
 
@@ -1384,7 +1470,8 @@ class TelegramCommandHandler:
             topic = " ".join(args[1:]).strip()
             if hours <= 0 or not topic:
                 await message.reply_text(
-                    "❌ 参数错误\n\n用法: /semantic_search <hours> <topic>\n示例: /semantic_search 24 BTC adoption"
+                    "❌ 参数错误\n\n用法: /semantic_search <hours> <topic>\n"
+                    "示例: /semantic_search 24 BTC adoption"
                 )
                 return
 
@@ -1934,7 +2021,8 @@ class TelegramCommandHandler:
             await message.reply_text(response, parse_mode="Markdown")
         except Exception as e:
             self.logger.error(
-                f"处理{command}命令时发生错误: {str(e)}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
+                f"处理{command}命令时发生错误: {str(e)}, 用户: {username} ({user_id}), "
+                f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
 
@@ -3141,7 +3229,9 @@ class TelegramCommandHandler:
         for index, (entry, score) in enumerate(results, start=1):
             esc = self._escape_markdown_v1
             lines.append(
-                f"{index}. {esc(entry.display_name)} | {esc(entry.entry_type)} | {esc(entry.primary_label or '无')} | {float(getattr(entry, 'confidence', 0.0)):.2f}"
+                f"{index}. {esc(entry.display_name)} | {esc(entry.entry_type)} | "
+                f"{esc(entry.primary_label or '无')} | "
+                f"{float(getattr(entry, 'confidence', 0.0)):.2f}"
             )
             if getattr(entry, "explanation", None):
                 lines.append(f"   {esc(entry.explanation)}")
@@ -3174,7 +3264,9 @@ class TelegramCommandHandler:
         for index, entry in enumerate(entries, start=1):
             esc = self._escape_markdown_v1
             lines.append(
-                f"{index}. {esc(entry.display_name)} | {esc(entry.entry_type)} | {esc(entry.primary_label or '无')} | {float(getattr(entry, 'confidence', 0.0)):.2f}"
+                f"{index}. {esc(entry.display_name)} | {esc(entry.entry_type)} | "
+                f"{esc(entry.primary_label or '无')} | "
+                f"{float(getattr(entry, 'confidence', 0.0)):.2f}"
             )
             if getattr(entry, "explanation", None):
                 lines.append(f"   {esc(entry.explanation)}")
