@@ -56,6 +56,7 @@ SEMANTIC_SEARCH_ROUTE_PATH = "/semantic-search"
 SEMANTIC_SEARCH_JOB_STATUS_PATH = "/semantic-search/{job_id}"
 SEMANTIC_SEARCH_JOB_RESULT_PATH = "/semantic-search/{job_id}/result"
 SEMANTIC_SEARCH_TELEGRAM_COMMAND = "/semantic_search <hours> <topic>"
+INTELLIGENCE_EVIDENCE_CONTEXT_WINDOW = 5
 
 
 class AppState:
@@ -1701,8 +1702,8 @@ def create_api_server(
             context_window = repository.get_entry_evidence_context_window(
                 entry_id=entry_id,
                 raw_item_id=anchor.raw_item_id,
-                before=10,
-                after=10,
+                before=INTELLIGENCE_EVIDENCE_CONTEXT_WINDOW,
+                after=INTELLIGENCE_EVIDENCE_CONTEXT_WINDOW,
             )
             context_items = context_window.items if context_window is not None else []
             anchor_raw_item = next(

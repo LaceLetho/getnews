@@ -522,7 +522,52 @@ def test_intel_detail_returns_paginated_evidence_groups_with_raw_context():
         entry_id="intel-1", page=1, page_size=handler.INTEL_EVIDENCE_PAGE_SIZE
     )
     repository.get_entry_evidence_context_window.assert_called_once_with(
-        entry_id="intel-1", raw_item_id="raw-anchor", before=10, after=10
+        entry_id="intel-1", raw_item_id="raw-anchor", before=5, after=5
+    )
+
+
+def test_intel_detail_callback_sends_context_payload():
+    anchor = SimpleNamespace(
+        entry_id="intel-1",
+        observation_id="obs-1",
+        raw_item_id="raw-anchor",
+        observed_at=datetime.utcnow(),
+        published_at=datetime.utcnow(),
+        collected_at=datetime.utcnow(),
+    )
+    anchor_raw = _make_raw_item(id="raw-anchor", raw_text="锚点原文")
+    before_raw = _make_raw_item(id="raw-before", raw_text="上文")
+    after_raw = _make_raw_item(id="raw-after", raw_text="下文")
+    repository = Mock()
+    repository.get_canonical_entry_by_id.return_value = _make_entry(latest_raw_item_id="raw-latest")
+    repository.count_entry_evidence_anchors.return_value = 1
+    repository.list_entry_evidence_anchors.return_value = [anchor]
+    repository.get_entry_evidence_context_window.return_value = SimpleNamespace(
+        items=[before_raw, anchor_raw, after_raw]
+    )
+    repository.get_raw_item_by_id.return_value = anchor_raw
+    handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
+    handler._send_intel_detail_payload = AsyncMock()
+    update = _make_callback_update()
+
+    ack = asyncio.run(
+        handler._handle_intel_detail_callback(
+            update.callback_query,
+            "1",
+            "tester",
+            "chat_1",
+            "intel-1",
+        )
+    )
+
+    assert ack == "已显示详情"
+    handler._send_intel_detail_payload.assert_awaited_once()
+    payload = handler._send_intel_detail_payload.await_args.args[1]
+    assert "锚点原文" in payload["text"]
+    assert "上文" in payload["text"]
+    assert "下文" in payload["text"]
+    repository.get_entry_evidence_context_window.assert_called_once_with(
+        entry_id="intel-1", raw_item_id="raw-anchor", before=5, after=5
     )
 
 

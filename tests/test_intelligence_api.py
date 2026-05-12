@@ -1169,7 +1169,7 @@ def test_get_entry_detail_returns_paginated_evidence_context(
     assert first_group["anchor_raw_item"]["raw_item_id"] == "raw-5"
     assert first_group["anchor_raw_item"]["raw_text"] == "raw text 5"
     assert "raw-5" not in [item["raw_item_id"] for item in first_group["neighboring_raw_items"]]
-    assert repo.context_window_calls[0] == ("entry-evidence", "raw-5", 10, 10)
+    assert repo.context_window_calls[0] == ("entry-evidence", "raw-5", 5, 5)
 
     assert second_response.status_code == 200
     second_data = second_response.json()

@@ -72,6 +72,7 @@ class TelegramCommandHandler:
 
     INTEL_PAGE_SIZE = 5
     INTEL_EVIDENCE_PAGE_SIZE = 5
+    INTEL_EVIDENCE_CONTEXT_WINDOW = 5
     TELEGRAM_SAFE_MESSAGE_LIMIT = 4000
 
     def __init__(
@@ -445,15 +446,15 @@ class TelegramCommandHandler:
         if entry is None:
             return "Entry not found"
 
-        raw_item = None
-        source = None
-        if getattr(entry, "latest_raw_item_id", None):
-            raw_item = repository.get_raw_item_by_id(entry.latest_raw_item_id)
-            if raw_item:
-                source = self._build_source_display(raw_item)
-
-        response = self._build_intelligence_raw_response(entry, raw_item, source=source)
-        await callback_query.message.reply_text(response, parse_mode="Markdown")
+        payload = self._build_intel_detail_payload(
+            repository=repository,
+            entry=entry,
+            entry_id=entry_id,
+            evidence_page=1,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+        await self._send_intel_detail_payload(callback_query.message, payload)
         return "已显示详情"
 
     async def _handle_intel_follow_callback(
@@ -3301,8 +3302,8 @@ class TelegramCommandHandler:
             context_window = repository.get_entry_evidence_context_window(
                 entry_id=entry_id,
                 raw_item_id=anchor.raw_item_id,
-                before=10,
-                after=10,
+                before=self.INTEL_EVIDENCE_CONTEXT_WINDOW,
+                after=self.INTEL_EVIDENCE_CONTEXT_WINDOW,
             )
             context_items = list(getattr(context_window, "items", []) or [])
             anchor_raw_item = next(
@@ -3368,11 +3369,16 @@ class TelegramCommandHandler:
                 )
             )
         markup = InlineKeyboardMarkup([pagination_row]) if pagination_row else None
-        sent_message = await message.reply_text(
-            str(payload.get("text", "")),
-            reply_markup=markup,
-            parse_mode="Markdown",
-        )
+        text_chunks = self._split_telegram_message(str(payload.get("text", "")))
+        sent_message_ids: List[int] = []
+        for index, text_chunk in enumerate(text_chunks):
+            is_last_chunk = index == len(text_chunks) - 1
+            sent_message = await message.reply_text(
+                text_chunk,
+                reply_markup=markup if is_last_chunk else None,
+                parse_mode="Markdown",
+            )
+            sent_message_ids.append(int(getattr(sent_message, "message_id", 0) or 0))
         state_payload = dict(payload.get("state_data", {}))
         state_payload.update(
             {
@@ -3380,7 +3386,7 @@ class TelegramCommandHandler:
                 "page_size": self.INTEL_EVIDENCE_PAGE_SIZE,
                 "total": int(payload.get("total", 0)),
                 "total_pages": total_pages,
-                "sent_message_ids": [int(getattr(sent_message, "message_id", 0) or 0)],
+                "sent_message_ids": sent_message_ids,
             }
         )
         self._store_callback_state(token, state_payload)
