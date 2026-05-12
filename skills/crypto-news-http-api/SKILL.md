@@ -18,7 +18,7 @@ Typical triggers:
 - Run asynchronous semantic search for a freeform topic query
 - Poll an API job until it finishes and then fetch the final result
 - Create, list, or delete datasources through the HTTP API
-- Query and manage hidden-channel intelligence entries (discovery, following, ignored entries, semantic search, raw evidence)
+- Query and manage hidden-channel intelligence entries (discovery, follow states, semantic search, raw evidence)
 - Check service health before or after an API workflow
 
 ## Quick Reference
@@ -111,13 +111,9 @@ Synchronous endpoints provide access to canonical knowledge entries, discovery c
 
 - `GET /intelligence/entries` — List canonical entries with time window, type, label, and `tracking_scope` filters, paginated
 - `GET /intelligence/discovery` — List entries whose follow status is unset
-- `GET /intelligence/entries/ignored` — List ignored canonical entries
 - `GET /intelligence/labels` — List searchable primary labels
 - `GET /intelligence/entries/{entry_id}` — Get a single entry with optional latest raw evidence (`include_raw=true`) plus paginated evidence context groups
-- `POST /intelligence/entries/{entry_id}/ignore` — Hide an entry from normal list/search/labels; optional JSON body: `{"ignored_by":"operator-id"}`
-- `POST /intelligence/entries/{entry_id}/unignore` — Restore an ignored entry
-- `POST /intelligence/entries/{entry_id}/follow` — Set an entry's follow status to `follow`
-- `POST /intelligence/entries/{entry_id}/unfollow` — Set an entry's follow status to `unfollow`
+- `POST /intelligence/entries/{entry_id}/follow-status` — Set an entry's follow status to `follow`, `unfollow`, or `unset`
 - `GET /intelligence/search` — Semantic search using required `q` parameter, ranked by vector similarity plus repository scoring, paginated
 - `GET /intelligence/raw/{raw_item_id}` — Get original raw text for a collected item (30-day TTL)
 
@@ -155,14 +151,10 @@ Supported HTTP routes:
 - `DELETE /datasources/{id}` - Delete a datasource
 - `POST /telegram/webhook` - Telegram webhook receiver
 - `GET /intelligence/entries` - List intelligence entries (synchronous, Bearer-protected)
-- `GET /intelligence/discovery` - List unseen untracked intelligence slang entries and mark them presented
-- `GET /intelligence/entries/ignored` - List ignored intelligence entries
+- `GET /intelligence/discovery` - List entries whose follow status is unset
 - `GET /intelligence/labels` - List searchable intelligence primary labels
 - `GET /intelligence/entries/{entry_id}` - Get intelligence entry detail with optional raw evidence
-- `POST /intelligence/entries/{entry_id}/ignore` - Ignore an intelligence entry
-- `POST /intelligence/entries/{entry_id}/unignore` - Restore an ignored intelligence entry
-- `POST /intelligence/entries/{entry_id}/follow` - Enable tracking for an intelligence entry
-- `POST /intelligence/entries/{entry_id}/unfollow` - Disable tracking for an intelligence entry
+- `POST /intelligence/entries/{entry_id}/follow-status` - Set intelligence entry follow status
 - `GET /intelligence/search` - Semantic search across intelligence entries (paginated with `page`/`page_size`)
 - `GET /intelligence/raw/{raw_item_id}` - Get raw intelligence item by ID
 

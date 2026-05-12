@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from telegram.ext import Application, CallbackQueryHandler
 
@@ -105,15 +105,17 @@ def test_build_application_registers_intelligence_commands():
     assert any("intel_labels" in commands for commands in registered_commands)
     assert any("intel_search" in commands for commands in registered_commands)
     assert any("intel_detail" in commands for commands in registered_commands)
-    assert any("intel_follow" in commands for commands in registered_commands)
     assert any("intel_following" in commands for commands in registered_commands)
-    assert any("intel_unfollow" in commands for commands in registered_commands)
-    assert any("intel_ignored" in commands for commands in registered_commands)
-    assert any("intel_unignore" in commands for commands in registered_commands)
+    assert any("intel_unfollowed" in commands for commands in registered_commands)
+    assert any("intel_set_follow" in commands for commands in registered_commands)
+    assert not any("intel_follow" in commands for commands in registered_commands)
+    assert not any("intel_unfollow" in commands for commands in registered_commands)
+    assert not any("intel_ignored" in commands for commands in registered_commands)
+    assert not any("intel_unignore" in commands for commands in registered_commands)
     assert any(
         isinstance(call.args[0], CallbackQueryHandler)
         and getattr(call.args[0], "pattern", None)
-        and call.args[0].pattern.pattern == r"^intel:(d|f|uf|i|u|p):"
+        and call.args[0].pattern.pattern == r"^intel:(d|s|p):"
         for call in fake_application.add_handler.call_args_list
     )
 
@@ -373,7 +375,7 @@ def test_intel_recent_page_renders_follow_buttons():
 
     markup = bot.send_message.await_args_list[0].kwargs["reply_markup"]
     assert markup.inline_keyboard[0][1].text == "关注"
-    assert markup.inline_keyboard[0][1].callback_data == "intel:f:intel-1"
+    assert markup.inline_keyboard[0][1].callback_data == "intel:s:follow:intel-1"
 
 
 def test_intel_page_detail_button_opens_web_source_url():
@@ -489,52 +491,33 @@ def test_intel_page_detail_button_falls_back_to_callback_without_source_url():
     assert detail_button.callback_data == "intel:d:intel-1"
 
 
-def test_intel_follow_and_unfollow_business_methods_keep_ignore_state_separate():
+def test_intel_set_follow_business_method_sets_each_status():
     repository = Mock()
-    repository.follow_canonical_entry.return_value = _make_entry(display_name="Seller One")
-    repository.unfollow_canonical_entry.return_value = _make_entry(display_name="Seller One")
-    handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
-
-    follow_response = handler.handle_intel_follow_command("1", "tester", "chat_1", "intel-1")
-    unfollow_response = handler.handle_intel_unfollow_command("1", "tester", "chat_1", "intel-1")
-
-    repository.follow_canonical_entry.assert_called_once_with("intel-1")
-    repository.unfollow_canonical_entry.assert_called_once_with("intel-1")
-    repository.ignore_canonical_entry.assert_not_called()
-    repository.unignore_canonical_entry.assert_not_called()
-    assert "已关注：Seller One" in follow_response
-    assert "已取消关注：Seller One" in unfollow_response
-
-
-def test_intel_ignored_business_method_returns_restore_page_payload():
-    repository = Mock()
-    repository.count_ignored_canonical_entries.return_value = 2
-    repository.list_ignored_canonical_entries.return_value = [
-        _make_entry(display_name="Ignored One", confidence=0.77),
-        _make_entry(id="intel-2", display_name="Ignored Two", confidence=0.66),
-    ]
-    handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
-
-    payload = handler.handle_intel_ignored_command("1", "tester", "chat_1", 1, return_markup=True)
-
-    repository.list_ignored_canonical_entries.assert_called_once_with(
-        page=0, page_size=handler.INTEL_PAGE_SIZE
+    repository.set_canonical_entry_follow_status.return_value = _make_entry(
+        display_name="Seller One"
     )
-    assert payload["entries"][0].id == "intel-1"
-    assert payload["total"] == 2
-    assert payload["kind"] == "ignored"
-    assert payload["state_data"]["kind"] == "ignored"
-
-
-def test_intel_unignore_business_method_restores_entry():
-    repository = Mock()
-    repository.unignore_canonical_entry.return_value = _make_entry(display_name="Ignored One")
     handler: Any = _make_handler(SimpleNamespace(intelligence_repository=repository))
 
-    response = handler.handle_intel_unignore_command("1", "tester", "chat_1", "intel-1")
+    follow_response = handler.handle_intel_set_follow_command(
+        "1", "tester", "chat_1", "intel-1", "follow"
+    )
+    unfollow_response = handler.handle_intel_set_follow_command(
+        "1", "tester", "chat_1", "intel-1", "unfollow"
+    )
+    unset_response = handler.handle_intel_set_follow_command(
+        "1", "tester", "chat_1", "intel-1", "unset"
+    )
 
-    repository.unignore_canonical_entry.assert_called_once_with("intel-1")
-    assert "已恢复：Ignored One" in response
+    repository.set_canonical_entry_follow_status.assert_has_calls(
+        [
+            call("intel-1", "follow"),
+            call("intel-1", "unfollow"),
+            call("intel-1", "unset"),
+        ]
+    )
+    assert "已设置为关注：Seller One" in follow_response
+    assert "已设置为不关注：Seller One" in unfollow_response
+    assert "已设置为未设置：Seller One" in unset_response
 
 
 def test_authorized_intel_labels_handler_dispatches_business_method():
@@ -684,81 +667,28 @@ def test_intel_detail_callback_sends_context_payload():
     )
 
 
-def test_authorized_intel_callback_dispatches_detail_and_ignore():
+def test_authorized_intel_callback_dispatches_detail_and_set_follow():
     handler: Any = _make_handler()
     handler.is_authorized_user = Mock(return_value=True)
     handler.check_rate_limit = Mock(return_value=(True, None))
     handler._handle_intel_detail_callback = AsyncMock(return_value="已显示详情")
-    handler._handle_intel_ignore_callback = AsyncMock(return_value="已忽略：Seller One")
-    handler._handle_intel_follow_callback = AsyncMock(return_value="已关注：Seller One")
-    handler._handle_intel_unfollow_callback = AsyncMock(return_value="已取消关注：Seller One")
+    handler._handle_intel_set_follow_callback = AsyncMock(return_value="已关注：Seller One")
 
     detail_update = _make_callback_update(data="intel:d:intel-1")
-    ignore_update = _make_callback_update(data="intel:i:intel-1")
-    follow_update = _make_callback_update(data="intel:f:intel-1")
-    unfollow_update = _make_callback_update(data="intel:uf:intel-1")
+    follow_update = _make_callback_update(data="intel:s:follow:intel-1")
     context = SimpleNamespace()
 
     asyncio.run(handler._handle_intel_callback_query(detail_update, context))
-    asyncio.run(handler._handle_intel_callback_query(ignore_update, context))
     asyncio.run(handler._handle_intel_callback_query(follow_update, context))
-    asyncio.run(handler._handle_intel_callback_query(unfollow_update, context))
 
     handler._handle_intel_detail_callback.assert_awaited_once_with(
         detail_update.callback_query, "1", "tester", "chat_1", "intel-1"
     )
-    handler._handle_intel_ignore_callback.assert_awaited_once_with(
-        ignore_update.callback_query, "1", "tester", "chat_1", "intel-1"
-    )
-    handler._handle_intel_follow_callback.assert_awaited_once_with(
-        follow_update.callback_query, "1", "tester", "chat_1", "intel-1"
-    )
-    handler._handle_intel_unfollow_callback.assert_awaited_once_with(
-        unfollow_update.callback_query, "1", "tester", "chat_1", "intel-1"
+    handler._handle_intel_set_follow_callback.assert_awaited_once_with(
+        follow_update.callback_query, "1", "tester", "chat_1", "intel-1", "follow"
     )
     detail_update.callback_query.answer.assert_awaited_once_with("已显示详情")
-    ignore_update.callback_query.answer.assert_awaited_once_with("已忽略：Seller One")
     follow_update.callback_query.answer.assert_awaited_once_with("已关注：Seller One")
-    unfollow_update.callback_query.answer.assert_awaited_once_with("已取消关注：Seller One")
-
-
-def test_authorized_intel_callback_dispatches_pagination_for_ignored_lists():
-    handler: Any = _make_handler()
-    handler.is_authorized_user = Mock(return_value=True)
-    handler.check_rate_limit = Mock(return_value=(True, None))
-    handler.handle_intel_ignored_command = Mock(
-        return_value={
-            "entries": [_make_entry(display_name="Ignored One")],
-            "total": 1,
-            "page": 2,
-            "total_pages": 2,
-            "kind": "ignored",
-            "state_data": {"kind": "ignored", "chat_id": "chat_1", "user_id": "1"},
-        }
-    )
-    handler._send_intel_page = AsyncMock(return_value=[201, 202])
-    bot = SimpleNamespace(delete_message=AsyncMock())
-    handler.application = SimpleNamespace(bot=bot)
-
-    update = _make_callback_update(data="intel:p:tok123:2")
-    handler._callback_state["tok123"] = {
-        "kind": "ignored",
-        "page_size": handler.INTEL_PAGE_SIZE,
-        "chat_id": "chat_1",
-        "user_id": "1",
-        "sent_message_ids": [101, 102],
-        "stored_at": time.time(),
-    }
-    context = SimpleNamespace()
-
-    asyncio.run(handler._handle_intel_callback_query(update, context))
-
-    handler.handle_intel_ignored_command.assert_called_once_with(
-        "1", "tester", "chat_1", 2, return_markup=True
-    )
-    assert bot.delete_message.await_count == 2
-    handler._send_intel_page.assert_awaited_once()
-    update.callback_query.message.edit_text.assert_not_awaited()
 
 
 def test_authorized_intel_callback_dispatches_detail_evidence_pagination():
@@ -812,19 +742,19 @@ def test_authorized_intel_callback_dispatches_detail_evidence_pagination():
     update.callback_query.answer.assert_awaited_once_with("已更新详情")
 
 
-def test_unauthorized_intel_callback_does_not_ignore_entry():
+def test_unauthorized_intel_callback_does_not_set_follow_status():
     handler: Any = _make_handler()
     handler.is_authorized_user = Mock(return_value=False)
     handler.check_rate_limit = Mock()
-    handler._handle_intel_ignore_callback = AsyncMock()
+    handler._handle_intel_set_follow_callback = AsyncMock()
 
-    update = _make_callback_update(data="intel:i:intel-1")
+    update = _make_callback_update(data="intel:s:follow:intel-1")
     context = SimpleNamespace()
 
     asyncio.run(handler._handle_intel_callback_query(update, context))
 
     handler.check_rate_limit.assert_not_called()
-    handler._handle_intel_ignore_callback.assert_not_called()
+    handler._handle_intel_set_follow_callback.assert_not_called()
     update.callback_query.answer.assert_awaited_once_with("未授权")
 
 
@@ -850,21 +780,3 @@ def test_intel_pagination_callback_expired_state_is_safe():
 
     handler._handle_intel_pagination_callback.assert_not_called()
     update.callback_query.answer.assert_awaited_once_with("翻页已过期，请重新执行命令")
-
-
-def test_intel_unignore_handler_dispatches_business_method():
-    handler: Any = _make_handler()
-    handler.is_authorized_user = Mock(return_value=True)
-    handler.handle_intel_unignore_command = Mock(return_value="已恢复：Seller One")
-    handler._log_authorization_attempt = Mock()
-    handler._log_command_execution = Mock()
-
-    update = _make_update()
-    context = SimpleNamespace(args=["intel-1"])
-
-    asyncio.run(handler._handle_intel_unignore_command(update, context))
-
-    handler.handle_intel_unignore_command.assert_called_once_with(
-        "1", "tester", "chat_1", "intel-1"
-    )
-    update.message.reply_text.assert_awaited_once_with("已恢复：Seller One", parse_mode="Markdown")

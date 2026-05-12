@@ -327,7 +327,9 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
                 "tracking_scope": tracking_scope,
             }
         )
-        entries = [e for e in self.canonical_entries.values() if not e.is_ignored]
+        entries = list(self.canonical_entries.values())
+        if tracking_scope != "unfollowed":
+            entries = [e for e in entries if not e.is_ignored]
         entries = self._apply_tracking_scope(entries, tracking_scope)
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
@@ -357,7 +359,9 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
                 "tracking_scope": tracking_scope,
             }
         )
-        entries = [e for e in self.canonical_entries.values() if not e.is_ignored]
+        entries = list(self.canonical_entries.values())
+        if tracking_scope != "unfollowed":
+            entries = [e for e in entries if not e.is_ignored]
         entries = self._apply_tracking_scope(entries, tracking_scope)
         if entry_type:
             entries = [e for e in entries if e.entry_type == entry_type]
@@ -692,30 +696,27 @@ def test_intelligence_labels_unauthorized_returns_401(
     assert response.status_code == 401
 
 
-def test_intelligence_ignore_and_unignore_unauthorized_returns_401(
+def test_intelligence_follow_status_unauthorized_returns_401(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = _InMemoryIntelligenceRepository()
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
-        ignore_response = client.post("/intelligence/entries/entry-001/ignore")
-        unignore_response = client.post("/intelligence/entries/entry-001/unignore")
-    assert ignore_response.status_code == 401
-    assert unignore_response.status_code == 401
+        response = client.post(
+            "/intelligence/entries/entry-001/follow-status",
+            json={"follow_status": "follow"},
+        )
+    assert response.status_code == 401
 
 
-def test_intelligence_discovery_follow_and_unfollow_unauthorized_returns_401(
+def test_intelligence_discovery_unauthorized_returns_401(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = _InMemoryIntelligenceRepository()
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
         discovery_response = client.get("/intelligence/discovery")
-        follow_response = client.post("/intelligence/entries/entry-001/follow")
-        unfollow_response = client.post("/intelligence/entries/entry-001/unfollow")
     assert discovery_response.status_code == 401
-    assert follow_response.status_code == 401
-    assert unfollow_response.status_code == 401
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -875,7 +876,7 @@ def test_discovery_returns_unset_entries_without_marking_presented(
     assert [item["entry_id"] for item in second_response.json()["entries"]] == ["sl-unseen"]
 
 
-def test_follow_and_unfollow_toggle_tracking_without_changing_ignore_state(
+def test_set_follow_status_updates_tracking_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = _InMemoryIntelligenceRepository()
@@ -887,15 +888,23 @@ def test_follow_and_unfollow_toggle_tracking_without_changing_ignore_state(
         tracking_enabled=False,
     )
     repo.save_canonical_entry(entry)
-    repo.ignore_canonical_entry("sl-toggle", ignored_by="operator-id")
 
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
         follow_response = client.post(
-            "/intelligence/entries/sl-toggle/follow", headers=_authorized_headers()
+            "/intelligence/entries/sl-toggle/follow-status",
+            headers=_authorized_headers(),
+            json={"follow_status": "follow"},
         )
         unfollow_response = client.post(
-            "/intelligence/entries/sl-toggle/unfollow", headers=_authorized_headers()
+            "/intelligence/entries/sl-toggle/follow-status",
+            headers=_authorized_headers(),
+            json={"follow_status": "unfollow"},
+        )
+        unset_response = client.post(
+            "/intelligence/entries/sl-toggle/follow-status",
+            headers=_authorized_headers(),
+            json={"follow_status": "unset"},
         )
 
     assert follow_response.status_code == 200
@@ -909,8 +918,34 @@ def test_follow_and_unfollow_toggle_tracking_without_changing_ignore_state(
     assert unfollow_response.status_code == 200
     assert unfollow_response.json()["tracking_enabled"] is False
     assert unfollow_response.json()["follow_status"] == "unfollow"
-    assert repo.canonical_entries["sl-toggle"].is_ignored is True
-    assert repo.canonical_entries["sl-toggle"].ignored_by == "follow_status"
+    assert unfollow_response.json()["is_ignored"] is True
+    assert unset_response.status_code == 200
+    assert unset_response.json()["tracking_enabled"] is False
+    assert unset_response.json()["is_ignored"] is False
+    assert unset_response.json()["follow_status"] == "unset"
+
+
+def test_set_follow_status_missing_and_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _InMemoryIntelligenceRepository()
+    repo.save_canonical_entry(_make_canonical_entry(entry_id="entry-idempotent"))
+
+    controller = _FakeController(intelligence_repository=repo)
+    with _build_test_app(monkeypatch, controller) as client:
+        missing = client.post(
+            "/intelligence/entries/nonexistent/follow-status",
+            headers=_authorized_headers(),
+            json={"follow_status": "follow"},
+        )
+        invalid = client.post(
+            "/intelligence/entries/entry-idempotent/follow-status",
+            headers=_authorized_headers(),
+            json={"follow_status": "ignored"},
+        )
+
+    assert missing.status_code == 404
+    assert invalid.status_code == 422
 
 
 def test_list_entries_filters_by_primary_label(
@@ -982,14 +1017,14 @@ def test_list_entries_respects_pagination(
         assert len(data["entries"]) == 1
 
 
-def test_ignore_entry_hides_from_entries_and_labels(
+def test_unfollow_entry_hides_from_default_entries_and_search(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = _InMemoryIntelligenceRepository()
-    ignored = _make_canonical_entry(
-        entry_id="entry-ignored",
-        display_name="Ignored Entry",
-        normalized_key="ignored-key",
+    unfollowed = _make_canonical_entry(
+        entry_id="entry-unfollowed",
+        display_name="Unfollowed Entry",
+        normalized_key="unfollowed-key",
         primary_label=PrimaryLabel.AI.value,
     )
     visible = _make_canonical_entry(
@@ -999,93 +1034,43 @@ def test_ignore_entry_hides_from_entries_and_labels(
         primary_label=PrimaryLabel.AI.value,
         last_seen_at=_utcnow() - timedelta(minutes=5),
     )
-    repo.save_canonical_entry(ignored)
+    repo.save_canonical_entry(unfollowed)
     repo.save_canonical_entry(visible)
 
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
-        ignore_response = client.post(
-            "/intelligence/entries/entry-ignored/ignore",
+        status_response = client.post(
+            "/intelligence/entries/entry-unfollowed/follow-status",
             headers=_authorized_headers(),
-            json={"ignored_by": "operator-id"},
+            json={"follow_status": "unfollow"},
         )
         detail_response = client.get(
-            "/intelligence/entries/entry-ignored", headers=_authorized_headers()
+            "/intelligence/entries/entry-unfollowed", headers=_authorized_headers()
         )
         list_response = client.get("/intelligence/entries", headers=_authorized_headers())
         search_response = client.get(
-            "/intelligence/search?q=ignored", headers=_authorized_headers()
+            "/intelligence/search?q=unfollowed", headers=_authorized_headers()
         )
         labels_response = client.get("/intelligence/labels", headers=_authorized_headers())
 
-    assert ignore_response.status_code == 200
-    ignore_data = ignore_response.json()
-    assert ignore_data == {
+    assert status_response.status_code == 200
+    assert status_response.json() == {
         "success": True,
-        "entry_id": "entry-ignored",
+        "entry_id": "entry-unfollowed",
+        "tracking_enabled": False,
         "is_ignored": True,
-        "ignored_at": ignore_data["ignored_at"],
-        "ignored_by": "operator-id",
+        "follow_status": "unfollow",
     }
     assert detail_response.status_code == 200
     detail_data = detail_response.json()
     assert detail_data["is_ignored"] is True
-    assert detail_data["ignored_by"] == "operator-id"
+    assert detail_data["follow_status"] == "unfollow"
     assert detail_data["ignored_at"] is not None
     assert list_response.status_code == 200
     assert [item["entry_id"] for item in list_response.json()["entries"]] == ["entry-visible"]
     assert search_response.status_code == 200
     assert [item["entry_id"] for item in search_response.json()["results"]] == ["entry-visible"]
     assert labels_response.status_code == 200
-
-
-def test_ignore_unignore_auth_missing_and_idempotent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    repo = _InMemoryIntelligenceRepository()
-    entry = _make_canonical_entry(entry_id="entry-idempotent", display_name="Idempotent")
-    repo.save_canonical_entry(entry)
-
-    controller = _FakeController(intelligence_repository=repo)
-    with _build_test_app(monkeypatch, controller) as client:
-        missing_ignore = client.post(
-            "/intelligence/entries/nonexistent/ignore", headers=_authorized_headers()
-        )
-        missing_unignore = client.post(
-            "/intelligence/entries/nonexistent/unignore", headers=_authorized_headers()
-        )
-        unauthorized_ignore = client.post("/intelligence/entries/entry-idempotent/ignore")
-        unauthorized_unignore = client.post("/intelligence/entries/entry-idempotent/unignore")
-        first_ignore = client.post(
-            "/intelligence/entries/entry-idempotent/ignore",
-            headers=_authorized_headers(),
-            json={"ignored_by": "user-a"},
-        )
-        second_ignore = client.post(
-            "/intelligence/entries/entry-idempotent/ignore",
-            headers=_authorized_headers(),
-        )
-        first_unignore = client.post(
-            "/intelligence/entries/entry-idempotent/unignore",
-            headers=_authorized_headers(),
-        )
-        second_unignore = client.post(
-            "/intelligence/entries/entry-idempotent/unignore",
-            headers=_authorized_headers(),
-        )
-
-    assert missing_ignore.status_code == 404
-    assert missing_unignore.status_code == 404
-    assert unauthorized_ignore.status_code == 401
-    assert unauthorized_unignore.status_code == 401
-    assert first_ignore.status_code == 200
-    assert first_ignore.json()["ignored_by"] == "user-a"
-    assert second_ignore.status_code == 200
-    assert second_ignore.json()["ignored_by"] == "api"
-    assert first_unignore.status_code == 200
-    assert first_unignore.json()["is_ignored"] is False
-    assert second_unignore.status_code == 200
-    assert second_unignore.json()["is_ignored"] is False
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1228,14 +1213,14 @@ def test_get_entry_detail_preserves_expired_evidence_warning(
     assert group["warning"] == "Evidence raw text is unavailable because it has been purged."
 
 
-def test_ignored_entries_list_endpoint(
+def test_unfollowed_entries_list_via_tracking_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = _InMemoryIntelligenceRepository()
-    ignored_entry = _make_canonical_entry(
-        entry_id="ignored",
-        display_name="Ignored List Entry",
-        normalized_key="ignored-list-key",
+    unfollowed_entry = _make_canonical_entry(
+        entry_id="unfollowed",
+        display_name="Unfollowed List Entry",
+        normalized_key="unfollowed-list-key",
         primary_label=PrimaryLabel.CRYPTO.value,
     )
     visible_entry = _make_canonical_entry(
@@ -1244,20 +1229,23 @@ def test_ignored_entries_list_endpoint(
         normalized_key="visible-list-key",
         primary_label=PrimaryLabel.AI.value,
     )
-    repo.save_canonical_entry(ignored_entry)
+    repo.save_canonical_entry(unfollowed_entry)
     repo.save_canonical_entry(visible_entry)
-    repo.ignore_canonical_entry("ignored", ignored_by="operator-id")
+    repo.set_canonical_entry_follow_status("unfollowed", "unfollow")
 
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
-        response = client.get("/intelligence/entries/ignored", headers=_authorized_headers())
+        response = client.get(
+            "/intelligence/entries?tracking_scope=unfollowed",
+            headers=_authorized_headers(),
+        )
 
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 1
-    assert [item["entry_id"] for item in data["entries"]] == ["ignored"]
+    assert [item["entry_id"] for item in data["entries"]] == ["unfollowed"]
     assert data["entries"][0]["is_ignored"] is True
-    assert data["entries"][0]["ignored_by"] == "operator-id"
+    assert data["entries"][0]["follow_status"] == "unfollow"
     assert data["entries"][0]["ignored_at"] is not None
 
 

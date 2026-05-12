@@ -49,7 +49,7 @@ Supported by `GET /intelligence/entries` and `GET /intelligence/search`.
 | `discovery` | Entries whose follow status is `unset`. |
 | `unset` | Alias for unset follow status. |
 | `unfollowed` | Entries whose follow status is `unfollow`. |
-| `all` | All non-ignored entries. |
+| `all` | All entries except entries whose follow status is `unfollow`. |
 
 Invalid values return `400 Bad Request`.
 
@@ -67,7 +67,7 @@ Discovery returns entries with `follow_status=unset`; it does not mark returned 
 
 ## GET /intelligence/entries
 
-List non-ignored canonical intelligence entries sorted by repository ordering, normally newest `last_seen_at` first.
+List canonical intelligence entries sorted by repository ordering, normally newest `last_seen_at` first.
 
 ### Query Parameters
 
@@ -148,36 +148,13 @@ curl -H "Authorization: Bearer ${API_KEY}" \
   "https://news.tradao.xyz/intelligence/discovery?primary_label=AI&page=1&page_size=10"
 ```
 
-## GET /intelligence/entries/ignored
-
-List ignored canonical intelligence entries.
-
-### Query Parameters
-
-| Parameter | Type | Required | Default |
-|-----------|------|----------|---------|
-| `window` | string | No | all time |
-| `entry_type` | string | No | all types |
-| `primary_label` | string | No | all labels |
-| `page` | integer | No | 1 |
-| `page_size` | integer | No | 20 |
-
-### Response (200)
-
-Same envelope and entry item shape as `GET /intelligence/entries`, with `is_ignored=true` for returned entries.
-
-### Example
-
-```bash
-curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/entries/ignored?page=1&page_size=20"
-```
+To list entries marked not followed, call `GET /intelligence/entries?tracking_scope=unfollowed`.
 
 ## GET /intelligence/labels
 
 List searchable primary labels. Use the returned `value` in `primary_label` filters.
 
-If there are no canonical entries and no ignored canonical entries, the endpoint returns all enum labels. Otherwise it returns labels that currently exist among non-ignored canonical entries.
+If there are no canonical entries, the endpoint returns all enum labels. Otherwise it returns labels that currently exist among entries with active follow visibility.
 
 ### Response (200)
 
@@ -198,53 +175,17 @@ curl -H "Authorization: Bearer ${API_KEY}" \
   "https://news.tradao.xyz/intelligence/labels"
 ```
 
-## POST /intelligence/entries/{entry_id}/ignore
+## POST /intelligence/entries/{entry_id}/follow-status
 
-Mark an entry ignored. The operation is idempotent and returns `404` if the entry does not exist.
-
-### Request Body
-
-The body is optional.
+Set an entry's follow status. The operation is idempotent and returns `404` if the entry does not exist.
 
 ```json
 {
-  "ignored_by": "operator-id"
+  "follow_status": "follow"
 }
 ```
 
-If omitted, `ignored_by` defaults to `api`.
-
-### Response (200)
-
-```json
-{
-  "success": true,
-  "entry_id": "entry-uuid",
-  "is_ignored": true,
-  "ignored_at": "2026-05-04T13:00:00+00:00",
-  "ignored_by": "operator-id"
-}
-```
-
-## POST /intelligence/entries/{entry_id}/unignore
-
-Restore an ignored entry. The operation is idempotent and returns `404` if the entry does not exist.
-
-### Response (200)
-
-```json
-{
-  "success": true,
-  "entry_id": "entry-uuid",
-  "is_ignored": false,
-  "ignored_at": null,
-  "ignored_by": null
-}
-```
-
-## POST /intelligence/entries/{entry_id}/follow
-
-Set an entry's follow status to `follow`. Returns `404` if the entry does not exist.
+`follow_status` must be `follow`, `unfollow`, or `unset`.
 
 ### Response (200)
 
@@ -258,21 +199,17 @@ Set an entry's follow status to `follow`. Returns `404` if the entry does not ex
 }
 ```
 
-## POST /intelligence/entries/{entry_id}/unfollow
+Example:
 
-Set an entry's follow status to `unfollow`. Returns `404` if the entry does not exist.
-
-### Response (200)
-
-```json
-{
-  "success": true,
-  "entry_id": "entry-uuid",
-  "tracking_enabled": false,
-  "is_ignored": true,
-  "follow_status": "unfollow"
-}
+```bash
+curl -X POST \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"follow_status":"unfollow"}' \
+  "https://news.tradao.xyz/intelligence/entries/entry-uuid/follow-status"
 ```
+
+Invalid status values return `422 Unprocessable Entity`.
 
 ## GET /intelligence/entries/{entry_id}
 
@@ -347,7 +284,7 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 
 ## GET /intelligence/search
 
-Semantic search across non-ignored canonical intelligence entries. The route embeds the required query text and returns ranked results.
+Semantic search across canonical intelligence entries matched by `tracking_scope`. The route embeds the required query text and returns ranked results.
 
 ### Query Parameters
 

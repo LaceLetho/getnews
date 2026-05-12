@@ -30,6 +30,7 @@ from .domain.models import (
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
     DataSourcePurpose,
+    IntelligenceFollowStatus,
     Priority,
     PrimaryLabel,
     SemanticSearchJob,
@@ -452,15 +453,7 @@ class IntelligenceSearchResultItem(BaseModel):
     follow_status: str = "unset"
 
 
-class IntelligenceIgnoreResponse(BaseModel):
-    success: bool
-    entry_id: str
-    is_ignored: bool
-    ignored_at: Optional[str] = None
-    ignored_by: Optional[str] = None
-
-
-class IntelligenceTrackingResponse(BaseModel):
+class IntelligenceFollowStatusResponse(BaseModel):
     success: bool
     entry_id: str
     tracking_enabled: bool
@@ -493,8 +486,17 @@ class IntelligenceRawItemResponse(BaseModel):
     is_expired: bool = False
 
 
-class IntelligenceIgnoreRequest(BaseModel):
-    ignored_by: Optional[str] = None
+class IntelligenceFollowStatusRequest(BaseModel):
+    follow_status: str
+
+    @field_validator("follow_status")
+    @classmethod
+    def validate_follow_status(cls, value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        allowed = {status.value for status in IntelligenceFollowStatus}
+        if normalized not in allowed:
+            raise ValueError("follow_status must be one of: follow, unfollow, unset")
+        return normalized
 
 
 def _datetime_to_iso(value: Optional[datetime]) -> Optional[str]:
@@ -1524,43 +1526,6 @@ def create_api_server(
         )
         return response
 
-    @app.get("/intelligence/entries/ignored", response_model=IntelligenceListResponse)
-    async def list_ignored_intelligence_entries(
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-        window: Optional[str] = None,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-    ):
-        """List ignored canonical intelligence entries with pagination."""
-        repository = _get_intelligence_repository(req)
-        window_cutoff = _parse_window_param(window)
-
-        page = max(1, page)
-        page_size = max(1, min(page_size, 100))
-
-        entries = repository.list_ignored_canonical_entries(
-            entry_type=entry_type if entry_type else None,
-            primary_label=primary_label if primary_label else None,
-            window=window_cutoff,
-            page=page - 1,
-            page_size=page_size,
-        )
-        total = repository.count_ignored_canonical_entries(
-            entry_type=entry_type if entry_type else None,
-            primary_label=primary_label if primary_label else None,
-            window=window_cutoff,
-        )
-
-        return IntelligenceListResponse(
-            entries=[_canonical_entry_to_response(e) for e in entries],
-            total=total,
-            page=page,
-            page_size=page_size,
-        )
-
     @app.get("/intelligence/labels", response_model=IntelligenceLabelsResponse)
     async def list_intelligence_labels(
         req: Request,
@@ -1584,90 +1549,21 @@ def create_api_server(
                 labels.append(IntelligenceLabelResponseItem(name=item.name, value=item.value))
         return IntelligenceLabelsResponse(labels=labels)
 
-    @app.post("/intelligence/entries/{entry_id}/ignore", response_model=IntelligenceIgnoreResponse)
-    async def ignore_intelligence_entry(
-        entry_id: str,
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-        payload: Optional[IntelligenceIgnoreRequest] = None,
-    ):
-        repository = _get_intelligence_repository(req)
-        ignored_by = None
-        if payload is not None:
-            ignored_by = payload.ignored_by
-        if ignored_by is None:
-            ignored_by = "api"
-        entry = repository.ignore_canonical_entry(entry_id, ignored_by)
-        if entry is None:
-            raise HTTPException(status_code=404, detail="Intelligence entry not found")
-        return IntelligenceIgnoreResponse(
-            success=True,
-            entry_id=entry.id,
-            is_ignored=bool(getattr(entry, "is_ignored", False)),
-            ignored_at=_datetime_to_iso(
-                cast(Optional[datetime], getattr(entry, "ignored_at", None))
-            ),
-            ignored_by=getattr(entry, "ignored_by", None),
-        )
-
     @app.post(
-        "/intelligence/entries/{entry_id}/unignore",
-        response_model=IntelligenceIgnoreResponse,
+        "/intelligence/entries/{entry_id}/follow-status",
+        response_model=IntelligenceFollowStatusResponse,
     )
-    async def unignore_intelligence_entry(
+    async def set_intelligence_entry_follow_status(
         entry_id: str,
+        payload: IntelligenceFollowStatusRequest,
         req: Request,
         _: Annotated[str, Depends(verify_api_key)],
     ):
         repository = _get_intelligence_repository(req)
-        entry = repository.unignore_canonical_entry(entry_id)
+        entry = repository.set_canonical_entry_follow_status(entry_id, payload.follow_status)
         if entry is None:
             raise HTTPException(status_code=404, detail="Intelligence entry not found")
-        return IntelligenceIgnoreResponse(
-            success=True,
-            entry_id=entry.id,
-            is_ignored=bool(getattr(entry, "is_ignored", False)),
-            ignored_at=_datetime_to_iso(
-                cast(Optional[datetime], getattr(entry, "ignored_at", None))
-            ),
-            ignored_by=getattr(entry, "ignored_by", None),
-        )
-
-    @app.post(
-        "/intelligence/entries/{entry_id}/follow",
-        response_model=IntelligenceTrackingResponse,
-    )
-    async def follow_intelligence_entry(
-        entry_id: str,
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-    ):
-        repository = _get_intelligence_repository(req)
-        entry = repository.follow_canonical_entry(entry_id)
-        if entry is None:
-            raise HTTPException(status_code=404, detail="Intelligence entry not found")
-        return IntelligenceTrackingResponse(
-            success=True,
-            entry_id=entry.id,
-            tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
-            is_ignored=bool(getattr(entry, "is_ignored", False)),
-            follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
-        )
-
-    @app.post(
-        "/intelligence/entries/{entry_id}/unfollow",
-        response_model=IntelligenceTrackingResponse,
-    )
-    async def unfollow_intelligence_entry(
-        entry_id: str,
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-    ):
-        repository = _get_intelligence_repository(req)
-        entry = repository.unfollow_canonical_entry(entry_id)
-        if entry is None:
-            raise HTTPException(status_code=404, detail="Intelligence entry not found")
-        return IntelligenceTrackingResponse(
+        return IntelligenceFollowStatusResponse(
             success=True,
             entry_id=entry.id,
             tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
