@@ -496,6 +496,7 @@ class DataManager:
                 ignored_by TEXT,
                 tracking_enabled BOOLEAN NOT NULL DEFAULT FALSE,
                 discovery_presented_at {datetime_type},
+                follow_status TEXT NOT NULL DEFAULT 'unset',
                 embedding {embedding_type},
                 embedding_model TEXT,
                 embedding_updated_at {datetime_type},
@@ -631,6 +632,10 @@ class DataManager:
                 "ON intelligence_canonical_entries (tracking_enabled, discovery_presented_at)"
             ),
             (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_follow_status "
+                "ON intelligence_canonical_entries (follow_status)"
+            ),
+            (
                 "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_embedding_model "
                 "ON intelligence_canonical_entries (embedding_model)"
             ),
@@ -707,12 +712,35 @@ class DataManager:
                 ALTER TABLE intelligence_canonical_entries
                 ADD COLUMN IF NOT EXISTS discovery_presented_at TIMESTAMPTZ
             """)
+            cursor.execute("""
+                ALTER TABLE intelligence_canonical_entries
+                ADD COLUMN IF NOT EXISTS follow_status TEXT NOT NULL DEFAULT 'unset'
+            """)
+            cursor.execute("""
+                UPDATE intelligence_canonical_entries
+                SET follow_status = CASE
+                    WHEN is_ignored = TRUE THEN 'unfollow'
+                    WHEN tracking_enabled = TRUE THEN 'follow'
+                    WHEN discovery_presented_at IS NOT NULL THEN 'unfollow'
+                    ELSE 'unset'
+                END
+                WHERE follow_status IS NULL OR follow_status NOT IN ('follow', 'unfollow', 'unset')
+                   OR (
+                       follow_status = 'unset'
+                       AND (
+                           is_ignored = TRUE
+                           OR tracking_enabled = TRUE
+                           OR discovery_presented_at IS NOT NULL
+                       )
+                   )
+            """)
             return
 
         cursor.execute("PRAGMA table_info(intelligence_canonical_entries)")
         columns = {row[1] for row in cursor.fetchall()}
         tracking_column_added = "tracking_enabled" not in columns
         discovery_column_added = "discovery_presented_at" not in columns
+        follow_status_column_added = "follow_status" not in columns
         if tracking_column_added:
             cursor.execute(
                 "ALTER TABLE intelligence_canonical_entries "
@@ -722,6 +750,11 @@ class DataManager:
             cursor.execute(
                 "ALTER TABLE intelligence_canonical_entries "
                 "ADD COLUMN discovery_presented_at DATETIME"
+            )
+        if follow_status_column_added:
+            cursor.execute(
+                "ALTER TABLE intelligence_canonical_entries "
+                "ADD COLUMN follow_status TEXT NOT NULL DEFAULT 'unset'"
             )
 
         if tracking_column_added:
@@ -765,6 +798,17 @@ class DataManager:
                 """),
                 (True,),
             )
+
+        if follow_status_column_added:
+            cursor.execute("""
+                UPDATE intelligence_canonical_entries
+                SET follow_status = CASE
+                    WHEN is_ignored = 1 THEN 'unfollow'
+                    WHEN tracking_enabled = 1 THEN 'follow'
+                    WHEN discovery_presented_at IS NOT NULL THEN 'unfollow'
+                    ELSE 'unset'
+                END
+            """)
 
     @contextmanager
     def _get_connection(self):
@@ -2726,6 +2770,7 @@ class DataManager:
             "ignored_by",
             "tracking_enabled",
             "discovery_presented_at",
+            "follow_status",
             "embedding",
             "embedding_model",
             "embedding_updated_at",
@@ -2745,6 +2790,8 @@ class DataManager:
                 )
             elif column == "tracking_enabled":
                 value = bool(value)
+            elif column == "follow_status":
+                value = self._normalize_follow_status(value)
             elif isinstance(value, datetime):
                 value = value.isoformat()
             values.append(value)
@@ -2952,6 +2999,12 @@ class DataManager:
         data = {key: self._dt_out(row[key]) for key in row.keys()}
         data["is_ignored"] = bool(data.get("is_ignored", False))
         data["tracking_enabled"] = bool(data.get("tracking_enabled", False))
+        data["follow_status"] = self._normalize_follow_status(
+            data.get("follow_status"),
+            is_ignored=data["is_ignored"],
+            tracking_enabled=data["tracking_enabled"],
+            discovery_presented_at=data.get("discovery_presented_at"),
+        )
         data["secondary_tags"] = self._json_load(data.get("secondary_tags"), [])
         data["embedding"] = self._json_load(data.get("embedding"), data.get("embedding"))
         if isinstance(data.get("embedding"), str) and data["embedding"].startswith("["):
@@ -2970,6 +3023,24 @@ class DataManager:
             for alias_row in cursor.fetchall()
         ]
         return data
+
+    @staticmethod
+    def _normalize_follow_status(
+        value: Any,
+        is_ignored: bool = False,
+        tracking_enabled: bool = False,
+        discovery_presented_at: Any = None,
+    ) -> str:
+        status = str(value or "").strip().lower()
+        if status in {"follow", "unfollow", "unset"}:
+            return status
+        if is_ignored:
+            return "unfollow"
+        if tracking_enabled:
+            return "follow"
+        if discovery_presented_at is not None:
+            return "unfollow"
+        return "unset"
 
     def get_canonical_intelligence_entry_by_normalized_key(
         self, entry_type: str, normalized_key: str
@@ -2996,8 +3067,10 @@ class DataManager:
         tracking_scope: str = "following",
     ) -> List[Dict[str, Any]]:
         params: List[Any] = []
-        filters = ["is_ignored = ?"]
-        params.append(False)
+        filters = []
+        if tracking_scope != "unfollowed":
+            filters.append("is_ignored = ?")
+            params.append(False)
         self._add_canonical_tracking_scope_filter(filters, params, tracking_scope)
         if entry_type:
             filters.append("entry_type = ?")
@@ -3042,8 +3115,10 @@ class DataManager:
         tracking_scope: str = "following",
     ) -> int:
         params: List[Any] = []
-        filters = ["is_ignored = ?"]
-        params.append(False)
+        filters = []
+        if tracking_scope != "unfollowed":
+            filters.append("is_ignored = ?")
+            params.append(False)
         self._add_canonical_tracking_scope_filter(filters, params, tracking_scope)
         if entry_type:
             filters.append("entry_type = ?")
@@ -3066,26 +3141,98 @@ class DataManager:
     def _add_canonical_tracking_scope_filter(
         self, filters: List[str], params: List[Any], tracking_scope: str
     ) -> None:
-        if tracking_scope not in {"following", "discovery", "all"}:
-            raise ValueError("tracking_scope must be one of: following, discovery, all")
-        if tracking_scope == "following":
-            filters.append("tracking_enabled = ?")
-            params.append(True)
-        elif tracking_scope == "discovery":
-            filters.extend(
-                [
-                    "entry_type = ?",
-                    "tracking_enabled = ?",
-                    "discovery_presented_at IS NULL",
-                ]
+        if tracking_scope not in {"following", "discovery", "unfollowed", "unset", "all"}:
+            raise ValueError(
+                "tracking_scope must be one of: following, discovery, unfollowed, unset, all"
             )
-            params.extend(["slang", False])
+        if tracking_scope == "following":
+            filters.append("follow_status = ?")
+            params.append("follow")
+        elif tracking_scope in {"discovery", "unset"}:
+            filters.append("follow_status = ?")
+            params.append("unset")
+        elif tracking_scope == "unfollowed":
+            filters.append("follow_status = ?")
+            params.append("unfollow")
 
     def follow_canonical_intelligence_entry(self, entry_id: str) -> Optional[Dict[str, Any]]:
-        return self._set_canonical_intelligence_tracking(entry_id, True)
+        return self.set_canonical_intelligence_follow_status(entry_id, "follow")
 
     def unfollow_canonical_intelligence_entry(self, entry_id: str) -> Optional[Dict[str, Any]]:
-        return self._set_canonical_intelligence_tracking(entry_id, False)
+        return self.set_canonical_intelligence_follow_status(entry_id, "unfollow")
+
+    def set_canonical_intelligence_follow_status(
+        self, entry_id: str, follow_status: str
+    ) -> Optional[Dict[str, Any]]:
+        status = self._normalize_follow_status(follow_status)
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(
+                        "UPDATE intelligence_canonical_entries "
+                        "SET follow_status = ?, tracking_enabled = ?, is_ignored = ?, "
+                        "ignored_at = CASE WHEN ? THEN COALESCE(ignored_at, ?) ELSE NULL END, "
+                        "ignored_by = CASE WHEN ? THEN COALESCE(ignored_by, 'follow_status') ELSE NULL END, "
+                        "updated_at = ? WHERE id = ?"
+                    ),
+                    (
+                        status,
+                        status == "follow",
+                        status == "unfollow",
+                        status == "unfollow",
+                        datetime.utcnow().isoformat(),
+                        status == "unfollow",
+                        datetime.utcnow().isoformat(),
+                        entry_id,
+                    ),
+                )
+                if cursor.rowcount == 0:
+                    conn.commit()
+                    return None
+                cursor.execute(
+                    self._sql("SELECT * FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"),
+                    (entry_id,),
+                )
+                row = cursor.fetchone()
+                conn.commit()
+                return self._serialize_canonical_intelligence_entry_row(conn, row) if row else None
+
+    def set_canonical_intelligence_entries_follow_status(
+        self, entry_ids: List[str], follow_status: str
+    ) -> int:
+        ids = [entry_id for entry_id in dict.fromkeys(entry_ids) if entry_id]
+        if not ids:
+            return 0
+        status = self._normalize_follow_status(follow_status)
+        now = datetime.utcnow().isoformat()
+        placeholders = ", ".join("?" for _ in ids)
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(
+                        "UPDATE intelligence_canonical_entries "
+                        "SET follow_status = ?, tracking_enabled = ?, is_ignored = ?, "
+                        "ignored_at = CASE WHEN ? THEN COALESCE(ignored_at, ?) ELSE NULL END, "
+                        "ignored_by = CASE WHEN ? THEN COALESCE(ignored_by, 'follow_status') ELSE NULL END, "
+                        "updated_at = ? "
+                        f"WHERE id IN ({placeholders})"
+                    ),
+                    (
+                        status,
+                        status == "follow",
+                        status == "unfollow",
+                        status == "unfollow",
+                        now,
+                        status == "unfollow",
+                        now,
+                        *ids,
+                    ),
+                )
+                updated = cursor.rowcount
+                conn.commit()
+                return int(updated)
 
     def _set_canonical_intelligence_tracking(
         self, entry_id: str, tracking_enabled: bool
@@ -3124,12 +3271,13 @@ class DataManager:
                 cursor.execute(
                     self._sql(
                         "UPDATE intelligence_canonical_entries "
-                        "SET discovery_presented_at = ?, updated_at = ? "
+                        "SET discovery_presented_at = ?, follow_status = ?, is_ignored = ?, "
+                        "updated_at = ? "
                         "WHERE entry_type = ? AND tracking_enabled = ? AND is_ignored = ? "
                         "AND discovery_presented_at IS NULL "
                         f"AND id IN ({placeholders})"
                     ),
-                    (now, *params),
+                    (now, "unfollow", True, *params),
                 )
                 updated = cursor.rowcount
                 conn.commit()
@@ -3211,8 +3359,10 @@ class DataManager:
         tracking_scope: str = "following",
     ) -> int:
         params: List[Any] = []
-        filters = ["embedding IS NOT NULL", "is_ignored = ?"]
-        params.append(False)
+        filters = ["embedding IS NOT NULL"]
+        if tracking_scope != "unfollowed":
+            filters.append("is_ignored = ?")
+            params.append(False)
         self._add_canonical_tracking_scope_filter(filters, params, tracking_scope)
         if entry_type:
             filters.append("entry_type = ?")
@@ -3243,8 +3393,11 @@ class DataManager:
         offset: int = 0,
         tracking_scope: str = "following",
     ) -> List[Tuple[Dict[str, Any], float]]:
-        filters = ["embedding IS NOT NULL", "is_ignored = ?"]
-        params: List[Any] = [False]
+        filters = ["embedding IS NOT NULL"]
+        params: List[Any] = []
+        if tracking_scope != "unfollowed":
+            filters.append("is_ignored = ?")
+            params.append(False)
         self._add_canonical_tracking_scope_filter(filters, params, tracking_scope)
         if entry_type:
             filters.append("entry_type = ?")
@@ -3323,10 +3476,11 @@ class DataManager:
                     self._sql(
                         "UPDATE intelligence_canonical_entries "
                         "SET is_ignored = ?, ignored_at = ?, ignored_by = ?, "
-                        "tracking_enabled = ?, discovery_presented_at = COALESCE(discovery_presented_at, ?) "
+                        "tracking_enabled = ?, follow_status = ?, "
+                        "discovery_presented_at = COALESCE(discovery_presented_at, ?) "
                         "WHERE id = ?"
                     ),
-                    (True, now, ignored_by, False, now, entry_id),
+                    (True, now, ignored_by, False, "unfollow", now, entry_id),
                 )
                 if cursor.rowcount == 0:
                     conn.commit()
@@ -3346,10 +3500,11 @@ class DataManager:
                 cursor.execute(
                     self._sql(
                         "UPDATE intelligence_canonical_entries "
-                        "SET is_ignored = ?, ignored_at = NULL, ignored_by = NULL "
+                        "SET is_ignored = ?, ignored_at = NULL, ignored_by = NULL, "
+                        "follow_status = ? "
                         "WHERE id = ?"
                     ),
-                    (False, entry_id),
+                    (False, "unset", entry_id),
                 )
                 if cursor.rowcount == 0:
                     conn.commit()

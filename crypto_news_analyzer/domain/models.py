@@ -76,6 +76,12 @@ class PrimaryLabel(str, Enum):
     OTHER = "其他"
 
 
+class IntelligenceFollowStatus(str, Enum):
+    FOLLOW = "follow"
+    UNFOLLOW = "unfollow"
+    UNSET = "unset"
+
+
 class CheckpointStatus(str, Enum):
     OK = "ok"
     RATE_LIMITED = "rate_limited"
@@ -87,6 +93,7 @@ ACTIVE_INGESTION_JOB_STATUSES = frozenset({"pending", "running"})
 _ENTRY_TYPE_VALUES = {item.value for item in EntryType}
 _PRIMARY_LABEL_VALUES = {item.value for item in PrimaryLabel}
 _CHECKPOINT_STATUS_VALUES = {item.value for item in CheckpointStatus}
+_FOLLOW_STATUS_VALUES = {item.value for item in IntelligenceFollowStatus}
 _FORBIDDEN_SECRET_KEYS = {
     "stringsession",
     "string_session",
@@ -862,6 +869,7 @@ class CanonicalIntelligenceEntry:
     ignored_by: Optional[str] = None
     tracking_enabled: bool = False
     discovery_presented_at: Optional[datetime] = None
+    follow_status: str = IntelligenceFollowStatus.UNSET.value
     embedding: Optional[List[float]] = None
     embedding_model: Optional[str] = None
     embedding_updated_at: Optional[datetime] = None
@@ -889,7 +897,18 @@ class CanonicalIntelligenceEntry:
         if self.evidence_count < 0:
             raise ValueError("evidence_count cannot be negative")
         self.is_ignored = bool(self.is_ignored)
-        self.tracking_enabled = False if self.is_ignored else bool(self.tracking_enabled)
+        self.follow_status = (
+            str(self.follow_status or IntelligenceFollowStatus.UNSET.value).strip().lower()
+        )
+        if self.follow_status == IntelligenceFollowStatus.UNSET.value:
+            if self.is_ignored:
+                self.follow_status = IntelligenceFollowStatus.UNFOLLOW.value
+            elif bool(self.tracking_enabled):
+                self.follow_status = IntelligenceFollowStatus.FOLLOW.value
+        if self.follow_status not in _FOLLOW_STATUS_VALUES:
+            raise ValueError("follow_status must be one of: follow, unfollow, unset")
+        self.tracking_enabled = self.follow_status == IntelligenceFollowStatus.FOLLOW.value
+        self.is_ignored = self.follow_status == IntelligenceFollowStatus.UNFOLLOW.value
         self.secondary_tags = _validate_json_list(self.secondary_tags, "secondary_tags")
         self.aliases = _validate_json_list(self.aliases, "aliases")
         if self.embedding is not None:
@@ -904,8 +923,7 @@ class CanonicalIntelligenceEntry:
         **kwargs: Any,
     ) -> "CanonicalIntelligenceEntry":
         now = datetime.utcnow()
-        if "tracking_enabled" not in kwargs:
-            kwargs["tracking_enabled"] = str(entry_type).strip().lower() == EntryType.CHANNEL.value
+        kwargs.setdefault("follow_status", IntelligenceFollowStatus.UNSET.value)
         return cls(
             id=str(uuid.uuid4()),
             entry_type=entry_type,
@@ -947,6 +965,19 @@ class CanonicalIntelligenceEntry:
             payload["tracking_enabled"] = (
                 str(payload.get("entry_type", "")).strip().lower() == EntryType.CHANNEL.value
             )
+        if "follow_status" not in payload:
+            if payload.get("is_ignored"):
+                payload["follow_status"] = IntelligenceFollowStatus.UNFOLLOW.value
+            elif payload.get("tracking_enabled"):
+                payload["follow_status"] = IntelligenceFollowStatus.FOLLOW.value
+            else:
+                payload["follow_status"] = IntelligenceFollowStatus.UNSET.value
+        else:
+            status = str(payload.get("follow_status") or IntelligenceFollowStatus.UNSET.value)
+            status = status.strip().lower()
+            if status in _FOLLOW_STATUS_VALUES:
+                payload["tracking_enabled"] = status == IntelligenceFollowStatus.FOLLOW.value
+                payload["is_ignored"] = status == IntelligenceFollowStatus.UNFOLLOW.value
         return cls(**payload)
 
 

@@ -110,14 +110,14 @@ Query and manage the hidden-channel intelligence knowledge base built by the pri
 Synchronous endpoints provide access to canonical knowledge entries, discovery candidates, searchable labels, and raw evidence:
 
 - `GET /intelligence/entries` — List canonical entries with time window, type, label, and `tracking_scope` filters, paginated
-- `GET /intelligence/discovery` — List unseen, untracked slang entries and mark returned entries as presented
+- `GET /intelligence/discovery` — List entries whose follow status is unset
 - `GET /intelligence/entries/ignored` — List ignored canonical entries
 - `GET /intelligence/labels` — List searchable primary labels
 - `GET /intelligence/entries/{entry_id}` — Get a single entry with optional latest raw evidence (`include_raw=true`) plus paginated evidence context groups
 - `POST /intelligence/entries/{entry_id}/ignore` — Hide an entry from normal list/search/labels; optional JSON body: `{"ignored_by":"operator-id"}`
 - `POST /intelligence/entries/{entry_id}/unignore` — Restore an ignored entry
-- `POST /intelligence/entries/{entry_id}/follow` — Enable tracking for an entry
-- `POST /intelligence/entries/{entry_id}/unfollow` — Disable tracking for an entry
+- `POST /intelligence/entries/{entry_id}/follow` — Set an entry's follow status to `follow`
+- `POST /intelligence/entries/{entry_id}/unfollow` — Set an entry's follow status to `unfollow`
 - `GET /intelligence/search` — Semantic search using required `q` parameter, ranked by vector similarity plus repository scoring, paginated
 - `GET /intelligence/raw/{raw_item_id}` — Get original raw text for a collected item (30-day TTL)
 
@@ -127,9 +127,9 @@ Raw text is byte-for-byte original within the TTL window. After expiration, `raw
 
 The `window` parameter accepts `<N>h` (hours) or `<N>d` (days), e.g. `7d`, `24h`; invalid values are ignored by the current implementation. Entry types are `channel` and `slang`. Primary labels are `AI`, `crypto`, `DARK_WEB`, `ACCOUNT_TRADING`, `PAYMENT`, `GAME`, `ECOMMERCE`, `SOCIAL_MEDIA`, `DEVELOPER_TOOLS`, and `OTHER` values; see the reference for exact API string values.
 
-The `tracking_scope` parameter is supported by `/intelligence/entries` and `/intelligence/search`. Valid values are `following`, `discovery`, and `all`; default is `following`. Invalid values return `400`.
+The `tracking_scope` parameter is supported by `/intelligence/entries` and `/intelligence/search`. Valid values are `following`, `discovery`, `unset`, `unfollowed`, and `all`; default is `following`. Invalid values return `400`.
 
-Ignored entries are excluded from normal `/intelligence/entries`, `/intelligence/search`, and `/intelligence/labels` results. Use `/intelligence/entries/ignored` to review them, then `/unignore` to restore them.
+Canonical entries use a follow state of `follow`, `unfollow`, or `unset`. Newly collected slang and channel entries default to `unset`.
 
 For full parameter details, response schemas, and examples, see the [Intelligence Query Reference](references/intelligence-query.md).
 

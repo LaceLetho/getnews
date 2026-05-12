@@ -717,6 +717,15 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         row = self._data.unfollow_canonical_intelligence_entry(entry_id)
         return CanonicalIntelligenceEntry.from_dict(row) if row else None
 
+    def set_canonical_entry_follow_status(
+        self, entry_id: str, follow_status: str
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        row = self._data.set_canonical_intelligence_follow_status(entry_id, follow_status)
+        return CanonicalIntelligenceEntry.from_dict(row) if row else None
+
+    def set_canonical_entries_follow_status(self, entry_ids: List[str], follow_status: str) -> int:
+        return self._data.set_canonical_intelligence_entries_follow_status(entry_ids, follow_status)
+
     def mark_discovery_presented(self, entry_ids: List[str]) -> int:
         return self._data.mark_discovery_presented(entry_ids)
 

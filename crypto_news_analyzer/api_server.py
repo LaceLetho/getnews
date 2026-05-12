@@ -358,6 +358,7 @@ class IntelligenceEntryResponse(BaseModel):
     ignored_by: Optional[str] = None
     tracking_enabled: bool = False
     discovery_presented_at: Optional[str] = None
+    follow_status: str = "unset"
 
 
 class IntelligenceListResponse(BaseModel):
@@ -422,6 +423,7 @@ class IntelligenceEntryDetailResponse(BaseModel):
     ignored_by: Optional[str] = None
     tracking_enabled: bool = False
     discovery_presented_at: Optional[str] = None
+    follow_status: str = "unset"
     source: Optional[str] = None
     raw_available: bool = False
     raw_evidence: Optional[Any] = None
@@ -447,6 +449,7 @@ class IntelligenceSearchResultItem(BaseModel):
     ignored_at: Optional[str] = None
     ignored_by: Optional[str] = None
     tracking_enabled: bool = False
+    follow_status: str = "unset"
 
 
 class IntelligenceIgnoreResponse(BaseModel):
@@ -462,6 +465,7 @@ class IntelligenceTrackingResponse(BaseModel):
     entry_id: str
     tracking_enabled: bool
     is_ignored: bool
+    follow_status: str = "unset"
 
 
 class IntelligenceSearchResponse(BaseModel):
@@ -524,6 +528,7 @@ def _canonical_entry_to_response(entry: Any) -> IntelligenceEntryResponse:
         discovery_presented_at=_datetime_to_iso(
             cast(Optional[datetime], getattr(entry, "discovery_presented_at", None))
         ),
+        follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
     )
 
 
@@ -555,15 +560,16 @@ def _canonical_entry_to_detail_response(entry: Any) -> IntelligenceEntryDetailRe
         discovery_presented_at=_datetime_to_iso(
             cast(Optional[datetime], getattr(entry, "discovery_presented_at", None))
         ),
+        follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
     )
 
 
 def _validate_tracking_scope(tracking_scope: str) -> str:
     normalized_scope = str(tracking_scope or "following").strip().lower()
-    if normalized_scope not in {"following", "discovery", "all"}:
+    if normalized_scope not in {"following", "discovery", "unfollowed", "unset", "all"}:
         raise HTTPException(
             status_code=400,
-            detail="tracking_scope must be one of: following, discovery, all",
+            detail="tracking_scope must be one of: following, discovery, unfollowed, unset, all",
         )
     return normalized_scope
 
@@ -1489,7 +1495,7 @@ def create_api_server(
         page: int = 1,
         page_size: int = 20,
     ):
-        """Return unseen untracked slang entries for discovery."""
+        """Return entries whose follow status is unset."""
         repository = _get_intelligence_repository(req)
         window_cutoff = _parse_window_param(window)
 
@@ -1497,7 +1503,7 @@ def create_api_server(
         page_size = max(1, min(page_size, 100))
 
         entries = repository.list_canonical_entries(
-            entry_type="slang",
+            entry_type=None,
             primary_label=primary_label if primary_label else None,
             window=window_cutoff,
             page=page,
@@ -1505,7 +1511,7 @@ def create_api_server(
             tracking_scope="discovery",
         )
         total = repository.count_canonical_entries(
-            entry_type="slang",
+            entry_type=None,
             primary_label=primary_label if primary_label else None,
             window=window_cutoff,
             tracking_scope="discovery",
@@ -1516,7 +1522,6 @@ def create_api_server(
             page=page,
             page_size=page_size,
         )
-        repository.mark_discovery_presented([entry.id for entry in entries])
         return response
 
     @app.get("/intelligence/entries/ignored", response_model=IntelligenceListResponse)
@@ -1646,6 +1651,7 @@ def create_api_server(
             entry_id=entry.id,
             tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
             is_ignored=bool(getattr(entry, "is_ignored", False)),
+            follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
         )
 
     @app.post(
@@ -1666,6 +1672,7 @@ def create_api_server(
             entry_id=entry.id,
             tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
             is_ignored=bool(getattr(entry, "is_ignored", False)),
+            follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
         )
 
     @app.get(
@@ -1817,6 +1824,7 @@ def create_api_server(
                     ),
                     ignored_by=getattr(entry, "ignored_by", None),
                     tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
+                    follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
                 )
                 for entry, score in results
             ],

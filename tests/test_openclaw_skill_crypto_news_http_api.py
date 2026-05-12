@@ -1,7 +1,6 @@
 import re
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PUBLISH_SCRIPT_PATH = REPO_ROOT / "skills" / "publish_clawhub_skill.sh"
 SKILL_DIR = REPO_ROOT / "skills" / "crypto-news-http-api"
@@ -181,9 +180,9 @@ def test_skill_non_goals_explicitly_exclude_deprecated_and_telegram_flows() -> N
 def test_skill_body_is_practically_english_only() -> None:
     _frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
 
-    assert not re.search(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", body), (
-        "Skill body must not contain CJK characters"
-    )
+    assert not re.search(
+        r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", body
+    ), "Skill body must not contain CJK characters"
 
 
 def test_skill_quick_reference_covers_bearer_auth_and_async_workflow() -> None:
@@ -305,9 +304,11 @@ def test_skill_intelligence_query_section_covers_current_routes_and_state() -> N
         "`tracking_scope`",
         "`following`",
         "`discovery`",
+        "`unset`",
+        "`unfollowed`",
         "`all`",
         "Invalid values return `400`",
-        "Ignored entries are excluded",
+        "Canonical entries use a follow state",
     ]:
         assert expected in intelligence_query, f"Missing intelligence API contract: {expected}"
 
@@ -336,7 +337,9 @@ def test_skill_updating_guidance_prefers_code_and_tests_when_prose_drifts() -> N
     assert "code and tests first, then reference files, then guides" in updating
 
 
-def test_analyze_workflow_reference_covers_async_contract_and_current_status_result_behavior() -> None:
+def test_analyze_workflow_reference_covers_async_contract_and_current_status_result_behavior() -> (
+    None
+):
     analyze_reference = _read_text(ANALYZE_WORKFLOW_PATH)
 
     for expected in [
@@ -377,7 +380,9 @@ def test_datasource_management_reference_covers_crud_tag_limits_and_redaction() 
         "The `params` object is replaced with `param_count`",
         "The actual header names, parameter names, and their values are never returned",
     ]:
-        assert expected in datasource_reference, f"Missing datasource reference contract: {expected}"
+        assert (
+            expected in datasource_reference
+        ), f"Missing datasource reference contract: {expected}"
 
 
 def test_operations_reference_covers_health_webhook_and_full_update_verification_workflow() -> None:
@@ -463,9 +468,11 @@ def test_intelligence_query_reference_covers_current_routes_state_and_errors() -
         "`tracking_scope`",
         "`following`",
         "`discovery`",
+        "`unset`",
+        "`unfollowed`",
         "`all`",
-        "Ignored entries are excluded",
-        "marks the returned entries as presented",
+        "Canonical intelligence entries use one follow state",
+        "does not mark returned entries as presented",
         "`evidence_page`",
         "`evidence_page_size`",
         "Missing `q` returns `422 Unprocessable Entity`",
@@ -473,4 +480,6 @@ def test_intelligence_query_reference_covers_current_routes_state_and_errors() -
         "`503` | Intelligence repository, embedding service, or storage config is not initialized",
         "separate from async `POST /semantic-search`",
     ]:
-        assert expected in intelligence_reference, f"Missing intelligence reference contract: {expected}"
+        assert (
+            expected in intelligence_reference
+        ), f"Missing intelligence reference contract: {expected}"

@@ -537,6 +537,16 @@ class IntelligenceRepository(ABC):
         pass
 
     @abstractmethod
+    def set_canonical_entry_follow_status(
+        self, entry_id: str, follow_status: str
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        pass
+
+    @abstractmethod
+    def set_canonical_entries_follow_status(self, entry_ids: List[str], follow_status: str) -> int:
+        pass
+
+    @abstractmethod
     def mark_discovery_presented(self, entry_ids: List[str]) -> int:
         pass
 

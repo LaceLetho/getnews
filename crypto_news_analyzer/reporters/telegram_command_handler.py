@@ -37,7 +37,12 @@ from ..datasource_payloads import (
     parse_telegram_datasource_command_json,
     validate_telegram_datasource_create_payload,
 )
-from ..domain.models import DataSourceAlreadyExistsError, DataSourceInUseError, PrimaryLabel
+from ..domain.models import (
+    DataSourceAlreadyExistsError,
+    DataSourceInUseError,
+    IntelligenceFollowStatus,
+    PrimaryLabel,
+)
 from ..models import (
     ChatContext,
     CommandExecutionHistory,
@@ -201,6 +206,12 @@ class TelegramCommandHandler:
         application.add_handler(CommandHandler("intel_follow", self._handle_intel_follow_command))
         application.add_handler(
             CommandHandler("intel_following", self._handle_intel_following_command)
+        )
+        application.add_handler(
+            CommandHandler("intel_unfollowed", self._handle_intel_unfollowed_command)
+        )
+        application.add_handler(
+            CommandHandler("intel_set_follow", self._handle_intel_set_follow_command)
         )
         application.add_handler(
             CommandHandler("intel_unfollow", self._handle_intel_unfollow_command)
@@ -473,7 +484,7 @@ class TelegramCommandHandler:
 
         # Send footer sequentially after entries (guarantees it appears last)
         pagination_row: List[InlineKeyboardButton] = []
-        if page > 1:
+        if kind != "recent" and page > 1:
             pagination_row.append(
                 InlineKeyboardButton(
                     "上一页",
@@ -483,8 +494,10 @@ class TelegramCommandHandler:
         if page < total_pages:
             pagination_row.append(
                 InlineKeyboardButton(
-                    "下一页",
-                    callback_data=self._build_intel_pagination_callback_data(token, page + 1),
+                    "更多" if kind == "recent" else "下一页",
+                    callback_data=self._build_intel_pagination_callback_data(
+                        token, 1 if kind == "recent" else page + 1
+                    ),
                 )
             )
 
@@ -510,6 +523,7 @@ class TelegramCommandHandler:
                 "total": total,
                 "total_pages": total_pages,
                 "sent_message_ids": sent_message_ids,
+                "entry_ids": [str(getattr(entry, "id", "")) for entry in entries],
             }
         )
         self._store_callback_state(token, state_payload)
@@ -618,6 +632,19 @@ class TelegramCommandHandler:
         page: int,
     ) -> str:
         kind = str(state.get("kind", "")).strip()
+        if kind == "recent":
+            repository = self._get_intelligence_repository()
+            if repository is not None:
+                entry_ids = [str(entry_id) for entry_id in state.get("entry_ids", []) if entry_id]
+                setter = getattr(repository, "set_canonical_entries_follow_status", None)
+                if callable(setter) and "set_canonical_entries_follow_status" in dir(
+                    type(repository)
+                ):
+                    setter(entry_ids, IntelligenceFollowStatus.UNFOLLOW.value)
+                elif entry_ids:
+                    repository.mark_discovery_presented(entry_ids)
+            page = 1
+
         if kind == "search":
             payload = self.handle_intel_search_command(
                 user_id,
@@ -629,6 +656,16 @@ class TelegramCommandHandler:
             )
         elif kind == "following":
             payload = self.handle_intel_following_command(
+                user_id,
+                username,
+                chat_id,
+                int(state.get("window_hours", 24)),
+                str(state.get("label", "")) or None,
+                page,
+                return_markup=True,
+            )
+        elif kind == "unfollowed":
+            payload = self.handle_intel_unfollowed_command(
                 user_id,
                 username,
                 chat_id,
@@ -666,19 +703,20 @@ class TelegramCommandHandler:
                 return_markup=True,
             )
 
-        old_message_ids = [int(msg_id) for msg_id in state.get("sent_message_ids", [])]
-        chat_id_value = self._telegram_chat_id(chat_id)
         if self.application is None:
             raise RuntimeError("Telegram application is not initialized")
-        bot = self.application.bot
-        for msg_id in old_message_ids:
-            try:
-                await bot.delete_message(
-                    chat_id=chat_id_value,
-                    message_id=msg_id,
-                )
-            except Exception as e:
-                self.logger.debug(f"Failed to delete intel page message {msg_id}: {e}")
+        if kind != "recent":
+            old_message_ids = [int(msg_id) for msg_id in state.get("sent_message_ids", [])]
+            chat_id_value = self._telegram_chat_id(chat_id)
+            bot = self.application.bot
+            for msg_id in old_message_ids:
+                try:
+                    await bot.delete_message(
+                        chat_id=chat_id_value,
+                        message_id=msg_id,
+                    )
+                except Exception as e:
+                    self.logger.debug(f"Failed to delete intel page message {msg_id}: {e}")
 
         if not isinstance(payload, dict):
             await callback_query.message.reply_text(str(payload), parse_mode="Markdown")
@@ -701,12 +739,11 @@ class TelegramCommandHandler:
                 if kind == "ignored"
                 else (
                     "follow"
-                    if kind == "recent"
+                    if kind in {"recent", "unfollowed"}
                     else "unfollow" if kind == "following" else "ignore"
                 )
             ),
         )
-        self._mark_intel_discovery_presented(payload)
         return "已更新分页"
 
     async def _handle_intel_callback_query(
@@ -1217,6 +1254,8 @@ class TelegramCommandHandler:
                 BotCommand("intel_detail", "查看情报条目详情"),
                 BotCommand("intel_follow", "关注发现的情报条目"),
                 BotCommand("intel_following", "查看已关注情报条目"),
+                BotCommand("intel_unfollowed", "查看不关注情报条目"),
+                BotCommand("intel_set_follow", "设置情报关注状态"),
                 BotCommand("intel_unfollow", "取消关注情报条目"),
                 BotCommand("intel_ignored", "查看已忽略情报条目"),
                 BotCommand("intel_unignore", "恢复已忽略情报条目"),
@@ -1592,7 +1631,6 @@ class TelegramCommandHandler:
                     state_data=payload.get("state_data", {}),
                     action="follow",
                 )
-                self._mark_intel_discovery_presented(payload)
             else:
                 response_text = str(payload)
                 await message.reply_text(response_text, parse_mode="Markdown")
@@ -1705,6 +1743,111 @@ class TelegramCommandHandler:
             self.logger.error(
                 f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
+            await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_intel_unfollowed_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_id = chat_context.chat_id
+        message = getattr(update, "effective_message", None) or update.message
+        if message is None:
+            self.logger.error("/intel_unfollowed update has no effective message")
+            return
+
+        args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+        try:
+            if not self.is_authorized_user(user_id, username):
+                await message.reply_text("❌ 权限拒绝\n\n您没有权限执行此命令。")
+                return
+
+            window_hours = 24
+            label = ""
+            page = 1
+            if args:
+                first_arg = args[0]
+                remaining = args[1:] if first_arg.isdigit() else list(args)
+                if first_arg.isdigit():
+                    window_hours = int(first_arg)
+                if remaining and remaining[-1].isdigit():
+                    page = max(1, int(remaining[-1]))
+                    remaining = remaining[:-1]
+                label = " ".join(remaining).strip()
+
+            if window_hours <= 0:
+                await message.reply_text(
+                    "❌ 参数错误\n\n请输入有效的时间窗口，例如：/intel_unfollowed 24 账号交易"
+                )
+                return
+
+            payload = self.handle_intel_unfollowed_command(
+                user_id,
+                username,
+                chat_id,
+                window_hours,
+                label or None,
+                page,
+                return_markup=True,
+            )
+            if isinstance(payload, dict):
+                await self._send_intel_page(
+                    chat_id=chat_id,
+                    entries=payload.get("entries", []),
+                    page=int(payload.get("page", page)),
+                    total_pages=int(payload.get("total_pages", 1)),
+                    total=int(payload.get("total", 0)),
+                    kind=str(payload.get("kind", "unfollowed")),
+                    state_data=payload.get("state_data", {}),
+                    action="follow",
+                )
+            else:
+                await message.reply_text(str(payload), parse_mode="Markdown")
+        except Exception as e:
+            self.logger.error(f"处理/intel_unfollowed命令时发生错误: {e}")
+            await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
+
+    async def _handle_intel_set_follow_command(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        try:
+            chat_context = self._extract_chat_context(update)
+        except ValueError as e:
+            self.logger.error(f"Failed to extract chat context: {e}")
+            await update.message.reply_text("❌ 处理命令时发生错误")
+            return
+
+        user_id = chat_context.user_id
+        username = chat_context.username
+        chat_id = chat_context.chat_id
+        message = getattr(update, "effective_message", None) or update.message
+        if message is None:
+            self.logger.error("/intel_set_follow update has no effective message")
+            return
+
+        args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+        try:
+            if not self.is_authorized_user(user_id, username):
+                await message.reply_text("❌ 权限拒绝\n\n您没有权限执行此命令。")
+                return
+            if len(args) != 2:
+                await message.reply_text(
+                    "❌ 参数错误\n\n用法: /intel_set_follow <entry_id> <follow|unfollow|unset>"
+                )
+                return
+            response = self.handle_intel_set_follow_command(
+                user_id, username, chat_id, args[0], args[1]
+            )
+            await message.reply_text(response, parse_mode="Markdown")
+        except Exception as e:
+            self.logger.error(f"处理/intel_set_follow命令时发生错误: {e}")
             await message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
 
     async def _handle_intel_labels_command(
@@ -3276,7 +3419,7 @@ class TelegramCommandHandler:
             label_part = f" {label}" if label else ""
             footer = f"\n📄 *共 {total} 条 | 第 {page}/{total_pages} 页*"
             if page < total_pages:
-                footer += f"\n👉 下一页: `/intel_recent {window_hours}{label_part} {page + 1}`"
+                footer += f"\n👉 更多: `/intel_recent {window_hours}{label_part} {page + 1}`"
             lines.append(footer)
 
         return "\n".join(lines)
@@ -3519,7 +3662,7 @@ class TelegramCommandHandler:
                 entry_type=None,
                 primary_label=primary_label,
                 window=cutoff,
-                tracking_scope="discovery",
+                tracking_scope="unset",
             )
             entries = repository.list_canonical_entries(
                 entry_type=None,
@@ -3527,7 +3670,7 @@ class TelegramCommandHandler:
                 window=cutoff,
                 page=page,
                 page_size=self.INTEL_PAGE_SIZE,
-                tracking_scope="discovery",
+                tracking_scope="unset",
             )
             total_pages = (
                 max(1, (total + self.INTEL_PAGE_SIZE - 1) // self.INTEL_PAGE_SIZE)
@@ -3542,7 +3685,7 @@ class TelegramCommandHandler:
                     window=cutoff,
                     page=page,
                     page_size=self.INTEL_PAGE_SIZE,
-                    tracking_scope="discovery",
+                    tracking_scope="unset",
                 )
             response = self._format_intelligence_recent_results(
                 entries,
@@ -3572,9 +3715,7 @@ class TelegramCommandHandler:
                     "total_pages": total_pages,
                     "kind": "recent",
                     "state_data": state_data,
-                    "mark_discovery_presented_ids": [entry.id for entry in entries],
                 }
-            repository.mark_discovery_presented([entry.id for entry in entries])
             return response
         except Exception as e:
             error_msg = f"查询最近情报失败: {str(e)}"
@@ -3668,6 +3809,94 @@ class TelegramCommandHandler:
             self.logger.error(error_msg)
             self._log_command_execution(
                 "/intel_following", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
+    def handle_intel_unfollowed_command(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        window_hours: int,
+        label: Optional[str] = None,
+        page: int = 1,
+        return_markup: bool = False,
+    ) -> Any:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                response = "❌ 情报仓储未初始化\n\n请先完成情报模块配置。"
+                self._log_command_execution(
+                    "/intel_unfollowed", user_id, username, None, False, response
+                )
+                return response
+
+            cutoff = datetime.utcnow() - timedelta(hours=max(1, int(window_hours)))
+            primary_label = self._normalize_intelligence_primary_label(label)
+            page = max(1, page)
+            total = repository.count_canonical_entries(
+                entry_type=None,
+                primary_label=primary_label,
+                window=cutoff,
+                tracking_scope="unfollowed",
+            )
+            entries = repository.list_canonical_entries(
+                entry_type=None,
+                primary_label=primary_label,
+                window=cutoff,
+                page=page,
+                page_size=self.INTEL_PAGE_SIZE,
+                tracking_scope="unfollowed",
+            )
+            total_pages = (
+                max(1, (total + self.INTEL_PAGE_SIZE - 1) // self.INTEL_PAGE_SIZE)
+                if total > 0
+                else 1
+            )
+            if page > total_pages:
+                page = total_pages
+                entries = repository.list_canonical_entries(
+                    entry_type=None,
+                    primary_label=primary_label,
+                    window=cutoff,
+                    page=page,
+                    page_size=self.INTEL_PAGE_SIZE,
+                    tracking_scope="unfollowed",
+                )
+            response = self._format_intelligence_recent_results(
+                entries,
+                total=total,
+                page=page,
+                page_size=self.INTEL_PAGE_SIZE,
+                window_hours=window_hours,
+                label=label or "",
+            )
+            self._log_command_execution(
+                "/intel_unfollowed", user_id, username, None, bool(entries), response
+            )
+            if return_markup:
+                return {
+                    "entries": entries,
+                    "total": total,
+                    "page": page,
+                    "total_pages": total_pages,
+                    "kind": "unfollowed",
+                    "state_data": {
+                        "kind": "unfollowed",
+                        "window_hours": window_hours,
+                        "label": label or "",
+                        "page_size": self.INTEL_PAGE_SIZE,
+                        "page": page,
+                        "chat_id": chat_id,
+                        "user_id": user_id,
+                    },
+                }
+            return response
+        except Exception as e:
+            error_msg = f"查询不关注情报失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_unfollowed", user_id, username, None, False, error_msg
             )
             return f"❌ 执行失败\n\n{str(e)}"
 
@@ -3867,7 +4096,12 @@ class TelegramCommandHandler:
                 )
                 return response
 
-            followed = repository.follow_canonical_entry(entry_id)
+            setter = getattr(repository, "set_canonical_entry_follow_status", None)
+            followed = (
+                setter(entry_id, IntelligenceFollowStatus.FOLLOW.value)
+                if callable(setter) and "set_canonical_entry_follow_status" in dir(type(repository))
+                else repository.follow_canonical_entry(entry_id)
+            )
             if followed is None:
                 response = "Entry not found"
                 self._log_command_execution(
@@ -3900,7 +4134,12 @@ class TelegramCommandHandler:
                 )
                 return response
 
-            unfollowed = repository.unfollow_canonical_entry(entry_id)
+            setter = getattr(repository, "set_canonical_entry_follow_status", None)
+            unfollowed = (
+                setter(entry_id, IntelligenceFollowStatus.UNFOLLOW.value)
+                if callable(setter) and "set_canonical_entry_follow_status" in dir(type(repository))
+                else repository.unfollow_canonical_entry(entry_id)
+            )
             if unfollowed is None:
                 response = "Entry not found"
                 self._log_command_execution(
@@ -3916,6 +4155,72 @@ class TelegramCommandHandler:
             self.logger.error(error_msg)
             self._log_command_execution(
                 "/intel_unfollow", user_id, username, None, False, error_msg
+            )
+            return f"❌ 执行失败\n\n{str(e)}"
+
+    def handle_intel_set_follow_command(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        entry_id: str,
+        follow_status: str,
+    ) -> str:
+        status_aliases = {
+            "follow": IntelligenceFollowStatus.FOLLOW.value,
+            "following": IntelligenceFollowStatus.FOLLOW.value,
+            "关注": IntelligenceFollowStatus.FOLLOW.value,
+            "unfollow": IntelligenceFollowStatus.UNFOLLOW.value,
+            "unfollowed": IntelligenceFollowStatus.UNFOLLOW.value,
+            "不关注": IntelligenceFollowStatus.UNFOLLOW.value,
+            "unset": IntelligenceFollowStatus.UNSET.value,
+            "未设置": IntelligenceFollowStatus.UNSET.value,
+        }
+        normalized_status = status_aliases.get(str(follow_status).strip().lower())
+        if normalized_status is None:
+            return "❌ 参数错误\n\n状态必须是 follow、unfollow 或 unset"
+
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                response = "❌ 情报仓储未初始化\n\n请先完成情报模块配置。"
+                self._log_command_execution(
+                    "/intel_set_follow", user_id, username, None, False, response
+                )
+                return response
+
+            setter = getattr(repository, "set_canonical_entry_follow_status", None)
+            if callable(setter) and "set_canonical_entry_follow_status" in dir(type(repository)):
+                updated = setter(entry_id, normalized_status)
+            elif normalized_status == IntelligenceFollowStatus.FOLLOW.value:
+                updated = repository.follow_canonical_entry(entry_id)
+            elif normalized_status == IntelligenceFollowStatus.UNFOLLOW.value:
+                updated = repository.unfollow_canonical_entry(entry_id)
+            else:
+                updated = repository.unignore_canonical_entry(entry_id)
+
+            if updated is None:
+                response = "Entry not found"
+                self._log_command_execution(
+                    "/intel_set_follow", user_id, username, None, False, response
+                )
+                return response
+
+            label = {
+                IntelligenceFollowStatus.FOLLOW.value: "关注",
+                IntelligenceFollowStatus.UNFOLLOW.value: "不关注",
+                IntelligenceFollowStatus.UNSET.value: "未设置",
+            }[normalized_status]
+            response = f"已设置为{label}：{getattr(updated, 'display_name', entry_id) or entry_id}"
+            self._log_command_execution(
+                "/intel_set_follow", user_id, username, None, True, response
+            )
+            return response
+        except Exception as e:
+            error_msg = f"设置情报关注状态失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/intel_set_follow", user_id, username, None, False, error_msg
             )
             return f"❌ 执行失败\n\n{str(e)}"
 
@@ -4338,6 +4643,8 @@ class TelegramCommandHandler:
                 "semantic_search",
                 "intel_recent",
                 "intel_following",
+                "intel_unfollowed",
+                "intel_set_follow",
                 "intel_labels",
                 "intel_search",
                 "intel_detail",
@@ -4363,12 +4670,20 @@ class TelegramCommandHandler:
             )
 
         help_text.append(
-            "/intel_recent [window] [label] - 查看一次性发现情报条目\n"
-            "例如 /intel_recent 24 账号交易。已展示或已关注的发现不会再次出现在这里。\n"
+            "/intel_recent [window] [label] - 查看未设置关注状态的情报条目\n"
+            "例如 /intel_recent 24 账号交易。点击更多会把当前批次设为不关注后继续展示。\n"
         )
         help_text.append(
             "/intel_following [window] [label] - 查看已关注情报条目\n"
             "例如 /intel_following 100 支付。\n"
+        )
+        help_text.append(
+            "/intel_unfollowed [window] [label] - 查看不关注情报条目\n"
+            "例如 /intel_unfollowed 100 支付。\n"
+        )
+        help_text.append(
+            "/intel_set_follow <entry_id> <follow|unfollow|unset> - 设置情报关注状态\n"
+            "例如 /intel_set_follow intel-123 follow。\n"
         )
         help_text.append(
             "/intel_labels - 查看可用于搜索的情报标签\n"

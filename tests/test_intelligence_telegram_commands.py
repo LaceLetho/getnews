@@ -263,9 +263,9 @@ def test_intel_recent_business_method_returns_page_payload_and_state_data():
     assert payload["state_data"]["kind"] == "recent"
     assert payload["state_data"]["chat_id"] == "chat_1"
     assert payload["state_data"]["user_id"] == "1"
-    assert payload["mark_discovery_presented_ids"] == ["intel-1", "intel-2"]
-    assert repository.count_canonical_entries.call_args.kwargs["tracking_scope"] == "discovery"
-    assert repository.list_canonical_entries.call_args.kwargs["tracking_scope"] == "discovery"
+    assert "mark_discovery_presented_ids" not in payload
+    assert repository.count_canonical_entries.call_args.kwargs["tracking_scope"] == "unset"
+    assert repository.list_canonical_entries.call_args.kwargs["tracking_scope"] == "unset"
     repository.mark_discovery_presented.assert_not_called()
     assert handler._callback_state == {}
 
@@ -282,7 +282,7 @@ def test_intel_recent_business_method_formats_markdown_list():
     response = handler.handle_intel_recent_command("1", "tester", "chat_1", 24, "账号交易")
 
     repository.list_canonical_entries.assert_called_once()
-    repository.mark_discovery_presented.assert_called_once_with(["intel-1", "intel-2"])
+    repository.mark_discovery_presented.assert_not_called()
     assert "Seller One" in response
     assert "intel-1" not in response
     assert "channel" in response

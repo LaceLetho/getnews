@@ -45,11 +45,13 @@ Supported by `GET /intelligence/entries` and `GET /intelligence/search`.
 
 | Value | Meaning |
 |-------|---------|
-| `following` | Only entries with tracking enabled. This is the default. |
-| `discovery` | Untracked, unignored slang entries for discovery. |
+| `following` | Entries whose follow status is `follow`. This is the default. |
+| `discovery` | Entries whose follow status is `unset`. |
+| `unset` | Alias for unset follow status. |
+| `unfollowed` | Entries whose follow status is `unfollow`. |
 | `all` | All non-ignored entries. |
 
-Invalid values return `400 Bad Request` with detail `tracking_scope must be one of: following, discovery, all`.
+Invalid values return `400 Bad Request`.
 
 ### page / page_size
 
@@ -57,11 +59,11 @@ Integer pagination. Defaults are `page=1` and `page_size=20`. Values are clamped
 
 ## Entry State
 
-Canonical intelligence entries can be followed/unfollowed and ignored/unignored.
+Canonical intelligence entries use one follow state: `follow`, `unfollow`, or `unset`.
 
-Ignored entries are excluded from normal `GET /intelligence/entries`, `GET /intelligence/search`, and `GET /intelligence/labels` responses. Use `GET /intelligence/entries/ignored` to review ignored entries.
+Newly collected slang and channel entries default to `unset`. Following/unfollowing updates this state.
 
-Discovery returns untracked slang entries that have not been presented before, then marks the returned entries as presented.
+Discovery returns entries with `follow_status=unset`; it does not mark returned entries as presented.
 
 ## GET /intelligence/entries
 
@@ -124,7 +126,7 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 
 ## GET /intelligence/discovery
 
-List unseen, untracked slang entries for discovery. Returned entries are marked as presented before the response completes, so a repeated call may not return the same entries.
+List entries whose follow status is unset.
 
 ### Query Parameters
 
@@ -242,7 +244,7 @@ Restore an ignored entry. The operation is idempotent and returns `404` if the e
 
 ## POST /intelligence/entries/{entry_id}/follow
 
-Enable tracking for an entry. This does not change the ignore state. Returns `404` if the entry does not exist.
+Set an entry's follow status to `follow`. Returns `404` if the entry does not exist.
 
 ### Response (200)
 
@@ -251,13 +253,14 @@ Enable tracking for an entry. This does not change the ignore state. Returns `40
   "success": true,
   "entry_id": "entry-uuid",
   "tracking_enabled": true,
-  "is_ignored": false
+  "is_ignored": false,
+  "follow_status": "follow"
 }
 ```
 
 ## POST /intelligence/entries/{entry_id}/unfollow
 
-Disable tracking for an entry. This does not change the ignore state. Returns `404` if the entry does not exist.
+Set an entry's follow status to `unfollow`. Returns `404` if the entry does not exist.
 
 ### Response (200)
 
@@ -266,7 +269,8 @@ Disable tracking for an entry. This does not change the ignore state. Returns `4
   "success": true,
   "entry_id": "entry-uuid",
   "tracking_enabled": false,
-  "is_ignored": false
+  "is_ignored": true,
+  "follow_status": "unfollow"
 }
 ```
 

@@ -371,30 +371,43 @@ class _InMemoryIntelligenceRepository(IntelligenceRepository):
         self, entries: List[CanonicalIntelligenceEntry], tracking_scope: str
     ) -> List[CanonicalIntelligenceEntry]:
         if tracking_scope == "following":
-            return [entry for entry in entries if entry.tracking_enabled]
-        if tracking_scope == "discovery":
+            return [entry for entry in entries if entry.follow_status == "follow"]
+        if tracking_scope in {"discovery", "unset"}:
             return [
                 entry
                 for entry in entries
-                if entry.entry_type == EntryType.SLANG.value
-                and not entry.tracking_enabled
-                and entry.discovery_presented_at is None
+                if entry.follow_status == "unset" and not entry.is_ignored
             ]
+        if tracking_scope == "unfollowed":
+            return [entry for entry in entries if entry.follow_status == "unfollow"]
         return entries
 
     def follow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
-        entry = self.canonical_entries.get(entry_id)
-        if entry is None:
-            return None
-        entry.tracking_enabled = True
-        return entry
+        return self.set_canonical_entry_follow_status(entry_id, "follow")
 
     def unfollow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
+        return self.set_canonical_entry_follow_status(entry_id, "unfollow")
+
+    def set_canonical_entry_follow_status(
+        self, entry_id: str, follow_status: str
+    ) -> Optional[CanonicalIntelligenceEntry]:
         entry = self.canonical_entries.get(entry_id)
         if entry is None:
             return None
-        entry.tracking_enabled = False
+        status = str(follow_status).strip().lower()
+        entry.follow_status = status
+        entry.tracking_enabled = status == "follow"
+        entry.is_ignored = status == "unfollow"
+        entry.ignored_at = _utcnow() if entry.is_ignored else None
+        entry.ignored_by = "follow_status" if entry.is_ignored else None
         return entry
+
+    def set_canonical_entries_follow_status(self, entry_ids: List[str], follow_status: str) -> int:
+        updated = 0
+        for entry_id in dict.fromkeys(entry_ids):
+            if self.set_canonical_entry_follow_status(entry_id, follow_status) is not None:
+                updated += 1
+        return updated
 
     def mark_discovery_presented(self, entry_ids: List[str]) -> int:
         self.discovery_presented_calls.append(list(entry_ids))
@@ -824,7 +837,7 @@ def test_list_entries_defaults_to_following_tracking_scope(
     assert repo.list_calls[1]["tracking_scope"] == "all"
 
 
-def test_discovery_returns_unseen_untracked_slang_then_marks_presented(
+def test_discovery_returns_unset_entries_without_marking_presented(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = _InMemoryIntelligenceRepository()
@@ -857,9 +870,9 @@ def test_discovery_returns_unseen_untracked_slang_then_marks_presented(
     assert first_data["total"] == 1
     assert [item["entry_id"] for item in first_data["entries"]] == ["sl-unseen"]
     assert first_data["entries"][0]["entry_type"] == EntryType.SLANG.value
-    assert repo.discovery_presented_calls == [["sl-unseen"], []]
+    assert repo.discovery_presented_calls == []
     assert second_response.status_code == 200
-    assert second_response.json()["entries"] == []
+    assert [item["entry_id"] for item in second_response.json()["entries"]] == ["sl-unseen"]
 
 
 def test_follow_and_unfollow_toggle_tracking_without_changing_ignore_state(
@@ -890,12 +903,14 @@ def test_follow_and_unfollow_toggle_tracking_without_changing_ignore_state(
         "success": True,
         "entry_id": "sl-toggle",
         "tracking_enabled": True,
-        "is_ignored": True,
+        "is_ignored": False,
+        "follow_status": "follow",
     }
     assert unfollow_response.status_code == 200
     assert unfollow_response.json()["tracking_enabled"] is False
+    assert unfollow_response.json()["follow_status"] == "unfollow"
     assert repo.canonical_entries["sl-toggle"].is_ignored is True
-    assert repo.canonical_entries["sl-toggle"].ignored_by == "operator-id"
+    assert repo.canonical_entries["sl-toggle"].ignored_by == "follow_status"
 
 
 def test_list_entries_filters_by_primary_label(
@@ -1497,7 +1512,8 @@ def test_semantic_search_defaults_to_following_tracking_scope(
     ]
     assert discovery_response.status_code == 200
     assert [item["entry_id"] for item in discovery_response.json()["results"]] == [
-        "search-untracked"
+        "search-untracked",
+        "search-channel",
     ]
 
 

@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS intelligence_canonical_entries (
     ignored_by TEXT,
     tracking_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     discovery_presented_at TIMESTAMPTZ,
+    follow_status TEXT NOT NULL DEFAULT 'unset',
     embedding vector(1536),
     embedding_model TEXT,
     embedding_updated_at TIMESTAMPTZ,
@@ -131,6 +132,9 @@ ON intelligence_canonical_entries (is_ignored);
 
 CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_tracking
 ON intelligence_canonical_entries (tracking_enabled, discovery_presented_at);
+
+CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_follow_status
+ON intelligence_canonical_entries (follow_status);
 
 CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_embedding_model
 ON intelligence_canonical_entries (embedding_model);

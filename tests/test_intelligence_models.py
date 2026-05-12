@@ -137,7 +137,7 @@ def test_canonical_entry_and_checkpoint_round_trip_and_secret_rejection():
         )
 
 
-def test_canonical_entry_tracking_defaults_by_entry_type_and_ignore_state():
+def test_canonical_entry_follow_status_defaults_to_unset():
     channel = CanonicalIntelligenceEntry.create(
         entry_type=EntryType.CHANNEL.value,
         normalized_key="https://t.me/channel",
@@ -156,8 +156,12 @@ def test_canonical_entry_tracking_defaults_by_entry_type_and_ignore_state():
         tracking_enabled=True,
     )
 
-    assert channel.tracking_enabled is True
+    assert channel.follow_status == "unset"
+    assert channel.tracking_enabled is False
+    assert channel.is_ignored is False
+    assert slang.follow_status == "unset"
     assert slang.tracking_enabled is False
+    assert ignored.follow_status == "unfollow"
     assert ignored.is_ignored is True
     assert ignored.tracking_enabled is False
 

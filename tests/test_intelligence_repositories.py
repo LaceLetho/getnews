@@ -103,18 +103,24 @@ def test_intelligence_repository_implements_contract_and_round_trips(tmp_path: P
         )
         assert loaded is not None
         assert loaded.aliases == ["alpha"]
-        assert loaded.tracking_enabled is True
+        assert loaded.follow_status == "unset"
+        assert loaded.tracking_enabled is False
 
         entry.display_name = "Alpha Updated"
         assert repository.upsert_canonical_entry(entry) == entry.id
         assert (
-            repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)[0].display_name
+            repository.list_canonical_entries(
+                entry_type=EntryType.CHANNEL.value, tracking_scope="unset"
+            )[0].display_name
             == "Alpha Updated"
         )
 
         assert repository.update_embedding(entry.id, [1.0, 0.0, 0.0], "test-embedding") is True
         assert repository.get_entries_missing_embeddings(10) == []
-        assert repository.semantic_search([1.0, 0.0, 0.0], limit=1)[0][0].id == entry.id
+        assert (
+            repository.semantic_search([1.0, 0.0, 0.0], limit=1, tracking_scope="unset")[0][0].id
+            == entry.id
+        )
 
         other = CanonicalIntelligenceEntry.create(
             entry_type=EntryType.CHANNEL.value,
@@ -586,7 +592,9 @@ def test_intelligence_repository_ignore_lifecycle(tmp_path: Path):
         assert unignored.ignored_by is None
 
         # List includes again
-        visible_again = repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)
+        visible_again = repository.list_canonical_entries(
+            entry_type=EntryType.CHANNEL.value, tracking_scope="unset"
+        )
         assert any(e.id == entry.id for e in visible_again)
 
         # List ignored is empty after unignore
@@ -739,8 +747,12 @@ def test_discovery_scope_returns_unseen_untracked_slang_once(tmp_path: Path):
         assert repository.ignore_canonical_entry(ignored_slang.id) is not None
 
         discovery = repository.list_canonical_entries(tracking_scope="discovery")
-        assert [entry.id for entry in discovery] == [unseen_slang.id]
-        assert repository.count_canonical_entries(tracking_scope="discovery") == 1
+        assert {entry.id for entry in discovery} == {
+            channel.id,
+            unseen_slang.id,
+            presented_slang.id,
+        }
+        assert repository.count_canonical_entries(tracking_scope="discovery") == 3
         loaded_unseen_slang = repository.get_canonical_entry_by_id(unseen_slang.id)
         assert loaded_unseen_slang is not None
         assert loaded_unseen_slang.discovery_presented_at is None
@@ -752,7 +764,9 @@ def test_discovery_scope_returns_unseen_untracked_slang_once(tmp_path: Path):
         marked = repository.get_canonical_entry_by_id(unseen_slang.id)
         assert marked is not None
         assert marked.discovery_presented_at is not None
-        assert repository.list_canonical_entries(tracking_scope="discovery") == []
+        assert {
+            entry.id for entry in repository.list_canonical_entries(tracking_scope="discovery")
+        } == {channel.id, presented_slang.id}
         assert repository.mark_discovery_presented([unseen_slang.id]) == 0
     finally:
         manager.close()
@@ -791,8 +805,8 @@ def test_follow_unfollow_toggles_tracking_without_altering_ignore_state(tmp_path
         unfollowed = repository.unfollow_canonical_entry(entry.id)
         assert unfollowed is not None
         assert unfollowed.tracking_enabled is False
-        assert unfollowed.is_ignored is False
-        assert unfollowed.discovery_presented_at is None
+        assert unfollowed.follow_status == "unfollow"
+        assert unfollowed.is_ignored is True
 
         unfollowed_channel = repository.unfollow_canonical_entry(channel_entry.id)
         assert unfollowed_channel is not None
@@ -803,20 +817,20 @@ def test_follow_unfollow_toggles_tracking_without_altering_ignore_state(tmp_path
 
         followed_ignored = repository.follow_canonical_entry(ignored_entry.id)
         assert followed_ignored is not None
-        assert followed_ignored.is_ignored is True
-        assert followed_ignored.ignored_by == "tester"
-        assert followed_ignored.discovery_presented_at is not None
+        assert followed_ignored.is_ignored is False
+        assert followed_ignored.follow_status == "follow"
 
         unignored = repository.unignore_canonical_entry(ignored_entry.id)
         assert unignored is not None
         assert unignored.is_ignored is False
-        assert unignored.tracking_enabled is True
+        assert unignored.follow_status == "unset"
+        assert unignored.tracking_enabled is False
 
         unfollowed_ignored = repository.unfollow_canonical_entry(ignored_entry.id)
         assert unfollowed_ignored is not None
-        assert unfollowed_ignored.is_ignored is False
+        assert unfollowed_ignored.is_ignored is True
         assert unfollowed_ignored.tracking_enabled is False
-        assert unfollowed_ignored.discovery_presented_at is not None
+        assert unfollowed_ignored.follow_status == "unfollow"
     finally:
         manager.close()
 
@@ -880,16 +894,19 @@ def test_existing_sqlite_intelligence_schema_backfills_tracking_state(tmp_path: 
 
         assert channel is not None
         assert channel.is_ignored is False
+        assert channel.follow_status == "follow"
         assert channel.tracking_enabled is True
         assert channel.discovery_presented_at is None
 
         assert slang is not None
         assert slang.is_ignored is False
+        assert slang.follow_status == "unset"
         assert slang.tracking_enabled is False
         assert slang.discovery_presented_at is None
 
         assert ignored is not None
         assert ignored.is_ignored is True
+        assert ignored.follow_status == "unfollow"
         assert ignored.tracking_enabled is False
         assert ignored.discovery_presented_at is not None
 
@@ -913,9 +930,11 @@ def test_existing_sqlite_intelligence_schema_backfills_tracking_state(tmp_path: 
         unfollowed_channel = repository.get_canonical_entry_by_id("channel-visible")
 
         assert followed_slang is not None
-        assert followed_slang.tracking_enabled is True
+        assert followed_slang.follow_status == "unset"
+        assert followed_slang.tracking_enabled is False
 
         assert unfollowed_channel is not None
-        assert unfollowed_channel.tracking_enabled is False
+        assert unfollowed_channel.follow_status == "follow"
+        assert unfollowed_channel.tracking_enabled is True
     finally:
         manager.close()
