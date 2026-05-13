@@ -145,7 +145,9 @@ def test_same_telegram_username_merges_into_one_canonical_entry(tmp_path: Path):
         ]
 
         entries = IntelligenceMergeEngine(repository).canonicalize_observations(observations)
-        canonical = repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)
+        canonical = repository.list_canonical_entries(
+            entry_type=EntryType.CHANNEL.value, tracking_scope="all"
+        )
 
         assert len(entries) == 2
         assert len(canonical) == 1
@@ -165,7 +167,9 @@ def test_same_url_normalizes_and_merges(tmp_path: Path):
         ]
 
         IntelligenceMergeEngine(repository).canonicalize_observations(observations)
-        canonical = repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)
+        canonical = repository.list_canonical_entries(
+            entry_type=EntryType.CHANNEL.value, tracking_scope="all"
+        )
 
         assert len(canonical) == 1
         assert canonical[0].normalized_key == "t.me/alpha"
@@ -369,10 +373,20 @@ def test_non_qualifying_semantic_candidates_do_not_auto_merge(
         slang_entries = repository.list_canonical_entries(
             entry_type=EntryType.SLANG.value, tracking_scope="all"
         )
+        if ignored:
+            candidate_after_merge = repository.get_canonical_entry_by_id(candidate.id)
+            assert candidate_after_merge is not None
+            assert candidate_after_merge.evidence_count == 2
+            return
 
-        expected_count = 2 if candidate_type == EntryType.SLANG.value and not ignored else 1
+        should_merge = (
+            candidate_type == EntryType.SLANG.value
+            and candidate_score >= 0.92
+            and candidate_label == PrimaryLabel.CRYPTO.value
+        )
+        expected_count = 1 if should_merge or candidate_type == EntryType.CHANNEL.value else 2
         assert len(slang_entries) == expected_count
-        assert any(entry.normalized_key == "钻石手" for entry in slang_entries)
+        assert any(entry.normalized_key == "钻石手" for entry in slang_entries) is not should_merge
     finally:
         manager.close()
 
@@ -420,7 +434,9 @@ def test_different_urls_create_separate_entries(tmp_path: Path):
         ]
 
         IntelligenceMergeEngine(repository).canonicalize_observations(observations)
-        canonical = repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)
+        canonical = repository.list_canonical_entries(
+            entry_type=EntryType.CHANNEL.value, tracking_scope="all"
+        )
 
         assert {entry.normalized_key for entry in canonical} == {"t.me/alpha", "t.me/beta"}
     finally:
@@ -440,7 +456,9 @@ def test_semantic_similarity_creates_related_candidate_not_merge(tmp_path: Path)
         ]
         engine = IntelligenceMergeEngine(repository)
         engine.canonicalize_observations(observations)
-        entries = repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)
+        entries = repository.list_canonical_entries(
+            entry_type=EntryType.CHANNEL.value, tracking_scope="all"
+        )
 
         assert len(entries) == 2
         engine.create_related_candidates(entries[0], entries[1], 0.91)
@@ -454,7 +472,9 @@ def test_semantic_similarity_creates_related_candidate_not_merge(tmp_path: Path)
         assert len(rows) == 1
         assert rows[0]["relationship_type"] == "semantic_similarity"
         assert (
-            repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)[0].evidence_count
+            repository.list_canonical_entries(
+                entry_type=EntryType.CHANNEL.value, tracking_scope="all"
+            )[0].evidence_count
             == 1
         )
     finally:
@@ -484,7 +504,9 @@ def test_channel_semantic_similarity_never_auto_merges_exact_only_channels(tmp_p
         IntelligenceMergeEngine(
             repository, search_service=search_service
         ).canonicalize_observations([observation])
-        canonical = repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)
+        canonical = repository.list_canonical_entries(
+            entry_type=EntryType.CHANNEL.value, tracking_scope="all"
+        )
 
         assert {entry.normalized_key for entry in canonical} == {"alpha", "alpha_signals_chat"}
         assert all(entry.evidence_count == 1 for entry in canonical)
@@ -508,7 +530,9 @@ def test_raw_ttl_purge_does_not_delete_canonical_entries(tmp_path: Path):
         IntelligenceMergeEngine(repository).canonicalize_observations([observation])
 
         assert repository.delete_expired_raw_items(datetime.utcnow()) == 1
-        canonical = repository.list_canonical_entries(entry_type=EntryType.CHANNEL.value)
+        canonical = repository.list_canonical_entries(
+            entry_type=EntryType.CHANNEL.value, tracking_scope="all"
+        )
 
         assert len(canonical) == 1
         assert canonical[0].normalized_key == "alpha"
@@ -529,9 +553,9 @@ def test_evidence_count_and_confidence_update_on_merge(tmp_path: Path):
         engine = IntelligenceMergeEngine(repository)
 
         engine.canonicalize_observations([first])
-        assert repository.list_canonical_entries()[0].evidence_count == 1
+        assert repository.list_canonical_entries(tracking_scope="all")[0].evidence_count == 1
         engine.canonicalize_observations([second])
-        canonical = repository.list_canonical_entries()[0]
+        canonical = repository.list_canonical_entries(tracking_scope="all")[0]
 
         assert canonical.evidence_count == 2
         assert canonical.confidence == pytest.approx(0.7)
@@ -549,7 +573,7 @@ def test_low_confidence_observation_is_not_auto_canonicalized(tmp_path: Path):
         entries = IntelligenceMergeEngine(repository).canonicalize_observations([observation])
 
         assert entries == []
-        assert repository.list_canonical_entries() == []
+        assert repository.list_canonical_entries(tracking_scope="all") == []
         assert repository.get_uncanonicalized_observations(10)[0].id == observation.id
     finally:
         manager.close()
@@ -576,6 +600,10 @@ def test_aliases_are_deduplicated_case_insensitively(tmp_path: Path):
 
         engine.canonicalize_observations(observations)
 
-        assert repository.list_canonical_entries()[0].aliases == ["alpha", "beta", "gamma"]
+        assert repository.list_canonical_entries(tracking_scope="all")[0].aliases == [
+            "alpha",
+            "beta",
+            "gamma",
+        ]
     finally:
         manager.close()

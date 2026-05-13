@@ -6,7 +6,7 @@ import logging
 import math
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
 from ..domain.models import (
     CheckpointStatus,
@@ -280,50 +280,9 @@ class IntelligencePipeline:
         return payload
 
     def _save_new_items(self, items: Sequence[RawIntelligenceItem]) -> List[RawIntelligenceItem]:
-        existing_keys = self._existing_dedupe_keys(items)
-        seen_keys: Set[Tuple[str, str, str]] = set()
-        new_items: List[RawIntelligenceItem] = []
-
         for item in items:
-            key = self._dedupe_key(item)
-            if key in seen_keys or key in existing_keys:
-                continue
-            seen_keys.add(key)
             self.intelligence_repository.save_raw_item(item)
-            new_items.append(item)
-
-        return new_items
-
-    def _existing_dedupe_keys(
-        self, items: Sequence[RawIntelligenceItem]
-    ) -> Set[Tuple[str, str, str]]:
-        keys: Set[Tuple[str, str, str]] = set()
-        source_pairs = {(item.source_type, item.source_id or "") for item in items}
-        for source_type, source_id in source_pairs:
-            try:
-                existing_items = self.intelligence_repository.get_raw_items_by_source(
-                    source_type,
-                    source_id,
-                    limit=10000,
-                    offset=0,
-                )
-            except TypeError:
-                existing_items = self.intelligence_repository.get_raw_items_by_source(
-                    source_type,
-                    source_id,
-                    10000,
-                    0,
-                )
-            except Exception:
-                self.logger.debug(
-                    "Unable to preload intelligence dedupe keys for %s:%s",
-                    source_type,
-                    source_id,
-                    exc_info=True,
-                )
-                continue
-            keys.update(self._dedupe_key(existing_item) for existing_item in existing_items)
-        return keys
+        return list(items)
 
     def _generate_embeddings(self, canonical_entries: Sequence[Any]) -> int:
         if not canonical_entries or self.search_service is None:
@@ -441,10 +400,6 @@ class IntelligencePipeline:
             if value not in (None, ""):
                 return str(value).strip()
         return datasource.name
-
-    def _dedupe_key(self, item: RawIntelligenceItem) -> Tuple[str, str, str]:
-        stable_id = item.external_id or item.content_hash
-        return (item.source_type, item.source_id or "", stable_id)
 
     def _resolve_backfill_hours(self, extractor: Any) -> int:
         config = getattr(extractor, "config", None)

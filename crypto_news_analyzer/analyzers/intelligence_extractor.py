@@ -171,30 +171,10 @@ class IntelligenceExtractor:
         if not raw_items:
             return []
 
-        pending_ids = {item.id for item in raw_items}
-        if self.repository is not None:
-            already_extracted = self.repository.get_raw_item_ids_with_existing_observations(
-                list(pending_ids), self.prompt_version
-            )
-            pending_ids -= already_extracted
-            if already_extracted:
-                self.logger.info(
-                    "Skipping %d/%d raw items already extracted with prompt_version=%s",
-                    len(already_extracted),
-                    len(raw_items),
-                    self.prompt_version,
-                )
-
-        pending_items = [item for item in raw_items if item.id in pending_ids]
-        if not pending_items:
-            return []
-
         observations: List[ExtractionObservation] = []
-        for batch in _chunks(pending_items, self.batch_size):
+        for batch in _chunks(raw_items, self.batch_size):
             result = (
-                self._mock_extract_batch(batch)
-                if self.mock_mode
-                else self._extract_batch(batch)
+                self._mock_extract_batch(batch) if self.mock_mode else self._extract_batch(batch)
             )
             batch_observations = self._result_to_observations(result, batch)
             for observation in batch_observations:
@@ -481,15 +461,17 @@ def _sanitize_slang_observation(observation: SlangObservation) -> Optional[Slang
         return None
     sanitized = observation.model_copy(
         update={
-            "literal_meaning": ""
-            if _contains_secret(observation.literal_meaning)
-            else observation.literal_meaning,
-            "contextual_meaning": ""
-            if _contains_secret(observation.contextual_meaning)
-            else observation.contextual_meaning,
-            "usage_quote": ""
-            if _contains_secret(observation.usage_quote)
-            else observation.usage_quote,
+            "literal_meaning": (
+                "" if _contains_secret(observation.literal_meaning) else observation.literal_meaning
+            ),
+            "contextual_meaning": (
+                ""
+                if _contains_secret(observation.contextual_meaning)
+                else observation.contextual_meaning
+            ),
+            "usage_quote": (
+                "" if _contains_secret(observation.usage_quote) else observation.usage_quote
+            ),
             "aliases_or_variants": _filter_public_values(observation.aliases_or_variants),
             "secondary_tags": _filter_public_values(observation.secondary_tags),
             "primary_label": _normalize_primary_label(observation.primary_label),

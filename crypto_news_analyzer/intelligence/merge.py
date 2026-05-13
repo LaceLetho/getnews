@@ -52,20 +52,9 @@ class IntelligenceMergeEngine:
                 observation.entry_type,
                 normalized_key,
             )
-            if existing is not None and existing.is_ignored:
-                self.intelligence_repository.mark_observation_canonicalized(observation.id)
-                observation.is_canonicalized = True
-                canonical_entries.append(existing)
-                continue
 
             if existing is None:
                 existing = self._find_existing_by_alias(observation)
-
-            if existing is not None and existing.is_ignored:
-                self.intelligence_repository.mark_observation_canonicalized(observation.id)
-                observation.is_canonicalized = True
-                canonical_entries.append(existing)
-                continue
 
             if existing is None:
                 existing = self._find_semantic_slang_match(observation)
@@ -207,8 +196,6 @@ class IntelligenceMergeEngine:
             if candidate_score < self.SLANG_SEMANTIC_MERGE_THRESHOLD:
                 continue
             if candidate.entry_type != EntryType.SLANG.value:
-                continue
-            if candidate.is_ignored:
                 continue
             if str(candidate.primary_label or "").strip() != primary_label:
                 continue

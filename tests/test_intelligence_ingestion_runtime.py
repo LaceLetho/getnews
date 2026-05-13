@@ -240,7 +240,7 @@ def _canonical_field_snapshot(entry):
     }
 
 
-def test_ignored_canonical_entry_is_not_updated_by_new_evidence():
+def test_ignored_canonical_entry_is_updated_by_new_evidence():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
@@ -264,8 +264,6 @@ def test_ignored_canonical_entry_is_not_updated_by_new_evidence():
     )
     repository.upsert_canonical_entry(entry)
     repository.ignore_canonical_entry(entry.id, ignored_by="operator")
-    ignored_snapshot = _canonical_field_snapshot(entry)
-
     raw_item = _raw(content_hash="ignored-new", external_id="201")
     observation = ExtractionObservation.create(
         raw_item_id=raw_item.id,
@@ -302,7 +300,13 @@ def test_ignored_canonical_entry_is_not_updated_by_new_evidence():
     assert observation.id in repository.canonicalized_observation_ids
     assert len(repository.canonical_entries) == 1
     persisted = repository.get_canonical_entry_by_id(entry.id)
-    assert _canonical_field_snapshot(persisted) == ignored_snapshot
+    assert persisted is not None
+    assert persisted.is_ignored is True
+    assert persisted.evidence_count == 2
+    assert persisted.confidence == 0.725
+    assert persisted.latest_raw_item_id == raw_item.id
+    assert "alpha-new" in persisted.aliases
+    assert "new" in persisted.secondary_tags
     search_service.batch_generate_embeddings.assert_not_called()
 
 
@@ -417,7 +421,7 @@ def test_per_source_error_isolated_and_other_sources_continue():
     extractor.extract.assert_called_once()
 
 
-def test_repeated_run_with_same_raw_item_deduplicates_before_extraction():
+def test_repeated_run_with_same_raw_item_is_extracted_again():
     source = DataSource.create(
         name="TG Alpha",
         source_type="telegram_group",
@@ -433,8 +437,8 @@ def test_repeated_run_with_same_raw_item_deduplicates_before_extraction():
     pipeline.run_intelligence_collection_once()
     second = pipeline.run_intelligence_collection_once()
 
-    assert second["items_new"] == 0
-    assert extractor.extract.call_count == 1
+    assert second["items_new"] == 1
+    assert extractor.extract.call_count == 2
 
 
 def test_identical_text_with_different_external_ids_counts_as_new_evidence():

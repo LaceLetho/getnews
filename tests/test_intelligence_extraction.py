@@ -403,15 +403,13 @@ def test_multi_item_batch_skips_unknown_raw_item_id_without_fallback():
         ]
     )
 
-    observations = extractor.extract(
-        [_raw_item("第一条", "raw-1"), _raw_item("第二条", "raw-2")]
-    )
+    observations = extractor.extract([_raw_item("第一条", "raw-1"), _raw_item("第二条", "raw-2")])
 
     assert observations == []
     assert repository.saved_observations == []
 
 
-def test_extract_skips_already_extracted_raw_item_ids():
+def test_extract_sends_already_extracted_raw_item_ids_again():
     repository = FakeIntelligenceRepository(existing_ids=["raw-1"])
     extractor = IntelligenceExtractor(
         _config(batch_size=20), repository=cast(IntelligenceRepository, cast(object, repository))
@@ -445,7 +443,7 @@ def test_extract_skips_already_extracted_raw_item_ids():
 
     call = cast(FakeOpenAIClient, extractor.client).completions.calls[0]
     sent_items = json.loads(call["messages"][1]["content"])["items"]
-    assert [item["id"] for item in sent_items] == ["raw-2"]
+    assert [item["id"] for item in sent_items] == ["raw-1", "raw-2"]
     assert len(observations) == 1
     assert observations[0].raw_item_id == "raw-2"
 
@@ -466,14 +464,16 @@ def test_extract_prompt_payload_only_contains_provided_raw_items():
     assert "未跟踪黑话" not in sent_items[0]["raw_text"]
 
 
-def test_extract_returns_empty_without_client_call_when_all_raw_items_already_extracted():
+def test_extract_calls_client_even_when_all_raw_items_were_already_extracted():
     repository = FakeIntelligenceRepository(existing_ids=["raw-1"])
     extractor = IntelligenceExtractor(
         _config(batch_size=20), repository=cast(IntelligenceRepository, cast(object, repository))
     )
-    extractor.client = FakeOpenAIClient([])
+    extractor.client = FakeOpenAIClient([{"channels": [], "slangs": []}])
 
     observations = extractor.extract([_raw_item("已处理", "raw-1")])
 
     assert observations == []
-    assert cast(FakeOpenAIClient, extractor.client).completions.calls == []
+    call = cast(FakeOpenAIClient, extractor.client).completions.calls[0]
+    sent_items = json.loads(call["messages"][1]["content"])["items"]
+    assert [item["id"] for item in sent_items] == ["raw-1"]
