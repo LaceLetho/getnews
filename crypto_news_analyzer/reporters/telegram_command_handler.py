@@ -4077,9 +4077,11 @@ class TelegramCommandHandler:
                 None,
                 "not_enough_topics",
             }:
-                response = (
-                    f"{mode_label}未完成：{result.get('reason')}\n" "请稍后重试，详情见 /topic_logs"
-                )
+                reason_label = {
+                    "planning_failed": "规划失败，且规则降级未找到足够相关主题",
+                    "no_client": "LLM客户端未初始化",
+                }.get(str(result.get("reason") or ""), str(result.get("reason") or "未知原因"))
+                response = f"{mode_label}未完成：{reason_label}\n" "请稍后重试，详情见 /topic_logs"
             else:
                 response = (
                     f"{mode_label}执行完成：\n" f"合并 {merged} 个主题\n" "详情见 /topic_logs"

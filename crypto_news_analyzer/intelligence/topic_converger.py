@@ -174,21 +174,25 @@ class TopicConverger:
         target_count = self._normalize_target_topic_count(target_topic_count)
         try:
             plan = self._llm_plan_guided_convergence(topics, user_objective, target_count)
-        except Exception:
-            logger.exception("Guided topic convergence planning failed")
-            self._write_run_log(
-                "converge",
-                "failed",
-                None,
-                "Guided convergence planning failed",
-                {
-                    "mode": "guided",
-                    "user_objective": user_objective,
-                    "active_topic_count_before": len(topics),
-                    "target_topic_count": target_count,
-                },
-            )
-            return {"merged_count": 0, "skipped": True, "reason": "planning_failed"}
+        except Exception as exc:
+            logger.exception("Guided topic convergence planning failed; using fallback planner")
+            plan = self._build_rule_guided_plan(topics, user_objective, target_count)
+            if not plan.get("merge_groups"):
+                self._write_run_log(
+                    "converge",
+                    "failed",
+                    None,
+                    "Guided convergence planning failed",
+                    {
+                        "mode": "guided",
+                        "user_objective": user_objective,
+                        "active_topic_count_before": len(topics),
+                        "target_topic_count": target_count,
+                        "fallback": "no_rule_group",
+                        "error": str(exc)[:500],
+                    },
+                )
+                return {"merged_count": 0, "skipped": True, "reason": "planning_failed"}
 
         merged_count = 0
         skipped_groups = 0
@@ -225,6 +229,7 @@ class TopicConverger:
                 "merged_count": merged_count,
                 "skipped_groups": skipped_groups,
                 "plan_reason": plan.get("reason", ""),
+                "fallback": bool(plan.get("fallback")),
             },
         )
         return {
@@ -233,6 +238,7 @@ class TopicConverger:
             "mode": "guided",
             "target_topic_count": target_count,
             "skipped_groups": skipped_groups,
+            "fallback": bool(plan.get("fallback")),
         }
 
     def _run_convergence(self, current_count: int) -> Dict[str, Any]:
@@ -414,14 +420,7 @@ class TopicConverger:
         return self._parse_json_response(retry_response)
 
     def _parse_json_response(self, response: Any) -> Dict[str, Any]:
-        message = response.choices[0].message
-        content = getattr(message, "content", "") or ""
-        if isinstance(content, list):
-            content = "".join(
-                str(item.get("text", item)) if isinstance(item, dict) else str(item)
-                for item in content
-            )
-        text = str(content).strip()
+        text = self._extract_response_text(response)
         if not text:
             raise ValueError("LLM returned empty message.content")
 
@@ -442,6 +441,145 @@ class TopicConverger:
         if not isinstance(parsed, dict):
             raise ValueError("LLM JSON response must be an object")
         return cast(Dict[str, Any], parsed)
+
+    def _extract_response_text(self, response: Any) -> str:
+        output_text = getattr(response, "output_text", None)
+        if output_text:
+            return str(output_text).strip()
+
+        message = response.choices[0].message
+        content = getattr(message, "content", "") or ""
+        if isinstance(content, list):
+            content = "".join(
+                str(item.get("text", item)) if isinstance(item, dict) else str(item)
+                for item in content
+            )
+        text = str(content).strip()
+        if text:
+            return text
+
+        for attr in ("reasoning_content", "text"):
+            value = getattr(message, attr, None)
+            if value:
+                return str(value).strip()
+
+        parsed = getattr(message, "parsed", None)
+        if isinstance(parsed, dict):
+            return json.dumps(parsed, ensure_ascii=False)
+
+        choice_text = getattr(response.choices[0], "text", None)
+        if choice_text:
+            return str(choice_text).strip()
+        return ""
+
+    def _build_rule_guided_plan(
+        self,
+        topics: List[IntelligenceTopic],
+        user_objective: str,
+        target_topic_count: int,
+    ) -> Dict[str, Any]:
+        objective_tokens = self._tokenize_guided_text(user_objective)
+        domain_tokens = set(objective_tokens)
+        objective_lower = user_objective.lower()
+        if any(token in objective_lower for token in ("gpt", "claude", "plus", "会员")):
+            domain_tokens.update(
+                {
+                    "gpt",
+                    "claude",
+                    "chatgpt",
+                    "plus",
+                    "会员",
+                    "账号",
+                    "号",
+                    "渠道",
+                    "上游",
+                    "代理",
+                    "分销",
+                    "批发",
+                    "注册",
+                    "注册机",
+                    "速刷",
+                    "接码",
+                    "卡台",
+                    "美卡",
+                    "礼品卡",
+                    "gopay",
+                    "土区",
+                    "印尼",
+                    "json",
+                    "母号",
+                    "不死",
+                    "退款",
+                    "黑卡",
+                    "低价",
+                    "手搓",
+                }
+            )
+
+        matched: List[IntelligenceTopic] = []
+        for topic in topics:
+            text = self._topic_search_text(topic)
+            score = sum(1 for token in domain_tokens if token and token in text)
+            if score > 0:
+                matched.append(topic)
+
+        if len(matched) < 2:
+            return {
+                "reason": "LLM规划失败，规则降级未找到足够相关主题。",
+                "merge_groups": [],
+                "keep_topic_ids": [topic.id for topic in topics],
+                "fallback": True,
+            }
+
+        keeper_id = self._choose_guided_keeper(
+            [topic.id for topic in matched], {t.id: t for t in topics}
+        )
+        merged_name = self._build_fallback_merged_name(user_objective)
+        matched_ids = [topic.id for topic in matched]
+        return {
+            "reason": "LLM规划失败，按用户目标关键词执行保守规则收敛。",
+            "merge_groups": [
+                {
+                    "reason": "这些主题均命中用户目标中的平台、会员、渠道、账号或支付链路关键词。",
+                    "keeper_topic_id": keeper_id,
+                    "topic_ids": matched_ids,
+                    "merged_name": merged_name,
+                    "merged_description": f"围绕「{user_objective}」持续跟踪相关词条和渠道线索。",
+                    "merged_summary": "LLM规划失败后按关键词保守合并，后续可由主题累积继续补充发现。",
+                    "merged_source_channels": [],
+                    "merged_methods": "聚合账号供应、支付渠道、分销层级、价格信号和风险线索。",
+                    "merged_vulnerabilities": "",
+                    "merged_latest_findings": [
+                        f"已将 {len(matched)} 个相关词条收敛为同一长期跟踪主题。"
+                    ],
+                }
+            ],
+            "keep_topic_ids": [topic.id for topic in topics if topic.id not in matched_ids],
+            "fallback": True,
+            "target_topic_count": target_topic_count,
+        }
+
+    def _topic_search_text(self, topic: IntelligenceTopic) -> str:
+        parts: List[str] = [
+            topic.name or "",
+            topic.description or "",
+            topic.enriched_summary or "",
+            topic.methods or "",
+            topic.vulnerabilities or "",
+            " ".join(topic.latest_findings or []),
+        ]
+        return " ".join(parts).lower()
+
+    def _tokenize_guided_text(self, text: str) -> set[str]:
+        tokens = {token.lower() for token in re.findall(r"[A-Za-z0-9_+-]{2,}", text)}
+        tokens.update(token for token in re.findall(r"[\u4e00-\u9fff]{2,}", text))
+        return tokens
+
+    def _build_fallback_merged_name(self, user_objective: str) -> str:
+        objective_lower = user_objective.lower()
+        if any(token in objective_lower for token in ("gpt", "claude", "plus", "会员")):
+            return "GPT/Claude 非官方会员购买渠道"
+        return user_objective[:40] or "用户目标引导主题"
 
     def _merge_topics(
         self,

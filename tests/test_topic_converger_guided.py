@@ -173,3 +173,26 @@ def test_guided_convergence_retries_empty_llm_content() -> None:
     assert result["merged_count"] == 1
     assert len(client.chat.completions.calls) == 2
     assert client.chat.completions.calls[1]["extra_body"] == {}
+
+
+def test_guided_convergence_falls_back_when_llm_returns_empty_content() -> None:
+    repo = _FakeRepository()
+    converger = TopicConverger(
+        intelligence_repository=repo,
+        prompt_path=Path("prompts/topic_convergence_prompt.md"),
+        guided_prompt_path=Path("prompts/topic_guided_convergence_prompt.md"),
+    )
+    client = _FakeClient(["", ""])
+    converger.client = client
+
+    result = converger.run_convergence(
+        user_objective="关注GPT/Claude会员的非官方购买渠道，挖掘渠道源头、系统漏洞、套利机会",
+        target_topic_count=9,
+    )
+
+    assert result["fallback"] is True
+    assert result["merged_count"] == 2
+    assert repo.topics["t1"].name == "GPT/Claude 非官方会员购买渠道"
+    assert repo.topics["t2"].is_active is False
+    assert repo.topics["t3"].is_active is False
+    assert any(log.details.get("fallback") is True for log in repo.logs)
