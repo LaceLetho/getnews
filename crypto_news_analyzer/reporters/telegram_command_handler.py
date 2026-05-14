@@ -215,7 +215,9 @@ class TelegramCommandHandler:
         application.add_handler(CommandHandler("topic_list", self._handle_topic_list_command))
         application.add_handler(CommandHandler("topic_detail", self._handle_topic_detail_command))
         application.add_handler(CommandHandler("topic_logs", self._handle_topic_logs_command))
-        application.add_handler(CommandHandler("topic_converge", self._handle_topic_converge_command))
+        application.add_handler(
+            CommandHandler("topic_converge", self._handle_topic_converge_command)
+        )
         application.add_handler(CommandHandler("market", self._handle_market_command))
         application.add_handler(CommandHandler("status", self._handle_status_command))
         application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
@@ -597,12 +599,16 @@ class TelegramCommandHandler:
             token = self._generate_callback_token()
             keyboard: List[List[InlineKeyboardButton]] = []
             if page_num < total_pages:
-                keyboard.append([
-                    InlineKeyboardButton(
-                        "更多",
-                        callback_data=self._build_intel_pagination_callback_data(token, page_num + 1),
-                    ),
-                ])
+                keyboard.append(
+                    [
+                        InlineKeyboardButton(
+                            "更多",
+                            callback_data=self._build_intel_pagination_callback_data(
+                                token, page_num + 1
+                            ),
+                        ),
+                    ]
+                )
             markup = InlineKeyboardMarkup(keyboard) if keyboard else None
             sent_msg = await bot.send_message(
                 chat_id=chat_id_value,
@@ -611,15 +617,19 @@ class TelegramCommandHandler:
                 parse_mode="Markdown",
             )
             state_payload = dict(payload.get("state_data", {}))
-            state_payload.update({
-                "kind": "topic_list",
-                "page": page_num,
-                "total_pages": total_pages,
-                "total": int(payload.get("total", 0)),
-                "chat_id": chat_id,
-                "user_id": user_id,
-                "sent_message_ids": [],
-            })
+            state_payload.update(
+                {
+                    "kind": "topic_list",
+                    "page": page_num,
+                    "total_pages": total_pages,
+                    "total": int(payload.get("total", 0)),
+                    "chat_id": chat_id,
+                    "user_id": user_id,
+                    "sent_message_ids": (
+                        [sent_msg.message_id] if getattr(sent_msg, "message_id", None) else []
+                    ),
+                }
+            )
             self._store_callback_state(token, state_payload)
             return "已更新"
 
@@ -3790,20 +3800,14 @@ class TelegramCommandHandler:
             )
             return f"❌ 执行失败\n\n{str(e)}"
 
-    async def _handle_topic_list_command(
-        self, update: Any, context: Any
-    ) -> None:
+    async def _handle_topic_list_command(self, update: Any, context: Any) -> None:
         try:
             msg = update.effective_message or update.message
             if msg is None:
                 self.logger.error("/topic_list update has no effective message")
                 return
             user_id = str(update.effective_user.id if update.effective_user else "unknown")
-            username = (
-                update.effective_user.username
-                if update.effective_user
-                else "unknown"
-            )
+            username = update.effective_user.username if update.effective_user else "unknown"
             chat_id = str(msg.chat_id) if hasattr(msg, "chat_id") else ""
             args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
             page = 1
@@ -3818,12 +3822,16 @@ class TelegramCommandHandler:
             total_pages = int(payload.get("total_pages", 1))
             keyboard: List[List[InlineKeyboardButton]] = []
             if page_num < total_pages:
-                keyboard.append([
-                    InlineKeyboardButton(
-                        "更多",
-                        callback_data=self._build_intel_pagination_callback_data(token, page_num + 1),
-                    ),
-                ])
+                keyboard.append(
+                    [
+                        InlineKeyboardButton(
+                            "更多",
+                            callback_data=self._build_intel_pagination_callback_data(
+                                token, page_num + 1
+                            ),
+                        ),
+                    ]
+                )
             markup = InlineKeyboardMarkup(keyboard) if keyboard else None
             sent_msg = await msg.reply_text(
                 str(payload.get("text", "")),
@@ -3831,15 +3839,17 @@ class TelegramCommandHandler:
                 parse_mode="Markdown",
             )
             state_payload = dict(payload.get("state_data", {}))
-            state_payload.update({
-                "kind": "topic_list",
-                "page": page_num,
-                "total_pages": total_pages,
-                "total": int(payload.get("total", 0)),
-                "chat_id": chat_id,
-                "user_id": user_id,
-                "sent_message_ids": [int(sent_msg.message_id)],
-            })
+            state_payload.update(
+                {
+                    "kind": "topic_list",
+                    "page": page_num,
+                    "total_pages": total_pages,
+                    "total": int(payload.get("total", 0)),
+                    "chat_id": chat_id,
+                    "user_id": user_id,
+                    "sent_message_ids": [int(sent_msg.message_id)],
+                }
+            )
             self._store_callback_state(token, state_payload)
         except Exception as e:
             self.logger.error(f"处理/topic_list命令时发生错误: {e}")
@@ -3860,14 +3870,18 @@ class TelegramCommandHandler:
             if not topics and page == 1:
                 return "📚 暂无活跃主题\n\n关注词条后会自动创建主题。"
             if not topics:
-                return {"text": f"📚 第 {page} 页无主题。", "page": page, "total_pages": 1, "total": 0, "state_data": {}}
+                return {
+                    "text": f"📚 第 {page} 页无主题。",
+                    "page": page,
+                    "total_pages": 1,
+                    "total": 0,
+                    "state_data": {},
+                }
             esc = self._escape_markdown_v1
             lines = ["📚 情报主题\n"]
             for i, topic in enumerate(topics, 1):
                 entry_count = repository.count_entries_by_topic(topic.id)
-                updated = (
-                    topic.updated_at.strftime("%Y-%m-%d") if topic.updated_at else "-"
-                )
+                updated = topic.updated_at.strftime("%Y-%m-%d") if topic.updated_at else "-"
                 lines.append(
                     f"{i}. {esc(topic.name)}\n"
                     f"   词条: {entry_count} | 最近更新: {updated}\n"
@@ -3896,19 +3910,13 @@ class TelegramCommandHandler:
         except Exception as e:
             return f"❌ 查询失败: {str(e)}"
 
-    async def _handle_topic_detail_command(
-        self, update: Any, context: Any
-    ) -> None:
+    async def _handle_topic_detail_command(self, update: Any, context: Any) -> None:
         try:
             msg = update.effective_message or update.message
             if msg is None:
                 return
             user_id = str(update.effective_user.id if update.effective_user else "unknown")
-            username = (
-                update.effective_user.username
-                if update.effective_user
-                else "unknown"
-            )
+            username = update.effective_user.username if update.effective_user else "unknown"
             parts = (msg.text or "").split(maxsplit=1)
             topic_id = parts[1].strip() if len(parts) > 1 else ""
             if not topic_id:
@@ -3919,9 +3927,7 @@ class TelegramCommandHandler:
         except Exception as e:
             self.logger.error(f"处理/topic_detail命令时发生错误: {e}")
 
-    def handle_topic_detail_command(
-        self, user_id: str, username: str, topic_id: str
-    ) -> str:
+    def handle_topic_detail_command(self, user_id: str, username: str, topic_id: str) -> str:
         try:
             repository = self._get_intelligence_repository()
             if repository is None:
@@ -3956,26 +3962,18 @@ class TelegramCommandHandler:
                 lines.append("")
             if entry_names:
                 lines.append(f"*📌 关联词条*\n{', '.join(entry_names)}")
-            self._log_command_execution(
-                "/topic_detail", user_id, username, topic_id, True, ""
-            )
+            self._log_command_execution("/topic_detail", user_id, username, topic_id, True, "")
             return "\n".join(lines)
         except Exception as e:
             return f"❌ 查询失败: {str(e)}"
 
-    async def _handle_topic_logs_command(
-        self, update: Any, context: Any
-    ) -> None:
+    async def _handle_topic_logs_command(self, update: Any, context: Any) -> None:
         try:
             msg = update.effective_message or update.message
             if msg is None:
                 return
             user_id = str(update.effective_user.id if update.effective_user else "unknown")
-            username = (
-                update.effective_user.username
-                if update.effective_user
-                else "unknown"
-            )
+            username = update.effective_user.username if update.effective_user else "unknown"
             parts = (msg.text or "").split(maxsplit=1)
             topic_id = parts[1].strip() if len(parts) > 1 else ""
             response = self.handle_topic_logs_command(user_id, username, topic_id or None)
@@ -3990,9 +3988,7 @@ class TelegramCommandHandler:
             repository = self._get_intelligence_repository()
             if repository is None:
                 return "❌ 情报仓储未初始化"
-            logs = repository.list_topic_run_logs(
-                topic_id=topic_id, limit=20, offset=0
-            )
+            logs = repository.list_topic_run_logs(topic_id=topic_id, limit=20, offset=0)
             if not logs:
                 return "🧾 暂无运行日志"
             esc = self._escape_markdown_v1
@@ -4007,31 +4003,21 @@ class TelegramCommandHandler:
                     "enrich": "主题累积",
                     "converge": "主题收敛",
                 }.get(log.run_type, log.run_type)
-                lines.append(
-                    f"{created} {status_icon} [{run_type_label}] {log.status}"
-                )
+                lines.append(f"{created} {status_icon} [{run_type_label}] {log.status}")
                 if log.message:
                     lines.append(f"  {esc(log.message[:200])}")
-            self._log_command_execution(
-                "/topic_logs", user_id, username, None, True, ""
-            )
+            self._log_command_execution("/topic_logs", user_id, username, None, True, "")
             return "\n".join(lines)
         except Exception as e:
             return f"❌ 查询失败: {str(e)}"
 
-    async def _handle_topic_converge_command(
-        self, update: Any, context: Any
-    ) -> None:
+    async def _handle_topic_converge_command(self, update: Any, context: Any) -> None:
         try:
             msg = update.effective_message or update.message
             if msg is None:
                 return
             user_id = str(update.effective_user.id if update.effective_user else "unknown")
-            username = (
-                update.effective_user.username
-                if update.effective_user
-                else "unknown"
-            )
+            username = update.effective_user.username if update.effective_user else "unknown"
             pipeline = getattr(self.execution_coordinator, "_intelligence_pipeline", None)
             converger = getattr(pipeline, "topic_converger", None) if pipeline else None
             if converger is None:
@@ -4049,16 +4035,12 @@ class TelegramCommandHandler:
                     search_service=self._get_intelligence_search_service(),
                     config=intelligence_config.get("topic_enrichment", {}),
                 )
-            result = converger.run_convergence()
+            user_objective = " ".join(getattr(context, "args", []) or []).strip()
+            result = converger.run_convergence(user_objective=user_objective or None)
             merged = result.get("merged_count", 0)
-            response = (
-                f"收敛执行完成：\n"
-                f"合并 {merged} 个主题\n"
-                "详情见 /topic_logs"
-            )
-            self._log_command_execution(
-                "/topic_converge", user_id, username, None, True, response
-            )
+            mode_label = "用户需求引导收敛" if user_objective else "自动相似主题收敛"
+            response = f"{mode_label}执行完成：\n" f"合并 {merged} 个主题\n" "详情见 /topic_logs"
+            self._log_command_execution("/topic_converge", user_id, username, None, True, response)
             await msg.reply_text(response)
         except Exception as e:
             self.logger.error(f"处理/topic_converge命令时发生错误: {e}")

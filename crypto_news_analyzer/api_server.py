@@ -13,7 +13,7 @@ import uuid
 from typing import Annotated, Any, Dict, Optional, cast
 from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import FastAPI, HTTPException, Depends, Response, Request
+from fastapi import FastAPI, HTTPException, Depends, Response, Request, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, field_validator
 import os
@@ -497,6 +497,13 @@ class IntelligenceConvergeResponse(BaseModel):
     merged_count: int = 0
     skipped: bool = False
     message: str = ""
+    mode: str = "pairwise"
+    target_topic_count: Optional[int] = None
+
+
+class IntelligenceConvergeRequest(BaseModel):
+    user_objective: Optional[str] = Field(default=None, max_length=2000)
+    target_topic_count: Optional[int] = Field(default=None, ge=2, le=20)
 
 
 class IntelligenceSearchResponse(BaseModel):
@@ -1941,6 +1948,7 @@ def create_api_server(
     async def trigger_intelligence_converge(
         req: Request,
         _: Annotated[str, Depends(verify_api_key)],
+        request: Optional[IntelligenceConvergeRequest] = Body(default=None),
     ):
         controller = getattr(req.app.state, "controller", None)
         if controller is None:
@@ -1951,19 +1959,29 @@ def create_api_server(
             from .intelligence.topic_converger import TopicConverger
 
             repository = _get_intelligence_repository(req)
-            config_data = getattr(getattr(controller, "config_manager", None), "config_data", {}) or {}
+            config_data = (
+                getattr(getattr(controller, "config_manager", None), "config_data", {}) or {}
+            )
             intelligence_config = dict(config_data.get("intelligence_collection", {}) or {})
             converger = TopicConverger(
                 intelligence_repository=repository,
                 search_service=_build_intelligence_search_service(controller),
                 config=intelligence_config.get("topic_enrichment", {}),
             )
-        result = converger.run_convergence()
+        user_objective = request.user_objective if request else None
+        target_topic_count = request.target_topic_count if request else None
+        result = converger.run_convergence(
+            user_objective=user_objective,
+            target_topic_count=target_topic_count,
+        )
+        mode = str(result.get("mode") or ("guided" if user_objective else "pairwise"))
         return IntelligenceConvergeResponse(
             success=True,
             merged_count=result.get("merged_count", 0),
             skipped=result.get("skipped", False),
-            message=f"Merged {result.get('merged_count', 0)} topic pairs",
+            message=f"Merged {result.get('merged_count', 0)} topics",
+            mode=mode,
+            target_topic_count=result.get("target_topic_count"),
         )
 
     @app.post("/datasources", response_model=DataSourceCreateResponse, status_code=201)
