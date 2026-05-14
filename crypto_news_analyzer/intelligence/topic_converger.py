@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType
@@ -35,6 +36,7 @@ MAX_CONVERGENCE_PAIRS_PER_RUN = 5
 GUIDED_TARGET_TOPIC_COUNT = 9
 
 _prompt_cache: Dict[str, str] = {}
+_JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 
 
 class TopicConverger:
@@ -344,8 +346,7 @@ class TopicConverger:
             response_format={"type": "json_object"},
             extra_body=self._build_extra_body(),
         )
-        content = response.choices[0].message.content
-        return cast(Dict[str, Any], json.loads(content))
+        return self._parse_json_response(response)
 
     def _llm_plan_guided_convergence(
         self,
@@ -378,18 +379,69 @@ class TopicConverger:
             },
             ensure_ascii=False,
         )
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_input},
+        ]
         response = self.client.chat.completions.create(
             model=self._model_name,
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": user_input},
-            ],
+            messages=messages,
             max_tokens=8000,
             response_format={"type": "json_object"},
             extra_body=self._build_extra_body(),
         )
-        content = response.choices[0].message.content
-        return cast(Dict[str, Any], json.loads(content))
+        try:
+            return self._parse_json_response(response)
+        except ValueError as exc:
+            logger.warning("Guided convergence JSON parse failed, retrying: %s", exc)
+
+        retry_messages = messages + [
+            {
+                "role": "user",
+                "content": (
+                    "上一次响应不是合法 JSON。请只返回一个严格 JSON 对象，"
+                    "不要输出 Markdown、解释文本或代码块。"
+                ),
+            }
+        ]
+        retry_response = self.client.chat.completions.create(
+            model=self._model_name,
+            messages=retry_messages,
+            max_tokens=8000,
+            response_format={"type": "json_object"},
+            extra_body={},
+        )
+        return self._parse_json_response(retry_response)
+
+    def _parse_json_response(self, response: Any) -> Dict[str, Any]:
+        message = response.choices[0].message
+        content = getattr(message, "content", "") or ""
+        if isinstance(content, list):
+            content = "".join(
+                str(item.get("text", item)) if isinstance(item, dict) else str(item)
+                for item in content
+            )
+        text = str(content).strip()
+        if not text:
+            raise ValueError("LLM returned empty message.content")
+
+        match = _JSON_FENCE_PATTERN.search(text)
+        if match:
+            text = match.group(1).strip()
+        elif not text.startswith("{"):
+            start = text.find("{")
+            end = text.rfind("}")
+            if start >= 0 and end > start:
+                text = text[start : end + 1]
+
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError as exc:
+            snippet = text[:500].replace("\n", "\\n")
+            raise ValueError(f"LLM returned invalid JSON: {exc}; content={snippet}") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("LLM JSON response must be an object")
+        return cast(Dict[str, Any], parsed)
 
     def _merge_topics(
         self,

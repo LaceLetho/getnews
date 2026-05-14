@@ -13,24 +13,21 @@ from crypto_news_analyzer.intelligence.topic_converger import TopicConverger
 
 
 class _FakeChatCompletions:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.payload = payload
+    def __init__(self, payloads: list[Any]) -> None:
+        self.payloads = payloads
         self.calls: list[dict[str, Any]] = []
 
     def create(self, **kwargs: Any) -> Any:
         self.calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(content=json.dumps(self.payload, ensure_ascii=False))
-                )
-            ]
-        )
+        payload = self.payloads[min(len(self.calls) - 1, len(self.payloads) - 1)]
+        content = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
 
 
 class _FakeClient:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.chat = SimpleNamespace(completions=_FakeChatCompletions(payload))
+    def __init__(self, payload: dict[str, Any] | list[Any]) -> None:
+        payloads = payload if isinstance(payload, list) else [payload]
+        self.chat = SimpleNamespace(completions=_FakeChatCompletions(payloads))
 
 
 class _FakeRepository:
@@ -141,3 +138,38 @@ def test_guided_convergence_merges_llm_topic_group() -> None:
     assert repo.topics["t3"].is_active is False
     assert [entry.id for entry in repo.entries["t1"]] == ["e1", "e2", "e3"]
     assert any(log.details.get("mode") == "guided" for log in repo.logs)
+
+
+def test_guided_convergence_retries_empty_llm_content() -> None:
+    repo = _FakeRepository()
+    payload = {
+        "reason": "retry success",
+        "merge_groups": [
+            {
+                "reason": "同一链路",
+                "keeper_topic_id": "t1",
+                "topic_ids": ["t1", "t2"],
+                "merged_name": "会员账号供应链",
+                "merged_description": "账号供应链",
+                "merged_summary": "注册机并入速刷号。",
+                "merged_source_channels": [],
+                "merged_methods": "",
+                "merged_vulnerabilities": "",
+                "merged_latest_findings": [],
+            }
+        ],
+        "keep_topic_ids": ["t3"],
+    }
+    converger = TopicConverger(
+        intelligence_repository=repo,
+        prompt_path=Path("prompts/topic_convergence_prompt.md"),
+        guided_prompt_path=Path("prompts/topic_guided_convergence_prompt.md"),
+    )
+    client = _FakeClient(["", payload])
+    converger.client = client
+
+    result = converger.run_convergence(user_objective="关注会员渠道", target_topic_count=9)
+
+    assert result["merged_count"] == 1
+    assert len(client.chat.completions.calls) == 2
+    assert client.chat.completions.calls[1]["extra_body"] == {}

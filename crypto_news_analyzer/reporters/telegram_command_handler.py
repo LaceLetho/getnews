@@ -4039,7 +4039,17 @@ class TelegramCommandHandler:
             result = converger.run_convergence(user_objective=user_objective or None)
             merged = result.get("merged_count", 0)
             mode_label = "用户需求引导收敛" if user_objective else "自动相似主题收敛"
-            response = f"{mode_label}执行完成：\n" f"合并 {merged} 个主题\n" "详情见 /topic_logs"
+            if result.get("skipped") and result.get("reason") not in {
+                None,
+                "not_enough_topics",
+            }:
+                response = (
+                    f"{mode_label}未完成：{result.get('reason')}\n" "请稍后重试，详情见 /topic_logs"
+                )
+            else:
+                response = (
+                    f"{mode_label}执行完成：\n" f"合并 {merged} 个主题\n" "详情见 /topic_logs"
+                )
             self._log_command_execution("/topic_converge", user_id, username, None, True, response)
             await msg.reply_text(response)
         except Exception as e:
