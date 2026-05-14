@@ -4036,6 +4036,11 @@ class TelegramCommandHandler:
                     config=intelligence_config.get("topic_enrichment", {}),
                 )
             user_objective = " ".join(getattr(context, "args", []) or []).strip()
+            if not user_objective:
+                command_text = str(getattr(msg, "text", "") or "").strip()
+                parts = command_text.split(maxsplit=1)
+                if len(parts) > 1 and parts[0].split("@", 1)[0] == "/topic_converge":
+                    user_objective = parts[1].strip()
             result = converger.run_convergence(user_objective=user_objective or None)
             merged = result.get("merged_count", 0)
             mode_label = "用户需求引导收敛" if user_objective else "自动相似主题收敛"

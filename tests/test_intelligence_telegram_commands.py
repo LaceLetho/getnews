@@ -758,6 +758,33 @@ def test_unauthorized_intel_callback_does_not_set_follow_status():
     update.callback_query.answer.assert_awaited_once_with("未授权")
 
 
+def test_topic_converge_falls_back_to_message_text_for_objective():
+    converger = Mock()
+    converger.run_convergence.return_value = {
+        "merged_count": 0,
+        "skipped": True,
+        "reason": "planning_failed",
+    }
+    pipeline = SimpleNamespace(topic_converger=converger)
+    coordinator = SimpleNamespace(_intelligence_pipeline=pipeline)
+    handler: Any = _make_handler(coordinator)
+    handler._log_command_execution = Mock()
+
+    update = _make_update()
+    update.message.text = (
+        "/topic_converge 关注GPT/Claude会员的非官方购买渠道，" "挖掘渠道源头、系统漏洞、套利机会"
+    )
+    context = SimpleNamespace(args=[])
+
+    asyncio.run(handler._handle_topic_converge_command(update, context))
+
+    converger.run_convergence.assert_called_once_with(
+        user_objective="关注GPT/Claude会员的非官方购买渠道，挖掘渠道源头、系统漏洞、套利机会"
+    )
+    update.message.reply_text.assert_awaited_once()
+    assert "未完成" in update.message.reply_text.await_args.args[0]
+
+
 def test_intel_pagination_callback_expired_state_is_safe():
     handler: Any = _make_handler()
     handler.is_authorized_user = Mock(return_value=True)
