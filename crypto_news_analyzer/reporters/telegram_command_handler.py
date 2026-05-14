@@ -3794,6 +3794,7 @@ class TelegramCommandHandler:
             topics = repository.list_topics(is_active=True, limit=20, offset=0)
             if not topics:
                 return "📚 暂无活跃主题\n\n关注词条后会自动创建主题。"
+            esc = self._escape_markdown_v1
             lines = ["📚 情报主题\n"]
             for i, topic in enumerate(topics, 1):
                 entry_count = repository.count_entries_by_topic(topic.id)
@@ -3801,9 +3802,9 @@ class TelegramCommandHandler:
                     topic.updated_at.strftime("%Y-%m-%d") if topic.updated_at else "-"
                 )
                 lines.append(
-                    f"{i}. {topic.name}\n"
+                    f"{i}. {esc(topic.name)}\n"
                     f"   词条: {entry_count} | 最近更新: {updated}\n"
-                    f"   /topic\\_detail {topic.id}"
+                    f"   /topic\\_detail {esc(topic.id)}"
                 )
             self._log_command_execution("/topic_list", user_id, username, None, True, "")
             return "\n".join(lines)
@@ -3843,29 +3844,30 @@ class TelegramCommandHandler:
             topic = repository.get_topic_by_id(topic_id)
             if topic is None:
                 return "❌ 主题未找到"
+            esc = self._escape_markdown_v1
             entries = repository.list_entries_by_topic(topic_id, limit=100, offset=0)
-            entry_names = [e.display_name for e in entries]
-            lines = [f"🔬 {topic.name}\n"]
+            entry_names = [esc(e.display_name) for e in entries]
+            lines = [f"🔬 {esc(topic.name)}\n"]
             if topic.description:
-                lines.append(f"*描述*\n{topic.description}\n")
+                lines.append(f"*描述*\n{esc(topic.description)}\n")
             if topic.enriched_summary:
-                lines.append(f"*📋 深度摘要*\n{topic.enriched_summary}\n")
+                lines.append(f"*📋 深度摘要*\n{esc(topic.enriched_summary)}\n")
             if topic.source_channels:
                 lines.append("*🔗 已挖掘渠道*")
                 for j, ch in enumerate(topic.source_channels, 1):
                     name = ch.get("name", "")
                     url = ch.get("url", "")
                     type_ = ch.get("type", "")
-                    lines.append(f"{j}. {name} — `{url}` ({type_})")
+                    lines.append(f"{j}. {esc(name)} — {esc(url)} ({esc(type_)})")
                 lines.append("")
             if topic.methods:
-                lines.append(f"*🛠 方法*\n{topic.methods}\n")
+                lines.append(f"*🛠 方法*\n{esc(topic.methods)}\n")
             if topic.vulnerabilities:
-                lines.append(f"*🧨 漏洞/内幕*\n{topic.vulnerabilities}\n")
+                lines.append(f"*🧨 漏洞/内幕*\n{esc(topic.vulnerabilities)}\n")
             if topic.latest_findings:
                 lines.append("*🆕 最新发现*")
                 for finding in topic.latest_findings:
-                    lines.append(f"  • {finding}")
+                    lines.append(f"  • {esc(str(finding))}")
                 lines.append("")
             if entry_names:
                 lines.append(f"*📌 关联词条*\n{', '.join(entry_names)}")
@@ -3908,6 +3910,7 @@ class TelegramCommandHandler:
             )
             if not logs:
                 return "🧾 暂无运行日志"
+            esc = self._escape_markdown_v1
             lines = ["🧾 Topic Run Logs\n"]
             for log in logs:
                 created = log.created_at.strftime("%m-%d %H:%M") if log.created_at else ""
@@ -3923,7 +3926,7 @@ class TelegramCommandHandler:
                     f"{created} {status_icon} [{run_type_label}] {log.status}"
                 )
                 if log.message:
-                    lines.append(f"  {log.message[:200]}")
+                    lines.append(f"  {esc(log.message[:200])}")
             self._log_command_execution(
                 "/topic_logs", user_id, username, None, True, ""
             )
@@ -3966,12 +3969,12 @@ class TelegramCommandHandler:
             response = (
                 f"收敛执行完成：\n"
                 f"合并 {merged} 个主题\n"
-                f"详情见 /topic_logs"
+                "详情见 /topic_logs"
             )
             self._log_command_execution(
                 "/topic_converge", user_id, username, None, True, response
             )
-            await msg.reply_text(response, parse_mode="Markdown")
+            await msg.reply_text(response)
         except Exception as e:
             self.logger.error(f"处理/topic_converge命令时发生错误: {e}")
 
