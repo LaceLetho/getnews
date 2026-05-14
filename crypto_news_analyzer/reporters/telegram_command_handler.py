@@ -470,17 +470,10 @@ class TelegramCommandHandler:
 
         # Send footer sequentially after entries (guarantees it appears last)
         pagination_row: List[InlineKeyboardButton] = []
-        if kind != "recent" and page > 1:
-            pagination_row.append(
-                InlineKeyboardButton(
-                    "上一页",
-                    callback_data=self._build_intel_pagination_callback_data(token, page - 1),
-                )
-            )
         if page < total_pages:
             pagination_row.append(
                 InlineKeyboardButton(
-                    "更多" if kind == "recent" else "下一页",
+                    "更多",
                     callback_data=self._build_intel_pagination_callback_data(
                         token, 1 if kind == "recent" else page + 1
                     ),
@@ -588,6 +581,48 @@ class TelegramCommandHandler:
                     repository.mark_discovery_presented(entry_ids)
             page = 1
 
+        if kind == "topic_list":
+            payload = self.handle_topic_list_command(
+                user_id,
+                username,
+                page,
+                return_markup=True,
+            )
+            if self.application is None:
+                return "已更新"
+            bot = self.application.bot
+            chat_id_value = self._telegram_chat_id(chat_id)
+            page_num = int(payload.get("page", 1))
+            total_pages = int(payload.get("total_pages", 1))
+            token = self._generate_callback_token()
+            keyboard: List[List[InlineKeyboardButton]] = []
+            if page_num < total_pages:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        "更多",
+                        callback_data=self._build_intel_pagination_callback_data(token, page_num + 1),
+                    ),
+                ])
+            markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+            sent_msg = await bot.send_message(
+                chat_id=chat_id_value,
+                text=str(payload.get("text", "")),
+                reply_markup=markup,
+                parse_mode="Markdown",
+            )
+            state_payload = dict(payload.get("state_data", {}))
+            state_payload.update({
+                "kind": "topic_list",
+                "page": page_num,
+                "total_pages": total_pages,
+                "total": int(payload.get("total", 0)),
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "sent_message_ids": [],
+            })
+            self._store_callback_state(token, state_payload)
+            return "已更新"
+
         if kind == "search":
             payload = self.handle_intel_search_command(
                 user_id,
@@ -640,18 +675,6 @@ class TelegramCommandHandler:
 
         if self.application is None:
             raise RuntimeError("Telegram application is not initialized")
-        if kind != "recent":
-            old_message_ids = [int(msg_id) for msg_id in state.get("sent_message_ids", [])]
-            chat_id_value = self._telegram_chat_id(chat_id)
-            bot = self.application.bot
-            for msg_id in old_message_ids:
-                try:
-                    await bot.delete_message(
-                        chat_id=chat_id_value,
-                        message_id=msg_id,
-                    )
-                except Exception as e:
-                    self.logger.debug(f"Failed to delete intel page message {msg_id}: {e}")
 
         if not isinstance(payload, dict):
             await callback_query.message.reply_text(str(payload), parse_mode="Markdown")
@@ -3781,19 +3804,63 @@ class TelegramCommandHandler:
                 if update.effective_user
                 else "unknown"
             )
-            response = self.handle_topic_list_command(user_id, username)
-            await msg.reply_text(response, parse_mode="Markdown")
+            chat_id = str(msg.chat_id) if hasattr(msg, "chat_id") else ""
+            args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+            page = 1
+            if args and args[0].isdigit():
+                page = max(1, int(args[0]))
+            payload = self.handle_topic_list_command(user_id, username, page, return_markup=True)
+            if self.application is None:
+                await msg.reply_text(str(payload.get("text", payload)))
+                return
+            token = self._generate_callback_token()
+            page_num = int(payload.get("page", 1))
+            total_pages = int(payload.get("total_pages", 1))
+            keyboard: List[List[InlineKeyboardButton]] = []
+            if page_num < total_pages:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        "更多",
+                        callback_data=self._build_intel_pagination_callback_data(token, page_num + 1),
+                    ),
+                ])
+            markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+            sent_msg = await msg.reply_text(
+                str(payload.get("text", "")),
+                reply_markup=markup,
+                parse_mode="Markdown",
+            )
+            state_payload = dict(payload.get("state_data", {}))
+            state_payload.update({
+                "kind": "topic_list",
+                "page": page_num,
+                "total_pages": total_pages,
+                "total": int(payload.get("total", 0)),
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "sent_message_ids": [int(sent_msg.message_id)],
+            })
+            self._store_callback_state(token, state_payload)
         except Exception as e:
             self.logger.error(f"处理/topic_list命令时发生错误: {e}")
 
-    def handle_topic_list_command(self, user_id: str, username: str) -> str:
+    def handle_topic_list_command(
+        self, user_id: str, username: str, page: int = 1, return_markup: bool = False
+    ) -> Any:
         try:
             repository = self._get_intelligence_repository()
             if repository is None:
                 return "❌ 情报仓储未初始化"
-            topics = repository.list_topics(is_active=True, limit=20, offset=0)
-            if not topics:
+            page_size = 20
+            offset = (page - 1) * page_size
+            topics = repository.list_topics(is_active=True, limit=page_size + 1, offset=offset)
+            total = repository.count_topics(is_active=True)
+            has_more = len(topics) > page_size
+            topics = topics[:page_size]
+            if not topics and page == 1:
                 return "📚 暂无活跃主题\n\n关注词条后会自动创建主题。"
+            if not topics:
+                return {"text": f"📚 第 {page} 页无主题。", "page": page, "total_pages": 1, "total": 0, "state_data": {}}
             esc = self._escape_markdown_v1
             lines = ["📚 情报主题\n"]
             for i, topic in enumerate(topics, 1):
@@ -3806,6 +3873,24 @@ class TelegramCommandHandler:
                     f"   词条: {entry_count} | 最近更新: {updated}\n"
                     f"   /topic\\_detail {esc(topic.id)}"
                 )
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            if return_markup:
+                footer = f"\n📄 共 {total} 个主题 | 第 {page}/{total_pages} 页"
+                lines.append(footer)
+                return {
+                    "text": "\n".join(lines),
+                    "page": page,
+                    "total_pages": total_pages,
+                    "total": total,
+                    "state_data": {},
+                }
+            if has_more:
+                lines.append(
+                    f"\n📄 共 {total} 个主题 | 第 {page}/{total_pages} 页\n"
+                    f"👉 更多: /topic\\_list {page + 1}"
+                )
+            else:
+                lines.append(f"\n📄 共 {total} 个主题 | 第 {page}/{total_pages} 页")
             self._log_command_execution("/topic_list", user_id, username, None, True, "")
             return "\n".join(lines)
         except Exception as e:
