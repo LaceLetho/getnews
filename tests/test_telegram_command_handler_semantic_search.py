@@ -56,9 +56,7 @@ def _make_handler(coordinator: Any = None):
 def _make_update(user_id="1", username="tester", chat_id="chat_1", chat_type="private"):
     message = SimpleNamespace(reply_text=AsyncMock())
     return SimpleNamespace(
-        effective_user=SimpleNamespace(
-            id=user_id, username=username, first_name=username
-        ),
+        effective_user=SimpleNamespace(id=user_id, username=username, first_name=username),
         effective_chat=SimpleNamespace(id=chat_id, type=chat_type),
         message=message,
     )
@@ -85,9 +83,7 @@ def test_build_application_registers_semantic_search_command():
 
 def test_setup_bot_commands_includes_semantic_search():
     handler: Any = _make_handler()
-    handler.application = SimpleNamespace(
-        bot=SimpleNamespace(set_my_commands=AsyncMock())
-    )
+    handler.application = SimpleNamespace(bot=SimpleNamespace(set_my_commands=AsyncMock()))
 
     asyncio.run(handler._setup_bot_commands())
 
@@ -122,10 +118,7 @@ def test_semantic_search_handler_rejects_missing_arguments():
 
     handler.handle_semantic_search_command.assert_not_called()
     update.message.reply_text.assert_awaited_once()
-    assert (
-        "/semantic_search <hours> <topic>"
-        in update.message.reply_text.await_args.args[0]
-    )
+    assert "/semantic_search <hours> <topic>" in update.message.reply_text.await_args.args[0]
 
 
 def test_semantic_search_handler_rejects_invalid_hours_and_blank_topic():
@@ -139,9 +132,7 @@ def test_semantic_search_handler_rejects_invalid_hours_and_blank_topic():
     update = _make_update()
 
     asyncio.run(
-        handler._handle_semantic_search_command(
-            update, SimpleNamespace(args=["abc", "BTC"])
-        )
+        handler._handle_semantic_search_command(update, SimpleNamespace(args=["abc", "BTC"]))
     )
     assert "有效的小时数" in update.message.reply_text.await_args.args[0]
 
@@ -173,9 +164,7 @@ def test_semantic_search_handler_parses_topic_and_dispatches_business_method():
     handler.handle_semantic_search_command.assert_called_once_with(
         "1", "tester", "chat_1", 24, "BTC adoption"
     )
-    update.message.reply_text.assert_awaited_once_with(
-        "🔎 开始语义搜索", parse_mode="Markdown"
-    )
+    update.message.reply_text.assert_awaited_once_with("🔎 开始语义搜索", parse_mode="Markdown")
 
 
 def test_semantic_search_background_flow_sends_report_to_chat():
@@ -273,3 +262,23 @@ def test_initialize_webhook_caches_running_event_loop():
 
     assert handler._event_loop is not None
     assert handler._event_loop.is_running() is False
+
+
+def test_handle_webhook_update_processes_update_directly():
+    handler: Any = _make_handler()
+    fake_update = object()
+    fake_application = SimpleNamespace(
+        bot=object(),
+        process_update=AsyncMock(),
+    )
+    handler.application = fake_application
+    handler.get_webhook_secret_token = Mock(return_value="secret")
+
+    with patch(
+        "crypto_news_analyzer.reporters.telegram_command_handler.Update.de_json",
+        return_value=fake_update,
+    ) as de_json:
+        asyncio.run(handler.handle_webhook_update({"update_id": 123}, secret_token="secret"))
+
+    de_json.assert_called_once_with(data={"update_id": 123}, bot=fake_application.bot)
+    fake_application.process_update.assert_awaited_once_with(fake_update)

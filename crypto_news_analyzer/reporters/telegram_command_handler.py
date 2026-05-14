@@ -1278,7 +1278,7 @@ class TelegramCommandHandler:
             raise PermissionError("Invalid Telegram webhook secret token")
 
         update = Update.de_json(data=update_data, bot=self.application.bot)
-        await self.application.update_queue.put(update)
+        await self.application.process_update(update)
 
     async def _handle_analyze_command(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -4018,6 +4018,7 @@ class TelegramCommandHandler:
                 return
             user_id = str(update.effective_user.id if update.effective_user else "unknown")
             username = update.effective_user.username if update.effective_user else "unknown"
+            chat_id = str(update.effective_chat.id if update.effective_chat else user_id)
             pipeline = getattr(self.execution_coordinator, "_intelligence_pipeline", None)
             converger = getattr(pipeline, "topic_converger", None) if pipeline else None
             if converger is None:
@@ -4041,9 +4042,37 @@ class TelegramCommandHandler:
                 parts = command_text.split(maxsplit=1)
                 if len(parts) > 1 and parts[0].split("@", 1)[0] == "/topic_converge":
                     user_objective = parts[1].strip()
-            result = converger.run_convergence(user_objective=user_objective or None)
-            merged = result.get("merged_count", 0)
             mode_label = "用户需求引导收敛" if user_objective else "自动相似主题收敛"
+
+            def execute_in_background():
+                self._execute_topic_converge_and_notify(
+                    user_id=user_id,
+                    username=username,
+                    chat_id=chat_id,
+                    converger=converger,
+                    user_objective=user_objective or None,
+                    mode_label=mode_label,
+                )
+
+            threading.Thread(target=execute_in_background, daemon=True).start()
+            await msg.reply_text(
+                f"{mode_label}已开始。\n执行完成后会自动发送结果，详情可查看 /topic_logs"
+            )
+        except Exception as e:
+            self.logger.error(f"处理/topic_converge命令时发生错误: {e}")
+
+    def _execute_topic_converge_and_notify(
+        self,
+        user_id: str,
+        username: str,
+        chat_id: str,
+        converger: Any,
+        user_objective: Optional[str],
+        mode_label: str,
+    ) -> None:
+        try:
+            result = converger.run_convergence(user_objective=user_objective)
+            merged = result.get("merged_count", 0)
             if result.get("skipped") and result.get("reason") not in {
                 None,
                 "not_enough_topics",
@@ -4056,9 +4085,14 @@ class TelegramCommandHandler:
                     f"{mode_label}执行完成：\n" f"合并 {merged} 个主题\n" "详情见 /topic_logs"
                 )
             self._log_command_execution("/topic_converge", user_id, username, None, True, response)
-            await msg.reply_text(response)
+            self._send_message_sync(chat_id, response)
         except Exception as e:
-            self.logger.error(f"处理/topic_converge命令时发生错误: {e}")
+            error_msg = f"{mode_label}执行失败: {str(e)}"
+            self.logger.error(error_msg)
+            self._log_command_execution(
+                "/topic_converge", user_id, username, None, False, error_msg
+            )
+            self._send_message_sync(chat_id, f"❌ {error_msg}")
 
     def handle_intel_detail_command(
         self,

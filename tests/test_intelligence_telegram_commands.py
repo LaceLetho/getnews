@@ -760,15 +760,10 @@ def test_unauthorized_intel_callback_does_not_set_follow_status():
 
 def test_topic_converge_falls_back_to_message_text_for_objective():
     converger = Mock()
-    converger.run_convergence.return_value = {
-        "merged_count": 0,
-        "skipped": True,
-        "reason": "planning_failed",
-    }
     pipeline = SimpleNamespace(topic_converger=converger)
     coordinator = SimpleNamespace(_intelligence_pipeline=pipeline)
     handler: Any = _make_handler(coordinator)
-    handler._log_command_execution = Mock()
+    handler._execute_topic_converge_and_notify = Mock()
 
     update = _make_update()
     update.message.text = (
@@ -776,13 +771,30 @@ def test_topic_converge_falls_back_to_message_text_for_objective():
     )
     context = SimpleNamespace(args=[])
 
-    asyncio.run(handler._handle_topic_converge_command(update, context))
+    started_targets = []
 
-    converger.run_convergence.assert_called_once_with(
-        user_objective="关注GPT/Claude会员的非官方购买渠道，挖掘渠道源头、系统漏洞、套利机会"
+    def fake_thread(target, daemon):
+        started_targets.append((target, daemon))
+        return SimpleNamespace(start=lambda: target())
+
+    with patch(
+        "crypto_news_analyzer.reporters.telegram_command_handler.threading.Thread", fake_thread
+    ):
+        asyncio.run(handler._handle_topic_converge_command(update, context))
+
+    converger.run_convergence.assert_not_called()
+    handler._execute_topic_converge_and_notify.assert_called_once_with(
+        user_id="1",
+        username="tester",
+        chat_id="chat_1",
+        converger=converger,
+        user_objective="关注GPT/Claude会员的非官方购买渠道，挖掘渠道源头、系统漏洞、套利机会",
+        mode_label="用户需求引导收敛",
     )
+    assert len(started_targets) == 1
+    assert started_targets[0][1] is True
     update.message.reply_text.assert_awaited_once()
-    assert "未完成" in update.message.reply_text.await_args.args[0]
+    assert "已开始" in update.message.reply_text.await_args.args[0]
 
 
 def test_intel_pagination_callback_expired_state_is_safe():
