@@ -30,12 +30,16 @@ class IntelligencePipeline:
         extractor: Any,
         merge_engine: Any,
         search_service: Any,
+        topic_enricher: Any = None,
+        topic_converger: Any = None,
     ):
         self.data_source_factory = data_source_factory
         self.intelligence_repository = intelligence_repository
         self.extractor = extractor
         self.merge_engine = merge_engine
         self.search_service = search_service
+        self.topic_enricher = topic_enricher
+        self.topic_converger = topic_converger
         set_search_service = getattr(self.merge_engine, "set_search_service", None)
         if callable(set_search_service) and self.search_service is not None:
             set_search_service(self.search_service)
@@ -54,6 +58,8 @@ class IntelligencePipeline:
             "canonical_entries": 0,
             "embeddings_updated": 0,
             "skipped_untracked_slang_items": 0,
+            "topics_enriched": 0,
+            "topics_converged": 0,
             "raw_text_purged": 0,
             "errors": [],
         }
@@ -80,7 +86,21 @@ class IntelligencePipeline:
                 self.logger.exception(error_msg)
                 self._save_error_checkpoint(datasource, str(exc))
 
+        if self.topic_enricher:
+            try:
+                result["topics_enriched"] = self.topic_enricher.enrich_due_topics()
+            except Exception:
+                self.logger.exception("Topic enrichment failed")
+
+        if self.topic_converger:
+            try:
+                convergence_result = self.topic_converger.run_daily_if_needed()
+                result["topics_converged"] = convergence_result.get("merged_count", 0)
+            except Exception:
+                self.logger.exception("Topic convergence failed")
+
         result["raw_text_purged"] = self._run_ttl_cleanup()
+
         return result
 
     def _run_source(self, datasource: DataSource) -> Dict[str, int]:

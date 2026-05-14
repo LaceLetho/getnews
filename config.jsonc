@@ -49,6 +49,25 @@
       "backfill_hours": 24,
       "confidence_threshold": 0.6
     },
+    "topic_enrichment": {
+      "enabled": true,
+      "provider": "opencode-go",
+      "model": "deepseek-v4-pro",
+      "thinking_level": "high",
+      "min_new_evidence": 3,
+      "max_evidence_per_run": 15,
+      "initial_max_evidence": 20,
+      "raw_text_max_chars": 1000,
+      "min_enrich_interval_hours": 24,
+      "entry_topic_auto_link_threshold": 0.78,
+      "convergence_similarity_threshold": 0.88,
+      "max_convergence_pairs_per_run": 5
+    },
+    "discovery_novelty": {
+      "enabled": true,
+      "similar_threshold": 0.82,
+      "duplicate_like_threshold": 0.90
+    },
     "sources": {}
   },
   "telegram_commands": {

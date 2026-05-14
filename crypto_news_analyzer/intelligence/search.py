@@ -67,7 +67,7 @@ class IntelligenceSearchService:
         window: Optional[datetime] = None,
         page: int = 1,
         page_size: int = 20,
-        tracking_scope: str = "following",
+        tracking_scope: str = "all",
     ) -> Tuple[List[Tuple[CanonicalIntelligenceEntry, float]], int]:
         """Search canonical intelligence entries by query embedding.
 

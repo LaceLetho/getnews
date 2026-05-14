@@ -531,6 +531,7 @@ class MainController:
 
     def _initialize_intelligence_pipeline_for_ingestion(self) -> None:
         self._intelligence_pipeline = None
+        self.topic_service = None
         if self.config_manager is None:
             raise ValueError("配置管理器未初始化")
 
@@ -548,6 +549,9 @@ class MainController:
         from .intelligence.merge import IntelligenceMergeEngine
         from .intelligence.pipeline import IntelligencePipeline
         from .intelligence.search import IntelligenceSearchService
+        from .intelligence.topics import IntelligenceTopicService
+        from .intelligence.topic_enricher import TopicEnricher
+        from .intelligence.topic_converger import TopicConverger
 
         intelligence_config = self.config_manager.get_intelligence_config()
         setattr(self.intelligence_repository, "datasource_repository", self.datasource_repository)
@@ -568,12 +572,33 @@ class MainController:
                 storage_config=self.storage_config,
             )
 
+        topic_service = IntelligenceTopicService(
+            intelligence_repository=self.intelligence_repository,
+            search_service=search_service,
+        )
+        self.topic_service = topic_service
+
+        enrichment_config = intelligence_config_payload.get("topic_enrichment", {})
+        topic_enricher = TopicEnricher(
+            intelligence_repository=self.intelligence_repository,
+            search_service=search_service,
+            config=enrichment_config,
+        ) if enrichment_config.get("enabled", True) else None
+
+        topic_converger = TopicConverger(
+            intelligence_repository=self.intelligence_repository,
+            search_service=search_service,
+            config=enrichment_config,
+        ) if enrichment_config.get("enabled", True) else None
+
         self._intelligence_pipeline = IntelligencePipeline(
             data_source_factory=get_data_source_factory(),
             intelligence_repository=self.intelligence_repository,
             extractor=extractor,
             merge_engine=merge_engine,
             search_service=search_service,
+            topic_enricher=topic_enricher,
+            topic_converger=topic_converger,
         )
         self.logger.info("IntelligencePipeline初始化完成（ingestion-only）")
 

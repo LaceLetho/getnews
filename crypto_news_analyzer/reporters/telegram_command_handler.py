@@ -212,6 +212,10 @@ class TelegramCommandHandler:
         application.add_handler(
             CommandHandler("intel_set_follow", self._handle_intel_set_follow_command)
         )
+        application.add_handler(CommandHandler("topic_list", self._handle_topic_list_command))
+        application.add_handler(CommandHandler("topic_detail", self._handle_topic_detail_command))
+        application.add_handler(CommandHandler("topic_logs", self._handle_topic_logs_command))
+        application.add_handler(CommandHandler("topic_converge", self._handle_topic_converge_command))
         application.add_handler(CommandHandler("market", self._handle_market_command))
         application.add_handler(CommandHandler("status", self._handle_status_command))
         application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
@@ -1166,6 +1170,10 @@ class TelegramCommandHandler:
                 BotCommand("intel_following", "查看已关注情报条目"),
                 BotCommand("intel_unfollowed", "查看不关注情报条目"),
                 BotCommand("intel_set_follow", "设置情报关注状态"),
+                BotCommand("topic_list", "查看情报主题列表"),
+                BotCommand("topic_detail", "查看主题深挖成果"),
+                BotCommand("topic_logs", "查看主题运行日志"),
+                BotCommand("topic_converge", "手动触发主题收敛"),
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
                 BotCommand("tokens", "查看LLM token使用统计"),
@@ -3029,6 +3037,21 @@ class TelegramCommandHandler:
         if getattr(entry, "aliases", None):
             escaped_aliases = ", ".join(esc(a) for a in entry.aliases)
             parts.append(f"*别名:* {escaped_aliases}")
+
+        topic_id = getattr(entry, "topic_id", None)
+        if topic_id:
+            repository = self._get_intelligence_repository()
+            if repository:
+                try:
+                    topic = repository.get_topic_by_id(topic_id)
+                    if topic and topic.enriched_summary:
+                        summary = topic.enriched_summary[:200]
+                        parts.append("")
+                        parts.append(f"🔬 *所属主题:* {esc(topic.name)}")
+                        parts.append(f"*主题摘要:* {esc(summary)}...")
+                except Exception:
+                    pass
+
         if raw_text is not None:
             parts.append("")
             parts.append("*Raw evidence:*")
@@ -3711,6 +3734,27 @@ class TelegramCommandHandler:
                 IntelligenceFollowStatus.UNSET.value: "未设置",
             }[normalized_status]
             response = f"已设置为{label}：{getattr(updated, 'display_name', entry_id) or entry_id}"
+
+            if normalized_status == IntelligenceFollowStatus.FOLLOW.value:
+                topic_service = getattr(self.execution_coordinator, "topic_service", None)
+                if topic_service is None:
+                    from ..intelligence.topics import IntelligenceTopicService
+
+                    topic_service = IntelligenceTopicService(
+                        intelligence_repository=repository,
+                        search_service=self._get_intelligence_search_service(),
+                    )
+                    setattr(self.execution_coordinator, "topic_service", topic_service)
+                if topic_service is not None:
+                    try:
+                        topic = topic_service.ensure_entry_topic(updated)
+                        if topic:
+                            response += f"\n已自动归属主题：{topic.name}"
+                        else:
+                            response += "\n已自动创建新主题"
+                    except Exception:
+                        pass
+
             self._log_command_execution(
                 "/intel_set_follow", user_id, username, None, True, response
             )
@@ -3722,6 +3766,214 @@ class TelegramCommandHandler:
                 "/intel_set_follow", user_id, username, None, False, error_msg
             )
             return f"❌ 执行失败\n\n{str(e)}"
+
+    async def _handle_topic_list_command(
+        self, update: Any, context: Any
+    ) -> None:
+        try:
+            msg = update.effective_message or update.message
+            if msg is None:
+                self.logger.error("/topic_list update has no effective message")
+                return
+            user_id = str(update.effective_user.id if update.effective_user else "unknown")
+            username = (
+                update.effective_user.username
+                if update.effective_user
+                else "unknown"
+            )
+            response = self.handle_topic_list_command(user_id, username)
+            await msg.reply_text(response, parse_mode="Markdown")
+        except Exception as e:
+            self.logger.error(f"处理/topic_list命令时发生错误: {e}")
+
+    def handle_topic_list_command(self, user_id: str, username: str) -> str:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                return "❌ 情报仓储未初始化"
+            topics = repository.list_topics(is_active=True, limit=20, offset=0)
+            if not topics:
+                return "📚 暂无活跃主题\n\n关注词条后会自动创建主题。"
+            lines = ["📚 情报主题\n"]
+            for i, topic in enumerate(topics, 1):
+                entry_count = repository.count_entries_by_topic(topic.id)
+                updated = (
+                    topic.updated_at.strftime("%Y-%m-%d") if topic.updated_at else "-"
+                )
+                lines.append(
+                    f"{i}. {topic.name}\n"
+                    f"   词条: {entry_count} | 最近更新: {updated}\n"
+                    f"   /topic\\_detail {topic.id}"
+                )
+            self._log_command_execution("/topic_list", user_id, username, None, True, "")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"❌ 查询失败: {str(e)}"
+
+    async def _handle_topic_detail_command(
+        self, update: Any, context: Any
+    ) -> None:
+        try:
+            msg = update.effective_message or update.message
+            if msg is None:
+                return
+            user_id = str(update.effective_user.id if update.effective_user else "unknown")
+            username = (
+                update.effective_user.username
+                if update.effective_user
+                else "unknown"
+            )
+            parts = (msg.text or "").split(maxsplit=1)
+            topic_id = parts[1].strip() if len(parts) > 1 else ""
+            if not topic_id:
+                await msg.reply_text("用法: /topic_detail <topic_id>")
+                return
+            response = self.handle_topic_detail_command(user_id, username, topic_id)
+            await msg.reply_text(response, parse_mode="Markdown")
+        except Exception as e:
+            self.logger.error(f"处理/topic_detail命令时发生错误: {e}")
+
+    def handle_topic_detail_command(
+        self, user_id: str, username: str, topic_id: str
+    ) -> str:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                return "❌ 情报仓储未初始化"
+            topic = repository.get_topic_by_id(topic_id)
+            if topic is None:
+                return "❌ 主题未找到"
+            entries = repository.list_entries_by_topic(topic_id, limit=100, offset=0)
+            entry_names = [e.display_name for e in entries]
+            lines = [f"🔬 {topic.name}\n"]
+            if topic.description:
+                lines.append(f"*描述*\n{topic.description}\n")
+            if topic.enriched_summary:
+                lines.append(f"*📋 深度摘要*\n{topic.enriched_summary}\n")
+            if topic.source_channels:
+                lines.append("*🔗 已挖掘渠道*")
+                for j, ch in enumerate(topic.source_channels, 1):
+                    name = ch.get("name", "")
+                    url = ch.get("url", "")
+                    type_ = ch.get("type", "")
+                    lines.append(f"{j}. {name} — `{url}` ({type_})")
+                lines.append("")
+            if topic.methods:
+                lines.append(f"*🛠 方法*\n{topic.methods}\n")
+            if topic.vulnerabilities:
+                lines.append(f"*🧨 漏洞/内幕*\n{topic.vulnerabilities}\n")
+            if topic.latest_findings:
+                lines.append("*🆕 最新发现*")
+                for finding in topic.latest_findings:
+                    lines.append(f"  • {finding}")
+                lines.append("")
+            if entry_names:
+                lines.append(f"*📌 关联词条*\n{', '.join(entry_names)}")
+            self._log_command_execution(
+                "/topic_detail", user_id, username, topic_id, True, ""
+            )
+            return "\n".join(lines)
+        except Exception as e:
+            return f"❌ 查询失败: {str(e)}"
+
+    async def _handle_topic_logs_command(
+        self, update: Any, context: Any
+    ) -> None:
+        try:
+            msg = update.effective_message or update.message
+            if msg is None:
+                return
+            user_id = str(update.effective_user.id if update.effective_user else "unknown")
+            username = (
+                update.effective_user.username
+                if update.effective_user
+                else "unknown"
+            )
+            parts = (msg.text or "").split(maxsplit=1)
+            topic_id = parts[1].strip() if len(parts) > 1 else ""
+            response = self.handle_topic_logs_command(user_id, username, topic_id or None)
+            await msg.reply_text(response, parse_mode="Markdown")
+        except Exception as e:
+            self.logger.error(f"处理/topic_logs命令时发生错误: {e}")
+
+    def handle_topic_logs_command(
+        self, user_id: str, username: str, topic_id: Optional[str] = None
+    ) -> str:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                return "❌ 情报仓储未初始化"
+            logs = repository.list_topic_run_logs(
+                topic_id=topic_id, limit=20, offset=0
+            )
+            if not logs:
+                return "🧾 暂无运行日志"
+            lines = ["🧾 Topic Run Logs\n"]
+            for log in logs:
+                created = log.created_at.strftime("%m-%d %H:%M") if log.created_at else ""
+                status_icon = {"success": "✅", "skipped": "⏭️", "failed": "❌"}.get(
+                    log.status, "?"
+                )
+                run_type_label = {
+                    "auto_link": "自动链接",
+                    "enrich": "主题累积",
+                    "converge": "主题收敛",
+                }.get(log.run_type, log.run_type)
+                lines.append(
+                    f"{created} {status_icon} [{run_type_label}] {log.status}"
+                )
+                if log.message:
+                    lines.append(f"  {log.message[:200]}")
+            self._log_command_execution(
+                "/topic_logs", user_id, username, None, True, ""
+            )
+            return "\n".join(lines)
+        except Exception as e:
+            return f"❌ 查询失败: {str(e)}"
+
+    async def _handle_topic_converge_command(
+        self, update: Any, context: Any
+    ) -> None:
+        try:
+            msg = update.effective_message or update.message
+            if msg is None:
+                return
+            user_id = str(update.effective_user.id if update.effective_user else "unknown")
+            username = (
+                update.effective_user.username
+                if update.effective_user
+                else "unknown"
+            )
+            pipeline = getattr(self.execution_coordinator, "_intelligence_pipeline", None)
+            converger = getattr(pipeline, "topic_converger", None) if pipeline else None
+            if converger is None:
+                from ..intelligence.topic_converger import TopicConverger
+
+                repository = self._get_intelligence_repository()
+                if repository is None:
+                    await msg.reply_text("❌ 情报仓储未初始化")
+                    return
+                config_manager = getattr(self.execution_coordinator, "config_manager", None)
+                config_data = getattr(config_manager, "config_data", {}) if config_manager else {}
+                intelligence_config = dict(config_data.get("intelligence_collection", {}) or {})
+                converger = TopicConverger(
+                    intelligence_repository=repository,
+                    search_service=self._get_intelligence_search_service(),
+                    config=intelligence_config.get("topic_enrichment", {}),
+                )
+            result = converger.run_convergence()
+            merged = result.get("merged_count", 0)
+            response = (
+                f"收敛执行完成：\n"
+                f"合并 {merged} 个主题\n"
+                f"详情见 /topic_logs"
+            )
+            self._log_command_execution(
+                "/topic_converge", user_id, username, None, True, response
+            )
+            await msg.reply_text(response, parse_mode="Markdown")
+        except Exception as e:
+            self.logger.error(f"处理/topic_converge命令时发生错误: {e}")
 
     def handle_intel_detail_command(
         self,

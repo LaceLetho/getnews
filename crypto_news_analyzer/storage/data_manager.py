@@ -507,6 +507,40 @@ class DataManager:
         """)
         self._ensure_intelligence_tracking_columns(cursor)
         cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_topics (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                enriched_summary TEXT,
+                source_channels {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_list},
+                methods TEXT,
+                vulnerabilities TEXT,
+                latest_findings {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_list},
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                last_evidence_at {datetime_type},
+                enriched_at {datetime_type},
+                embedding {embedding_type},
+                embedding_model TEXT,
+                embedding_updated_at {datetime_type},
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_topic_run_logs (
+                id TEXT PRIMARY KEY,
+                run_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                topic_id TEXT,
+                entry_id TEXT,
+                message TEXT,
+                details {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_object},
+                started_at {datetime_type},
+                finished_at {datetime_type},
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS intelligence_entry_evidence_links (
                 entry_id TEXT NOT NULL,
                 observation_id TEXT NOT NULL,
@@ -675,6 +709,30 @@ class DataManager:
                 "CREATE INDEX IF NOT EXISTS idx_intelligence_crawl_checkpoints_updated_at "
                 "ON intelligence_crawl_checkpoints (updated_at)"
             ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topics_active "
+                "ON intelligence_topics (is_active, updated_at DESC)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topics_enriched_at "
+                "ON intelligence_topics (enriched_at)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topic_run_logs_created "
+                "ON intelligence_topic_run_logs (created_at DESC)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topic_run_logs_topic "
+                "ON intelligence_topic_run_logs (topic_id, created_at DESC)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topic_run_logs_run_type "
+                "ON intelligence_topic_run_logs (run_type, created_at DESC)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_topic_id "
+                "ON intelligence_canonical_entries (topic_id)"
+            ),
         ]:
             cursor.execute(statement)
         self._backfill_intelligence_evidence_links(cursor)
@@ -717,6 +775,10 @@ class DataManager:
                 ADD COLUMN IF NOT EXISTS follow_status TEXT NOT NULL DEFAULT 'unset'
             """)
             cursor.execute("""
+                ALTER TABLE intelligence_canonical_entries
+                ADD COLUMN IF NOT EXISTS topic_id TEXT
+            """)
+            cursor.execute("""
                 UPDATE intelligence_canonical_entries
                 SET follow_status = CASE
                     WHEN is_ignored = TRUE THEN 'unfollow'
@@ -741,6 +803,7 @@ class DataManager:
         tracking_column_added = "tracking_enabled" not in columns
         discovery_column_added = "discovery_presented_at" not in columns
         follow_status_column_added = "follow_status" not in columns
+        topic_id_column_added = "topic_id" not in columns
         if tracking_column_added:
             cursor.execute(
                 "ALTER TABLE intelligence_canonical_entries "
@@ -809,6 +872,12 @@ class DataManager:
                     ELSE 'unset'
                 END
             """)
+
+        if topic_id_column_added:
+            cursor.execute(
+                "ALTER TABLE intelligence_canonical_entries "
+                "ADD COLUMN topic_id TEXT"
+            )
 
     @contextmanager
     def _get_connection(self):
@@ -2771,6 +2840,7 @@ class DataManager:
             "tracking_enabled",
             "discovery_presented_at",
             "follow_status",
+            "topic_id",
             "embedding",
             "embedding_model",
             "embedding_updated_at",
@@ -3601,6 +3671,390 @@ class DataManager:
                     ),
                 )
                 conn.commit()
+
+    def upsert_intelligence_topic(self, topic: Dict[str, Any]) -> str:
+        json_fields = {"source_channels", "latest_findings"}
+        columns = [
+            "id",
+            "name",
+            "description",
+            "enriched_summary",
+            "source_channels",
+            "methods",
+            "vulnerabilities",
+            "latest_findings",
+            "is_active",
+            "last_evidence_at",
+            "enriched_at",
+            "embedding",
+            "embedding_model",
+            "embedding_updated_at",
+            "created_at",
+            "updated_at",
+        ]
+        values: List[Any] = []
+        for column in columns:
+            value = topic.get(column)
+            if column in json_fields:
+                value = json.dumps(value or [], ensure_ascii=False)
+            elif column == "embedding" and value is not None:
+                value = (
+                    self._pgvector_literal(value)
+                    if self.backend == "postgres"
+                    else json.dumps(value)
+                )
+            elif isinstance(value, datetime):
+                value = value.isoformat()
+            values.append(value)
+        excluded = "EXCLUDED" if self.backend == "postgres" else "excluded"
+        assignments = ", ".join(f"{column} = {excluded}.{column}" for column in columns[1:])
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.cursor().execute(
+                    self._sql(f"""
+                    INSERT INTO intelligence_topics ({', '.join(columns)})
+                    VALUES ({', '.join(['?'] * len(columns))})
+                    ON CONFLICT(id) DO UPDATE SET {assignments}
+                    """),
+                    tuple(values),
+                )
+                conn.commit()
+                return str(topic["id"])
+
+    def _serialize_intelligence_topic_row(self, row: Any) -> Dict[str, Any]:
+        data = {key: self._dt_out(row[key]) for key in row.keys()}
+        data.pop("similarity", None)
+        data["is_active"] = bool(data.get("is_active", True))
+        data["source_channels"] = self._json_load(data.get("source_channels"), [])
+        data["latest_findings"] = self._json_load(data.get("latest_findings"), [])
+        data["embedding"] = self._json_load(data.get("embedding"), data.get("embedding"))
+        if isinstance(data.get("embedding"), str) and data["embedding"].startswith("["):
+            data["embedding"] = [
+                float(part) for part in data["embedding"].strip("[]").split(",") if part
+            ]
+        return data
+
+    def get_intelligence_topic_by_id(self, topic_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("SELECT * FROM intelligence_topics WHERE id = ? LIMIT 1"),
+                (topic_id,),
+            )
+            row = cursor.fetchone()
+        return self._serialize_intelligence_topic_row(row) if row else None
+
+    def list_intelligence_topics(
+        self, is_active: Optional[bool] = None, limit: int = 100, offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        filters: List[str] = []
+        params: List[Any] = []
+        if is_active is not None:
+            filters.append("is_active = ?")
+            params.append(is_active)
+        where = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql(f"""
+                SELECT * FROM intelligence_topics
+                {where}
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
+                """),
+                (*params, max(1, limit), max(0, offset)),
+            )
+            return [self._serialize_intelligence_topic_row(row) for row in cursor.fetchall()]
+
+    def count_intelligence_topics(self, is_active: Optional[bool] = None) -> int:
+        filters: List[str] = []
+        params: List[Any] = []
+        if is_active is not None:
+            filters.append("is_active = ?")
+            params.append(is_active)
+        where = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql(f"SELECT COUNT(*) AS total FROM intelligence_topics {where}"),
+                tuple(params),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return 0
+            return int(row["total"] if self.backend == "postgres" else row[0])
+
+    def update_intelligence_topic_embedding(
+        self, topic_id: str, embedding: List[float], model: str
+    ) -> bool:
+        value = (
+            self._pgvector_literal(embedding)
+            if self.backend == "postgres"
+            else json.dumps(embedding)
+        )
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql("""
+                    UPDATE intelligence_topics
+                    SET embedding = ?, embedding_model = ?, embedding_updated_at = ?
+                    WHERE id = ?
+                    """),
+                    (value, model, datetime.utcnow().isoformat(), topic_id),
+                )
+                conn.commit()
+                return bool(cursor.rowcount and cursor.rowcount > 0)
+
+    def assign_intelligence_entry_to_topic(
+        self, entry_id: str, topic_id: str
+    ) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql("""
+                    UPDATE intelligence_canonical_entries
+                    SET topic_id = ?, updated_at = ?
+                    WHERE id = ?
+                    """),
+                    (topic_id, datetime.utcnow().isoformat(), entry_id),
+                )
+                conn.commit()
+        return self.get_canonical_intelligence_entry_by_id(entry_id)
+
+    def list_canonical_intelligence_entries_by_topic(
+        self, topic_id: str, limit: int = 100, offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM intelligence_canonical_entries
+                WHERE topic_id = ?
+                ORDER BY last_seen_at DESC
+                LIMIT ? OFFSET ?
+                """),
+                (topic_id, max(1, limit), max(0, offset)),
+            )
+            return [
+                self._serialize_canonical_intelligence_entry_row(conn, row)
+                for row in cursor.fetchall()
+            ]
+
+    def count_canonical_intelligence_entries_by_topic(self, topic_id: str) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql(
+                    "SELECT COUNT(*) AS total FROM intelligence_canonical_entries "
+                    "WHERE topic_id = ?"
+                ),
+                (topic_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return 0
+            return int(row["total"] if self.backend == "postgres" else row[0])
+
+    def list_new_intelligence_topic_evidence(
+        self, topic_id: str, since: Optional[datetime], limit: int
+    ) -> List[Dict[str, Any]]:
+        where_since = "AND (? IS NULL OR link.observed_at > ?)" if since is not None else ""
+        params: List[Any] = [topic_id]
+        if since is not None:
+            params.append(since.isoformat() if since else None)
+            params.append(since.isoformat() if since else None)
+        params.append(max(1, limit))
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql(f"""
+                SELECT
+                    link.entry_id,
+                    link.observation_id,
+                    link.raw_item_id,
+                    link.observed_at,
+                    raw.raw_text,
+                    raw.source_type,
+                    raw.source_id,
+                    raw.source_url,
+                    raw.published_at,
+                    raw.collected_at,
+                    entry.display_name,
+                    entry.entry_type,
+                    entry.primary_label
+                FROM intelligence_entry_evidence_links link
+                JOIN intelligence_canonical_entries entry ON entry.id = link.entry_id
+                JOIN raw_intelligence_items raw ON raw.id = link.raw_item_id
+                WHERE entry.topic_id = ?
+                  {where_since}
+                ORDER BY link.observed_at DESC
+                LIMIT ?
+                """),
+                tuple(params),
+            )
+            results: List[Dict[str, Any]] = []
+            for row in cursor.fetchall():
+                results.append({
+                    key: (
+                        self._dt_out(row[key])
+                        if key
+                        in {
+                            "observed_at",
+                            "published_at",
+                            "collected_at",
+                        }
+                        else row[key]
+                    )
+                    for key in row.keys()
+                })
+            return results
+
+    def upsert_intelligence_topic_run_log(self, log: Dict[str, Any]) -> str:
+        columns = [
+            "id",
+            "run_type",
+            "status",
+            "topic_id",
+            "entry_id",
+            "message",
+            "details",
+            "started_at",
+            "finished_at",
+            "created_at",
+        ]
+        values: List[Any] = []
+        for column in columns:
+            value = log.get(column)
+            if column == "details":
+                value = json.dumps(value or {}, ensure_ascii=False)
+            elif isinstance(value, datetime):
+                value = value.isoformat()
+            values.append(value)
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.cursor().execute(
+                    self._sql(f"""
+                    INSERT INTO intelligence_topic_run_logs ({', '.join(columns)})
+                    VALUES ({', '.join(['?'] * len(columns))})
+                    ON CONFLICT(id) DO UPDATE SET
+                        status = excluded.status,
+                        message = excluded.message,
+                        details = excluded.details,
+                        finished_at = excluded.finished_at
+                    """),
+                    tuple(values),
+                )
+                conn.commit()
+                return str(log["id"])
+
+    def _serialize_intelligence_topic_run_log_row(self, row: Any) -> Dict[str, Any]:
+        data = {key: self._dt_out(row[key]) for key in row.keys()}
+        data["details"] = self._json_load(data.get("details"), {})
+        return data
+
+    def list_intelligence_topic_run_logs(
+        self,
+        topic_id: Optional[str] = None,
+        run_type: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        filters: List[str] = []
+        params: List[Any] = []
+        if topic_id:
+            filters.append("topic_id = ?")
+            params.append(topic_id)
+        if run_type:
+            filters.append("run_type = ?")
+            params.append(run_type)
+        where = f"WHERE {' AND '.join(filters)}" if filters else ""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql(f"""
+                SELECT * FROM intelligence_topic_run_logs
+                {where}
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+                """),
+                (*params, max(1, limit), max(0, offset)),
+            )
+            return [
+                self._serialize_intelligence_topic_run_log_row(row)
+                for row in cursor.fetchall()
+            ]
+
+    def get_latest_intelligence_topic_run_log(
+        self, run_type: str
+    ) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT * FROM intelligence_topic_run_logs
+                WHERE run_type = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """),
+                (run_type,),
+            )
+            row = cursor.fetchone()
+        return self._serialize_intelligence_topic_run_log_row(row) if row else None
+
+    def semantic_search_intelligence_topics(
+        self,
+        query_embedding: List[float],
+        is_active: Optional[bool] = True,
+        limit: int = 10,
+    ) -> List[Tuple[float, Dict[str, Any]]]:
+        if self.backend == "postgres":
+            vector_literal = self._pgvector_literal(query_embedding)
+            params: List[Any] = [vector_literal]
+            active_filter = "AND is_active = ?" if is_active is not None else ""
+            if is_active is not None:
+                params.append(is_active)
+            params.append(max(1, limit))
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(f"""
+                    SELECT *, 1 - (embedding <=> CAST(? AS vector)) AS similarity
+                    FROM intelligence_topics
+                    WHERE embedding IS NOT NULL
+                      {active_filter}
+                    ORDER BY similarity DESC
+                    LIMIT ?
+                    """),
+                    tuple(params),
+                )
+                results: List[Tuple[float, Dict[str, Any]]] = []
+                for row in cursor.fetchall():
+                    score = float(row["similarity"])
+                    data = self._serialize_intelligence_topic_row(row)
+                    results.append((score, data))
+                return results
+        else:
+            all_rows = self.list_intelligence_topics(is_active=is_active, limit=10000, offset=0)
+            candidates: List[Tuple[float, Dict[str, Any]]] = []
+            for row in all_rows:
+                emb = row.get("embedding")
+                if not emb:
+                    continue
+                if not isinstance(emb, list):
+                    continue
+                if len(emb) != len(query_embedding):
+                    continue
+                dot = sum(a * b for a, b in zip(query_embedding, emb))
+                q_norm = (sum(a * a for a in query_embedding)) ** 0.5
+                e_norm = (sum(b * b for b in emb)) ** 0.5
+                if q_norm == 0 or e_norm == 0:
+                    continue
+                score = dot / (q_norm * e_norm)
+                candidates.append((score, row))
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            return candidates[:limit]
 
     def upsert_intelligence_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         payload = dict(checkpoint)

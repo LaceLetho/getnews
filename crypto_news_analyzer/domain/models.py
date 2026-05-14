@@ -10,7 +10,7 @@ Compatibility: Backward compatible within major version
 
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any, cast
+from typing import ClassVar, Dict, List, Optional, Any, cast
 from dataclasses import dataclass, field
 import uuid
 
@@ -126,6 +126,25 @@ def _validate_json_list(value: Optional[List[str]], field_name: str) -> List[str
     if not isinstance(value, list):
         raise ValueError(f"{field_name} must be a list")
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _validate_public_object_list(value: Optional[List[Any]], field_name: str) -> List[Dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list")
+
+    items: List[Dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, dict):
+            normalized = _validate_public_payload(dict(item), field_name)
+            if normalized:
+                items.append(normalized)
+            continue
+        text = str(item or "").strip()
+        if text:
+            items.append({"name": text, "url": "", "type": "unknown"})
+    return items
 
 
 def _validate_public_payload(payload: Dict[str, Any], field_name: str) -> Dict[str, Any]:
@@ -870,6 +889,7 @@ class CanonicalIntelligenceEntry:
     tracking_enabled: bool = False
     discovery_presented_at: Optional[datetime] = None
     follow_status: str = IntelligenceFollowStatus.UNSET.value
+    topic_id: Optional[str] = None
     embedding: Optional[List[float]] = None
     embedding_model: Optional[str] = None
     embedding_updated_at: Optional[datetime] = None
@@ -978,6 +998,159 @@ class CanonicalIntelligenceEntry:
             if status in _FOLLOW_STATUS_VALUES:
                 payload["tracking_enabled"] = status == IntelligenceFollowStatus.FOLLOW.value
                 payload["is_ignored"] = status == IntelligenceFollowStatus.UNFOLLOW.value
+        return cls(**payload)
+
+
+@dataclass
+class IntelligenceTopic:
+    id: str
+    name: str
+    description: Optional[str] = None
+    enriched_summary: Optional[str] = None
+    source_channels: List[Dict[str, Any]] = field(default_factory=list)
+    methods: Optional[str] = None
+    vulnerabilities: Optional[str] = None
+    latest_findings: List[str] = field(default_factory=list)
+    is_active: bool = True
+    last_evidence_at: Optional[datetime] = None
+    enriched_at: Optional[datetime] = None
+    embedding: Optional[List[float]] = None
+    embedding_model: Optional[str] = None
+    embedding_updated_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        if not self.id:
+            raise ValueError("id is required")
+        self.name = str(self.name).strip()
+        if not self.name:
+            raise ValueError("name is required")
+        self.is_active = bool(self.is_active)
+        self.source_channels = _validate_public_object_list(
+            self.source_channels, "source_channels"
+        )
+        self.latest_findings = _validate_json_list(self.latest_findings, "latest_findings")
+        if self.embedding is not None:
+            self.embedding = [float(value) for value in self.embedding]
+
+    @classmethod
+    def create(
+        cls,
+        name: str,
+        **kwargs: Any,
+    ) -> "IntelligenceTopic":
+        now = datetime.utcnow()
+        return cls(
+            id=str(uuid.uuid4()),
+            name=name,
+            created_at=now,
+            updated_at=now,
+            **kwargs,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = dict(self.__dict__)
+        for key in (
+            "last_evidence_at",
+            "enriched_at",
+            "embedding_updated_at",
+            "created_at",
+            "updated_at",
+        ):
+            data[key] = data[key].isoformat() if data.get(key) else None
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceTopic":
+        payload = dict(data)
+        for key in (
+            "last_evidence_at",
+            "enriched_at",
+            "embedding_updated_at",
+            "created_at",
+            "updated_at",
+        ):
+            payload[key] = _parse_optional_datetime(payload.get(key))
+        payload["source_channels"] = _validate_public_object_list(
+            payload.get("source_channels", []), "source_channels"
+        )
+        payload["latest_findings"] = _validate_json_list(
+            payload.get("latest_findings", []), "latest_findings"
+        )
+        return cls(**payload)
+
+
+@dataclass
+class IntelligenceTopicRunLog:
+    id: str
+    run_type: str
+    status: str
+    topic_id: Optional[str] = None
+    entry_id: Optional[str] = None
+    message: Optional[str] = None
+    details: Dict[str, Any] = field(default_factory=dict)
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    _ALLOWED_RUN_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {"auto_link", "enrich", "converge"}
+    )
+    _ALLOWED_STATUSES: ClassVar[frozenset[str]] = frozenset(
+        {"success", "skipped", "failed"}
+    )
+
+    def __post_init__(self):
+        if not self.id:
+            raise ValueError("id is required")
+        self.run_type = str(self.run_type).strip().lower()
+        if self.run_type not in self._ALLOWED_RUN_TYPES:
+            raise ValueError("run_type must be one of: auto_link, enrich, converge")
+        self.status = str(self.status).strip().lower()
+        if self.status not in self._ALLOWED_STATUSES:
+            raise ValueError("status must be one of: success, skipped, failed")
+        self.details = _validate_public_payload(dict(self.details or {}), "details")
+
+    @classmethod
+    def create(
+        cls,
+        run_type: str,
+        status: str,
+        **kwargs: Any,
+    ) -> "IntelligenceTopicRunLog":
+        now = datetime.utcnow()
+        return cls(
+            id=str(uuid.uuid4()),
+            run_type=run_type,
+            status=status,
+            started_at=kwargs.pop("started_at", now),
+            created_at=now,
+            **kwargs,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = dict(self.__dict__)
+        for key in (
+            "started_at",
+            "finished_at",
+            "created_at",
+        ):
+            data[key] = data[key].isoformat() if data.get(key) else None
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceTopicRunLog":
+        payload = dict(data)
+        for key in (
+            "started_at",
+            "finished_at",
+            "created_at",
+        ):
+            payload[key] = _parse_optional_datetime(payload.get(key))
+        payload["details"] = _validate_public_payload(
+            payload.get("details", {}), "details"
+        )
         return cls(**payload)
 
 

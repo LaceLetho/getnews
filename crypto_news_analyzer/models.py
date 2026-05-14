@@ -562,11 +562,114 @@ class IntelligenceCollectionConfig:
 
 
 @dataclass
+class IntelligenceTopicEnrichmentConfig:
+    enabled: bool = True
+    provider: str = "opencode-go"
+    model: str = "deepseek-v4-pro"
+    thinking_level: str = "high"
+    min_new_evidence: int = 3
+    max_evidence_per_run: int = 15
+    initial_max_evidence: int = 20
+    raw_text_max_chars: int = 1000
+    min_enrich_interval_hours: int = 24
+    entry_topic_auto_link_threshold: float = 0.78
+    convergence_similarity_threshold: float = 0.88
+    max_convergence_pairs_per_run: int = 5
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self) -> None:
+        if self.min_new_evidence < 1:
+            raise ValueError("min_new_evidence must be >= 1")
+        if self.max_evidence_per_run < 1:
+            raise ValueError("max_evidence_per_run must be >= 1")
+        if self.initial_max_evidence < 1:
+            raise ValueError("initial_max_evidence must be >= 1")
+        if self.raw_text_max_chars < 100:
+            raise ValueError("raw_text_max_chars must be >= 100")
+        if self.min_enrich_interval_hours < 1:
+            raise ValueError("min_enrich_interval_hours must be >= 1")
+        if not 0.0 <= self.entry_topic_auto_link_threshold <= 1.0:
+            raise ValueError("entry_topic_auto_link_threshold must be between 0.0 and 1.0")
+        if not 0.0 <= self.convergence_similarity_threshold <= 1.0:
+            raise ValueError("convergence_similarity_threshold must be between 0.0 and 1.0")
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceTopicEnrichmentConfig":
+        payload = dict(data or {})
+        return cls(
+            enabled=payload.get("enabled", True),
+            provider=payload.get("provider", "opencode-go"),
+            model=payload.get("model", "deepseek-v4-pro"),
+            thinking_level=payload.get("thinking_level", "high"),
+            min_new_evidence=payload.get("min_new_evidence", 3),
+            max_evidence_per_run=payload.get("max_evidence_per_run", 15),
+            initial_max_evidence=payload.get("initial_max_evidence", 20),
+            raw_text_max_chars=payload.get("raw_text_max_chars", 1000),
+            min_enrich_interval_hours=payload.get("min_enrich_interval_hours", 24),
+            entry_topic_auto_link_threshold=payload.get("entry_topic_auto_link_threshold", 0.78),
+            convergence_similarity_threshold=payload.get("convergence_similarity_threshold", 0.88),
+            max_convergence_pairs_per_run=payload.get("max_convergence_pairs_per_run", 5),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "provider": self.provider,
+            "model": self.model,
+            "thinking_level": self.thinking_level,
+            "min_new_evidence": self.min_new_evidence,
+            "max_evidence_per_run": self.max_evidence_per_run,
+            "initial_max_evidence": self.initial_max_evidence,
+            "raw_text_max_chars": self.raw_text_max_chars,
+            "min_enrich_interval_hours": self.min_enrich_interval_hours,
+            "entry_topic_auto_link_threshold": self.entry_topic_auto_link_threshold,
+            "convergence_similarity_threshold": self.convergence_similarity_threshold,
+            "max_convergence_pairs_per_run": self.max_convergence_pairs_per_run,
+        }
+
+
+@dataclass
+class IntelligenceDiscoveryNoveltyConfig:
+    enabled: bool = True
+    similar_threshold: float = 0.82
+    duplicate_like_threshold: float = 0.90
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self) -> None:
+        if not 0.0 <= self.similar_threshold <= 1.0:
+            raise ValueError("similar_threshold must be between 0.0 and 1.0")
+        if not 0.0 <= self.duplicate_like_threshold <= 1.0:
+            raise ValueError("duplicate_like_threshold must be between 0.0 and 1.0")
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceDiscoveryNoveltyConfig":
+        payload = dict(data or {})
+        return cls(
+            enabled=payload.get("enabled", True),
+            similar_threshold=payload.get("similar_threshold", 0.82),
+            duplicate_like_threshold=payload.get("duplicate_like_threshold", 0.90),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "similar_threshold": self.similar_threshold,
+            "duplicate_like_threshold": self.duplicate_like_threshold,
+        }
+
+
+@dataclass
 class IntelligenceConfig:
     """Top-level intelligence collection config."""
 
     extraction: IntelligenceExtractionConfig = field(default_factory=IntelligenceExtractionConfig)
     collection: IntelligenceCollectionConfig = field(default_factory=IntelligenceCollectionConfig)
+    topic_enrichment: IntelligenceTopicEnrichmentConfig = field(default_factory=IntelligenceTopicEnrichmentConfig)
+    discovery_novelty: IntelligenceDiscoveryNoveltyConfig = field(default_factory=IntelligenceDiscoveryNoveltyConfig)
     sources: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -577,6 +680,10 @@ class IntelligenceConfig:
             raise ValueError("extraction必须是IntelligenceExtractionConfig")
         if not isinstance(self.collection, IntelligenceCollectionConfig):
             raise ValueError("collection必须是IntelligenceCollectionConfig")
+        if not isinstance(self.topic_enrichment, IntelligenceTopicEnrichmentConfig):
+            raise ValueError("topic_enrichment必须是IntelligenceTopicEnrichmentConfig")
+        if not isinstance(self.discovery_novelty, IntelligenceDiscoveryNoveltyConfig):
+            raise ValueError("discovery_novelty必须是IntelligenceDiscoveryNoveltyConfig")
         if self.sources is None:
             self.sources = {}
         if not isinstance(self.sources, dict):
@@ -594,6 +701,12 @@ class IntelligenceConfig:
         return cls(
             extraction=IntelligenceExtractionConfig.from_dict(payload.get("extraction", {})),
             collection=IntelligenceCollectionConfig.from_dict(payload.get("collection", {})),
+            topic_enrichment=IntelligenceTopicEnrichmentConfig.from_dict(
+                payload.get("topic_enrichment", {})
+            ),
+            discovery_novelty=IntelligenceDiscoveryNoveltyConfig.from_dict(
+                payload.get("discovery_novelty", {})
+            ),
             sources=dict(sources),
         )
 
@@ -601,6 +714,8 @@ class IntelligenceConfig:
         return {
             "extraction": self.extraction.to_dict(),
             "collection": self.collection.to_dict(),
+            "topic_enrichment": self.topic_enrichment.to_dict(),
+            "discovery_novelty": self.discovery_novelty.to_dict(),
             "sources": dict(self.sources),
         }
 

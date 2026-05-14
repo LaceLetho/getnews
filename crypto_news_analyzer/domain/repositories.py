@@ -19,6 +19,8 @@ from .models import (
     ExtractionObservation,
     IngestionJob,
     IntelligenceCrawlCheckpoint,
+    IntelligenceTopic,
+    IntelligenceTopicRunLog,
     RawIntelligenceItem,
     SemanticSearchJob,
 )
@@ -632,6 +634,74 @@ class IntelligenceRepository(ABC):
         self, source_type: str, source_id: str
     ) -> Optional[IntelligenceCrawlCheckpoint]:
         pass
+
+    def save_topic(self, topic: "IntelligenceTopic") -> str:
+        raise NotImplementedError("Topic persistence is not implemented by this repository")
+
+    def get_topic_by_id(self, topic_id: str) -> Optional["IntelligenceTopic"]:
+        return None
+
+    def list_topics(
+        self,
+        is_active: Optional[bool] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List["IntelligenceTopic"]:
+        return []
+
+    def count_topics(self, is_active: Optional[bool] = None) -> int:
+        return 0
+
+    def update_topic_embedding(
+        self, topic_id: str, embedding: List[float], model: str
+    ) -> bool:
+        return False
+
+    def assign_entry_to_topic(
+        self, entry_id: str, topic_id: str
+    ) -> Optional["CanonicalIntelligenceEntry"]:
+        return None
+
+    def list_entries_by_topic(
+        self, topic_id: str, limit: int = 100, offset: int = 0
+    ) -> List["CanonicalIntelligenceEntry"]:
+        return []
+
+    def count_entries_by_topic(self, topic_id: str) -> int:
+        return 0
+
+    def list_new_topic_evidence(
+        self,
+        topic_id: str,
+        since: Optional[datetime],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        return []
+
+    def save_topic_run_log(self, log: "IntelligenceTopicRunLog") -> str:
+        raise NotImplementedError("Topic run logging is not implemented by this repository")
+
+    def list_topic_run_logs(
+        self,
+        topic_id: Optional[str] = None,
+        run_type: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List["IntelligenceTopicRunLog"]:
+        return []
+
+    def get_latest_topic_run_log(
+        self, run_type: str
+    ) -> Optional["IntelligenceTopicRunLog"]:
+        return None
+
+    def semantic_search_topics(
+        self,
+        query_embedding: List[float],
+        is_active: Optional[bool] = True,
+        limit: int = 10,
+    ) -> List[Tuple["IntelligenceTopic", float]]:
+        return []
 
 
 class CacheRepository(ABC):

@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import re
 import uuid
-from typing import Annotated, Any, Optional, cast
+from typing import Annotated, Any, Dict, Optional, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, HTTPException, Depends, Response, Request
@@ -459,6 +459,44 @@ class IntelligenceFollowStatusResponse(BaseModel):
     tracking_enabled: bool
     is_ignored: bool
     follow_status: str = "unset"
+    topic: Optional[Dict[str, Any]] = None
+    topic_error: Optional[str] = None
+
+
+class IntelligenceTopicItemResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    enriched_summary: Optional[str] = None
+    entry_count: int = 0
+    enriched_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class IntelligenceTopicListResponse(BaseModel):
+    items: list[IntelligenceTopicItemResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class IntelligenceTopicDetailResponse(BaseModel):
+    topic: Dict[str, Any]
+    entries: list[Dict[str, Any]]
+    recent_logs: list[Dict[str, Any]]
+
+
+class IntelligenceTopicRunsResponse(BaseModel):
+    items: list[Dict[str, Any]]
+    page: int
+    page_size: int
+
+
+class IntelligenceConvergeResponse(BaseModel):
+    success: bool
+    merged_count: int = 0
+    skipped: bool = False
+    message: str = ""
 
 
 class IntelligenceSearchResponse(BaseModel):
@@ -501,6 +539,50 @@ class IntelligenceFollowStatusRequest(BaseModel):
 
 def _datetime_to_iso(value: Optional[datetime]) -> Optional[str]:
     return value.isoformat() if value is not None else None
+
+
+def _topic_to_dict(topic: Any) -> Dict[str, Any]:
+    return {
+        "id": str(getattr(topic, "id", "")),
+        "name": str(getattr(topic, "name", "")),
+        "description": getattr(topic, "description", None),
+        "enriched_summary": getattr(topic, "enriched_summary", None),
+        "source_channels": getattr(topic, "source_channels", []),
+        "methods": getattr(topic, "methods", None),
+        "vulnerabilities": getattr(topic, "vulnerabilities", None),
+        "latest_findings": getattr(topic, "latest_findings", []),
+        "is_active": bool(getattr(topic, "is_active", True)),
+        "enriched_at": _datetime_to_iso(getattr(topic, "enriched_at", None)),
+        "updated_at": _datetime_to_iso(getattr(topic, "updated_at", None)),
+    }
+
+
+def _canonical_entry_to_dict(entry: Any) -> Dict[str, Any]:
+    return {
+        "id": str(getattr(entry, "id", "")),
+        "entry_type": str(getattr(entry, "entry_type", "")),
+        "display_name": str(getattr(entry, "display_name", "")),
+        "primary_label": getattr(entry, "primary_label", None),
+        "follow_status": str(getattr(entry, "follow_status", "unset") or "unset"),
+        "topic_id": getattr(entry, "topic_id", None),
+        "confidence": float(getattr(entry, "confidence", 0.0)),
+        "evidence_count": int(getattr(entry, "evidence_count", 0)),
+    }
+
+
+def _log_to_dict(log: Any) -> Dict[str, Any]:
+    return {
+        "id": str(getattr(log, "id", "")),
+        "run_type": str(getattr(log, "run_type", "")),
+        "status": str(getattr(log, "status", "")),
+        "topic_id": getattr(log, "topic_id", None),
+        "entry_id": getattr(log, "entry_id", None),
+        "message": getattr(log, "message", None),
+        "details": getattr(log, "details", {}),
+        "started_at": _datetime_to_iso(getattr(log, "started_at", None)),
+        "finished_at": _datetime_to_iso(getattr(log, "finished_at", None)),
+        "created_at": _datetime_to_iso(getattr(log, "created_at", None)),
+    }
 
 
 def _canonical_entry_to_response(entry: Any) -> IntelligenceEntryResponse:
@@ -1090,21 +1172,22 @@ def _persist_completed_api_job_success(job: AnalyzeJobRecord, controller: MainCo
 
 
 def _build_datasource_config_summary(datasource: DataSource) -> dict[str, Any]:
-    payload = dict(datasource.config_payload or {})
+    payload = dict(getattr(datasource, "config_payload", {}) or {})
+    source_type = str(getattr(datasource, "source_type", ""))
 
-    if datasource.source_type == "rss":
+    if source_type == "rss":
         return {
             "url": payload.get("url"),
             "description": payload.get("description", ""),
         }
 
-    if datasource.source_type == "x":
+    if source_type == "x":
         return {
             "url": payload.get("url"),
             "type": payload.get("type"),
         }
 
-    if datasource.source_type == "rest_api":
+    if source_type == "rest_api":
         headers = payload.get("headers")
         params = payload.get("params")
         response_mapping = payload.get("response_mapping")
@@ -1141,11 +1224,11 @@ def _summarize_public_endpoint(endpoint: Any) -> Optional[str]:
 
 def _to_datasource_response_item(datasource: DataSource) -> DataSourceResponseItem:
     return DataSourceResponseItem(
-        id=datasource.id,
-        name=datasource.name,
-        purpose=datasource.purpose,
-        source_type=datasource.source_type,
-        tags=list(datasource.tags),
+        id=str(getattr(datasource, "id", "")),
+        name=str(getattr(datasource, "name", "")),
+        purpose=str(getattr(datasource, "purpose", DataSourcePurpose.INTELLIGENCE.value)),
+        source_type=str(getattr(datasource, "source_type", "")),
+        tags=list(getattr(datasource, "tags", []) or []),
         config_summary=_build_datasource_config_summary(datasource),
     )
 
@@ -1552,6 +1635,7 @@ def create_api_server(
     @app.post(
         "/intelligence/entries/{entry_id}/follow-status",
         response_model=IntelligenceFollowStatusResponse,
+        response_model_exclude_none=True,
     )
     async def set_intelligence_entry_follow_status(
         entry_id: str,
@@ -1563,12 +1647,36 @@ def create_api_server(
         entry = repository.set_canonical_entry_follow_status(entry_id, payload.follow_status)
         if entry is None:
             raise HTTPException(status_code=404, detail="Intelligence entry not found")
+
+        topic_info = None
+        topic_error = None
+        if entry.follow_status == "follow":
+            controller = getattr(req.app.state, "controller", None)
+            topic_service = getattr(controller, "topic_service", None) if controller else None
+            if topic_service is None and controller is not None:
+                from .intelligence.topics import IntelligenceTopicService
+
+                topic_service = IntelligenceTopicService(
+                    intelligence_repository=repository,
+                    search_service=_build_intelligence_search_service(controller),
+                )
+                setattr(controller, "topic_service", topic_service)
+            if topic_service is not None:
+                try:
+                    topic = topic_service.ensure_entry_topic(entry)
+                    if topic:
+                        topic_info = {"id": topic.id, "name": topic.name}
+                except Exception as exc:
+                    topic_error = str(exc)
+
         return IntelligenceFollowStatusResponse(
             success=True,
             entry_id=entry.id,
             tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
             is_ignored=bool(getattr(entry, "is_ignored", False)),
             follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
+            topic=topic_info,
+            topic_error=topic_error,
         )
 
     @app.get(
@@ -1753,6 +1861,111 @@ def create_api_server(
             is_expired=is_expired,
         )
 
+    @app.get("/intelligence/topics", response_model=IntelligenceTopicListResponse)
+    async def list_intelligence_topics(
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+        active_only: bool = True,
+        page: int = 1,
+        page_size: int = 20,
+    ):
+        repository = _get_intelligence_repository(req)
+        topics = repository.list_topics(
+            is_active=True if active_only else None,
+            limit=max(1, page_size),
+            offset=max(0, page - 1) * max(1, page_size),
+        )
+        total = repository.count_topics(is_active=True if active_only else None)
+        items = []
+        for topic in topics:
+            entry_count = repository.count_entries_by_topic(topic.id)
+            items.append(
+                IntelligenceTopicItemResponse(
+                    id=topic.id,
+                    name=topic.name,
+                    description=topic.description,
+                    enriched_summary=topic.enriched_summary,
+                    entry_count=entry_count,
+                    enriched_at=_datetime_to_iso(topic.enriched_at),
+                    updated_at=_datetime_to_iso(topic.updated_at),
+                )
+            )
+        return IntelligenceTopicListResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+
+    @app.get("/intelligence/topics/{topic_id}", response_model=IntelligenceTopicDetailResponse)
+    async def get_intelligence_topic_detail(
+        topic_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        repository = _get_intelligence_repository(req)
+        topic = repository.get_topic_by_id(topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+        entries = repository.list_entries_by_topic(topic_id, limit=100, offset=0)
+        logs = repository.list_topic_run_logs(topic_id=topic_id, limit=10, offset=0)
+        return IntelligenceTopicDetailResponse(
+            topic=_topic_to_dict(topic),
+            entries=[_canonical_entry_to_dict(entry) for entry in entries],
+            recent_logs=[_log_to_dict(log) for log in logs],
+        )
+
+    @app.get("/intelligence/topic-runs", response_model=IntelligenceTopicRunsResponse)
+    async def list_intelligence_topic_runs(
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+        topic_id: Optional[str] = None,
+        run_type: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ):
+        repository = _get_intelligence_repository(req)
+        logs = repository.list_topic_run_logs(
+            topic_id=topic_id,
+            run_type=run_type,
+            limit=max(1, page_size),
+            offset=max(0, page - 1) * max(1, page_size),
+        )
+        return IntelligenceTopicRunsResponse(
+            items=[_log_to_dict(log) for log in logs],
+            page=page,
+            page_size=page_size,
+        )
+
+    @app.post("/intelligence/topics/converge", response_model=IntelligenceConvergeResponse)
+    async def trigger_intelligence_converge(
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        controller = getattr(req.app.state, "controller", None)
+        if controller is None:
+            raise HTTPException(status_code=500, detail="Controller not initialized")
+        pipeline = getattr(controller, "_intelligence_pipeline", None)
+        converger = getattr(pipeline, "topic_converger", None) if pipeline else None
+        if converger is None:
+            from .intelligence.topic_converger import TopicConverger
+
+            repository = _get_intelligence_repository(req)
+            config_data = getattr(getattr(controller, "config_manager", None), "config_data", {}) or {}
+            intelligence_config = dict(config_data.get("intelligence_collection", {}) or {})
+            converger = TopicConverger(
+                intelligence_repository=repository,
+                search_service=_build_intelligence_search_service(controller),
+                config=intelligence_config.get("topic_enrichment", {}),
+            )
+        result = converger.run_convergence()
+        return IntelligenceConvergeResponse(
+            success=True,
+            merged_count=result.get("merged_count", 0),
+            skipped=result.get("skipped", False),
+            message=f"Merged {result.get('merged_count', 0)} topic pairs",
+        )
+
     @app.post("/datasources", response_model=DataSourceCreateResponse, status_code=201)
     async def create_datasource(
         request: DataSourceCreateRequest,
@@ -1793,9 +2006,29 @@ def create_api_server(
             raise HTTPException(
                 status_code=422, detail="purpose must be one of: news, intelligence"
             )
+        try:
+            datasource_items = repository.list(purpose=purpose, source_type=source_type)
+        except TypeError:
+            datasource_items = repository.list()
+            if purpose is not None:
+                datasource_items = [
+                    datasource
+                    for datasource in datasource_items
+                    if getattr(datasource, "purpose", None) == purpose
+                ]
+            if source_type is not None:
+                datasource_items = [
+                    datasource
+                    for datasource in datasource_items
+                    if getattr(datasource, "source_type", None) == source_type
+                ]
         datasources = sorted(
-            repository.list(purpose=purpose, source_type=source_type),
-            key=lambda datasource: (datasource.purpose, datasource.source_type, datasource.name),
+            datasource_items,
+            key=lambda datasource: (
+                getattr(datasource, "purpose", ""),
+                getattr(datasource, "source_type", ""),
+                getattr(datasource, "name", ""),
+            ),
         )
 
         return DataSourceListResponse(

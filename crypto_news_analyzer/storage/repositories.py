@@ -17,6 +17,8 @@ from ..domain.models import (
     ExtractionObservation,
     IngestionJob,
     IntelligenceCrawlCheckpoint,
+    IntelligenceTopic,
+    IntelligenceTopicRunLog,
     RawIntelligenceItem,
     SemanticSearchJob,
 )
@@ -830,6 +832,89 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
     ) -> Optional[IntelligenceCrawlCheckpoint]:
         row = self._data.get_intelligence_checkpoint(source_type, source_id)
         return IntelligenceCrawlCheckpoint.from_dict(row) if row else None
+
+    def save_topic(self, topic: IntelligenceTopic) -> str:
+        return self._data.upsert_intelligence_topic(topic.to_dict())
+
+    def get_topic_by_id(self, topic_id: str) -> Optional[IntelligenceTopic]:
+        row = self._data.get_intelligence_topic_by_id(topic_id)
+        return IntelligenceTopic.from_dict(row) if row else None
+
+    def list_topics(
+        self,
+        is_active: Optional[bool] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[IntelligenceTopic]:
+        rows = self._data.list_intelligence_topics(
+            is_active=is_active, limit=limit, offset=offset
+        )
+        return [IntelligenceTopic.from_dict(row) for row in rows]
+
+    def count_topics(self, is_active: Optional[bool] = None) -> int:
+        return self._data.count_intelligence_topics(is_active=is_active)
+
+    def update_topic_embedding(
+        self, topic_id: str, embedding: List[float], model: str
+    ) -> bool:
+        return self._data.update_intelligence_topic_embedding(topic_id, embedding, model)
+
+    def assign_entry_to_topic(
+        self, entry_id: str, topic_id: str
+    ) -> Optional[CanonicalIntelligenceEntry]:
+        row = self._data.assign_intelligence_entry_to_topic(entry_id, topic_id)
+        return CanonicalIntelligenceEntry.from_dict(row) if row else None
+
+    def list_entries_by_topic(
+        self, topic_id: str, limit: int = 100, offset: int = 0
+    ) -> List[CanonicalIntelligenceEntry]:
+        rows = self._data.list_canonical_intelligence_entries_by_topic(
+            topic_id, limit, offset
+        )
+        return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
+
+    def count_entries_by_topic(self, topic_id: str) -> int:
+        return self._data.count_canonical_intelligence_entries_by_topic(topic_id)
+
+    def list_new_topic_evidence(
+        self,
+        topic_id: str,
+        since: Optional[datetime],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        return self._data.list_new_intelligence_topic_evidence(topic_id, since, limit)
+
+    def save_topic_run_log(self, log: IntelligenceTopicRunLog) -> str:
+        return self._data.upsert_intelligence_topic_run_log(log.to_dict())
+
+    def list_topic_run_logs(
+        self,
+        topic_id: Optional[str] = None,
+        run_type: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[IntelligenceTopicRunLog]:
+        rows = self._data.list_intelligence_topic_run_logs(
+            topic_id=topic_id, run_type=run_type, limit=limit, offset=offset
+        )
+        return [IntelligenceTopicRunLog.from_dict(row) for row in rows]
+
+    def get_latest_topic_run_log(
+        self, run_type: str
+    ) -> Optional[IntelligenceTopicRunLog]:
+        row = self._data.get_latest_intelligence_topic_run_log(run_type)
+        return IntelligenceTopicRunLog.from_dict(row) if row else None
+
+    def semantic_search_topics(
+        self,
+        query_embedding: List[float],
+        is_active: Optional[bool] = True,
+        limit: int = 10,
+    ) -> List[Tuple[IntelligenceTopic, float]]:
+        results = self._data.semantic_search_intelligence_topics(
+            query_embedding, is_active=is_active, limit=limit
+        )
+        return [(IntelligenceTopic.from_dict(row), score) for score, row in results]
 
 
 class SQLiteCacheRepository(CacheRepository):
