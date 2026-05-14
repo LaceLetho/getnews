@@ -199,6 +199,15 @@ Set an entry's follow status. The operation is idempotent and returns `404` if t
 }
 ```
 
+The response may also include optional topic assignment fields when following an entry:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `topic` | object or null | `{ "id": "...", "name": "..." }` if a topic was assigned |
+| `topic_error` | string or null | Error message if topic assignment failed |
+
+Both fields are omitted from the response when null.
+
 Example:
 
 ```bash
@@ -336,6 +345,185 @@ curl -H "Authorization: Bearer ${API_KEY}" \
   "https://news.tradao.xyz/intelligence/search?q=payment%20channels&window=7d&tracking_scope=all&page=1&page_size=10"
 ```
 
+## GET /intelligence/topics
+
+List intelligence topics grouped from followed canonical entries.
+
+### Query Parameters
+
+| Parameter | Type | Required | Default |
+|-----------|------|----------|---------|
+| `active_only` | boolean | No | true |
+| `page` | integer | No | 1 |
+| `page_size` | integer | No | 20 |
+
+Set `active_only=false` to include merged/inactive topics.
+
+### Response (200)
+
+```json
+{
+  "items": [
+    {
+      "id": "topic-uuid",
+      "name": "接码平台",
+      "description": "接码平台相关情报",
+      "enriched_summary": "LLM generated deep-dive summary",
+      "entry_count": 2,
+      "enriched_at": "2026-05-14T06:00:00+00:00",
+      "updated_at": "2026-05-14T06:30:00+00:00"
+    }
+  ],
+  "total": 31,
+  "page": 1,
+  "page_size": 20
+}
+```
+
+### Example
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topics?active_only=true&page=1&page_size=20"
+```
+
+## GET /intelligence/topics/{topic_id}
+
+Get full detail for a single topic including linked entries and recent run logs.
+
+### Path Parameters
+
+| Parameter | Type | Required |
+|-----------|------|----------|
+| `topic_id` | string | Yes |
+
+### Response (200)
+
+```json
+{
+  "topic": {
+    "id": "topic-uuid",
+    "name": "接码平台",
+    "description": "接码平台相关情报",
+    "enriched_summary": "LLM generated deep-dive summary",
+    "source_channels": [
+      {"name": "channel-a", "url": "https://t.me/example", "type": "telegram_group", "confidence": 0.9}
+    ],
+    "methods": "LLM-inferred attack methods",
+    "vulnerabilities": "LLM-inferred vulnerabilities",
+    "latest_findings": ["finding 1", "finding 2"],
+    "is_active": true,
+    "enriched_at": "2026-05-14T06:00:00+00:00",
+    "updated_at": "2026-05-14T06:30:00+00:00"
+  },
+  "entries": [
+    {
+      "id": "entry-uuid",
+      "entry_type": "slang",
+      "display_name": "接码",
+      "primary_label": "账号交易",
+      "follow_status": "follow",
+      "topic_id": "topic-uuid",
+      "confidence": 0.92,
+      "evidence_count": 8
+    }
+  ],
+  "recent_logs": [
+    {
+      "id": "log-uuid",
+      "run_type": "converge",
+      "status": "success",
+      "topic_id": "topic-uuid",
+      "entry_id": null,
+      "message": "Merged 接码 <- 接码平台",
+      "details": {"keeper_id": "...", "merged_id": "...", "similarity": 0.8988},
+      "started_at": "2026-05-14T06:30:00+00:00",
+      "finished_at": "2026-05-14T06:30:01+00:00",
+      "created_at": "2026-05-14T06:30:01+00:00"
+    }
+  ]
+}
+```
+
+Returns `404` if topic ID does not exist.
+
+### Example
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topics/topic-uuid"
+```
+
+## GET /intelligence/topic-runs
+
+List topic run logs with optional filters. Run types are `auto_link` (entry-to-topic assignment), `enrich` (LLM enrichment), and `converge` (topic merging).
+
+### Query Parameters
+
+| Parameter | Type | Required | Default |
+|-----------|------|----------|---------|
+| `topic_id` | string | No | all topics |
+| `run_type` | string | No | all types |
+| `page` | integer | No | 1 |
+| `page_size` | integer | No | 20 |
+
+### Response (200)
+
+```json
+{
+  "items": [
+    {
+      "id": "log-uuid",
+      "run_type": "auto_link",
+      "status": "success",
+      "topic_id": "topic-uuid",
+      "entry_id": "entry-uuid",
+      "message": null,
+      "details": {},
+      "started_at": "2026-05-14T06:00:00+00:00",
+      "finished_at": "2026-05-14T06:00:00+00:00",
+      "created_at": "2026-05-14T06:00:00+00:00"
+    }
+  ],
+  "page": 1,
+  "page_size": 20
+}
+```
+
+### Example
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topic-runs?run_type=converge&page=1&page_size=10"
+```
+
+## POST /intelligence/topics/converge
+
+Trigger LLM-based topic convergence. Finds similar topic pairs via vector embedding similarity (cosine >= 0.88 by default), then confirms each merge candidate with LLM. The keeper is the topic with more linked entries.
+
+Requires `POST`. No request body is needed.
+
+### Response (200)
+
+```json
+{
+  "success": true,
+  "merged_count": 1,
+  "skipped": false,
+  "message": "Merged 1 topic pairs"
+}
+```
+
+If no similar pairs exist, `merged_count` is 0 and `skipped` may be true.
+
+### Example
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topics/converge"
+```
+
 ## GET /intelligence/raw/{raw_item_id}
 
 Get a raw intelligence item by ID. Returns original collected text if it is still within its retention window.
@@ -388,8 +576,9 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 | `200` | Success |
 | `400` | Invalid `tracking_scope` |
 | `401` | Missing or invalid Bearer token |
-| `404` | Entry or raw item not found |
+| `404` | Entry, raw item, or topic not found |
 | `422` | FastAPI validation error, such as missing `q` on search |
+| `500` | Controller not initialized (converge only) |
 | `503` | Intelligence repository, embedding service, or storage config is not initialized |
 
 ## Notes
@@ -398,4 +587,6 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 - Expired raw text is represented as `raw_text: null` and `is_expired: true`.
 - Canonical structured knowledge remains queryable after raw text expires.
 - `GET /intelligence/search` is separate from async `POST /semantic-search`; intelligence search is synchronous and query-only.
+- Following an entry automatically assigns it to a topic via `POST /intelligence/entries/{entry_id}/follow-status`; unfollowing clears the topic link and deactivates empty topics.
+- Topic convergence requires topics to have embedding vectors. The analysis service needs `OPENAI_API_KEY` and `OPENCODE_API_KEY` to generate embeddings and run LLM-based merge confirmation.
 - These endpoints exist only on `analysis-service` / `api-only` deployments. They are not available from `ingestion`.

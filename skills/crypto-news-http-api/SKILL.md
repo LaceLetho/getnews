@@ -19,6 +19,7 @@ Typical triggers:
 - Poll an API job until it finishes and then fetch the final result
 - Create, list, or delete datasources through the HTTP API
 - Query and manage hidden-channel intelligence entries (discovery, follow states, semantic search, raw evidence)
+- List, inspect, and converge intelligence topics that group canonical entries
 - Check service health before or after an API workflow
 
 ## Quick Reference
@@ -129,6 +130,21 @@ Canonical entries use a follow state of `follow`, `unfollow`, or `unset`. Newly 
 
 For full parameter details, response schemas, and examples, see the [Intelligence Query Reference](references/intelligence-query.md).
 
+## Intelligence Topics
+
+Topics automatically group followed canonical entries to reduce noise in `/intel_recent` and enable LLM-based deep-dive enrichment. Topic routes are synchronous and Bearer-protected.
+
+- `GET /intelligence/topics` — List active topics with entry counts, paginated. Query `active_only=false` to include inactive (merged) topics.
+- `GET /intelligence/topics/{topic_id}` — Get topic detail including enriched summary, source channels, methods, vulnerabilities, latest findings, linked entries, and recent run logs.
+- `GET /intelligence/topic-runs` — List topic run logs (auto_link, enrich, converge). Filter by `topic_id` or `run_type`.
+- `POST /intelligence/topics/converge` — Trigger LLM-based topic convergence. Merges similar topics using embedding similarity + LLM confirmation. Returns `merged_count` and `skipped`.
+
+When you follow an entry via `POST /intelligence/entries/{entry_id}/follow-status` with `"follow_status":"follow"`, the system automatically assigns it to a topic. The response may include optional `topic` and `topic_error` fields reflecting the topic assignment result.
+
+When you unfollow an entry, its `topic_id` is cleared. If the topic has no remaining linked entries, it is automatically deactivated.
+
+For full topic response schemas and examples, see the [Intelligence Query Reference](references/intelligence-query.md).
+
 ## Telegram Webhook
 
 The webhook endpoint exists for maintainer-level Telegram integration. It is not the primary path for day-to-day operators. Regular users should interact through the API routes or Telegram slash commands instead.
@@ -157,6 +173,10 @@ Supported HTTP routes:
 - `POST /intelligence/entries/{entry_id}/follow-status` - Set intelligence entry follow status
 - `GET /intelligence/search` - Semantic search across intelligence entries (paginated with `page`/`page_size`)
 - `GET /intelligence/raw/{raw_item_id}` - Get raw intelligence item by ID
+- `GET /intelligence/topics` - List intelligence topics with entry counts
+- `GET /intelligence/topics/{topic_id}` - Get topic detail with linked entries and run logs
+- `GET /intelligence/topic-runs` - List topic run logs with optional filters
+- `POST /intelligence/topics/converge` - Trigger topic convergence (merges similar topics via LLM)
 
 ## Non-Goals
 
