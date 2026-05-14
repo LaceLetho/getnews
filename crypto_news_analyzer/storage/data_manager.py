@@ -3238,12 +3238,22 @@ class DataManager:
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
+                old_topic_id = None
+                if status == "unfollow":
+                    cursor.execute(
+                        self._sql("SELECT topic_id FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"),
+                        (entry_id,),
+                    )
+                    old_row = cursor.fetchone()
+                    if old_row:
+                        old_topic_id = old_row["topic_id"] if self.backend == "postgres" else old_row[0]
                 cursor.execute(
                     self._sql(
                         "UPDATE intelligence_canonical_entries "
                         "SET follow_status = ?, tracking_enabled = ?, is_ignored = ?, "
                         "ignored_at = CASE WHEN ? THEN COALESCE(ignored_at, ?) ELSE NULL END, "
                         "ignored_by = CASE WHEN ? THEN COALESCE(ignored_by, 'follow_status') ELSE NULL END, "
+                        "topic_id = CASE WHEN ? THEN NULL ELSE topic_id END, "
                         "updated_at = ? WHERE id = ?"
                     ),
                     (
@@ -3252,6 +3262,7 @@ class DataManager:
                         status == "unfollow",
                         status == "unfollow",
                         datetime.utcnow().isoformat(),
+                        status == "unfollow",
                         status == "unfollow",
                         datetime.utcnow().isoformat(),
                         entry_id,
@@ -3266,6 +3277,8 @@ class DataManager:
                 )
                 row = cursor.fetchone()
                 conn.commit()
+                if status == "unfollow" and old_topic_id:
+                    self._deactivate_topic_if_no_entries(old_topic_id)
                 return self._serialize_canonical_intelligence_entry_row(conn, row) if row else None
 
     def set_canonical_intelligence_entries_follow_status(
@@ -3277,15 +3290,30 @@ class DataManager:
         status = self._normalize_follow_status(follow_status)
         now = datetime.utcnow().isoformat()
         placeholders = ", ".join("?" for _ in ids)
+        old_topic_ids: set = set()
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
+                if status == "unfollow":
+                    cursor.execute(
+                        self._sql(
+                            f"SELECT topic_id FROM intelligence_canonical_entries "
+                            f"WHERE id IN ({placeholders}) AND topic_id IS NOT NULL"
+                        ),
+                        tuple(ids),
+                    )
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        tid = row["topic_id"] if self.backend == "postgres" else row[0]
+                        if tid:
+                            old_topic_ids.add(tid)
                 cursor.execute(
                     self._sql(
                         "UPDATE intelligence_canonical_entries "
                         "SET follow_status = ?, tracking_enabled = ?, is_ignored = ?, "
                         "ignored_at = CASE WHEN ? THEN COALESCE(ignored_at, ?) ELSE NULL END, "
                         "ignored_by = CASE WHEN ? THEN COALESCE(ignored_by, 'follow_status') ELSE NULL END, "
+                        "topic_id = CASE WHEN ? THEN NULL ELSE topic_id END, "
                         "updated_at = ? "
                         f"WHERE id IN ({placeholders})"
                     ),
@@ -3296,13 +3324,44 @@ class DataManager:
                         status == "unfollow",
                         now,
                         status == "unfollow",
+                        status == "unfollow",
                         now,
                         *ids,
                     ),
                 )
                 updated = cursor.rowcount
                 conn.commit()
-                return int(updated)
+        for tid in old_topic_ids:
+            self._deactivate_topic_if_no_entries(tid)
+        return int(updated)
+
+    def _deactivate_topic_if_no_entries(self, topic_id: str) -> None:
+        count = self._count_entries_by_topic(topic_id)
+        if count == 0:
+            with self._lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        self._sql(
+                            "UPDATE intelligence_topics "
+                            "SET is_active = FALSE, updated_at = ? WHERE id = ?"
+                        ),
+                        (datetime.utcnow().isoformat(), topic_id),
+                    )
+                    conn.commit()
+
+    def _count_entries_by_topic(self, topic_id: str) -> int:
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql(
+                        "SELECT COUNT(*) FROM intelligence_canonical_entries WHERE topic_id = ?"
+                    ),
+                    (topic_id,),
+                )
+                row = cursor.fetchone()
+                return int(row["count"] if self.backend == "postgres" else row[0]) if row else 0
 
     def _set_canonical_intelligence_tracking(
         self, entry_id: str, tracking_enabled: bool
