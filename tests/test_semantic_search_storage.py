@@ -306,7 +306,7 @@ def test_semantic_search_retrieval_applies_time_window_and_per_subquery_cap(monk
         "[0.1,0.2,0.3]",
         since_time.isoformat(),
         expected_end_time.isoformat(),
-        50,
+        200,
     )
 
 

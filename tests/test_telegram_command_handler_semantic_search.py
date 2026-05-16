@@ -76,7 +76,9 @@ def test_build_application_registers_semantic_search_command():
         handler._build_application()
 
     registered_commands = [
-        call.args[0].commands for call in fake_application.add_handler.call_args_list
+        call.args[0].commands
+        for call in fake_application.add_handler.call_args_list
+        if hasattr(call.args[0], "commands")
     ]
     assert any("semantic_search" in commands for commands in registered_commands)
 

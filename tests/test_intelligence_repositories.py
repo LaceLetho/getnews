@@ -9,7 +9,12 @@ from crypto_news_analyzer.domain.models import (
     EntryType,
     ExtractionObservation,
     IntelligenceCrawlCheckpoint,
+    IntelligenceTopic,
+    MergePreview,
     RawIntelligenceItem,
+    TopicFinding,
+    TopicPrompt,
+    TopicResearchRun,
 )
 from crypto_news_analyzer.models import StorageConfig
 from crypto_news_analyzer.storage.data_manager import DataManager
@@ -53,6 +58,46 @@ def _observation(raw_item: RawIntelligenceItem, index: int) -> ExtractionObserva
         channel_name=f"Alpha {index}",
         channel_urls=["https://t.me/alpha"],
     )
+
+
+def _topic(repository: IntelligenceRepository, name: str = "fraud rings") -> IntelligenceTopic:
+    topic = IntelligenceTopic.create(name=name)
+    repository.save_topic(topic)
+    return topic
+
+
+def _active_prompt(repository: IntelligenceRepository, topic_id: str) -> TopicPrompt:
+    prompt = TopicPrompt.create(
+        intelligence_topic_id=topic_id,
+        prompt_version="topic-prompt-v1",
+        prompt_text="Find concrete topic evidence only.",
+        schema_version="topic-findings-v1",
+        status="active",
+        activated_by="tester",
+        activated_at=datetime.utcnow(),
+    )
+    repository.create_topic_prompt_version(prompt)
+    return prompt
+
+
+def _finding(
+    repository: IntelligenceRepository,
+    topic_id: str,
+    prompt_id: str,
+    suffix: str,
+) -> TopicFinding:
+    finding = TopicFinding.create(
+        intelligence_topic_id=topic_id,
+        prompt_version_id=prompt_id,
+        finding_payload={"summary": f"finding {suffix}", "severity": "medium"},
+        content_hash=f"finding-hash-{suffix}",
+        citations=[{"message_id": f"raw-{suffix}", "message_snippet": "evidence"}],
+        source_raw_item_ids=[f"raw-{suffix}"],
+        confidence=0.8,
+    )
+    finding.id = f"finding-{suffix}"
+    repository.create_topic_finding(finding)
+    return finding
 
 
 def test_intelligence_repository_implements_contract_and_round_trips(tmp_path: Path):
@@ -143,32 +188,36 @@ def test_intelligence_repository_implements_contract_and_round_trips(tmp_path: P
         manager.close()
 
 
-def test_raw_item_ttl_cleanup_and_text_purge(tmp_path: Path):
+def test_raw_item_retention_cleanup_soft_purges_text(tmp_path: Path):
     manager, repository = _build_repository(tmp_path / "intelligence-ttl.db")
     try:
+        now = datetime.utcnow()
         old = RawIntelligenceItem.create(
             source_type="telegram",
             source_id="chat-1",
             raw_text="old",
             content_hash="old-hash",
-            expires_at=datetime.utcnow() - timedelta(days=1),
+            expires_at=now - timedelta(days=1),
         )
+        old.collected_at = now - timedelta(days=181)
         fresh = RawIntelligenceItem.create(
             source_type="telegram",
             source_id="chat-1",
             raw_text="fresh",
             content_hash="fresh-hash",
-            expires_at=datetime.utcnow() + timedelta(days=1),
+            expires_at=now + timedelta(days=1),
         )
+        fresh.collected_at = now - timedelta(days=179)
         repository.save_raw_item(old)
         repository.save_raw_item(fresh)
 
-        expiring = repository.get_raw_items_expiring_before(datetime.utcnow())
+        cutoff = now - timedelta(days=180)
+        expiring = repository.get_raw_items_expiring_before(cutoff)
         assert [item.id for item in expiring] == [old.id]
-        assert repository.delete_expired_raw_items(datetime.utcnow()) == 1
-        assert [
-            item.id for item in repository.get_raw_items_by_source("telegram", "chat-1", 10, 0)
-        ] == [fresh.id]
+        assert repository.purge_raw_text_older_than(cutoff) == 1
+        remaining = repository.get_raw_items_by_source("telegram", "chat-1", 10, 0)
+        assert {item.id for item in remaining} == {old.id, fresh.id}
+        assert {item.id: item.raw_text for item in remaining} == {old.id: None, fresh.id: "fresh"}
     finally:
         manager.close()
 
@@ -198,6 +247,285 @@ def test_intelligence_schema_created_without_audit_tables(tmp_path: Path):
         assert {"tracking_enabled", "discovery_presented_at"}.issubset(columns)
         assert "idx_intelligence_canonical_entries_type_key" in indexes
         assert not any("audit" in table for table in tables)
+    finally:
+        manager.close()
+
+
+def test_topic_only_sqlite_schema_and_raw_topic_id_not_intelligence_fk(tmp_path: Path):
+    manager = DataManager(StorageConfig(database_path=str(tmp_path / "topic-only-schema.db")))
+    try:
+        with manager._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            tables = {row[0] for row in cursor.fetchall()}
+            cursor.execute("PRAGMA table_info(intelligence_topics)")
+            topic_columns = {row[1] for row in cursor.fetchall()}
+            cursor.execute("PRAGMA table_info(intelligence_topic_processed_raw_items)")
+            processed_columns = {row[1] for row in cursor.fetchall()}
+            cursor.execute("PRAGMA foreign_key_list(intelligence_topic_findings)")
+            finding_fks = {(row[3], row[2], row[4]) for row in cursor.fetchall()}
+            cursor.execute("PRAGMA foreign_key_list(intelligence_topic_processed_raw_items)")
+            processed_fks = {(row[3], row[2], row[4]) for row in cursor.fetchall()}
+            cursor.execute("PRAGMA foreign_key_list(raw_intelligence_items)")
+            raw_fks = cursor.fetchall()
+
+        assert {
+            "intelligence_topic_prompt_versions",
+            "intelligence_topic_findings",
+            "intelligence_topic_processed_raw_items",
+            "intelligence_topic_research_runs",
+            "intelligence_topic_research_checkpoints",
+            "intelligence_topic_merge_previews",
+            "intelligence_finding_archives",
+        }.issubset(tables)
+        assert "lifecycle_status" in topic_columns
+        assert {
+            "raw_item_id",
+            "intelligence_topic_id",
+            "prompt_version",
+            "schema_version",
+        }.issubset(processed_columns)
+        assert ("intelligence_topic_id", "intelligence_topics", "id") in finding_fks
+        assert ("prompt_version_id", "intelligence_topic_prompt_versions", "id") in finding_fks
+        assert ("intelligence_topic_id", "intelligence_topics", "id") in processed_fks
+        assert not any(row[3] == "topic_id" and row[2] == "intelligence_topics" for row in raw_fks)
+    finally:
+        manager.close()
+
+
+def test_prompt_version_creation_and_active_prompt_lookup(tmp_path: Path):
+    manager, repository = _build_repository(tmp_path / "topic-prompt.db")
+    try:
+        topic = _topic(repository)
+        draft = TopicPrompt.create(
+            intelligence_topic_id=topic.id,
+            prompt_version="draft-v1",
+            prompt_text="Draft prompt",
+            schema_version="schema-v1",
+            status="draft",
+        )
+        active = TopicPrompt.create(
+            intelligence_topic_id=topic.id,
+            prompt_version="active-v1",
+            prompt_text="Active prompt",
+            schema_version="schema-v1",
+            status="active",
+            activated_at=datetime.utcnow(),
+        )
+
+        assert repository.create_topic_prompt_version(draft) == draft.id
+        assert repository.create_topic_prompt_version(active) == active.id
+
+        loaded = repository.get_active_topic_prompt(topic.id)
+
+        assert loaded is not None
+        assert loaded.id == active.id
+        assert loaded.status == "active"
+        loaded_draft = repository.get_topic_prompt_by_id(draft.id)
+        assert loaded_draft is not None
+        assert loaded_draft.status == "draft"
+    finally:
+        manager.close()
+
+
+def test_finding_create_list_archive_and_idempotent_retry(tmp_path: Path):
+    manager, repository = _build_repository(tmp_path / "topic-finding.db")
+    try:
+        topic = _topic(repository)
+        prompt = _active_prompt(repository, topic.id)
+        finding = TopicFinding.create(
+            intelligence_topic_id=topic.id,
+            prompt_version_id=prompt.id,
+            finding_payload={"summary": "same finding"},
+            content_hash="stable-content-hash",
+            source_raw_item_ids=["raw-1"],
+            confidence=0.7,
+        )
+        retry = TopicFinding.create(
+            intelligence_topic_id=topic.id,
+            prompt_version_id=prompt.id,
+            finding_payload={"summary": "same finding retried"},
+            content_hash="stable-content-hash",
+            source_raw_item_ids=["raw-1"],
+            confidence=0.9,
+        )
+
+        first_id = repository.create_topic_finding(finding)
+        retry_id = repository.create_topic_finding(retry)
+        active = repository.list_active_findings(topic.id)
+
+        assert retry_id == first_id
+        assert [item.id for item in active] == [first_id]
+
+        archived = repository.archive_finding(first_id, superseded_by_id=None)
+
+        assert archived is not None
+        assert archived.status == "archived"
+        assert repository.list_active_findings(topic.id) == []
+        archive = repository.get_finding_archive(first_id)
+        assert archive is not None
+        assert archive.archive_reason == "archived"
+    finally:
+        manager.close()
+
+
+def test_topic_run_success_advances_checkpoint_failed_run_does_not(tmp_path: Path):
+    manager, repository = _build_repository(tmp_path / "topic-checkpoint.db")
+    try:
+        topic = _topic(repository)
+        prompt = _active_prompt(repository, topic.id)
+        success = TopicResearchRun.create(
+            intelligence_topic_id=topic.id,
+            prompt_version_id=prompt.id,
+            status="running",
+        )
+        repository.create_topic_research_run(success)
+        updated_success = repository.update_topic_research_run(
+            success.id,
+            "success",
+            checkpoint_cursor="2026-01-01T01:00:00",
+            checkpoint_payload={"cursor": "success"},
+            items_scanned=4,
+            findings_created=2,
+        )
+        assert updated_success is not None
+        repository.update_topic_checkpoint(
+            topic.id,
+            prompt.id,
+            updated_success.checkpoint_cursor,
+            updated_success.checkpoint_payload,
+            last_run_id=success.id,
+        )
+        checkpoint = repository.get_topic_checkpoint(topic.id, prompt.id)
+
+        failed = TopicResearchRun.create(
+            intelligence_topic_id=topic.id,
+            prompt_version_id=prompt.id,
+            status="running",
+        )
+        repository.create_topic_research_run(failed)
+        updated_failed = repository.update_topic_research_run(
+            failed.id,
+            "failed",
+            checkpoint_cursor="2026-01-01T02:00:00",
+            checkpoint_payload={"cursor": "failed"},
+            error_message="model unavailable",
+        )
+        checkpoint_after_failure = repository.get_topic_checkpoint(topic.id, prompt.id)
+
+        assert updated_success.status == "success"
+        assert checkpoint is not None
+        assert checkpoint["checkpoint_cursor"] == "2026-01-01T01:00:00"
+        assert checkpoint["checkpoint_payload"] == {"cursor": "success"}
+        assert updated_failed is not None
+        assert updated_failed.status == "failed"
+        assert updated_failed.error_message == "model unavailable"
+        assert checkpoint_after_failure == checkpoint
+        assert [run.id for run in repository.list_topic_research_runs(topic.id)] == [failed.id, success.id]
+        loaded_failed = repository.get_topic_research_run(failed.id)
+        assert loaded_failed is not None
+        assert loaded_failed.error_message == "model unavailable"
+    finally:
+        manager.close()
+
+
+def test_get_raw_items_since_and_processed_raw_idempotency(tmp_path: Path):
+    manager, repository = _build_repository(tmp_path / "topic-raw.db")
+    try:
+        topic = _topic(repository)
+        prompt = _active_prompt(repository, topic.id)
+        base = datetime(2026, 1, 1, 12, 0, 0)
+        raw_old = _raw_item(1, base)
+        raw_new = _raw_item(2, base + timedelta(minutes=5))
+        raw_other = _raw_item(3, base + timedelta(minutes=10))
+        for raw, collected_at in (
+            (raw_old, base),
+            (raw_new, base + timedelta(minutes=5)),
+            (raw_other, base + timedelta(minutes=10)),
+        ):
+            raw.collected_at = collected_at
+            repository.save_raw_item(raw)
+        finding = _finding(repository, topic.id, prompt.id, "raw-idem")
+
+        raws = repository.get_raw_items_since(topic.id, base + timedelta(minutes=1), limit=10)
+        inserted_once = repository.mark_raw_items_processed(
+            topic.id,
+            [raw_new.id, raw_other.id],
+            prompt.prompt_version,
+            prompt.schema_version,
+            finding_id=finding.id,
+        )
+        inserted_twice = repository.mark_raw_items_processed(
+            topic.id,
+            [raw_new.id, raw_other.id],
+            prompt.prompt_version,
+            prompt.schema_version,
+            finding_id=finding.id,
+        )
+
+        assert [item.id for item in raws] == [raw_new.id, raw_other.id]
+        assert inserted_once == 2
+        assert inserted_twice == 0
+        assert repository.get_processed_topic_raw_item_ids(
+            [raw_old.id, raw_new.id, raw_other.id],
+            topic.id,
+            prompt.prompt_version,
+            prompt.schema_version,
+        ) == {raw_new.id, raw_other.id}
+    finally:
+        manager.close()
+
+
+def test_merge_preview_accept_and_stale_rejection(tmp_path: Path):
+    manager, repository = _build_repository(tmp_path / "topic-merge-preview.db")
+    try:
+        topic = _topic(repository)
+        prompt = _active_prompt(repository, topic.id)
+        finding_a = _finding(repository, topic.id, prompt.id, "a")
+        finding_b = _finding(repository, topic.id, prompt.id, "b")
+        preview = MergePreview.create(
+            intelligence_topic_id=topic.id,
+            source_finding_ids=[finding_b.id, finding_a.id],
+            preview_payload={"merged_summary": "combined"},
+            content_hash="merge-preview-hash",
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        )
+
+        preview_id = repository.create_merge_preview(preview)
+        duplicate_id = repository.create_merge_preview(
+            MergePreview.create(
+                intelligence_topic_id=topic.id,
+                source_finding_ids=[finding_a.id, finding_b.id],
+                preview_payload={"merged_summary": "combined retry"},
+                content_hash="merge-preview-hash-retry",
+                expires_at=datetime.utcnow() + timedelta(hours=1),
+            )
+        )
+        loaded = repository.get_merge_preview(preview_id)
+
+        assert duplicate_id == preview_id
+        assert loaded is not None
+        assert loaded.source_finding_ids == [finding_a.id, finding_b.id]
+        assert repository.accept_merge_preview(preview_id) is True
+        applied = repository.get_merge_preview(preview_id)
+        assert applied is not None
+        assert applied.state == "applied"
+
+        stale = MergePreview.create(
+            intelligence_topic_id=topic.id,
+            source_finding_ids=[finding_a.id, finding_b.id],
+            preview_payload={"merged_summary": "stale"},
+            content_hash="merge-preview-stale",
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        )
+        stale.id = "stale-preview"
+        repository.create_merge_preview(stale)
+        repository.archive_finding(finding_a.id)
+
+        assert repository.accept_merge_preview(stale.id) is False
+        expired = repository.get_merge_preview(stale.id)
+        assert expired is not None
+        assert expired.state == "expired"
     finally:
         manager.close()
 
@@ -379,7 +707,7 @@ def test_postgres_evidence_context_window_uses_typed_null_safe_matching():
     connection = FakeConnection()
     manager = DataManager.__new__(DataManager)
     manager.backend = "postgres"
-    manager._get_connection = lambda: connection
+    manager._get_connection = lambda: connection  # pyright: ignore[reportAttributeAccessIssue]
 
     result = manager.get_intelligence_entry_evidence_context_window(
         "entry-1",

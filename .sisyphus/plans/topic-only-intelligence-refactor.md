@@ -127,7 +127,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 > Implementation + Test = ONE task. Never separate.
 > EVERY task MUST have: Agent Profile + Parallelization + QA Scenarios.
 
-- [ ] 1. Establish topic-only TDD contract and reference sweep
+- [x] 1. Establish topic-only TDD contract and reference sweep
 
   **What to do**: Before implementation, add/adjust failing tests that define the new domain vocabulary and deleted old surface. Use LSP/AST search to list references to `EntryType`, `SlangObservation`, `ChannelObservation`, `CanonicalIntelligenceEntry`, `/intel_`, and `/intelligence/entries`. Create a short internal checklist in test comments or fixtures for required replacements: topic prompts, topic findings, merge previews, per-topic checkpoints, and raw retention.
   **Must NOT do**: Do not implement production behavior before the tests define expected behavior. Do not preserve compatibility aliases.
@@ -172,7 +172,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `test(intelligence): define topic-only refactor contracts` | Files: [tests/test_topic_prompt_workflow.py, tests/test_topic_research_scheduler.py, tests/test_topic_findings_api.py, tests/test_topic_findings_telegram.py]
 
-- [ ] 2. Add topic-only schema, migrations, and domain models
+- [x] 2. Add topic-only schema, migrations, and domain models
 
   **What to do**: Introduce topic prompt versions, topic findings, topic research run/checkpoint records, topic merge previews, and finding archive metadata. Preserve `raw_intelligence_items` and do not reuse its `topic_id`; use explicit names such as `intelligence_topic_id`, `prompt_version_id`, `source_finding_ids`, and `superseded_by_finding_id`. Add PostgreSQL migration and SQLite DDL parity. Update dataclasses/Pydantic/domain models to represent `draft/active/paused/archived` topic lifecycle, structured finding payloads, citations, and merge preview state.
   **Must NOT do**: Do not migrate old canonical entries into topics/findings. Do not make `channel` or `slang` model fields except as raw source metadata/citation text.
@@ -217,7 +217,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `feat(intelligence): add topic-only persistence models` | Files: [crypto_news_analyzer/domain/models.py, crypto_news_analyzer/storage/data_manager.py, crypto_news_analyzer/storage/repositories.py, crypto_news_analyzer/domain/repositories.py, migrations/postgresql/*.sql, tests/test_intelligence_models.py, tests/test_intelligence_repositories.py]
 
-- [ ] 3. Replace prompt templates for topic prompt generation, research, and merge
+- [x] 3. Replace prompt templates for topic prompt generation, research, and merge
 
   **What to do**: Add prompt files under `prompts/` for: topic prompt generation from user theme, topic prompt revision from user feedback, scheduled topic research over raw messages, and finding merge. Each prompt must demand structured JSON matching Pydantic schemas and require citations/snippets for each finding. Remove or stop using the old `intelligence_extraction_prompt.md` channel/slang extraction prompt from active flow.
   **Must NOT do**: Do not mention `slang` or `channel` as intelligence categories. Source/channel metadata may only appear as raw source context.
@@ -260,7 +260,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `feat(prompts): add topic research prompt templates` | Files: [prompts/topic_prompt_generation_prompt.md, prompts/topic_prompt_revision_prompt.md, prompts/topic_research_prompt.md, prompts/topic_findings_merge_prompt.md, tests/test_topic_prompt_workflow.py]
 
-- [ ] 4. Implement repository contracts for prompt versions, findings, runs, and merge previews
+- [x] 4. Implement repository contracts for prompt versions, findings, runs, and merge previews
 
   **What to do**: Extend `IntelligenceRepository` with methods for topic prompt drafts/versions, topic findings listing/creation/archive, per-topic run logs/checkpoints, merge preview create/get/accept/reject, and raw message retrieval since cursor. Implement in SQLite/Postgres repositories with uniqueness/idempotency constraints: processed raw `(raw_item_id, intelligence_topic_id, prompt_version, schema_version)` and merge preview source finding IDs.
   **Must NOT do**: Do not expose old canonical entry repository methods to new services. Do not advance checkpoint on failed run.
@@ -301,7 +301,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `feat(intelligence): add topic finding repository contracts` | Files: [crypto_news_analyzer/domain/repositories.py, crypto_news_analyzer/storage/repositories.py, tests/test_intelligence_repositories.py]
 
-- [ ] 5. Add raw message retention configuration and tests
+- [x] 5. Add raw message retention configuration and tests
 
   **What to do**: Change raw text retention from the current intelligence TTL behavior to a configurable default of 180 days. Ensure referenced raw messages remain intelligible through persisted finding snippets/source refs even after retention cleanup. Update config parsing/defaults and tests for retention behavior.
   **Must NOT do**: Do not hard-delete raw messages as part of migration. Do not reduce retention below 180 days by default.
@@ -343,7 +343,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `feat(intelligence): configure raw message retention` | Files: [crypto_news_analyzer/config/manager.py, crypto_news_analyzer/models.py, crypto_news_analyzer/intelligence/pipeline.py, config.jsonc, tests/test_raw_message_retention.py, tests/test_intelligence_ttl.py]
 
-- [ ] 6. Replace old extractor/merge entry pipeline with topic-only service interfaces
+- [x] 6. Replace old extractor/merge entry pipeline with topic-only service interfaces
 
   **What to do**: Remove active use of `ChannelObservation`, `SlangObservation`, `ExtractionObservation`, `CanonicalIntelligenceEntry`, `IntelligenceMergeEngine`, and old entry embedding/linking from topic research flow. Add service interfaces/classes for topic prompt generation/revision and structured topic research output parsing. Keep old modules only if needed temporarily for tests/import compatibility, but they must not be wired into runtime.
   **Must NOT do**: Do not add new channel/slang normalization logic. Do not keep old canonicalization in `run_intelligence_collection_once()`.
@@ -387,7 +387,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `refactor(intelligence): replace entry extraction services` | Files: [crypto_news_analyzer/analyzers/intelligence_extractor.py, crypto_news_analyzer/intelligence/*.py, tests/test_intelligence_extraction.py, tests/test_intelligence_merge.py, tests/test_topic_research_scheduler.py]
 
-- [ ] 7. Implement topic prompt draft/revise/manual-confirm workflow
+- [x] 7. Implement topic prompt draft/revise/manual-confirm workflow
 
   **What to do**: Add service methods and API/Telegram-ready repository calls for creating a draft topic from user theme, generating a professional research prompt via LLM, revising it with user feedback, replacing it manually, and confirming it into an active topic prompt version. Confirmed topic enters `active`; draft stays `draft`; prompt edit on active topic creates a new version and preserves old findings with original prompt version metadata.
   **Must NOT do**: Do not activate a topic without a confirmed prompt. Do not call real LLM in tests.
@@ -429,7 +429,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `feat(intelligence): add topic prompt workflow` | Files: [crypto_news_analyzer/intelligence/topic_prompts.py, crypto_news_analyzer/analyzers/prompt_manager.py, tests/test_topic_prompt_workflow.py]
 
-- [ ] 8. Implement ingestion-only scheduled topic research service
+- [x] 8. Implement ingestion-only scheduled topic research service
 
   **What to do**: Add a service invoked from ingestion after raw crawl storage that loads active topics, determines per-topic cursor, fetches raw messages collected since last successful run, compacts/group messages by source metadata and chronological order, chunks when input exceeds configured limits, calls LLM with topic research prompt, validates structured output, saves findings with citations/snippets/source refs, and records run logs/checkpoints. Partial topic success is allowed: successful topics advance their checkpoint; failed topics do not.
   **Must NOT do**: Do not run scheduled research in `analysis-service`, `api-only`, FastAPI startup, or Telegram bot startup. Do not skip late-arriving messages due to `published_at` cursor.
@@ -474,7 +474,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `feat(intelligence): run scheduled topic research in ingestion` | Files: [crypto_news_analyzer/intelligence/topic_research.py, crypto_news_analyzer/intelligence/pipeline.py, crypto_news_analyzer/execution_coordinator.py, tests/test_topic_research_scheduler.py, tests/test_intelligence_ingestion_runtime.py]
 
-- [ ] 9. Implement finding merge preview and accept workflow
+- [x] 9. Implement finding merge preview and accept workflow
 
   **What to do**: Add service logic to create persisted merge previews for a topic from current active finding IDs plus topic prompt context. LLM returns structured merged finding content. Store preview with expiry, prompt version, source finding IDs, and content hash. Accepting a preview must verify it is unexpired, belongs to the topic, source finding IDs still match the active finding set intended for merge, then persist merged finding and archive/hide exactly those source findings with `superseded_by_finding_id` or equivalent.
   **Must NOT do**: Do not accept client-supplied merge result text as authoritative. Do not archive findings not bound to the preview.
@@ -516,7 +516,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `feat(intelligence): add topic finding merge workflow` | Files: [crypto_news_analyzer/intelligence/topic_findings.py, prompts/topic_findings_merge_prompt.md, tests/test_topic_findings_api.py]
 
-- [ ] 10. Wire topic research into ingestion runtime only
+- [x] 10. Wire topic research into ingestion runtime only
 
   **What to do**: Update `MainController`/pipeline initialization so ingestion mode creates and calls topic research services after raw crawl storage. Ensure analysis-service/api-only initialize only API/Telegram read/interactive dependencies and never start recurring topic research. Keep ingestion source crawling behavior intact for `purpose="intelligence"` sources.
   **Must NOT do**: Do not start background research loops from FastAPI app creation or Telegram command handler startup.
@@ -560,7 +560,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `refactor(runtime): limit topic research scheduling to ingestion` | Files: [crypto_news_analyzer/execution_coordinator.py, crypto_news_analyzer/main.py, crypto_news_analyzer/api_server.py, tests/test_intelligence_ingestion_runtime.py, tests/test_api_server.py]
 
-- [ ] 11. Implement topic-only HTTP API workflow
+- [x] 11. Implement topic-only HTTP API workflow
 
   **What to do**: Under existing authenticated `/intelligence/topics*` namespace, expose endpoints for create draft from user theme, revise draft with feedback, manually replace prompt draft, confirm prompt, edit active prompt (new version), list topics, get topic detail with prompt versions and active findings, create merge preview, accept merge preview, pause/archive topic, and list topic research runs. Delete `/intelligence/entries*`, `/intelligence/discovery`, `/intelligence/search` entry routes if they expose old first-class entry concepts.
   **Must NOT do**: Do not expose `entry_type`, `slang`, `channel`, or canonical-entry fields in active topic responses. Do not add compatibility aliases.
@@ -603,7 +603,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `feat(api): expose topic-only intelligence workflows` | Files: [crypto_news_analyzer/api_server.py, tests/test_topic_findings_api.py, tests/test_intelligence_api.py]
 
-- [ ] 12. Implement Telegram topic workflow and remove `/intel_*`
+- [x] 12. Implement Telegram topic workflow and remove `/intel_*`
 
   **What to do**: Add/extend `/topic_*` commands for topic draft creation from user theme, prompt revision, manual prompt set, confirm, list, detail, merge preview, merge accept, pause/archive, and logs. Use inline buttons/callbacks for confirm and merge accept where practical; callbacks must verify authorized user and preview/topic IDs. Remove `/intel_*` command registrations and handlers from active bot commands.
   **Must NOT do**: Do not expose old entry/channel/slang wording. Do not rely on manual Telegram verification; use mocked updates/callbacks.
@@ -649,7 +649,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `feat(telegram): add topic-only intelligence commands` | Files: [crypto_news_analyzer/reporters/telegram_command_handler.py, tests/test_topic_findings_telegram.py, tests/test_intelligence_telegram_commands.py]
 
-- [ ] 13. Remove old active entry/intel surfaces and old concept leakage
+- [x] 13. Remove old active entry/intel surfaces and old concept leakage
 
   **What to do**: Delete or fully unwire old entry/discovery/search APIs, `/intel_*` Telegram commands, old response fields, and active docs/help text that present channel/slang/canonical entries as product concepts. Run LSP/AST/text searches and update remaining references to be either raw source metadata, historical migration comments, or removed code. Update tests that formerly expected `entry_type` to expect topic-only models/responses.
   **Must NOT do**: Do not delete raw crawling/storage. Do not remove source metadata fields required for grouping/citations.
@@ -694,7 +694,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `refactor(intelligence): remove legacy entry surfaces` | Files: [crypto_news_analyzer/api_server.py, crypto_news_analyzer/reporters/telegram_command_handler.py, crypto_news_analyzer/domain/models.py, crypto_news_analyzer/intelligence/*.py, prompts/*.md, tests/*.py]
 
-- [ ] 14. Update configuration, README/help text, and operational guardrails
+- [x] 14. Update configuration, README/help text, and operational guardrails
 
   **What to do**: Update `config.jsonc` intelligence settings to topic-only names/defaults, including daily research interval, batch/chunk limits, retention default 180 days, and model config references. Update README/AGENTS-facing help only where needed to remove legacy entry concepts and document topic commands/API at a high level. Keep docs concise and do not add new deployment topology.
   **Must NOT do**: Do not document legacy API-server as primary. Do not add Railway-specific production changes.
@@ -736,7 +736,7 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 
   **Commit**: NO | Message: `docs(intelligence): document topic-only workflow` | Files: [config.jsonc, README.md, AGENTS.md, crypto_news_analyzer/reporters/telegram_command_handler.py, tests/test_raw_message_retention.py]
 
-- [ ] 15. Full validation, cleanup, and migration safety review
+- [x] 15. Full validation, cleanup, and migration safety review
 
   **What to do**: Run targeted and full verification. Fix failing tests, type errors, lint issues, stale imports, dead code, and migration parity issues. Confirm no production external services are required. If optional Postgres test environment is available through `TEST_DATABASE_URL`, run existing real Postgres-marked tests; otherwise record they were safely skipped by existing guard.
   **Must NOT do**: Do not skip failing tests. Do not use production database, real Telegram, or real LLM credentials.
@@ -786,10 +786,10 @@ Wave 8: Task 15 — final validation after all implementation tasks.
 > 4 review agents run in PARALLEL. ALL must APPROVE before implementation is marked complete.
 > Verification is fully agent-executed; consolidated results are presented to the user after completion and do not require user/manual QA to pass.
 > Rejection from any verification agent -> fix -> re-run the full failed verification area -> require all approvals again.
-- [ ] F1. Plan Compliance Audit — oracle
-- [ ] F2. Code Quality Review — unspecified-high
-- [ ] F3. Agent-Executed End-to-End QA — unspecified-high
-- [ ] F4. Scope Fidelity Check — deep
+- [x] F1. Plan Compliance Audit — oracle
+- [x] F2. Code Quality Review — unspecified-high
+- [x] F3. Agent-Executed End-to-End QA — unspecified-high
+- [x] F4. Scope Fidelity Check — deep
 
 ## Commit Strategy
 - Commit after all tests, mypy, and flake8 pass.

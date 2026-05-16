@@ -11,6 +11,7 @@ Current Phase 1 state:
 - `analysis-service` is the default/public runtime
 - `ingestion` is the private crawler/scheduler runtime
 - PostgreSQL + pgvector is the shared source of truth
+- Intelligence is topic-only: prompt/confirm/research/merge/archive lifecycle replaces legacy entry-based pipeline
 - Legacy API server mode is deprecated and only kept as a compatibility alias to `analysis-service`
 
 Assigned production domain: `news.tradao.xyz`
@@ -151,6 +152,8 @@ This skill provides curl commands for Railway GraphQL API debugging without CLI 
 
 The repository is split-service-first. Railway deploys two long-lived app services that share one PostgreSQL/pgvector database:
 
+**Intelligence is topic-only.** The legacy entry-based intelligence pipeline (slang/channel extraction, canonical entries, `/intel_*` commands) has been replaced by a topic-focused workflow. All intelligence now flows through the prompt/confirm/research/merge/archive lifecycle managed via `intelligence/` modules, with HTTP API and Telegram command surfaces reflecting only topic operations.
+
 - `crypto-news-analysis` -> `analysis-service`
 - `crypto-news-ingestion` -> `ingestion`
 
@@ -165,6 +168,7 @@ crypto_news_analyzer/
 ├── models.py                  # Shared data/config/result models
 ├── config/manager.py          # Env + config.jsonc loading and normalization
 ├── crawlers/                  # RSS, X/Twitter, and Bird-backed ingestion sources
+├── intelligence/              # Topic-only research pipeline (prompt workflow, scheduler, findings merge)
 ├── analyzers/                 # LLM analysis pipeline and structured outputs
 ├── storage/                   # Repository layer for SQLite/Postgres backends and ingestion state
 ├── reporters/                 # Telegram command/report delivery integrations
@@ -173,9 +177,10 @@ crypto_news_analyzer/
 
 ### Data Flow
 1. `ingestion` crawls RSS/X sources and persists normalized content into shared storage
-2. `analysis-service` / `api-only` read persisted content by time window
-3. Analyzers produce structured analysis results and markdown output
-4. `analysis-service` can deliver results via Telegram or HTTP job result endpoints
+2. `ingestion` runs daily topic research: active topic prompts are sent to LLM with recent raw messages, producing topic findings
+3. `analysis-service` / `api-only` read persisted content by time window
+4. Analyzers produce structured analysis results and markdown output
+5. `analysis-service` can deliver results via Telegram or HTTP job result endpoints
 
 ### Key Patterns
 - Factory Pattern: DataSourceFactory

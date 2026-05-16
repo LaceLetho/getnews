@@ -132,7 +132,7 @@ class TestReportGenerator:
         header = report_generator.generate_report_header(24, start_time, end_time)
         
         # 验证包含必要信息
-        assert "加密货币新闻快讯" in header
+        assert "小时快讯" in header
         assert "24" in header
     
     def test_generate_data_source_status(self, report_generator, sample_crawl_status):
@@ -226,7 +226,7 @@ class TestReportGenerator:
         )
         
         # 验证报告包含所有主要部分
-        assert "加密货币新闻快讯" in report
+        assert "小时快讯" in report
         assert "大户动向" in report
         assert "安全事件" in report
         

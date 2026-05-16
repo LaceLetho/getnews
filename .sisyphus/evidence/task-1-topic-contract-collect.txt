@@ -1,0 +1,101 @@
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/control.py:958: CoverageWarning: No data was collected. (no-data-collected); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-no-data-collected
+  self._warn("No data was collected.", slug="no-data-collected")
+============================= test session starts ==============================
+platform linux -- Python 3.11.2, pytest-9.0.2, pluggy-1.6.0
+rootdir: /data/workspace/getnews
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.12.1, hypothesis-6.151.9, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 16 items
+
+<Dir getnews>
+  <Package tests>
+    <Module test_topic_prompt_workflow.py>
+      <Function test_generate_topic_prompt_draft_contract>
+      <Function test_revise_topic_prompt_preserves_audit_history_contract>
+      <Function test_manual_edit_topic_prompt_requires_confirmation_contract>
+      <Function test_confirm_topic_prompt_activates_topic_contract>
+    <Module test_topic_research_scheduler.py>
+      <Function test_scheduler_runs_active_topics_only_contract>
+      <Function test_scheduler_uses_and_advances_per_topic_checkpoint_contract>
+      <Function test_scheduler_does_not_advance_checkpoint_on_failed_research_contract>
+      <Function test_scheduler_records_no_message_runs_contract>
+    <Module test_topic_findings_api.py>
+      <Function test_topic_findings_api_requires_bearer_auth_contract>
+      <Function test_create_topic_finding_contract>
+      <Function test_list_update_and_delete_topic_findings_contract>
+      <Function test_merge_preview_and_commit_contract>
+    <Module test_topic_findings_telegram.py>
+      <Function test_topic_commands_are_registered_contract>
+      <Function test_legacy_intel_commands_are_not_registered_contract>
+      <Function test_topic_prompt_commands_require_authorized_operator_contract>
+      <Function test_topic_findings_commands_render_reviewable_results_contract>
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.11.2-final-0 ________________
+
+Name                                                               Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------------------------------
+crypto_news_analyzer/__init__.py                                       2      2     0%   8-9
+crypto_news_analyzer/analyzers/__init__.py                             7      7     0%   7-20
+crypto_news_analyzer/analyzers/category_parser.py                    101    101     0%   7-342
+crypto_news_analyzer/analyzers/dynamic_classification_manager.py      97     97     0%   8-346
+crypto_news_analyzer/analyzers/intelligence_extractor.py             225    225     0%   3-482
+crypto_news_analyzer/analyzers/llm_analyzer.py                       478    478     0%   13-1201
+crypto_news_analyzer/analyzers/market_snapshot_service.py            324    324     0%   8-776
+crypto_news_analyzer/analyzers/prompt_manager.py                     145    145     0%   7-368
+crypto_news_analyzer/analyzers/structured_output_manager.py          700    700     0%   7-1535
+crypto_news_analyzer/analyzers/token_usage_tracker.py                 64     64     0%   7-202
+crypto_news_analyzer/api_server.py                                  1064   1064     0%   8-2100
+crypto_news_analyzer/config/__init__.py                                0      0   100%
+crypto_news_analyzer/config/llm_registry.py                          172    172     0%   3-440
+crypto_news_analyzer/config/manager.py                               263    263     0%   7-620
+crypto_news_analyzer/crawlers/__init__.py                             18     18     0%   7-27
+crypto_news_analyzer/crawlers/bird_dependency_manager.py             254    254     0%   8-565
+crypto_news_analyzer/crawlers/bird_wrapper.py                        285    285     0%   8-665
+crypto_news_analyzer/crawlers/data_source_factory.py                 148    148     0%   7-396
+crypto_news_analyzer/crawlers/data_source_interface.py                47     47     0%   7-170
+crypto_news_analyzer/crawlers/plugin_system_example.py               148    148     0%   12-349
+crypto_news_analyzer/crawlers/rest_api_crawler.py                    233    233     0%   8-512
+crypto_news_analyzer/crawlers/rss_crawler.py                         223    223     0%   10-478
+crypto_news_analyzer/crawlers/rss_crawler_adapter.py                  78     78     0%   8-230
+crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py       176    176     0%   10-311
+crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py           299    299     0%   8-521
+crypto_news_analyzer/crawlers/x_crawler.py                           233    233     0%   9-454
+crypto_news_analyzer/crawlers/x_crawler_adapter.py                   105    105     0%   8-306
+crypto_news_analyzer/datasource_payloads.py                          289    289     0%   1-514
+crypto_news_analyzer/domain/__init__.py                                4      4     0%   9-27
+crypto_news_analyzer/domain/models.py                                590    590     0%   11-1217
+crypto_news_analyzer/domain/repositories.py                          290    290     0%   10-770
+crypto_news_analyzer/execution_coordinator.py                       1039   1039     0%   17-2460
+crypto_news_analyzer/intelligence/__init__.py                          4      4     0%   3-7
+crypto_news_analyzer/intelligence/merge.py                           200    200     0%   3-360
+crypto_news_analyzer/intelligence/pipeline.py                        243    243     0%   3-439
+crypto_news_analyzer/intelligence/search.py                           57     57     0%   3-133
+crypto_news_analyzer/intelligence/topic_converger.py                 370    370     0%   3-781
+crypto_news_analyzer/intelligence/topic_enricher.py                  181    181     0%   2-308
+crypto_news_analyzer/intelligence/topics.py                           88     88     0%   2-148
+crypto_news_analyzer/main.py                                         127    127     0%   1-263
+crypto_news_analyzer/models.py                                       763    763     0%   7-1246
+crypto_news_analyzer/reporters/__init__.py                             5      5     0%   7-36
+crypto_news_analyzer/reporters/report_generator.py                   148    148     0%   7-554
+crypto_news_analyzer/reporters/telegram_command_handler.py          2319   2319     0%   17-5215
+crypto_news_analyzer/reporters/telegram_formatter.py                 201    201     0%   7-600
+crypto_news_analyzer/reporters/telegram_sender.py                    272    272     0%   7-661
+crypto_news_analyzer/semantic_search/__init__.py                       3      3     0%   3-10
+crypto_news_analyzer/semantic_search/backfill_runner.py              122    122     0%   3-247
+crypto_news_analyzer/semantic_search/embedding_service.py            108    108     0%   3-175
+crypto_news_analyzer/semantic_search/report_builder.py                21     21     0%   3-78
+crypto_news_analyzer/semantic_search/service.py                      386    386     0%   3-867
+crypto_news_analyzer/storage/__init__.py                               3      3     0%   7-10
+crypto_news_analyzer/storage/cache_manager.py                        250    250     0%   7-620
+crypto_news_analyzer/storage/data_manager.py                        1668   1668     0%   8-4603
+crypto_news_analyzer/storage/repositories.py                         360    360     0%   8-996
+crypto_news_analyzer/utils/__init__.py                                 0      0   100%
+crypto_news_analyzer/utils/conversation_cache.py                      73     73     0%   5-160
+crypto_news_analyzer/utils/errors.py                                 185    185     0%   7-381
+crypto_news_analyzer/utils/logging.py                                114    114     0%   7-287
+crypto_news_analyzer/utils/timezone_utils.py                          32     32     0%   7-132
+------------------------------------------------------------------------------------------------
+TOTAL                                                              16404  16404     0%
+========================= 16 tests collected in 1.75s ==========================

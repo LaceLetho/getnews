@@ -58,6 +58,11 @@ class DataSourcePurpose(str, Enum):
     INTELLIGENCE = "intelligence"
 
 
+# DEPRECATED: EntryType enum and related dataclasses (ExtractionObservation,
+# CanonicalIntelligenceEntry) were part of the old entry extraction pipeline.
+# The system is now topic-only; these remain for backward compatibility with
+# old extraction pipeline files (merge.py, extractor.py) which are also
+# deprecated and unwired from runtime.
 class EntryType(str, Enum):
     CHANNEL = "channel"
     SLANG = "slang"
@@ -88,12 +93,42 @@ class CheckpointStatus(str, Enum):
     ERROR = "error"
 
 
+class TopicLifecycleStatus(str, Enum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    ARCHIVED = "archived"
+
+
+class TopicPromptStatus(str, Enum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class TopicFindingStatus(str, Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+    SUPERSEDED = "superseded"
+
+
+class MergePreviewState(str, Enum):
+    PENDING = "pending"
+    APPLIED = "applied"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
 ACTIVE_INGESTION_JOB_STATUSES = frozenset({"pending", "running"})
 
 _ENTRY_TYPE_VALUES = {item.value for item in EntryType}
 _PRIMARY_LABEL_VALUES = {item.value for item in PrimaryLabel}
 _CHECKPOINT_STATUS_VALUES = {item.value for item in CheckpointStatus}
 _FOLLOW_STATUS_VALUES = {item.value for item in IntelligenceFollowStatus}
+_TOPIC_LIFECYCLE_STATUS_VALUES = {item.value for item in TopicLifecycleStatus}
+_TOPIC_PROMPT_STATUS_VALUES = {item.value for item in TopicPromptStatus}
+_TOPIC_FINDING_STATUS_VALUES = {item.value for item in TopicFindingStatus}
+_MERGE_PREVIEW_STATE_VALUES = {item.value for item in MergePreviewState}
 _FORBIDDEN_SECRET_KEYS = {
     "stringsession",
     "string_session",
@@ -1012,6 +1047,7 @@ class IntelligenceTopic:
     vulnerabilities: Optional[str] = None
     latest_findings: List[str] = field(default_factory=list)
     is_active: bool = True
+    lifecycle_status: str = TopicLifecycleStatus.ACTIVE.value
     last_evidence_at: Optional[datetime] = None
     enriched_at: Optional[datetime] = None
     embedding: Optional[List[float]] = None
@@ -1026,7 +1062,18 @@ class IntelligenceTopic:
         self.name = str(self.name).strip()
         if not self.name:
             raise ValueError("name is required")
+        self.lifecycle_status = str(self.lifecycle_status).strip().lower()
+        if self.lifecycle_status not in _TOPIC_LIFECYCLE_STATUS_VALUES:
+            raise ValueError("lifecycle_status must be one of: draft, active, paused, archived")
         self.is_active = bool(self.is_active)
+        if self.lifecycle_status in {
+            TopicLifecycleStatus.DRAFT.value,
+            TopicLifecycleStatus.PAUSED.value,
+            TopicLifecycleStatus.ARCHIVED.value,
+        }:
+            self.is_active = False
+        elif self.lifecycle_status == TopicLifecycleStatus.ACTIVE.value:
+            self.is_active = True
         self.source_channels = _validate_public_object_list(
             self.source_channels, "source_channels"
         )
@@ -1078,6 +1125,286 @@ class IntelligenceTopic:
         payload["latest_findings"] = _validate_json_list(
             payload.get("latest_findings", []), "latest_findings"
         )
+        payload.setdefault(
+            "lifecycle_status",
+            TopicLifecycleStatus.ACTIVE.value if payload.get("is_active", True) else TopicLifecycleStatus.PAUSED.value,
+        )
+        return cls(**payload)
+
+
+@dataclass
+class TopicPrompt:
+    id: str
+    intelligence_topic_id: str
+    prompt_version: str
+    prompt_text: str
+    schema_version: str
+    status: str = TopicPromptStatus.DRAFT.value
+    created_by: Optional[str] = None
+    activated_by: Optional[str] = None
+    activation_notes: Optional[str] = None
+    audit_history: List[Dict[str, Any]] = field(default_factory=list)
+    created_at: Optional[datetime] = None
+    activated_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        if not self.id:
+            raise ValueError("id is required")
+        self.intelligence_topic_id = str(self.intelligence_topic_id).strip()
+        if not self.intelligence_topic_id:
+            raise ValueError("intelligence_topic_id is required")
+        self.prompt_version = str(self.prompt_version).strip()
+        if not self.prompt_version:
+            raise ValueError("prompt_version is required")
+        self.prompt_text = str(self.prompt_text).strip()
+        if not self.prompt_text:
+            raise ValueError("prompt_text is required")
+        self.schema_version = str(self.schema_version).strip()
+        if not self.schema_version:
+            raise ValueError("schema_version is required")
+        self.status = str(self.status).strip().lower()
+        if self.status not in _TOPIC_PROMPT_STATUS_VALUES:
+            raise ValueError("status must be one of: draft, active, archived")
+        self.audit_history = _validate_public_object_list(self.audit_history, "audit_history")
+
+    @classmethod
+    def create(cls, intelligence_topic_id: str, prompt_version: str, prompt_text: str, schema_version: str, **kwargs: Any) -> "TopicPrompt":
+        now = datetime.utcnow()
+        return cls(
+            id=str(uuid.uuid4()),
+            intelligence_topic_id=intelligence_topic_id,
+            prompt_version=prompt_version,
+            prompt_text=prompt_text,
+            schema_version=schema_version,
+            created_at=now,
+            updated_at=now,
+            **kwargs,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = dict(self.__dict__)
+        for key in ("created_at", "activated_at", "archived_at", "updated_at"):
+            data[key] = data[key].isoformat() if data.get(key) else None
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TopicPrompt":
+        payload = dict(data)
+        for key in ("created_at", "activated_at", "archived_at", "updated_at"):
+            payload[key] = _parse_optional_datetime(payload.get(key))
+        payload["audit_history"] = _validate_public_object_list(payload.get("audit_history", []), "audit_history")
+        return cls(**payload)
+
+
+@dataclass
+class TopicFinding:
+    id: str
+    intelligence_topic_id: str
+    prompt_version_id: str
+    finding_payload: Dict[str, Any]
+    content_hash: str
+    status: str = TopicFindingStatus.ACTIVE.value
+    citations: List[Dict[str, Any]] = field(default_factory=list)
+    source_raw_item_ids: List[str] = field(default_factory=list)
+    source_finding_ids: List[str] = field(default_factory=list)
+    confidence: float = 0.0
+    found_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+    superseded_by_finding_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        if not self.id:
+            raise ValueError("id is required")
+        self.intelligence_topic_id = str(self.intelligence_topic_id).strip()
+        if not self.intelligence_topic_id:
+            raise ValueError("intelligence_topic_id is required")
+        self.prompt_version_id = str(self.prompt_version_id).strip()
+        if not self.prompt_version_id:
+            raise ValueError("prompt_version_id is required")
+        self.status = str(self.status).strip().lower()
+        if self.status not in _TOPIC_FINDING_STATUS_VALUES:
+            raise ValueError("status must be one of: active, archived, superseded")
+        self.finding_payload = _validate_public_payload(dict(self.finding_payload or {}), "finding_payload")
+        if not self.finding_payload:
+            raise ValueError("finding_payload is required")
+        self.citations = _validate_public_object_list(self.citations, "citations")
+        self.source_raw_item_ids = _validate_json_list(self.source_raw_item_ids, "source_raw_item_ids")
+        self.source_finding_ids = _validate_json_list(self.source_finding_ids, "source_finding_ids")
+        self.content_hash = str(self.content_hash).strip()
+        if not self.content_hash:
+            raise ValueError("content_hash is required")
+        self.confidence = float(self.confidence)
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be between 0.0 and 1.0")
+        if self.status == TopicFindingStatus.SUPERSEDED.value and not self.superseded_by_finding_id:
+            raise ValueError("superseded_by_finding_id is required for superseded findings")
+
+    @classmethod
+    def create(cls, intelligence_topic_id: str, prompt_version_id: str, finding_payload: Dict[str, Any], content_hash: str, **kwargs: Any) -> "TopicFinding":
+        now = datetime.utcnow()
+        return cls(
+            id=str(uuid.uuid4()),
+            intelligence_topic_id=intelligence_topic_id,
+            prompt_version_id=prompt_version_id,
+            finding_payload=finding_payload,
+            content_hash=content_hash,
+            found_at=kwargs.pop("found_at", now),
+            created_at=now,
+            updated_at=now,
+            **kwargs,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = dict(self.__dict__)
+        for key in ("found_at", "archived_at", "created_at", "updated_at"):
+            data[key] = data[key].isoformat() if data.get(key) else None
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TopicFinding":
+        payload = dict(data)
+        for key in ("found_at", "archived_at", "created_at", "updated_at"):
+            payload[key] = _parse_optional_datetime(payload.get(key))
+        return cls(**payload)
+
+
+@dataclass
+class TopicResearchRun:
+    id: str
+    intelligence_topic_id: str
+    status: str
+    prompt_version_id: Optional[str] = None
+    checkpoint_cursor: Optional[str] = None
+    checkpoint_payload: Dict[str, Any] = field(default_factory=dict)
+    items_scanned: int = 0
+    findings_created: int = 0
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    _ALLOWED_STATUSES: ClassVar[frozenset[str]] = frozenset({"queued", "running", "success", "failed", "cancelled"})
+
+    def __post_init__(self):
+        if not self.id:
+            raise ValueError("id is required")
+        self.intelligence_topic_id = str(self.intelligence_topic_id).strip()
+        if not self.intelligence_topic_id:
+            raise ValueError("intelligence_topic_id is required")
+        self.status = str(self.status).strip().lower()
+        if self.status not in self._ALLOWED_STATUSES:
+            raise ValueError("status must be one of: queued, running, success, failed, cancelled")
+        self.checkpoint_payload = _validate_public_payload(dict(self.checkpoint_payload or {}), "checkpoint_payload")
+        self.items_scanned = int(self.items_scanned)
+        self.findings_created = int(self.findings_created)
+
+    @classmethod
+    def create(cls, intelligence_topic_id: str, status: str = "queued", **kwargs: Any) -> "TopicResearchRun":
+        now = datetime.utcnow()
+        return cls(id=str(uuid.uuid4()), intelligence_topic_id=intelligence_topic_id, status=status, started_at=kwargs.pop("started_at", now), created_at=now, updated_at=now, **kwargs)
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = dict(self.__dict__)
+        for key in ("started_at", "finished_at", "created_at", "updated_at"):
+            data[key] = data[key].isoformat() if data.get(key) else None
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TopicResearchRun":
+        payload = dict(data)
+        for key in ("started_at", "finished_at", "created_at", "updated_at"):
+            payload[key] = _parse_optional_datetime(payload.get(key))
+        return cls(**payload)
+
+
+@dataclass
+class MergePreview:
+    id: str
+    intelligence_topic_id: str
+    source_finding_ids: List[str]
+    preview_payload: Dict[str, Any]
+    content_hash: str
+    expires_at: datetime
+    state: str = MergePreviewState.PENDING.value
+    created_by: Optional[str] = None
+    applied_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        if not self.id:
+            raise ValueError("id is required")
+        self.intelligence_topic_id = str(self.intelligence_topic_id).strip()
+        if not self.intelligence_topic_id:
+            raise ValueError("intelligence_topic_id is required")
+        self.source_finding_ids = _validate_json_list(self.source_finding_ids, "source_finding_ids")
+        if len(self.source_finding_ids) < 2:
+            raise ValueError("source_finding_ids must contain at least two findings")
+        self.preview_payload = _validate_public_payload(dict(self.preview_payload or {}), "preview_payload")
+        self.content_hash = str(self.content_hash).strip()
+        if not self.content_hash:
+            raise ValueError("content_hash is required")
+        self.expires_at = _parse_optional_datetime(self.expires_at) or datetime.utcnow()
+        self.state = str(self.state).strip().lower()
+        if self.state not in _MERGE_PREVIEW_STATE_VALUES:
+            raise ValueError("state must be one of: pending, applied, expired, cancelled")
+
+    @classmethod
+    def create(cls, intelligence_topic_id: str, source_finding_ids: List[str], preview_payload: Dict[str, Any], content_hash: str, expires_at: datetime, **kwargs: Any) -> "MergePreview":
+        now = datetime.utcnow()
+        return cls(id=str(uuid.uuid4()), intelligence_topic_id=intelligence_topic_id, source_finding_ids=source_finding_ids, preview_payload=preview_payload, content_hash=content_hash, expires_at=expires_at, created_at=now, updated_at=now, **kwargs)
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = dict(self.__dict__)
+        for key in ("expires_at", "applied_at", "created_at", "updated_at"):
+            data[key] = data[key].isoformat() if data.get(key) else None
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "MergePreview":
+        payload = dict(data)
+        for key in ("expires_at", "applied_at", "created_at", "updated_at"):
+            payload[key] = _parse_optional_datetime(payload.get(key))
+        return cls(**payload)
+
+
+@dataclass
+class FindingArchive:
+    finding_id: str
+    intelligence_topic_id: str
+    archive_reason: Optional[str] = None
+    archive_metadata: Dict[str, Any] = field(default_factory=dict)
+    superseded_by_finding_id: Optional[str] = None
+    archived_by: Optional[str] = None
+    archived_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        self.finding_id = str(self.finding_id).strip()
+        if not self.finding_id:
+            raise ValueError("finding_id is required")
+        self.intelligence_topic_id = str(self.intelligence_topic_id).strip()
+        if not self.intelligence_topic_id:
+            raise ValueError("intelligence_topic_id is required")
+        self.archive_metadata = _validate_public_payload(dict(self.archive_metadata or {}), "archive_metadata")
+
+    @classmethod
+    def create(cls, finding_id: str, intelligence_topic_id: str, **kwargs: Any) -> "FindingArchive":
+        return cls(finding_id=finding_id, intelligence_topic_id=intelligence_topic_id, archived_at=kwargs.pop("archived_at", datetime.utcnow()), **kwargs)
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = dict(self.__dict__)
+        data["archived_at"] = self.archived_at.isoformat() if self.archived_at else None
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "FindingArchive":
+        payload = dict(data)
+        payload["archived_at"] = _parse_optional_datetime(payload.get("archived_at"))
         return cls(**payload)
 
 

@@ -663,7 +663,7 @@ def test_intelligence_entries_unauthorized_returns_401(
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
         response = client.get("/intelligence/entries")
-    assert response.status_code == 401
+    assert response.status_code == 404  # Route deleted, returns 404
 
 
 def test_intelligence_search_unauthorized_returns_401(
@@ -673,7 +673,7 @@ def test_intelligence_search_unauthorized_returns_401(
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
         response = client.get("/intelligence/search?q=test")
-    assert response.status_code == 401
+    assert response.status_code == 404  # Route deleted, returns 404
 
 
 def test_intelligence_raw_unauthorized_returns_401(
@@ -683,7 +683,7 @@ def test_intelligence_raw_unauthorized_returns_401(
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
         response = client.get("/intelligence/raw/raw-001")
-    assert response.status_code == 401
+    assert response.status_code == 404  # Route deleted, returns 404
 
 
 def test_intelligence_labels_unauthorized_returns_401(
@@ -693,7 +693,7 @@ def test_intelligence_labels_unauthorized_returns_401(
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
         response = client.get("/intelligence/labels")
-    assert response.status_code == 401
+    assert response.status_code == 404  # Route deleted, returns 404
 
 
 def test_intelligence_follow_status_unauthorized_returns_401(
@@ -706,7 +706,7 @@ def test_intelligence_follow_status_unauthorized_returns_401(
             "/intelligence/entries/entry-001/follow-status",
             json={"follow_status": "follow"},
         )
-    assert response.status_code == 401
+    assert response.status_code == 404  # Route deleted, returns 404
 
 
 def test_intelligence_discovery_unauthorized_returns_401(
@@ -716,7 +716,7 @@ def test_intelligence_discovery_unauthorized_returns_401(
     controller = _FakeController(intelligence_repository=repo)
     with _build_test_app(monkeypatch, controller) as client:
         discovery_response = client.get("/intelligence/discovery")
-    assert discovery_response.status_code == 401
+    assert discovery_response.status_code == 404  # Route deleted, returns 404
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -724,6 +724,7 @@ def test_intelligence_discovery_unauthorized_returns_401(
 # ──────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_list_entries_returns_paginated_sorted_by_last_seen_desc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -757,6 +758,7 @@ def test_list_entries_returns_paginated_sorted_by_last_seen_desc(
     assert data["entries"][1]["display_name"] == "Older Entry"
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_list_entries_filters_by_entry_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -787,6 +789,7 @@ def test_list_entries_filters_by_entry_type(
     assert data["entries"][0]["entry_type"] == "slang"
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_list_entries_defaults_to_following_tracking_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -838,6 +841,7 @@ def test_list_entries_defaults_to_following_tracking_scope(
     assert repo.list_calls[1]["tracking_scope"] == "all"
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_discovery_returns_unset_entries_without_marking_presented(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -876,6 +880,7 @@ def test_discovery_returns_unset_entries_without_marking_presented(
     assert [item["entry_id"] for item in second_response.json()["entries"]] == ["sl-unseen"]
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_set_follow_status_updates_tracking_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -925,6 +930,7 @@ def test_set_follow_status_updates_tracking_state(
     assert unset_response.json()["follow_status"] == "unset"
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_set_follow_status_missing_and_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -948,6 +954,7 @@ def test_set_follow_status_missing_and_invalid(
     assert invalid.status_code == 422
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_list_entries_filters_by_primary_label(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -976,6 +983,7 @@ def test_list_entries_filters_by_primary_label(
     assert data["entries"][0]["primary_label"] == "AI"
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_list_entries_respects_pagination(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1017,6 +1025,7 @@ def test_list_entries_respects_pagination(
         assert len(data["entries"]) == 1
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_unfollow_entry_hides_from_default_entries_and_search(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1078,6 +1087,7 @@ def test_unfollow_entry_hides_from_default_entries_and_search(
 # ──────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_list_intelligence_labels_returns_primary_label_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1096,6 +1106,7 @@ def test_list_intelligence_labels_returns_primary_label_values(
 # ──────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_get_entry_detail_returns_full_entry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1123,6 +1134,7 @@ def test_get_entry_detail_returns_full_entry(
     assert data["evidence_page_size"] == 5
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_get_entry_detail_returns_paginated_evidence_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1180,6 +1192,7 @@ def test_get_entry_detail_returns_paginated_evidence_context(
     )
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_get_entry_detail_preserves_expired_evidence_warning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1213,6 +1226,7 @@ def test_get_entry_detail_preserves_expired_evidence_warning(
     assert group["warning"] == "Evidence raw text is unavailable because it has been purged."
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_unfollowed_entries_list_via_tracking_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1264,6 +1278,7 @@ def test_get_entry_detail_not_found_returns_404(
 # ──────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_include_raw_returns_exact_text_within_ttl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1298,6 +1313,7 @@ def test_include_raw_returns_exact_text_within_ttl(
     assert data["raw_evidence"]["source_url"] == "https://t.me/seller"
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_include_raw_returns_raw_available_false_when_expired(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1330,6 +1346,7 @@ def test_include_raw_returns_raw_available_false_when_expired(
     assert data["raw_evidence"] is None
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_include_raw_false_does_not_query_repository(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1354,6 +1371,7 @@ def test_include_raw_false_does_not_query_repository(
     assert repo.get_by_id_calls == 1
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_include_raw_only_if_entry_has_raw_item_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1381,6 +1399,7 @@ def test_include_raw_only_if_entry_has_raw_item_id(
 # ──────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_semantic_search_returns_ranked_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1420,6 +1439,7 @@ def test_semantic_search_returns_ranked_results(
     assert data["results"][1]["display_name"] == "Low Confidence"
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_semantic_search_filters_by_entry_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1452,6 +1472,7 @@ def test_semantic_search_filters_by_entry_type(
     assert data["results"][0]["entry_type"] == "slang"
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_semantic_search_defaults_to_following_tracking_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1505,6 +1526,7 @@ def test_semantic_search_defaults_to_following_tracking_scope(
     ]
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_semantic_search_excludes_ignored_entries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1541,6 +1563,7 @@ def test_semantic_search_excludes_ignored_entries(
     assert [item["entry_id"] for item in data["results"]] == ["entry-visible"]
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_semantic_search_all_ignored_returns_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1569,6 +1592,7 @@ def test_semantic_search_all_ignored_returns_empty(
     assert data["results"] == []
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_semantic_search_respects_hour_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1600,6 +1624,7 @@ def test_semantic_search_respects_hour_window(
     assert [item["entry_id"] for item in data["results"]] == ["recent-search"]
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_semantic_search_missing_q_param_returns_422(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1616,6 +1641,7 @@ def test_semantic_search_missing_q_param_returns_422(
 # ──────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_get_raw_item_returns_full_details(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1648,6 +1674,7 @@ def test_get_raw_item_returns_full_details(
     assert data["expires_at"] is not None
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_get_raw_item_expired_returns_null_raw_text_and_is_expired_true(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1686,6 +1713,7 @@ def test_get_raw_item_not_found_returns_404(
 # ──────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_list_entries_empty_repository_returns_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1700,6 +1728,7 @@ def test_list_entries_empty_repository_returns_empty(
     assert data["entries"] == []
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_semantic_search_empty_repository_returns_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1715,6 +1744,7 @@ def test_semantic_search_empty_repository_returns_empty(
     assert data["results"] == []
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_entries_endpoint_requires_intelligence_repository(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1724,6 +1754,7 @@ def test_entries_endpoint_requires_intelligence_repository(
     assert response.status_code == 503
 
 
+@pytest.mark.skip(reason="Old entry routes deleted in topic-only refactor (Task 11)")
 def test_raw_endpoint_requires_intelligence_repository(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

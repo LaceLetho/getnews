@@ -21,6 +21,7 @@
 - 🔁 **Split-service 运行面**: 仅保留 `analysis-service`、`api-only`、`ingestion` 三种运行模式
 - 🔧 **数据库优先的数据源管理**: 首次启动从 `config.jsonc` 导入，运行时通过数据库管理，支持 REST API 和 Telegram 命令操作
 - 🔎 **语义搜索**: 支持 `POST /semantic-search` 异步语义检索与 `/semantic_search` Telegram 命令
+- 🧠 **情报主题系统**: 基于 AI 的主题研究，支持创建/修订/确认主题、每日定时研究、研究成果合并与检索
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
 - 🎯 **智能分类**: 支持大户动向、利率事件、监管政策、真相揭露等多种分类
 - ☁️ **云端部署**: 支持部署到 Railway 平台
@@ -234,6 +235,19 @@ uv run flake8 crypto_news_analyzer/
 - `/tokens` - 查看token使用统计
 - `/help` - 显示帮助信息
 
+### 情报主题命令
+
+- `/topic_create <theme>` - 从主题创建研究草稿（AI生成提示词）
+- `/topic_revise <topic_id> <feedback>` - 修订主题提示词
+- `/topic_set_prompt <topic_id> <prompt>` - 手动设置主题提示词
+- `/topic_confirm <topic_id>` - 确认并激活主题
+- `/topic_list` - 查看主题列表
+- `/topic_detail <topic_id>` - 查看主题详情和研究成果
+- `/topic_merge <topic_id>` - 合并主题研究成果
+- `/topic_pause <topic_id>` - 暂停主题研究
+- `/topic_archive <topic_id>` - 归档主题
+- `/topic_logs <topic_id>` - 查看主题研究运行日志
+
 ### 多用户授权机制
 
 系统支持多个授权用户在私聊和群组中与bot交互：
@@ -297,6 +311,17 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - `POST /semantic-search`
 - `GET /semantic-search/{job_id}`
 - `GET /semantic-search/{job_id}/result`
+
+### 情报主题 API（需 Bearer 认证）
+
+- `POST /intelligence/topics` - 创建主题草稿
+- `POST /intelligence/topics/{id}/revise` - 修订提示词
+- `PUT /intelligence/topics/{id}/prompt` - 手动设置提示词
+- `POST /intelligence/topics/{id}/confirm` - 确认激活
+- `GET /intelligence/topics` - 列出主题
+- `GET /intelligence/topics/{id}` - 主题详情（含提示词版本和研究成果）
+- `POST /intelligence/topics/{id}/merge-preview` - 创建合并预览
+- `POST /intelligence/topics/{id}/merge-accept` - 接受合并
 
 ### 创建分析任务
 

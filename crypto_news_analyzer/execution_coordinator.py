@@ -25,6 +25,7 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 import json
 import traceback
+from types import SimpleNamespace
 
 from .config.manager import ConfigManager
 from .config.llm_registry import (
@@ -161,6 +162,7 @@ class MainController:
         self.semantic_search_repository: Optional[Any] = None
         self.intelligence_repository: Optional[Any] = None
         self._intelligence_pipeline: Optional[Any] = None
+        self._topic_research_scheduler: Optional[Any] = None
 
         # 执行状态管理
         self.current_execution: Optional[ExecutionInfo] = None
@@ -531,6 +533,7 @@ class MainController:
 
     def _initialize_intelligence_pipeline_for_ingestion(self) -> None:
         self._intelligence_pipeline = None
+        self._topic_research_scheduler = None
         self.topic_service = None
         if self.config_manager is None:
             raise ValueError("配置管理器未初始化")
@@ -545,25 +548,14 @@ class MainController:
         if self.intelligence_repository is None or self.datasource_repository is None:
             raise ValueError("智能采集仓储未初始化")
 
-        from .analyzers.intelligence_extractor import IntelligenceExtractor
-        from .intelligence.merge import IntelligenceMergeEngine
         from .intelligence.pipeline import IntelligencePipeline
         from .intelligence.search import IntelligenceSearchService
-        from .intelligence.topics import IntelligenceTopicService
         from .intelligence.topic_enricher import TopicEnricher
         from .intelligence.topic_converger import TopicConverger
 
         intelligence_config = self.config_manager.get_intelligence_config()
         setattr(self.intelligence_repository, "datasource_repository", self.datasource_repository)
 
-        extractor = IntelligenceExtractor(
-            config=intelligence_config,
-            repository=self.intelligence_repository,
-        )
-        merge_engine = IntelligenceMergeEngine(
-            intelligence_repository=self.intelligence_repository,
-            confidence_threshold=intelligence_config.collection.confidence_threshold,
-        )
         search_service = None
         if self.embedding_service is not None and self.storage_config is not None:
             search_service = IntelligenceSearchService(
@@ -571,12 +563,6 @@ class MainController:
                 intelligence_repository=self.intelligence_repository,
                 storage_config=self.storage_config,
             )
-
-        topic_service = IntelligenceTopicService(
-            intelligence_repository=self.intelligence_repository,
-            search_service=search_service,
-        )
-        self.topic_service = topic_service
 
         enrichment_config = intelligence_config_payload.get("topic_enrichment", {})
         topic_enricher = TopicEnricher(
@@ -594,13 +580,68 @@ class MainController:
         self._intelligence_pipeline = IntelligencePipeline(
             data_source_factory=get_data_source_factory(),
             intelligence_repository=self.intelligence_repository,
-            extractor=extractor,
-            merge_engine=merge_engine,
+            extractor=SimpleNamespace(config=intelligence_config),
+            merge_engine=None,
             search_service=search_service,
             topic_enricher=topic_enricher,
             topic_converger=topic_converger,
         )
         self.logger.info("IntelligencePipeline初始化完成（ingestion-only）")
+
+        # --- Wire TopicResearchScheduler for ingestion-only topic research ---
+        self._topic_research_scheduler = self._build_topic_research_scheduler(intelligence_config)
+
+    def _build_topic_research_scheduler(self, intelligence_config: Any) -> Optional[Any]:
+        try:
+            extraction_config = getattr(intelligence_config, "extraction", None)
+            if extraction_config is None:
+                self.logger.warning("Intelligence extraction config missing, skipping topic research scheduler")
+                return None
+
+            provider = getattr(extraction_config, "provider", "opencode-go")
+            model_name = getattr(extraction_config, "model_name", "deepseek-v4-pro")
+            thinking_level = getattr(extraction_config, "thinking_level", None)
+
+            from .config.llm_registry import ModelConfig
+            runtime = resolve_model_runtime(
+                ModelConfig(
+                    provider=provider,
+                    name=model_name,
+                    options={"thinking_level": thinking_level} if thinking_level else {},
+                )
+            )
+
+            api_key = os.getenv("OPENCODE_API_KEY", "").strip()
+            if not api_key:
+                self.logger.warning("OPENCODE_API_KEY not set, topic research scheduler unavailable")
+                return None
+
+            try:
+                from openai import OpenAI
+            except ImportError:
+                self.logger.warning("openai package not installed, topic research scheduler unavailable")
+                return None
+
+            llm_client = OpenAI(
+                api_key=api_key,
+                base_url=runtime.provider.base_url,
+            )
+
+            from .intelligence.topic_research import TopicResearchScheduler
+
+            scheduler = TopicResearchScheduler(
+                intelligence_repository=self.intelligence_repository,
+                llm_client=llm_client,
+                model_name=model_name,
+            )
+            self.logger.info(
+                "TopicResearchScheduler initialized (provider=%s, model=%s)",
+                provider, model_name,
+            )
+            return scheduler
+        except Exception as e:
+            self.logger.warning("Failed to build topic research scheduler: %s", e)
+            return None
 
     def _initialize_embedding_service(self) -> None:
         if self.config_manager is None or self.data_manager is None:
@@ -2175,6 +2216,16 @@ class MainController:
                         "智能采集完成但存在错误: %s",
                         "; ".join(intelligence_result.get("errors", [])),
                     )
+
+                if self._topic_research_scheduler is not None:
+                    try:
+                        completed = self._topic_research_scheduler.run_scheduled_topic_research()
+                        self.logger.info(
+                            "Topic research completed for %d topics", completed
+                        )
+                        crawl_result["topic_research_completed"] = completed
+                    except Exception as exc:
+                        self.logger.warning("Topic research failed: %s", exc)
 
             # 更新执行状态
             end_time = datetime.now()

@@ -37,19 +37,38 @@
   },
   "intelligence_collection": {
     "extraction": {
+      // Topic prompt extraction model (raw messages -> topic evidence candidates)
       "provider": "opencode-go",
       "model": "deepseek-v4-pro",
       "thinking_level": "high",
       "max_tokens": 4000,
       "batch_size": 200
     },
+    "topic_research": {
+      // Topic research scheduler: daily batch/chunk limits and LLM model config.
+      "enabled": true,
+      "daily": true,
+      "raw_item_limit": 200,
+      "max_chunk_chars": 50000,
+      "model": {
+        "provider": "opencode-go",
+        "name": "deepseek-v4-pro",
+        "options": {}
+      }
+    },
     "collection": {
+      // Source crawl interval. Topic research runs daily on the UTC schedule below.
       "interval_minutes": 60,
-      "ttl_days": 30,
+      // Topic and raw message retention in days (both default to 180).
+      "ttl_days": 180,
+      "raw_message_retention_days": 180,
       "backfill_hours": 24,
-      "confidence_threshold": 0.6
+      "confidence_threshold": 0.6,
+      "daily_topic_research_enabled": true,
+      "daily_topic_research_time_utc": "03:00"
     },
     "topic_enrichment": {
+      // Topic research and merge model configuration.
       "enabled": true,
       "provider": "opencode-go",
       "model": "deepseek-v4-pro",

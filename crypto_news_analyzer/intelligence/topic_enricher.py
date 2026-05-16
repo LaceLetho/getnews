@@ -164,7 +164,6 @@ class TopicEnricher:
                 "new_evidence": [
                     {
                         "display_name": ev.get("display_name"),
-                        "entry_type": ev.get("entry_type"),
                         "raw_text": ev.get("raw_text"),
                         "source_type": ev.get("source_type"),
                         "source_url": ev.get("source_url"),

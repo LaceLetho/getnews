@@ -357,7 +357,6 @@ def _build_llm_config() -> LLMConfig:
         fallback_models=[ModelConfig(provider="grok", name="grok-4-1-fast-reasoning", options={})],
         market_model=ModelConfig(provider="grok", name="grok-4-1-fast-reasoning", options={}),
         temperature=0.1,
-        max_tokens=2000,
         batch_size=100,
     )
 

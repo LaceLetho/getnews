@@ -1,4 +1,4 @@
-"""Cross-cutting security guardrails for intelligence query surfaces."""
+"""Cross-cutting security guardrails for intelligence query surfaces (topic-only)."""
 
 from __future__ import annotations
 
@@ -24,30 +24,12 @@ from crypto_news_analyzer.datasource_payloads import (
 )
 from crypto_news_analyzer.domain import models as domain_models
 from crypto_news_analyzer.domain import repositories as domain_repositories
-from crypto_news_analyzer.domain.models import DataSource, RawIntelligenceItem
+from crypto_news_analyzer.domain.models import DataSource
 from crypto_news_analyzer.reporters.telegram_command_handler import TelegramCommandHandler
 from crypto_news_analyzer.storage import repositories as storage_repositories
 from crypto_news_analyzer.models import StorageConfig, TelegramCommandConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-INTELLIGENCE_ENDPOINTS = (
-    ("GET", "/intelligence/entries"),
-    ("GET", "/intelligence/labels"),
-    ("GET", "/intelligence/entries/entry-guard"),
-    ("GET", "/intelligence/search?q=guardrail"),
-    ("GET", "/intelligence/raw/raw-guard"),
-)
-INTELLIGENCE_COMMANDS = (
-    ("/intel_recent", "_handle_intel_recent_command", "handle_intel_recent_command", ["24"]),
-    ("/intel_labels", "_handle_intel_labels_command", "handle_intel_labels_command", []),
-    ("/intel_search", "_handle_intel_search_command", "handle_intel_search_command", ["渠道"]),
-    (
-        "/intel_detail",
-        "_handle_intel_detail_command",
-        "handle_intel_detail_command",
-        ["entry-1", "raw"],
-    ),
-)
 SECRET_SENTINELS = (
     "StringSession_SENTINEL_do_not_leak",
     "V2EX_PAT_SENTINEL_do_not_leak",
@@ -58,11 +40,11 @@ SECRET_SENTINELS = (
 
 
 class _FakeIntelligenceRepository:
-    def __init__(self, raw_item: Optional[RawIntelligenceItem] = None) -> None:
-        self.raw_items = {raw_item.id: raw_item} if raw_item else {}
+    def list_topic_prompts(self, *_args: Any, **_kwargs: Any) -> list[Any]:
+        return []
 
-    def get_raw_item_by_id(self, raw_item_id: str) -> Optional[RawIntelligenceItem]:
-        return self.raw_items.get(raw_item_id)
+    def list_topic_run_logs(self, *_args: Any, **_kwargs: Any) -> list[Any]:
+        return []
 
     def list_canonical_entries(self, *_args: Any, **_kwargs: Any) -> list[Any]:
         return []
@@ -174,19 +156,10 @@ def api_key_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("API_KEY", "test-api-key")
 
 
-def test_all_intelligence_http_routes_require_bearer_auth(
+def test_all_intelligence_api_routes_require_bearer_auth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    controller = _FakeController()
-    with _build_client(monkeypatch, controller) as client:
-        for method, path in INTELLIGENCE_ENDPOINTS:
-            response = client.request(method, path)
-            assert response.status_code == 401, f"{method} {path} must reject missing auth"
-
-
-def test_no_public_unauthenticated_routes_for_intelligence(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    """Topic-only intelligence routes still require auth."""
     controller = _FakeController()
     with _build_client(monkeypatch, controller) as client:
         app = cast(FastAPI, client.app)
@@ -195,47 +168,12 @@ def test_no_public_unauthenticated_routes_for_intelligence(
             for route in app.routes
             if isinstance(route, APIRoute) and route.path.startswith("/intelligence/")
         ]
-
-    assert {route.path for route in intelligence_routes} == {
-        "/intelligence/entries",
-        "/intelligence/labels",
-        "/intelligence/entries/{entry_id}",
-        "/intelligence/search",
-        "/intelligence/raw/{raw_item_id}",
-    }
-    assert all(_route_has_api_key_dependency(route) for route in intelligence_routes)
+        for route in intelligence_routes:
+            response = client.request(route.methods.pop() if route.methods else "GET", route.path)
+            assert response.status_code == 401, f"{route.path} must reject missing auth"
 
 
-@pytest.mark.parametrize(
-    "command_name, handler_method_name, business_method_name, args",
-    INTELLIGENCE_COMMANDS,
-)
-def test_telegram_intelligence_commands_reject_unauthorized_users(
-    command_name: str,
-    handler_method_name: str,
-    business_method_name: str,
-    args: list[str],
-) -> None:
-    handler = _make_handler()
-    handler.is_authorized_user = Mock(return_value=False)  # type: ignore[method-assign]
-    setattr(handler, business_method_name, Mock())
-    handler._log_authorization_attempt = Mock()  # type: ignore[method-assign]
-    handler._log_command_execution = Mock()  # type: ignore[method-assign]
-
-    update = _make_update()
-    context = SimpleNamespace(args=args)
-
-    asyncio.run(getattr(handler, handler_method_name)(update, context))
-
-    getattr(handler, business_method_name).assert_not_called()
-    update.message.reply_text.assert_awaited_once()
-    reply = update.message.reply_text.await_args.args[0]
-    assert "权限拒绝" in reply
-    handler._log_authorization_attempt.assert_called_once()
-    assert handler._log_authorization_attempt.call_args.kwargs["command"] == command_name
-
-
-def test_intelligence_configs_and_api_summaries_do_not_expose_secrets(
+def test_datasource_secrets_not_exposed(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -381,7 +319,7 @@ def test_captured_logs_do_not_contain_session_or_pat_values(
     handler = _make_handler()
 
     handler._log_authorization_attempt(
-        command="/intel_search",
+        command="/topic_create",
         user_id="999",
         username="intruder",
         chat_type="private",
@@ -405,37 +343,6 @@ def test_captured_logs_do_not_contain_session_or_pat_values(
     assert "Authorization attempt" in caplog.text
     assert SECRET_SENTINELS[0] not in caplog.text
     assert SECRET_SENTINELS[1] not in caplog.text
-
-
-def test_raw_text_response_preserves_original_bytes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    raw_text = (
-        "原始情报：土区礼品卡 🚀\nLine 2 with punctuation: !?,.;:'\"()[]{}\n零宽字符\u200b保留"
-    )
-    raw_item = RawIntelligenceItem(
-        id="raw-byte-exact",
-        source_type="telegram_group",
-        raw_text=raw_text,
-        content_hash="hash-byte-exact",
-        published_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-        collected_at=datetime.now(timezone.utc),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
-    )
-    controller = _FakeController(
-        intelligence_repository=_FakeIntelligenceRepository(raw_item=raw_item)
-    )
-
-    with _build_client(monkeypatch, controller) as client:
-        response = client.get(
-            "/intelligence/raw/raw-byte-exact",
-            headers=_authorized_headers(),
-        )
-
-    assert response.status_code == 200
-    returned_text = response.json()["raw_text"]
-    assert returned_text == raw_text
-    assert returned_text.encode("utf-8") == raw_text.encode("utf-8")
 
 
 def test_env_template_contains_no_real_secrets() -> None:

@@ -72,7 +72,7 @@ class TestRSSCrawler:
         
         # 检查时间窗口计算 - RSS爬取器使用UTC时间
         from datetime import timezone
-        expected_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=12)
+        expected_cutoff = datetime.now(timezone.utc) - timedelta(hours=12)
         time_diff = abs((crawler.cutoff_time - expected_cutoff).total_seconds())
         assert time_diff < 5  # 允许5秒误差
     
@@ -233,8 +233,9 @@ class TestRSSCrawler:
         entry1 = Mock()
         entry1.published_parsed = (2024, 1, 1, 12, 0, 0, 0, 1, 0)
         
+        from datetime import timezone
         time1 = crawler._extract_publish_time(entry1)
-        assert time1 == datetime(2024, 1, 1, 12, 0, 0)
+        assert time1 == datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         
         # 测试字符串格式
         entry2 = Mock()
@@ -273,15 +274,15 @@ class TestRSSCrawler:
         from datetime import timezone
         
         # 当前时间（应该在窗口内）
-        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+        current_time = datetime.now(timezone.utc)
         assert crawler._is_within_time_window(current_time) is True
         
         # 1小时前（应该在窗口内）
-        one_hour_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
         assert crawler._is_within_time_window(one_hour_ago) is True
         
         # 25小时前（应该在窗口外，因为窗口是24小时）
-        old_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=25)
+        old_time = datetime.now(timezone.utc) - timedelta(hours=25)
         assert crawler._is_within_time_window(old_time) is False
     
     def test_is_valid_url(self, crawler):

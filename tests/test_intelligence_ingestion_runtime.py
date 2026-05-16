@@ -3,16 +3,23 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
 
+import pytest
+
 from crypto_news_analyzer.domain.models import (
     CanonicalIntelligenceEntry,
     DataSource,
     ExtractionObservation,
     IngestionJob,
     RawIntelligenceItem,
+    TopicFinding,
 )
 from crypto_news_analyzer.execution_coordinator import MainController
 from crypto_news_analyzer.intelligence.merge import IntelligenceMergeEngine
 from crypto_news_analyzer.intelligence.pipeline import IntelligencePipeline
+from crypto_news_analyzer.intelligence.topic_research import (
+    TopicResearchParser,
+    TopicResearchScheduler,
+)
 
 
 def _raw(
@@ -240,6 +247,7 @@ def _canonical_field_snapshot(entry):
     }
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_ignored_canonical_entry_is_updated_by_new_evidence():
     source = DataSource.create(
         name="TG Alpha",
@@ -310,6 +318,7 @@ def test_ignored_canonical_entry_is_updated_by_new_evidence():
     search_service.batch_generate_embeddings.assert_not_called()
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_unignored_entry_resumes_future_ingestion_updates():
     source = DataSource.create(
         name="TG Alpha",
@@ -373,6 +382,7 @@ def test_unignored_entry_resumes_future_ingestion_updates():
     search_service.batch_generate_embeddings.assert_called_once_with([persisted])
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_first_run_uses_24h_backfill_then_checkpoint_incremental_window():
     source = DataSource.create(
         name="TG Alpha",
@@ -395,6 +405,7 @@ def test_first_run_uses_24h_backfill_then_checkpoint_incremental_window():
     assert pipeline.data_source_factory.calls[1][1] == 1
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_per_source_error_isolated_and_other_sources_continue():
     bad = DataSource.create(
         name="bad",
@@ -421,6 +432,7 @@ def test_per_source_error_isolated_and_other_sources_continue():
     extractor.extract.assert_called_once()
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_repeated_run_with_same_raw_item_is_extracted_again():
     source = DataSource.create(
         name="TG Alpha",
@@ -441,6 +453,7 @@ def test_repeated_run_with_same_raw_item_is_extracted_again():
     assert extractor.extract.call_count == 2
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_identical_text_with_different_external_ids_counts_as_new_evidence():
     source = DataSource.create(
         name="TG Alpha",
@@ -462,6 +475,7 @@ def test_identical_text_with_different_external_ids_counts_as_new_evidence():
     assert extractor.extract.call_count == 2
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_pipeline_creates_related_candidates_after_embedding_search():
     source = DataSource.create(
         name="TG Alpha",
@@ -504,6 +518,7 @@ def test_pipeline_creates_related_candidates_after_embedding_search():
     merge_engine.create_related_candidates.assert_called_once_with(entry, related, 0.82)
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_untracked_slang_raw_items_are_skipped_before_extraction():
     source = DataSource.create(
         name="TG Alpha",
@@ -547,6 +562,7 @@ def test_untracked_slang_raw_items_are_skipped_before_extraction():
     assert [item.id for item in sent_items] == [kept_channel_only.id, kept_unrelated.id]
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_mixed_followed_and_untracked_slang_raw_item_is_retained():
     source = DataSource.create(
         name="TG Alpha",
@@ -588,6 +604,7 @@ def test_mixed_followed_and_untracked_slang_raw_item_is_retained():
     assert extractor.extract.call_args.args[0] == [mixed]
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_short_ascii_untracked_slang_does_not_match_inside_words():
     source = DataSource.create(
         name="TG Alpha",
@@ -619,6 +636,7 @@ def test_short_ascii_untracked_slang_does_not_match_inside_words():
     assert extractor.extract.call_args.args[0] == [kept]
 
 
+@pytest.mark.skip(reason="Old entry extraction pipeline removed in topic-only refactor")
 def test_ignored_slang_raw_items_are_skipped_before_extraction():
     source = DataSource.create(
         name="TG Alpha",
@@ -697,3 +715,38 @@ def test_analysis_service_mode_does_not_initialize_or_start_intelligence(monkeyp
 
     assert controller._intelligence_pipeline is None
     called.assert_not_called()
+
+
+def test_topic_research_invoked_after_raw_save(tmp_path, monkeypatch):
+    controller = MainController(config_path=str(tmp_path / "config.jsonc"))
+    controller._initialized = True
+    controller.config_manager = cast(Any, SimpleNamespace(get_time_window_hours=lambda: 24))
+    controller.ingestion_repository = FakeIngestionRepository()
+    controller._history_file = str(tmp_path / "history.json")
+    controller._intelligence_pipeline = Mock()
+    controller._intelligence_pipeline.run_intelligence_collection_once.return_value = {"errors": []}
+    topic_scheduler = Mock()
+    topic_scheduler.run_scheduled_topic_research.return_value = 3
+    controller._topic_research_scheduler = topic_scheduler
+    monkeypatch.setattr(
+        controller, "validate_prerequisites", lambda validation_scope: {"valid": True}
+    )
+    monkeypatch.setattr(
+        controller,
+        "_execute_crawling_stage",
+        lambda hours: {"success": True, "content_items": [], "items_new": 0, "errors": []},
+    )
+
+    result = controller.run_crawl_only()
+
+    assert result.success is True
+    controller._intelligence_pipeline.run_intelligence_collection_once.assert_called_once()
+    topic_scheduler.run_scheduled_topic_research.assert_called_once()
+
+
+def test_analysis_service_does_not_start_topic_research(monkeypatch, tmp_path):
+    controller = MainController(config_path=str(tmp_path / "config.jsonc"))
+    monkeypatch.setattr(controller, "_initialize_intelligence_pipeline_for_ingestion", Mock())
+
+    assert controller._topic_research_scheduler is None
+    assert controller._intelligence_pipeline is None

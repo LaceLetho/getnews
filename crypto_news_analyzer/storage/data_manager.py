@@ -517,6 +517,7 @@ class DataManager:
                 vulnerabilities TEXT,
                 latest_findings {'JSONB' if self.backend == 'postgres' else 'TEXT'} NOT NULL DEFAULT {json_default_empty_list},
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                lifecycle_status TEXT NOT NULL DEFAULT 'active',
                 last_evidence_at {datetime_type},
                 enriched_at {datetime_type},
                 embedding {embedding_type},
@@ -526,6 +527,9 @@ class DataManager:
                 updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        self._initialize_topic_only_intelligence_tables(
+            cursor, json_default_empty_object, json_default_empty_list, datetime_type
+        )
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS intelligence_topic_run_logs (
                 id TEXT PRIMARY KEY,
@@ -714,6 +718,10 @@ class DataManager:
                 "ON intelligence_topics (is_active, updated_at DESC)"
             ),
             (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topics_lifecycle_status "
+                "ON intelligence_topics (lifecycle_status, updated_at DESC)"
+            ),
+            (
                 "CREATE INDEX IF NOT EXISTS idx_intelligence_topics_enriched_at "
                 "ON intelligence_topics (enriched_at)"
             ),
@@ -736,6 +744,172 @@ class DataManager:
         ]:
             cursor.execute(statement)
         self._backfill_intelligence_evidence_links(cursor)
+
+    def _initialize_topic_only_intelligence_tables(
+        self,
+        cursor: Any,
+        json_default_empty_object: str,
+        json_default_empty_list: str,
+        datetime_type: str,
+    ) -> None:
+        json_type = "JSONB" if self.backend == "postgres" else "TEXT"
+
+        if self.backend == "postgres":
+            cursor.execute("""
+                ALTER TABLE intelligence_topics
+                ADD COLUMN IF NOT EXISTS lifecycle_status TEXT NOT NULL DEFAULT 'active'
+            """)
+        else:
+            cursor.execute("PRAGMA table_info(intelligence_topics)")
+            if "lifecycle_status" not in {row[1] for row in cursor.fetchall()}:
+                cursor.execute(
+                    "ALTER TABLE intelligence_topics "
+                    "ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'active'"
+                )
+
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_topic_prompt_versions (
+                id TEXT PRIMARY KEY,
+                intelligence_topic_id TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft',
+                prompt_text TEXT NOT NULL,
+                schema_version TEXT NOT NULL,
+                created_by TEXT,
+                activated_by TEXT,
+                activation_notes TEXT,
+                audit_history {json_type} NOT NULL DEFAULT {json_default_empty_list},
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                activated_at {datetime_type},
+                archived_at {datetime_type},
+                updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (intelligence_topic_id) REFERENCES intelligence_topics (id) ON DELETE CASCADE,
+                UNIQUE (intelligence_topic_id, prompt_version)
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_topic_findings (
+                id TEXT PRIMARY KEY,
+                intelligence_topic_id TEXT NOT NULL,
+                prompt_version_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                finding_payload {json_type} NOT NULL DEFAULT {json_default_empty_object},
+                citations {json_type} NOT NULL DEFAULT {json_default_empty_list},
+                source_raw_item_ids {json_type} NOT NULL DEFAULT {json_default_empty_list},
+                source_finding_ids {json_type} NOT NULL DEFAULT {json_default_empty_list},
+                content_hash TEXT NOT NULL,
+                confidence FLOAT NOT NULL DEFAULT 0.0,
+                found_at {datetime_type},
+                archived_at {datetime_type},
+                superseded_by_finding_id TEXT,
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (intelligence_topic_id) REFERENCES intelligence_topics (id) ON DELETE CASCADE,
+                FOREIGN KEY (prompt_version_id) REFERENCES intelligence_topic_prompt_versions (id) ON DELETE RESTRICT,
+                FOREIGN KEY (superseded_by_finding_id) REFERENCES intelligence_topic_findings (id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_topic_processed_raw_items (
+                raw_item_id TEXT NOT NULL,
+                intelligence_topic_id TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                schema_version TEXT NOT NULL,
+                finding_id TEXT,
+                processed_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (raw_item_id, intelligence_topic_id, prompt_version, schema_version),
+                FOREIGN KEY (raw_item_id) REFERENCES raw_intelligence_items (id) ON DELETE CASCADE,
+                FOREIGN KEY (intelligence_topic_id) REFERENCES intelligence_topics (id) ON DELETE CASCADE,
+                FOREIGN KEY (finding_id) REFERENCES intelligence_topic_findings (id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_topic_research_runs (
+                id TEXT PRIMARY KEY,
+                intelligence_topic_id TEXT NOT NULL,
+                prompt_version_id TEXT,
+                status TEXT NOT NULL,
+                checkpoint_cursor TEXT,
+                checkpoint_payload {json_type} NOT NULL DEFAULT {json_default_empty_object},
+                items_scanned INTEGER NOT NULL DEFAULT 0,
+                findings_created INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT,
+                started_at {datetime_type},
+                finished_at {datetime_type},
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (intelligence_topic_id) REFERENCES intelligence_topics (id) ON DELETE CASCADE,
+                FOREIGN KEY (prompt_version_id) REFERENCES intelligence_topic_prompt_versions (id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_topic_research_checkpoints (
+                intelligence_topic_id TEXT NOT NULL,
+                prompt_version_id TEXT,
+                checkpoint_cursor TEXT,
+                checkpoint_payload {json_type} NOT NULL DEFAULT {json_default_empty_object},
+                last_run_id TEXT,
+                updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (intelligence_topic_id, prompt_version_id),
+                FOREIGN KEY (intelligence_topic_id) REFERENCES intelligence_topics (id) ON DELETE CASCADE,
+                FOREIGN KEY (prompt_version_id) REFERENCES intelligence_topic_prompt_versions (id) ON DELETE CASCADE,
+                FOREIGN KEY (last_run_id) REFERENCES intelligence_topic_research_runs (id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_topic_merge_previews (
+                id TEXT PRIMARY KEY,
+                intelligence_topic_id TEXT NOT NULL,
+                source_finding_ids {json_type} NOT NULL DEFAULT {json_default_empty_list},
+                preview_payload {json_type} NOT NULL DEFAULT {json_default_empty_object},
+                content_hash TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'pending',
+                created_by TEXT,
+                expires_at {datetime_type} NOT NULL,
+                applied_at {datetime_type},
+                created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (intelligence_topic_id) REFERENCES intelligence_topics (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS intelligence_finding_archives (
+                finding_id TEXT PRIMARY KEY,
+                intelligence_topic_id TEXT NOT NULL,
+                archive_reason TEXT,
+                archive_metadata {json_type} NOT NULL DEFAULT {json_default_empty_object},
+                superseded_by_finding_id TEXT,
+                archived_by TEXT,
+                archived_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (finding_id) REFERENCES intelligence_topic_findings (id) ON DELETE CASCADE,
+                FOREIGN KEY (intelligence_topic_id) REFERENCES intelligence_topics (id) ON DELETE CASCADE,
+                FOREIGN KEY (superseded_by_finding_id) REFERENCES intelligence_topic_findings (id) ON DELETE SET NULL
+            )
+        """)
+
+        for statement in [
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topic_prompt_versions_topic "
+                "ON intelligence_topic_prompt_versions (intelligence_topic_id, status, created_at DESC)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topic_findings_topic_status "
+                "ON intelligence_topic_findings (intelligence_topic_id, status, updated_at DESC)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topic_findings_prompt_version "
+                "ON intelligence_topic_findings (prompt_version_id)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topic_research_runs_topic "
+                "ON intelligence_topic_research_runs (intelligence_topic_id, created_at DESC)"
+            ),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_intelligence_topic_merge_previews_topic_state "
+                "ON intelligence_topic_merge_previews (intelligence_topic_id, state, expires_at)"
+            ),
+        ]:
+            cursor.execute(statement)
 
     def _backfill_intelligence_evidence_links(self, cursor: Any) -> None:
         cursor.execute(self._sql("""
@@ -874,10 +1048,7 @@ class DataManager:
             """)
 
         if topic_id_column_added:
-            cursor.execute(
-                "ALTER TABLE intelligence_canonical_entries "
-                "ADD COLUMN topic_id TEXT"
-            )
+            cursor.execute("ALTER TABLE intelligence_canonical_entries " "ADD COLUMN topic_id TEXT")
 
     @contextmanager
     def _get_connection(self):
@@ -2640,7 +2811,7 @@ class DataManager:
             cursor = conn.cursor()
             cursor.execute(
                 self._sql(
-                    "SELECT * FROM raw_intelligence_items WHERE expires_at < ? ORDER BY expires_at"
+                    "SELECT * FROM raw_intelligence_items WHERE collected_at < ? ORDER BY collected_at"
                 ),
                 (cutoff_time.isoformat(),),
             )
@@ -2666,7 +2837,7 @@ class DataManager:
                     self._sql("""
                     UPDATE raw_intelligence_items
                     SET raw_text = NULL
-                    WHERE expires_at < ? AND raw_text IS NOT NULL
+                    WHERE collected_at < ? AND raw_text IS NOT NULL
                     """),
                     (cutoff_time.isoformat(),),
                 )
@@ -3241,12 +3412,16 @@ class DataManager:
                 old_topic_id = None
                 if status == "unfollow":
                     cursor.execute(
-                        self._sql("SELECT topic_id FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"),
+                        self._sql(
+                            "SELECT topic_id FROM intelligence_canonical_entries WHERE id = ? LIMIT 1"
+                        ),
                         (entry_id,),
                     )
                     old_row = cursor.fetchone()
                     if old_row:
-                        old_topic_id = old_row["topic_id"] if self.backend == "postgres" else old_row[0]
+                        old_topic_id = (
+                            old_row["topic_id"] if self.backend == "postgres" else old_row[0]
+                        )
                 cursor.execute(
                     self._sql(
                         "UPDATE intelligence_canonical_entries "
@@ -3290,7 +3465,7 @@ class DataManager:
         status = self._normalize_follow_status(follow_status)
         now = datetime.utcnow().isoformat()
         placeholders = ", ".join("?" for _ in ids)
-        old_topic_ids: set = set()
+        old_topic_ids: set[str] = set()
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -3743,6 +3918,7 @@ class DataManager:
             "vulnerabilities",
             "latest_findings",
             "is_active",
+            "lifecycle_status",
             "last_evidence_at",
             "enriched_at",
             "embedding",
@@ -3955,19 +4131,21 @@ class DataManager:
             )
             results: List[Dict[str, Any]] = []
             for row in cursor.fetchall():
-                results.append({
-                    key: (
-                        self._dt_out(row[key])
-                        if key
-                        in {
-                            "observed_at",
-                            "published_at",
-                            "collected_at",
-                        }
-                        else row[key]
-                    )
-                    for key in row.keys()
-                })
+                results.append(
+                    {
+                        key: (
+                            self._dt_out(row[key])
+                            if key
+                            in {
+                                "observed_at",
+                                "published_at",
+                                "collected_at",
+                            }
+                            else row[key]
+                        )
+                        for key in row.keys()
+                    }
+                )
             return results
 
     def upsert_intelligence_topic_run_log(self, log: Dict[str, Any]) -> str:
@@ -4041,13 +4219,10 @@ class DataManager:
                 (*params, max(1, limit), max(0, offset)),
             )
             return [
-                self._serialize_intelligence_topic_run_log_row(row)
-                for row in cursor.fetchall()
+                self._serialize_intelligence_topic_run_log_row(row) for row in cursor.fetchall()
             ]
 
-    def get_latest_intelligence_topic_run_log(
-        self, run_type: str
-    ) -> Optional[Dict[str, Any]]:
+    def get_latest_intelligence_topic_run_log(self, run_type: str) -> Optional[Dict[str, Any]]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(

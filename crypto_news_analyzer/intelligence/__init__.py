@@ -1,7 +1,6 @@
-"""Hidden-channel intelligence canonicalization utilities."""
+"""Topic-first intelligence pipeline, research, and search utilities."""
 
-from .merge import IntelligenceMergeEngine
 from .pipeline import IntelligencePipeline
 from .search import IntelligenceSearchService
 
-__all__ = ["IntelligenceMergeEngine", "IntelligencePipeline", "IntelligenceSearchService"]
+__all__ = ["IntelligencePipeline", "IntelligenceSearchService"]

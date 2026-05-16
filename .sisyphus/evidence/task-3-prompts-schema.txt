@@ -1,0 +1,44 @@
+# Evidence: Task 3 - Prompt Files with Schema Version Markers
+# Generated: 2026-05-15
+
+## Prompt Files Created
+
+1. prompts/topic_prompt_generation_prompt.md
+   - Schema version: topic-prompt-generation-v1
+   - Purpose: Generates a professional research prompt from a user theme
+   - Output: JSON with topic_name, topic_description, research_prompt_draft, suggested_time_window_hours, confidence
+
+2. prompts/topic_prompt_revision_prompt.md
+   - Schema version: topic-prompt-revision-v1
+   - Purpose: Revises existing prompt based on user feedback
+   - Output: JSON with topic_name, revised_prompt, version, revision_note, changes_summary, confidence
+
+3. prompts/topic_research_prompt.md
+   - Schema version: topic-research-v1
+   - Purpose: Performs scheduled topic research over raw messages
+   - Output: JSON with topic_name, research_summary, findings (with citations), messages_processed, messages_relevant
+   - Citation requirement: Each finding must have at least one citation with message_id, message_snippet, source, published_at
+
+4. prompts/topic_findings_merge_prompt.md
+   - Schema version: topic-findings-merge-v1
+   - Purpose: Merges multiple active findings into one structured merged finding
+   - Output: JSON with topic_name, merge_summary, merged_findings (with source_finding_ids), merge statistics
+
+## Schema Version Marker Verification
+
+All 4 prompt files contain their schema version marker in the first line as a comment:
+  # Schema Version: <version-name>
+
+Each prompt also includes the version string in its JSON output schema.
+
+## Test Results
+
+All 39 tests in tests/test_topic_prompt_workflow.py pass:
+  - 8 tests: prompt files exist and are readable
+  - 8 tests: schema version markers present and in header
+  - 3 tests: research prompt citation requirements
+  - 3 tests: merge prompt structure
+  - 2 tests: generation prompt structure
+  - 2 tests: revision prompt structure
+  - 13 tests: old category language exclusion
+  - 1 test: old prompt file still exists

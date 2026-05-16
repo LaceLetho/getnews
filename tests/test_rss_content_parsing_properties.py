@@ -41,7 +41,8 @@ def valid_rss_entry_data(draw):
     url = f"https://{domain}/news/{path_id}"
     
     # 生成时间（在合理范围内）
-    now = datetime.now()
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
     hours_ago = draw(st.integers(min_value=0, max_value=48))
     publish_time = now - timedelta(hours=hours_ago)
     

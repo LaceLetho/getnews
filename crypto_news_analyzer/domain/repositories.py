@@ -17,12 +17,17 @@ from .models import (
     CanonicalIntelligenceEntry,
     DataSource,
     ExtractionObservation,
+    FindingArchive,
     IngestionJob,
     IntelligenceCrawlCheckpoint,
     IntelligenceTopic,
     IntelligenceTopicRunLog,
+    MergePreview,
     RawIntelligenceItem,
     SemanticSearchJob,
+    TopicFinding,
+    TopicPrompt,
+    TopicResearchRun,
 )
 
 
@@ -702,6 +707,172 @@ class IntelligenceRepository(ABC):
         limit: int = 10,
     ) -> List[Tuple["IntelligenceTopic", float]]:
         return []
+
+    def save_topic_prompt(self, prompt: TopicPrompt) -> str:
+        raise NotImplementedError("Topic prompt persistence is not implemented by this repository")
+
+    def create_topic_prompt_version(self, prompt: TopicPrompt) -> str:
+        return self.save_topic_prompt(prompt)
+
+    def get_active_topic_prompt(self, topic_id: str) -> Optional[TopicPrompt]:
+        prompts = self.list_topic_prompts(topic_id, status="active", limit=1)
+        return prompts[0] if prompts else None
+
+    def get_topic_prompt_by_id(self, prompt_version_id: str) -> Optional[TopicPrompt]:
+        return None
+
+    def list_topic_prompts(
+        self,
+        intelligence_topic_id: str,
+        status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[TopicPrompt]:
+        return []
+
+    def save_topic_finding(self, finding: TopicFinding) -> str:
+        raise NotImplementedError("Topic finding persistence is not implemented by this repository")
+
+    def create_topic_finding(self, finding: TopicFinding) -> str:
+        return self.save_topic_finding(finding)
+
+    def get_topic_finding_by_id(self, finding_id: str) -> Optional[TopicFinding]:
+        return None
+
+    def list_topic_findings(
+        self,
+        intelligence_topic_id: str,
+        status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[TopicFinding]:
+        return []
+
+    def list_active_findings(self, topic_id: str) -> List[TopicFinding]:
+        return self.list_topic_findings(topic_id, status="active")
+
+    def archive_finding(
+        self, finding_id: str, superseded_by_id: Optional[str] = None
+    ) -> Optional[TopicFinding]:
+        raise NotImplementedError("Topic finding archive is not implemented by this repository")
+
+    def mark_topic_raw_item_processed(
+        self,
+        raw_item_id: str,
+        intelligence_topic_id: str,
+        prompt_version: str,
+        schema_version: str,
+        finding_id: Optional[str] = None,
+    ) -> None:
+        pass
+
+    def mark_raw_items_processed(
+        self,
+        topic_id: str,
+        raw_item_ids: List[str],
+        prompt_version: str,
+        schema_version: str,
+        finding_id: Optional[str] = None,
+    ) -> int:
+        for raw_item_id in raw_item_ids:
+            self.mark_topic_raw_item_processed(
+                raw_item_id,
+                topic_id,
+                prompt_version,
+                schema_version,
+                finding_id=finding_id,
+            )
+        return len(raw_item_ids)
+
+    def get_raw_items_since(
+        self, topic_id: str, cursor_time: Optional[datetime], limit: int
+    ) -> List[RawIntelligenceItem]:
+        return []
+
+    def get_processed_topic_raw_item_ids(
+        self,
+        raw_item_ids: List[str],
+        intelligence_topic_id: str,
+        prompt_version: str,
+        schema_version: str,
+    ) -> Set[str]:
+        return set()
+
+    def save_topic_research_run(self, run: TopicResearchRun) -> str:
+        raise NotImplementedError("Topic research run persistence is not implemented by this repository")
+
+    def create_topic_research_run(self, run: TopicResearchRun) -> str:
+        return self.save_topic_research_run(run)
+
+    def update_topic_research_run(
+        self,
+        run_id: str,
+        status: str,
+        checkpoint_cursor: Optional[str] = None,
+        checkpoint_payload: Optional[Dict[str, Any]] = None,
+        items_scanned: Optional[int] = None,
+        findings_created: Optional[int] = None,
+        error_message: Optional[str] = None,
+        finished_at: Optional[datetime] = None,
+    ) -> Optional[TopicResearchRun]:
+        raise NotImplementedError("Topic research run update is not implemented by this repository")
+
+    def get_topic_research_run_by_id(self, run_id: str) -> Optional[TopicResearchRun]:
+        return None
+
+    def get_topic_research_run(self, run_id: str) -> Optional[TopicResearchRun]:
+        return self.get_topic_research_run_by_id(run_id)
+
+    def list_topic_research_runs(self, topic_id: str) -> List[TopicResearchRun]:
+        return []
+
+    def get_topic_checkpoint(
+        self, topic_id: str, prompt_version_id: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        return None
+
+    def update_topic_checkpoint(
+        self,
+        topic_id: str,
+        prompt_version_id: Optional[str],
+        checkpoint_cursor: Optional[str],
+        checkpoint_payload: Optional[Dict[str, Any]] = None,
+        last_run_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        raise NotImplementedError("Topic checkpoint update is not implemented by this repository")
+
+    def save_merge_preview(self, preview: MergePreview) -> str:
+        raise NotImplementedError("Merge preview persistence is not implemented by this repository")
+
+    def create_merge_preview(self, preview: MergePreview) -> str:
+        return self.save_merge_preview(preview)
+
+    def get_merge_preview_by_id(self, preview_id: str) -> Optional[MergePreview]:
+        return None
+
+    def get_merge_preview(self, preview_id: str) -> Optional[MergePreview]:
+        return self.get_merge_preview_by_id(preview_id)
+
+    def accept_merge_preview(self, preview_id: str) -> bool:
+        raise NotImplementedError("Merge preview acceptance is not implemented by this repository")
+
+    def reject_merge_preview(self, preview_id: str) -> bool:
+        raise NotImplementedError("Merge preview rejection is not implemented by this repository")
+
+    def list_merge_previews(
+        self,
+        intelligence_topic_id: str,
+        state: Optional[str] = None,
+        include_expired: bool = False,
+        limit: int = 50,
+    ) -> List[MergePreview]:
+        return []
+
+    def archive_topic_finding(self, archive: FindingArchive) -> None:
+        pass
+
+    def get_finding_archive(self, finding_id: str) -> Optional[FindingArchive]:
+        return None
 
 
 class CacheRepository(ABC):

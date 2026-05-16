@@ -43,7 +43,7 @@ class TestTimezoneIntegration(unittest.TestCase):
         )
         
         # 验证包含标题和时间窗口
-        self.assertIn("加密货币新闻快讯", header)
+        self.assertIn("小时快讯", header)
         self.assertIn("8", header)
     
     def test_analyzed_data_creation_uses_utc8(self):
@@ -133,7 +133,7 @@ class TestTimezoneIntegration(unittest.TestCase):
         )
         
         # 验证报告包含标题
-        self.assertIn("加密货币新闻快讯", report)
+        self.assertIn("小时快讯", report)
         
         # 验证报告格式正确
         self.assertIn("大户动向", report)
@@ -160,7 +160,7 @@ class TestTimezoneIntegration(unittest.TestCase):
         # 创建命令处理器配置
         config = TelegramCommandConfig(
             enabled=True,
-            authorized_users=["123456"],
+            authorized_users=[{"user_id": "123456", "username": "testuser"}],
             execution_timeout_minutes=30,
             max_concurrent_executions=1,
             command_rate_limit={

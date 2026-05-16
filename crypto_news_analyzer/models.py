@@ -15,6 +15,16 @@ from urllib.parse import urlparse
 from .config.llm_registry import LLMRegistryError, validate_model_config
 
 
+def _is_hhmm_time(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    parts = value.split(":")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        return False
+    hour, minute = (int(part) for part in parts)
+    return 0 <= hour <= 23 and 0 <= minute <= 59
+
+
 @dataclass
 class ContentItem:
     """内容项数据模型"""
@@ -496,7 +506,7 @@ class IntelligenceExtractionConfig:
         payload = dict(data or {})
         return cls(
             provider=payload.get("provider", "opencode-go"),
-            model_name=payload.get("model_name", payload.get("model", "")),
+            model_name=payload.get("model_name", payload.get("model", "deepseek-v4-pro")),
             thinking_level=payload.get("thinking_level"),
             temperature=payload.get("temperature"),
             max_tokens=payload.get("max_tokens", 4000),
@@ -523,8 +533,11 @@ class IntelligenceCollectionConfig:
 
     interval_minutes: int = 60
     ttl_days: int = 30
+    raw_message_retention_days: int = 180
     backfill_hours: int = 24
     confidence_threshold: float = 0.6
+    daily_topic_research_enabled: bool = True
+    daily_topic_research_time_utc: str = "03:00"
 
     def __post_init__(self):
         self.validate()
@@ -534,6 +547,8 @@ class IntelligenceCollectionConfig:
             raise ValueError("interval_minutes必须大于0")
         if self.ttl_days <= 0:
             raise ValueError("ttl_days必须大于0")
+        if self.raw_message_retention_days <= 0:
+            raise ValueError("raw_message_retention_days must be greater than 0")
         if self.backfill_hours < 0:
             raise ValueError("backfill_hours不能小于0")
         if not isinstance(self.confidence_threshold, (int, float)):
@@ -541,6 +556,10 @@ class IntelligenceCollectionConfig:
         self.confidence_threshold = float(self.confidence_threshold)
         if self.confidence_threshold < 0 or self.confidence_threshold > 1:
             raise ValueError("confidence_threshold必须在0到1之间")
+        if not isinstance(self.daily_topic_research_enabled, bool):
+            raise ValueError("daily_topic_research_enabled必须是布尔值")
+        if not _is_hhmm_time(self.daily_topic_research_time_utc):
+            raise ValueError("daily_topic_research_time_utc必须使用HH:MM格式")
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceCollectionConfig":
@@ -548,16 +567,22 @@ class IntelligenceCollectionConfig:
         return cls(
             interval_minutes=payload.get("interval_minutes", 60),
             ttl_days=payload.get("ttl_days", 30),
+            raw_message_retention_days=payload.get("raw_message_retention_days", 180),
             backfill_hours=payload.get("backfill_hours", 24),
             confidence_threshold=payload.get("confidence_threshold", 0.6),
+            daily_topic_research_enabled=payload.get("daily_topic_research_enabled", True),
+            daily_topic_research_time_utc=payload.get("daily_topic_research_time_utc", "03:00"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "interval_minutes": self.interval_minutes,
             "ttl_days": self.ttl_days,
+            "raw_message_retention_days": self.raw_message_retention_days,
             "backfill_hours": self.backfill_hours,
             "confidence_threshold": self.confidence_threshold,
+            "daily_topic_research_enabled": self.daily_topic_research_enabled,
+            "daily_topic_research_time_utc": self.daily_topic_research_time_utc,
         }
 
 
@@ -668,8 +693,12 @@ class IntelligenceConfig:
 
     extraction: IntelligenceExtractionConfig = field(default_factory=IntelligenceExtractionConfig)
     collection: IntelligenceCollectionConfig = field(default_factory=IntelligenceCollectionConfig)
-    topic_enrichment: IntelligenceTopicEnrichmentConfig = field(default_factory=IntelligenceTopicEnrichmentConfig)
-    discovery_novelty: IntelligenceDiscoveryNoveltyConfig = field(default_factory=IntelligenceDiscoveryNoveltyConfig)
+    topic_enrichment: IntelligenceTopicEnrichmentConfig = field(
+        default_factory=IntelligenceTopicEnrichmentConfig
+    )
+    discovery_novelty: IntelligenceDiscoveryNoveltyConfig = field(
+        default_factory=IntelligenceDiscoveryNoveltyConfig
+    )
     sources: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):

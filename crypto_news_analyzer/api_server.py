@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import re
 import uuid
-from typing import Annotated, Any, Dict, Optional, cast
+from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, HTTPException, Depends, Response, Request, Body
@@ -30,10 +30,9 @@ from .domain.models import (
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
     DataSourcePurpose,
-    IntelligenceFollowStatus,
     Priority,
-    PrimaryLabel,
     SemanticSearchJob,
+    TopicLifecycleStatus,
 )
 from .models import SemanticSearchConfig
 from .domain.repositories import (
@@ -47,7 +46,12 @@ from .storage.repositories import (
     SQLiteAnalysisRepository,
 )
 from .intelligence.search import IntelligenceSearchService
+from .intelligence.topic_findings import MergePreviewError
 from .domain.repositories import IntelligenceRepository
+
+if TYPE_CHECKING:
+    from .intelligence.topic_prompts import TopicPromptWorkflowService
+    from .intelligence.topic_findings import TopicFindingMergeService
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
@@ -57,7 +61,6 @@ SEMANTIC_SEARCH_ROUTE_PATH = "/semantic-search"
 SEMANTIC_SEARCH_JOB_STATUS_PATH = "/semantic-search/{job_id}"
 SEMANTIC_SEARCH_JOB_RESULT_PATH = "/semantic-search/{job_id}/result"
 SEMANTIC_SEARCH_TELEGRAM_COMMAND = "/semantic_search <hours> <topic>"
-INTELLIGENCE_EVIDENCE_CONTEXT_WINDOW = 5
 
 
 class AppState:
@@ -335,140 +338,12 @@ class DataSourceListResponse(BaseModel):
     datasources: list[DataSourceResponseItem]
 
 
-class IntelligenceEntryResponse(BaseModel):
-    id: str
-    entry_id: str
-    entry_type: str
-    normalized_key: str
-    display_name: str
-    explanation: Optional[str] = None
-    usage_summary: Optional[str] = None
-    primary_label: Optional[str] = None
-    secondary_tags: list[str] = Field(default_factory=list)
-    confidence: float = 0.0
-    first_seen_at: Optional[str] = None
-    evidence_count: int = 1
-    aliases: list[str] = Field(default_factory=list)
-    model_name: Optional[str] = None
-    prompt_version: Optional[str] = None
-    schema_version: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-    is_ignored: bool = False
-    ignored_at: Optional[str] = None
-    ignored_by: Optional[str] = None
-    tracking_enabled: bool = False
-    discovery_presented_at: Optional[str] = None
-    follow_status: str = "unset"
-
-
-class IntelligenceListResponse(BaseModel):
-    entries: list[IntelligenceEntryResponse]
-    total: int
-    page: int
-    page_size: int
-
-
-class IntelligenceDiscoveryResponse(BaseModel):
-    entries: list[IntelligenceEntryResponse]
-    total: int
-    page: int
-    page_size: int
-
-
-class IntelligenceRawEvidenceItemResponse(BaseModel):
-    raw_item_id: str
-    raw_text: Optional[str] = None
-    source_type: str
-    source_url: Optional[str] = None
-    source: Optional[str] = None
-    published_at: Optional[str] = None
-    collected_at: Optional[str] = None
-    expires_at: Optional[str] = None
-    is_expired: bool = False
-
-
-class IntelligenceEvidenceGroupResponse(BaseModel):
-    observation_id: str
-    raw_item_id: str
-    observed_at: Optional[str] = None
-    published_at: Optional[str] = None
-    collected_at: Optional[str] = None
-    anchor_raw_item: Optional[IntelligenceRawEvidenceItemResponse] = None
-    neighboring_raw_items: list[IntelligenceRawEvidenceItemResponse] = Field(default_factory=list)
-    warning: Optional[str] = None
-
-
-class IntelligenceEntryDetailResponse(BaseModel):
-    id: str
-    entry_id: str
-    entry_type: str
-    normalized_key: str
-    display_name: str
-    explanation: Optional[str] = None
-    usage_summary: Optional[str] = None
-    primary_label: Optional[str] = None
-    secondary_tags: list[str] = Field(default_factory=list)
-    confidence: float = 0.0
-    first_seen_at: Optional[str] = None
-    last_seen_at: Optional[str] = None
-    evidence_count: int = 1
-    aliases: list[str] = Field(default_factory=list)
-    model_name: Optional[str] = None
-    prompt_version: Optional[str] = None
-    schema_version: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-    is_ignored: bool = False
-    ignored_at: Optional[str] = None
-    ignored_by: Optional[str] = None
-    tracking_enabled: bool = False
-    discovery_presented_at: Optional[str] = None
-    follow_status: str = "unset"
-    source: Optional[str] = None
-    raw_available: bool = False
-    raw_evidence: Optional[Any] = None
-    evidence_groups: list[IntelligenceEvidenceGroupResponse] = Field(default_factory=list)
-    evidence_page: int = 1
-    evidence_page_size: int = 5
-    evidence_total: int = 0
-
-
-class IntelligenceSearchResultItem(BaseModel):
-    id: str
-    entry_id: str
-    entry_type: str
-    normalized_key: str
-    display_name: str
-    explanation: Optional[str] = None
-    primary_label: Optional[str] = None
-    secondary_tags: list[str] = Field(default_factory=list)
-    confidence: float = 0.0
-    evidence_count: int = 1
-    similarity_score: float = 0.0
-    is_ignored: bool = False
-    ignored_at: Optional[str] = None
-    ignored_by: Optional[str] = None
-    tracking_enabled: bool = False
-    follow_status: str = "unset"
-
-
-class IntelligenceFollowStatusResponse(BaseModel):
-    success: bool
-    entry_id: str
-    tracking_enabled: bool
-    is_ignored: bool
-    follow_status: str = "unset"
-    topic: Optional[Dict[str, Any]] = None
-    topic_error: Optional[str] = None
-
-
 class IntelligenceTopicItemResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
     enriched_summary: Optional[str] = None
-    entry_count: int = 0
+    finding_count: int = 0
     enriched_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -478,12 +353,6 @@ class IntelligenceTopicListResponse(BaseModel):
     total: int
     page: int
     page_size: int
-
-
-class IntelligenceTopicDetailResponse(BaseModel):
-    topic: Dict[str, Any]
-    entries: list[Dict[str, Any]]
-    recent_logs: list[Dict[str, Any]]
 
 
 class IntelligenceTopicRunsResponse(BaseModel):
@@ -506,42 +375,98 @@ class IntelligenceConvergeRequest(BaseModel):
     target_topic_count: Optional[int] = Field(default=None, ge=2, le=20)
 
 
-class IntelligenceSearchResponse(BaseModel):
-    results: list[IntelligenceSearchResultItem]
-    total: int
-    page: int
-    page_size: int
+class TopicCreateDraftRequest(BaseModel):
+    theme: str = Field(..., min_length=1, max_length=500)
+    source_context: Optional[Dict[str, Any]] = Field(default=None)
 
 
-class IntelligenceLabelResponseItem(BaseModel):
-    name: str
-    value: str
+class TopicReviseRequest(BaseModel):
+    feedback: str = Field(..., min_length=1, max_length=5000)
 
 
-class IntelligenceLabelsResponse(BaseModel):
-    labels: list[IntelligenceLabelResponseItem]
+class TopicManualReplaceRequest(BaseModel):
+    prompt_text: str = Field(..., min_length=1, max_length=50000)
 
 
-class IntelligenceRawItemResponse(BaseModel):
-    raw_text: Optional[str] = None
-    source_type: str
-    source_url: Optional[str] = None
-    published_at: Optional[str] = None
+class TopicConfirmRequest(BaseModel):
+    prompt_version_id: str = Field(..., min_length=1)
+    activation_notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class TopicEditActiveRequest(BaseModel):
+    new_prompt_text: str = Field(..., min_length=1, max_length=50000)
+
+
+class TopicCreateMergePreviewRequest(BaseModel):
+    prompt_version_id: str = Field(..., min_length=1)
+
+
+class TopicAcceptMergePreviewRequest(BaseModel):
+    preview_id: str = Field(..., min_length=1)
+
+
+class TopicPromptVersionResponse(BaseModel):
+    id: str
+    intelligence_topic_id: str
+    prompt_version: str
+    prompt_text: str
+    schema_version: str
+    status: str
+    created_by: Optional[str] = None
+    activated_by: Optional[str] = None
+    activation_notes: Optional[str] = None
+    created_at: Optional[str] = None
+    activated_at: Optional[str] = None
+    archived_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    audit_history: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class TopicFindingResponse(BaseModel):
+    id: str
+    intelligence_topic_id: str
+    prompt_version_id: str
+    finding_payload: Dict[str, Any]
+    confidence: float = 0.0
+    citations: List[Dict[str, Any]] = Field(default_factory=list)
+    source_finding_ids: List[str] = Field(default_factory=list)
+    status: str
+    found_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class TopicDetailResponse(BaseModel):
+    topic: Dict[str, Any]
+    prompt_versions: List[TopicPromptVersionResponse] = Field(default_factory=list)
+    current_prompt: Optional[TopicPromptVersionResponse] = None
+    active_findings: List[TopicFindingResponse] = Field(default_factory=list)
+    citations: List[Dict[str, Any]] = Field(default_factory=list)
+    merge_available: bool = False
+    recent_logs: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class MergePreviewResponse(BaseModel):
+    preview_id: str
+    topic_id: str
+    state: str
+    content_hash: str
     expires_at: Optional[str] = None
-    is_expired: bool = False
+    preview_payload: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[str] = None
 
 
-class IntelligenceFollowStatusRequest(BaseModel):
-    follow_status: str
+class TopicResearchRunsResponse(BaseModel):
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+    page: int = 1
+    page_size: int = 20
 
-    @field_validator("follow_status")
-    @classmethod
-    def validate_follow_status(cls, value: str) -> str:
-        normalized = str(value or "").strip().lower()
-        allowed = {status.value for status in IntelligenceFollowStatus}
-        if normalized not in allowed:
-            raise ValueError("follow_status must be one of: follow, unfollow, unset")
-        return normalized
+
+class TopicLifecycleActionResponse(BaseModel):
+    success: bool
+    topic_id: str
+    lifecycle_status: str
+    updated_at: Optional[str] = None
 
 
 def _datetime_to_iso(value: Optional[datetime]) -> Optional[str]:
@@ -564,19 +489,6 @@ def _topic_to_dict(topic: Any) -> Dict[str, Any]:
     }
 
 
-def _canonical_entry_to_dict(entry: Any) -> Dict[str, Any]:
-    return {
-        "id": str(getattr(entry, "id", "")),
-        "entry_type": str(getattr(entry, "entry_type", "")),
-        "display_name": str(getattr(entry, "display_name", "")),
-        "primary_label": getattr(entry, "primary_label", None),
-        "follow_status": str(getattr(entry, "follow_status", "unset") or "unset"),
-        "topic_id": getattr(entry, "topic_id", None),
-        "confidence": float(getattr(entry, "confidence", 0.0)),
-        "evidence_count": int(getattr(entry, "evidence_count", 0)),
-    }
-
-
 def _log_to_dict(log: Any) -> Dict[str, Any]:
     return {
         "id": str(getattr(log, "id", "")),
@@ -590,107 +502,6 @@ def _log_to_dict(log: Any) -> Dict[str, Any]:
         "finished_at": _datetime_to_iso(getattr(log, "finished_at", None)),
         "created_at": _datetime_to_iso(getattr(log, "created_at", None)),
     }
-
-
-def _canonical_entry_to_response(entry: Any) -> IntelligenceEntryResponse:
-    return IntelligenceEntryResponse(
-        id=entry.id,
-        entry_id=entry.id,
-        entry_type=entry.entry_type,
-        normalized_key=entry.normalized_key,
-        display_name=entry.display_name,
-        explanation=entry.explanation,
-        usage_summary=getattr(entry, "usage_summary", None),
-        primary_label=entry.primary_label,
-        secondary_tags=list(entry.secondary_tags),
-        confidence=entry.confidence,
-        first_seen_at=entry.first_seen_at.isoformat() if entry.first_seen_at else None,
-        evidence_count=entry.evidence_count,
-        aliases=list(getattr(entry, "aliases", [])),
-        model_name=entry.model_name,
-        prompt_version=entry.prompt_version,
-        schema_version=entry.schema_version,
-        created_at=entry.created_at.isoformat() if entry.created_at else None,
-        updated_at=entry.updated_at.isoformat() if entry.updated_at else None,
-        is_ignored=bool(getattr(entry, "is_ignored", False)),
-        ignored_at=_datetime_to_iso(cast(Optional[datetime], getattr(entry, "ignored_at", None))),
-        ignored_by=getattr(entry, "ignored_by", None),
-        tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
-        discovery_presented_at=_datetime_to_iso(
-            cast(Optional[datetime], getattr(entry, "discovery_presented_at", None))
-        ),
-        follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
-    )
-
-
-def _canonical_entry_to_detail_response(entry: Any) -> IntelligenceEntryDetailResponse:
-    return IntelligenceEntryDetailResponse(
-        id=entry.id,
-        entry_id=entry.id,
-        entry_type=entry.entry_type,
-        normalized_key=entry.normalized_key,
-        display_name=entry.display_name,
-        explanation=entry.explanation,
-        usage_summary=getattr(entry, "usage_summary", None),
-        primary_label=entry.primary_label,
-        secondary_tags=list(entry.secondary_tags),
-        confidence=entry.confidence,
-        first_seen_at=entry.first_seen_at.isoformat() if entry.first_seen_at else None,
-        last_seen_at=entry.last_seen_at.isoformat() if entry.last_seen_at else None,
-        evidence_count=entry.evidence_count,
-        aliases=list(getattr(entry, "aliases", [])),
-        model_name=entry.model_name,
-        prompt_version=entry.prompt_version,
-        schema_version=entry.schema_version,
-        created_at=entry.created_at.isoformat() if entry.created_at else None,
-        updated_at=entry.updated_at.isoformat() if entry.updated_at else None,
-        is_ignored=bool(getattr(entry, "is_ignored", False)),
-        ignored_at=_datetime_to_iso(cast(Optional[datetime], getattr(entry, "ignored_at", None))),
-        ignored_by=getattr(entry, "ignored_by", None),
-        tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
-        discovery_presented_at=_datetime_to_iso(
-            cast(Optional[datetime], getattr(entry, "discovery_presented_at", None))
-        ),
-        follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
-    )
-
-
-def _validate_tracking_scope(tracking_scope: str) -> str:
-    normalized_scope = str(tracking_scope or "following").strip().lower()
-    if normalized_scope not in {"following", "discovery", "unfollowed", "unset", "all"}:
-        raise HTTPException(
-            status_code=400,
-            detail="tracking_scope must be one of: following, discovery, unfollowed, unset, all",
-        )
-    return normalized_scope
-
-
-def _raw_item_to_evidence_response(raw_item: Any) -> IntelligenceRawEvidenceItemResponse:
-    is_expired = _is_expired(getattr(raw_item, "expires_at", None))
-    raw_text = getattr(raw_item, "raw_text", None)
-    if is_expired or not raw_text:
-        raw_text = None
-    return IntelligenceRawEvidenceItemResponse(
-        raw_item_id=raw_item.id,
-        raw_text=raw_text,
-        source_type=raw_item.source_type,
-        source_url=raw_item.source_url,
-        source=_build_source_display(raw_item),
-        published_at=_datetime_to_iso(raw_item.published_at),
-        collected_at=_datetime_to_iso(raw_item.collected_at),
-        expires_at=_datetime_to_iso(raw_item.expires_at),
-        is_expired=is_expired,
-    )
-
-
-def _evidence_warning(raw_item: Optional[Any]) -> Optional[str]:
-    if raw_item is None:
-        return "Evidence raw item is unavailable; it may have been purged."
-    if _is_expired(getattr(raw_item, "expires_at", None)):
-        return "Evidence raw text is unavailable because the raw item expired."
-    if not getattr(raw_item, "raw_text", None):
-        return "Evidence raw text is unavailable because it has been purged."
-    return None
 
 
 def _as_naive_utc(value: Optional[datetime]) -> Optional[datetime]:
@@ -1049,6 +860,81 @@ def _build_intelligence_search_service(controller: MainController) -> Intelligen
         embedding_service=embedding_service,
         intelligence_repository=intelligence_repository,
         storage_config=storage_config,
+    )
+
+
+def _get_topic_prompt_workflow_service(
+    controller: MainController,
+    repository: IntelligenceRepository,
+) -> "TopicPromptWorkflowService":
+    from .intelligence.topic_prompts import TopicPromptWorkflowService
+
+    llm_analyzer = getattr(controller, "llm_analyzer", None)
+    llm_client = getattr(llm_analyzer, "client", None) if llm_analyzer else None
+    model_name = ""
+    if llm_analyzer and hasattr(llm_analyzer, "analysis_model_runtime"):
+        runtime = llm_analyzer.analysis_model_runtime
+        model_name = getattr(runtime, "model_name", "") if runtime else ""
+
+    return TopicPromptWorkflowService(
+        repository=repository,
+        llm_client=llm_client,
+        model_name=model_name,
+    )
+
+
+def _get_topic_finding_merge_service(
+    controller: MainController,
+    repository: IntelligenceRepository,
+) -> "TopicFindingMergeService":
+    from .intelligence.topic_findings import TopicFindingMergeService
+
+    llm_analyzer = getattr(controller, "llm_analyzer", None)
+    llm_client = getattr(llm_analyzer, "client", None) if llm_analyzer else None
+    model_name = ""
+    if llm_analyzer and hasattr(llm_analyzer, "analysis_model_runtime"):
+        runtime = llm_analyzer.analysis_model_runtime
+        model_name = getattr(runtime, "model_name", "") if runtime else ""
+
+    return TopicFindingMergeService(
+        intelligence_repository=repository,
+        llm_client=llm_client,
+        model_name=model_name,
+    )
+
+
+def _prompt_to_response(prompt: Any) -> TopicPromptVersionResponse:
+    return TopicPromptVersionResponse(
+        id=str(getattr(prompt, "id", "")),
+        intelligence_topic_id=str(getattr(prompt, "intelligence_topic_id", "")),
+        prompt_version=str(getattr(prompt, "prompt_version", "")),
+        prompt_text=str(getattr(prompt, "prompt_text", "")),
+        schema_version=str(getattr(prompt, "schema_version", "")),
+        status=str(getattr(prompt, "status", "draft")),
+        created_by=getattr(prompt, "created_by", None),
+        activated_by=getattr(prompt, "activated_by", None),
+        activation_notes=getattr(prompt, "activation_notes", None),
+        created_at=_datetime_to_iso(getattr(prompt, "created_at", None)),
+        activated_at=_datetime_to_iso(getattr(prompt, "activated_at", None)),
+        archived_at=_datetime_to_iso(getattr(prompt, "archived_at", None)),
+        updated_at=_datetime_to_iso(getattr(prompt, "updated_at", None)),
+        audit_history=list(getattr(prompt, "audit_history", []) or []),
+    )
+
+
+def _finding_to_response(finding: Any) -> TopicFindingResponse:
+    return TopicFindingResponse(
+        id=str(getattr(finding, "id", "")),
+        intelligence_topic_id=str(getattr(finding, "intelligence_topic_id", "")),
+        prompt_version_id=str(getattr(finding, "prompt_version_id", "")),
+        finding_payload=dict(getattr(finding, "finding_payload", {}) or {}),
+        confidence=float(getattr(finding, "confidence", 0.0)),
+        citations=list(getattr(finding, "citations", []) or []),
+        source_finding_ids=list(getattr(finding, "source_finding_ids", []) or []),
+        status=str(getattr(finding, "status", "active")),
+        found_at=_datetime_to_iso(getattr(finding, "found_at", None)),
+        created_at=_datetime_to_iso(getattr(finding, "created_at", None)),
+        updated_at=_datetime_to_iso(getattr(finding, "updated_at", None)),
     )
 
 
@@ -1535,337 +1421,276 @@ def create_api_server(
             raise HTTPException(status_code=404, detail="Semantic search job not found")
         return _semantic_search_request_to_job_record(job).to_result_response()
 
-    # ── Intelligence query endpoints ──────────────────────────────────────
+    # ── Topic workflow endpoints ───────────────────────────────────────────
 
-    @app.get("/intelligence/entries", response_model=IntelligenceListResponse)
-    async def list_intelligence_entries(
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-        window: Optional[str] = None,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        tracking_scope: str = "following",
-        page: int = 1,
-        page_size: int = 20,
-    ):
-        """List canonical intelligence entries with pagination."""
-        repository = _get_intelligence_repository(req)
-        window_cutoff = _parse_window_param(window)
-        normalized_tracking_scope = _validate_tracking_scope(tracking_scope)
-
-        page = max(1, page)
-        page_size = max(1, min(page_size, 100))
-
-        entries = repository.list_canonical_entries(
-            entry_type=entry_type if entry_type else None,
-            primary_label=primary_label if primary_label else None,
-            window=window_cutoff,
-            page=page,
-            page_size=page_size,
-            tracking_scope=normalized_tracking_scope,
-        )
-        total = repository.count_canonical_entries(
-            entry_type=entry_type if entry_type else None,
-            primary_label=primary_label if primary_label else None,
-            window=window_cutoff,
-            tracking_scope=normalized_tracking_scope,
-        )
-
-        return IntelligenceListResponse(
-            entries=[_canonical_entry_to_response(e) for e in entries],
-            total=total,
-            page=page,
-            page_size=page_size,
-        )
-
-    @app.get("/intelligence/discovery", response_model=IntelligenceDiscoveryResponse)
-    async def discover_intelligence_entries(
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-        window: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-    ):
-        """Return entries whose follow status is unset."""
-        repository = _get_intelligence_repository(req)
-        window_cutoff = _parse_window_param(window)
-
-        page = max(1, page)
-        page_size = max(1, min(page_size, 100))
-
-        entries = repository.list_canonical_entries(
-            entry_type=None,
-            primary_label=primary_label if primary_label else None,
-            window=window_cutoff,
-            page=page,
-            page_size=page_size,
-            tracking_scope="discovery",
-        )
-        total = repository.count_canonical_entries(
-            entry_type=None,
-            primary_label=primary_label if primary_label else None,
-            window=window_cutoff,
-            tracking_scope="discovery",
-        )
-        response = IntelligenceDiscoveryResponse(
-            entries=[_canonical_entry_to_response(e) for e in entries],
-            total=total,
-            page=page,
-            page_size=page_size,
-        )
-        return response
-
-    @app.get("/intelligence/labels", response_model=IntelligenceLabelsResponse)
-    async def list_intelligence_labels(
+    @app.post("/intelligence/topics", response_model=TopicPromptVersionResponse, status_code=201)
+    async def create_topic_draft(
+        request_body: TopicCreateDraftRequest,
         req: Request,
         _: Annotated[str, Depends(verify_api_key)],
     ):
-        """List searchable primary labels for intelligence queries."""
+        """Create a new intelligence topic with an LLM-generated draft prompt."""
+        controller = _get_controller(req)
         repository = _get_intelligence_repository(req)
-        if (
-            repository.count_canonical_entries() == 0
-            and repository.count_ignored_canonical_entries() == 0
-        ):
-            labels = [
-                IntelligenceLabelResponseItem(name=item.name, value=item.value)
-                for item in PrimaryLabel
-            ]
-        else:
-            labels = []
-            for item in PrimaryLabel:
-                if repository.count_canonical_entries(primary_label=item.value) <= 0:
-                    continue
-                labels.append(IntelligenceLabelResponseItem(name=item.name, value=item.value))
-        return IntelligenceLabelsResponse(labels=labels)
+        service = _get_topic_prompt_workflow_service(controller, repository)
+
+        try:
+            prompt = service.create_draft_topic(
+                theme=request_body.theme,
+                source_context=request_body.source_context,
+                created_by="api",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to create topic draft: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        return _prompt_to_response(prompt)
 
     @app.post(
-        "/intelligence/entries/{entry_id}/follow-status",
-        response_model=IntelligenceFollowStatusResponse,
-        response_model_exclude_none=True,
+        "/intelligence/topics/{topic_id}/revise",
+        response_model=TopicPromptVersionResponse,
     )
-    async def set_intelligence_entry_follow_status(
-        entry_id: str,
-        payload: IntelligenceFollowStatusRequest,
+    async def revise_topic_prompt(
+        topic_id: str,
+        request_body: TopicReviseRequest,
         req: Request,
         _: Annotated[str, Depends(verify_api_key)],
     ):
+        """Revise the most recent prompt for a topic using LLM and user feedback."""
+        controller = _get_controller(req)
         repository = _get_intelligence_repository(req)
-        entry = repository.set_canonical_entry_follow_status(entry_id, payload.follow_status)
-        if entry is None:
-            raise HTTPException(status_code=404, detail="Intelligence entry not found")
+        service = _get_topic_prompt_workflow_service(controller, repository)
 
-        topic_info = None
-        topic_error = None
-        if entry.follow_status == "follow":
-            controller = getattr(req.app.state, "controller", None)
-            topic_service = getattr(controller, "topic_service", None) if controller else None
-            if topic_service is None and controller is not None:
-                from .intelligence.topics import IntelligenceTopicService
+        try:
+            prompt = service.revise_prompt(
+                topic_id=topic_id,
+                feedback=request_body.feedback,
+                activated_by="api",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to revise prompt: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
 
-                topic_service = IntelligenceTopicService(
-                    intelligence_repository=repository,
-                    search_service=_build_intelligence_search_service(controller),
+        return _prompt_to_response(prompt)
+
+    @app.put(
+        "/intelligence/topics/{topic_id}/prompt",
+        response_model=TopicPromptVersionResponse,
+    )
+    async def set_topic_prompt(
+        topic_id: str,
+        request_body: TopicManualReplaceRequest,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Replace or edit the active prompt (context-aware: edits active if it exists)."""
+        controller = _get_controller(req)
+        repository = _get_intelligence_repository(req)
+        service = _get_topic_prompt_workflow_service(controller, repository)
+
+        try:
+            active = repository.get_active_topic_prompt(topic_id)
+            if active is not None:
+                prompt = service.edit_active_prompt(
+                    topic_id=topic_id,
+                    new_prompt_text=request_body.prompt_text,
+                    created_by="api",
                 )
-                setattr(controller, "topic_service", topic_service)
-            if topic_service is not None:
-                try:
-                    topic = topic_service.ensure_entry_topic(entry)
-                    if topic:
-                        topic_info = {"id": topic.id, "name": topic.name}
-                except Exception as exc:
-                    topic_error = str(exc)
+            else:
+                prompt = service.replace_prompt_manual(
+                    topic_id=topic_id,
+                    prompt_text=request_body.prompt_text,
+                    created_by="api",
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to set prompt: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
 
-        return IntelligenceFollowStatusResponse(
+        return _prompt_to_response(prompt)
+
+    @app.post(
+        "/intelligence/topics/{topic_id}/confirm",
+        response_model=TopicPromptVersionResponse,
+    )
+    async def confirm_topic_prompt(
+        topic_id: str,
+        request_body: TopicConfirmRequest,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Confirm a draft prompt version, activating it for the topic."""
+        controller = _get_controller(req)
+        repository = _get_intelligence_repository(req)
+        service = _get_topic_prompt_workflow_service(controller, repository)
+
+        try:
+            prompt = service.confirm_prompt(
+                topic_id=topic_id,
+                prompt_version_id=request_body.prompt_version_id,
+                activated_by="api",
+                activation_notes=request_body.activation_notes,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to confirm prompt: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        return _prompt_to_response(prompt)
+
+    @app.post(
+        "/intelligence/topics/{topic_id}/merge-preview",
+        response_model=MergePreviewResponse,
+        status_code=201,
+    )
+    async def create_merge_preview(
+        topic_id: str,
+        request_body: TopicCreateMergePreviewRequest,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Create a persisted merge preview from active findings."""
+        controller = _get_controller(req)
+        repository = _get_intelligence_repository(req)
+        service = _get_topic_finding_merge_service(controller, repository)
+
+        try:
+            preview = service.create_merge_preview(
+                topic_id=topic_id,
+                prompt_version_id=request_body.prompt_version_id,
+                created_by="api",
+            )
+        except MergePreviewError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to create merge preview: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        return MergePreviewResponse(
+            preview_id=str(preview.id),
+            topic_id=str(preview.intelligence_topic_id),
+            state=str(preview.state),
+            content_hash=str(preview.content_hash),
+            expires_at=_datetime_to_iso(preview.expires_at),
+            preview_payload=dict(getattr(preview, "preview_payload", {}) or {}),
+            created_at=_datetime_to_iso(getattr(preview, "created_at", None)),
+        )
+
+    @app.post(
+        "/intelligence/topics/{topic_id}/merge-accept",
+        response_model=TopicFindingResponse,
+    )
+    async def accept_merge_preview(
+        topic_id: str,
+        request_body: TopicAcceptMergePreviewRequest,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Accept a merge preview: verify validity, persist merged finding, archive sources."""
+        controller = _get_controller(req)
+        repository = _get_intelligence_repository(req)
+        service = _get_topic_finding_merge_service(controller, repository)
+
+        try:
+            merged = service.accept_merge_preview(
+                preview_id=request_body.preview_id,
+                expected_topic_id=topic_id,
+                operator="api",
+            )
+        except MergePreviewError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to accept merge preview: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        return _finding_to_response(merged)
+
+    @app.post(
+        "/intelligence/topics/{topic_id}/pause",
+        response_model=TopicLifecycleActionResponse,
+    )
+    async def pause_topic(
+        topic_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Pause a topic, stopping further research runs."""
+        repository = _get_intelligence_repository(req)
+        topic = repository.get_topic_by_id(topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        topic.lifecycle_status = TopicLifecycleStatus.PAUSED.value
+        topic.updated_at = datetime.now(timezone.utc)
+        repository.save_topic(topic)
+
+        return TopicLifecycleActionResponse(
             success=True,
-            entry_id=entry.id,
-            tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
-            is_ignored=bool(getattr(entry, "is_ignored", False)),
-            follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
-            topic=topic_info,
-            topic_error=topic_error,
+            topic_id=topic_id,
+            lifecycle_status=topic.lifecycle_status,
+            updated_at=_datetime_to_iso(topic.updated_at),
+        )
+
+    @app.post(
+        "/intelligence/topics/{topic_id}/archive",
+        response_model=TopicLifecycleActionResponse,
+    )
+    async def archive_topic(
+        topic_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Archive a topic, removing it from active research."""
+        repository = _get_intelligence_repository(req)
+        topic = repository.get_topic_by_id(topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        topic.lifecycle_status = TopicLifecycleStatus.ARCHIVED.value
+        topic.updated_at = datetime.now(timezone.utc)
+        repository.save_topic(topic)
+
+        return TopicLifecycleActionResponse(
+            success=True,
+            topic_id=topic_id,
+            lifecycle_status=topic.lifecycle_status,
+            updated_at=_datetime_to_iso(topic.updated_at),
         )
 
     @app.get(
-        "/intelligence/entries/{entry_id}",
-        response_model=IntelligenceEntryDetailResponse,
+        "/intelligence/topics/{topic_id}/runs",
+        response_model=IntelligenceTopicRunsResponse,
     )
-    async def get_intelligence_entry_detail(
-        entry_id: str,
+    async def list_topic_research_runs(
+        topic_id: str,
         req: Request,
         _: Annotated[str, Depends(verify_api_key)],
-        include_raw: bool = False,
-        evidence_page: int = 1,
-        evidence_page_size: int = 5,
-    ):
-        """Get a single intelligence entry by ID with optional raw evidence."""
-        repository = _get_intelligence_repository(req)
-        entry = repository.get_canonical_entry_by_id(entry_id)
-        if entry is None:
-            raise HTTPException(status_code=404, detail="Intelligence entry not found")
-
-        response = _canonical_entry_to_detail_response(entry)
-        evidence_page = max(1, evidence_page)
-        evidence_page_size = max(1, min(evidence_page_size, 100))
-        response.evidence_page = evidence_page
-        response.evidence_page_size = evidence_page_size
-        response.evidence_total = repository.count_entry_evidence_anchors(entry_id)
-        anchors = repository.list_entry_evidence_anchors(
-            entry_id=entry_id,
-            page=evidence_page,
-            page_size=evidence_page_size,
-        )
-        evidence_groups: list[IntelligenceEvidenceGroupResponse] = []
-        for anchor in anchors:
-            context_window = repository.get_entry_evidence_context_window(
-                entry_id=entry_id,
-                raw_item_id=anchor.raw_item_id,
-                before=INTELLIGENCE_EVIDENCE_CONTEXT_WINDOW,
-                after=INTELLIGENCE_EVIDENCE_CONTEXT_WINDOW,
-            )
-            context_items = context_window.items if context_window is not None else []
-            anchor_raw_item = next(
-                (item for item in context_items if item.id == anchor.raw_item_id),
-                None,
-            )
-            if anchor_raw_item is None:
-                anchor_raw_item = repository.get_raw_item_by_id(anchor.raw_item_id)
-            evidence_groups.append(
-                IntelligenceEvidenceGroupResponse(
-                    observation_id=anchor.observation_id,
-                    raw_item_id=anchor.raw_item_id,
-                    observed_at=_datetime_to_iso(anchor.observed_at),
-                    published_at=_datetime_to_iso(anchor.published_at),
-                    collected_at=_datetime_to_iso(anchor.collected_at),
-                    anchor_raw_item=(
-                        _raw_item_to_evidence_response(anchor_raw_item)
-                        if anchor_raw_item is not None
-                        else None
-                    ),
-                    neighboring_raw_items=[
-                        _raw_item_to_evidence_response(item)
-                        for item in context_items
-                        if item.id != anchor.raw_item_id
-                    ],
-                    warning=_evidence_warning(anchor_raw_item),
-                )
-            )
-        response.evidence_groups = evidence_groups
-
-        # Always fetch source info from latest raw item (if available)
-        raw_item = None
-        if entry.latest_raw_item_id:
-            raw_item = repository.get_raw_item_by_id(entry.latest_raw_item_id)
-            if raw_item:
-                response.source = _build_source_display(raw_item)
-
-        if include_raw and raw_item:
-            is_expired = _is_expired(raw_item.expires_at)
-            if not is_expired and raw_item.raw_text:
-                response.raw_available = True
-                response.raw_evidence = {
-                    "raw_item_id": raw_item.id,
-                    "raw_text": raw_item.raw_text,
-                    "source_type": raw_item.source_type,
-                    "source_url": raw_item.source_url,
-                    "published_at": (
-                        raw_item.published_at.isoformat() if raw_item.published_at else None
-                    ),
-                    "collected_at": (
-                        raw_item.collected_at.isoformat() if raw_item.collected_at else None
-                    ),
-                    "expires_at": (
-                        raw_item.expires_at.isoformat() if raw_item.expires_at else None
-                    ),
-                }
-            else:
-                response.raw_available = False
-
-        return response
-
-    @app.get("/intelligence/search", response_model=IntelligenceSearchResponse)
-    async def search_intelligence(
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-        q: str,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[str] = None,
-        tracking_scope: str = "following",
+        run_type: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ):
-        """Semantic search across canonical intelligence entries with pagination."""
-        controller = _get_controller(req)
-        service = _build_intelligence_search_service(controller)
-
-        window_cutoff = _parse_window_param(window)
-        normalized_tracking_scope = _validate_tracking_scope(tracking_scope)
-
-        page = max(1, page)
-        page_size = max(1, min(page_size, 100))
-
-        results, total = service.semantic_search(
-            query_text=q,
-            entry_type=entry_type if entry_type else None,
-            primary_label=primary_label if primary_label else None,
-            window=window_cutoff,
-            page=page,
-            page_size=page_size,
-            tracking_scope=normalized_tracking_scope,
-        )
-
-        return IntelligenceSearchResponse(
-            results=[
-                IntelligenceSearchResultItem(
-                    id=entry.id,
-                    entry_id=entry.id,
-                    entry_type=entry.entry_type,
-                    normalized_key=entry.normalized_key,
-                    display_name=entry.display_name,
-                    explanation=entry.explanation,
-                    primary_label=entry.primary_label,
-                    secondary_tags=list(entry.secondary_tags),
-                    confidence=entry.confidence,
-                    evidence_count=entry.evidence_count,
-                    similarity_score=round(score, 4),
-                    is_ignored=bool(getattr(entry, "is_ignored", False)),
-                    ignored_at=_datetime_to_iso(
-                        cast(Optional[datetime], getattr(entry, "ignored_at", None))
-                    ),
-                    ignored_by=getattr(entry, "ignored_by", None),
-                    tracking_enabled=bool(getattr(entry, "tracking_enabled", False)),
-                    follow_status=str(getattr(entry, "follow_status", "unset") or "unset"),
-                )
-                for entry, score in results
-            ],
-            total=total,
-            page=page,
-            page_size=page_size,
-        )
-
-    @app.get("/intelligence/raw/{raw_item_id}", response_model=IntelligenceRawItemResponse)
-    async def get_intelligence_raw_item(
-        raw_item_id: str,
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-    ):
-        """Get a raw intelligence item by ID."""
+        """List research runs for a specific topic."""
         repository = _get_intelligence_repository(req)
-        raw_item = repository.get_raw_item_by_id(raw_item_id)
-        if raw_item is None:
-            raise HTTPException(status_code=404, detail="Raw intelligence item not found")
-
-        is_expired = _is_expired(raw_item.expires_at)
-        raw_text = None if is_expired else raw_item.raw_text
-
-        return IntelligenceRawItemResponse(
-            raw_text=raw_text,
-            source_type=raw_item.source_type,
-            source_url=raw_item.source_url,
-            published_at=raw_item.published_at.isoformat() if raw_item.published_at else None,
-            expires_at=raw_item.expires_at.isoformat() if raw_item.expires_at else None,
-            is_expired=is_expired,
+        logs = repository.list_topic_run_logs(
+            topic_id=topic_id,
+            run_type=run_type,
+            limit=max(1, page_size),
+            offset=max(0, page - 1) * max(1, page_size),
+        )
+        return IntelligenceTopicRunsResponse(
+            items=[_log_to_dict(log) for log in logs],
+            page=page,
+            page_size=page_size,
         )
 
     @app.get("/intelligence/topics", response_model=IntelligenceTopicListResponse)
@@ -1885,14 +1710,15 @@ def create_api_server(
         total = repository.count_topics(is_active=True if active_only else None)
         items = []
         for topic in topics:
-            entry_count = repository.count_entries_by_topic(topic.id)
+            findings = repository.list_topic_findings(topic.id) or []
+            finding_count = len(findings)
             items.append(
                 IntelligenceTopicItemResponse(
                     id=topic.id,
                     name=topic.name,
                     description=topic.description,
                     enriched_summary=topic.enriched_summary,
-                    entry_count=entry_count,
+                    finding_count=finding_count,
                     enriched_at=_datetime_to_iso(topic.enriched_at),
                     updated_at=_datetime_to_iso(topic.updated_at),
                 )
@@ -1904,7 +1730,7 @@ def create_api_server(
             page_size=page_size,
         )
 
-    @app.get("/intelligence/topics/{topic_id}", response_model=IntelligenceTopicDetailResponse)
+    @app.get("/intelligence/topics/{topic_id}", response_model=TopicDetailResponse)
     async def get_intelligence_topic_detail(
         topic_id: str,
         req: Request,
@@ -1914,11 +1740,28 @@ def create_api_server(
         topic = repository.get_topic_by_id(topic_id)
         if topic is None:
             raise HTTPException(status_code=404, detail="Topic not found")
-        entries = repository.list_entries_by_topic(topic_id, limit=100, offset=0)
+
+        prompt_versions = repository.list_topic_prompts(topic_id, limit=50, offset=0)
+        current_prompt = repository.get_active_topic_prompt(topic_id)
+        active_findings = repository.list_active_findings(topic_id)
         logs = repository.list_topic_run_logs(topic_id=topic_id, limit=10, offset=0)
-        return IntelligenceTopicDetailResponse(
+
+        all_citations: list[dict[str, Any]] = []
+        for finding in active_findings:
+            for citation in getattr(finding, "citations", []) or []:
+                if citation not in all_citations:
+                    all_citations.append(dict(citation))
+
+        previews = repository.list_merge_previews(topic_id, state="pending", limit=1)
+        merge_available = len(previews) > 0
+
+        return TopicDetailResponse(
             topic=_topic_to_dict(topic),
-            entries=[_canonical_entry_to_dict(entry) for entry in entries],
+            prompt_versions=[_prompt_to_response(p) for p in prompt_versions],
+            current_prompt=_prompt_to_response(current_prompt) if current_prompt else None,
+            active_findings=[_finding_to_response(f) for f in active_findings],
+            citations=all_citations,
+            merge_available=merge_available,
             recent_logs=[_log_to_dict(log) for log in logs],
         )
 

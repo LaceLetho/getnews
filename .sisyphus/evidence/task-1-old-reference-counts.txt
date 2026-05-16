@@ -1,0 +1,47 @@
+Old concept reference counts across .py files excluding .venv
+==========================================================
+EntryType: 129
+  crypto_news_analyzer/analyzers/intelligence_extractor.py: 3
+  crypto_news_analyzer/domain/models.py: 5
+  crypto_news_analyzer/intelligence/merge.py: 8
+  crypto_news_analyzer/intelligence/pipeline.py: 4
+  crypto_news_analyzer/intelligence/topics.py: 2
+  tests/test_intelligence_api.py: 22
+  tests/test_intelligence_extraction.py: 7
+  tests/test_intelligence_merge.py: 26
+  tests/test_intelligence_models.py: 7
+  tests/test_intelligence_repositories.py: 31
+  tests/test_intelligence_semantic_search.py: 10
+  tests/test_topic_findings_api.py: 1
+  tests/test_topic_findings_telegram.py: 1
+  tests/test_topic_prompt_workflow.py: 1
+  tests/test_topic_research_scheduler.py: 1
+SlangObservation: 11
+  crypto_news_analyzer/analyzers/intelligence_extractor.py: 7
+  tests/test_topic_findings_api.py: 1
+  tests/test_topic_findings_telegram.py: 1
+  tests/test_topic_prompt_workflow.py: 1
+  tests/test_topic_research_scheduler.py: 1
+ChannelObservation: 10
+  crypto_news_analyzer/analyzers/intelligence_extractor.py: 6
+  tests/test_topic_findings_api.py: 1
+  tests/test_topic_findings_telegram.py: 1
+  tests/test_topic_prompt_workflow.py: 1
+  tests/test_topic_research_scheduler.py: 1
+/intel_: 98
+  crypto_news_analyzer/reporters/telegram_command_handler.py: 84
+  tests/test_intelligence_security_guardrails.py: 5
+  tests/test_intelligence_telegram_commands.py: 2
+  tests/test_topic_findings_api.py: 1
+  tests/test_topic_findings_telegram.py: 4
+  tests/test_topic_prompt_workflow.py: 1
+  tests/test_topic_research_scheduler.py: 1
+/intelligence/entries: 53
+  crypto_news_analyzer/api_server.py: 3
+  tests/test_intelligence_api.py: 33
+  tests/test_intelligence_security_guardrails.py: 4
+  tests/test_openclaw_skill_crypto_news_http_api.py: 9
+  tests/test_topic_findings_api.py: 1
+  tests/test_topic_findings_telegram.py: 1
+  tests/test_topic_prompt_workflow.py: 1
+  tests/test_topic_research_scheduler.py: 1

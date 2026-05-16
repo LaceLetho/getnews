@@ -1,7 +1,10 @@
+"""Semantic search tests (entry-based search deprecated in topic-only refactor)."""
 from datetime import datetime, timedelta
 from importlib import import_module
 from pathlib import Path
 from typing import List, Optional
+
+import pytest
 
 from crypto_news_analyzer.domain.models import (
     CanonicalIntelligenceEntry,
@@ -47,6 +50,7 @@ def _build_service(db_path: Path, embedding: Optional[List[float]] = None):
     return manager, repository, embedding_service, service
 
 
+@pytest.mark.skip(reason="Entry-based semantic search deprecated in topic-only refactor")
 def test_generate_embedding_concatenates_slang_fields_and_stores_model(tmp_path: Path):
     manager, repository, embedding_service, service = _build_service(tmp_path / "semantic.db")
     try:
@@ -81,6 +85,7 @@ def test_generate_embedding_concatenates_slang_fields_and_stores_model(tmp_path:
         manager.close()
 
 
+@pytest.mark.skip(reason="Entry-based semantic search deprecated in topic-only refactor")
 def test_semantic_search_filters_by_type_label_and_time_window(tmp_path: Path):
     manager, repository, embedding_service, service = _build_service(tmp_path / "filters.db")
     try:
@@ -136,6 +141,7 @@ def test_semantic_search_filters_by_type_label_and_time_window(tmp_path: Path):
         manager.close()
 
 
+@pytest.mark.skip(reason="Entry-based semantic search deprecated in topic-only refactor")
 def test_expired_raw_text_is_not_used_for_entry_embedding(tmp_path: Path):
     manager, repository, embedding_service, service = _build_service(tmp_path / "expired.db")
     try:
@@ -166,6 +172,7 @@ def test_expired_raw_text_is_not_used_for_entry_embedding(tmp_path: Path):
         manager.close()
 
 
+@pytest.mark.skip(reason="Entry-based semantic search deprecated in topic-only refactor")
 def test_batch_generate_embeddings_processes_all_entries(tmp_path: Path):
     manager, repository, _embedding_service, service = _build_service(tmp_path / "batch.db")
     try:

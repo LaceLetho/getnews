@@ -18,7 +18,7 @@ Typical triggers:
 - Run asynchronous semantic search for a freeform topic query
 - Poll an API job until it finishes and then fetch the final result
 - Create, list, or delete datasources through the HTTP API
-- Query and manage hidden-channel intelligence entries (discovery, follow states, semantic search, raw evidence)
+- Query and manage intelligence topics through the topic-first API (create, revise, confirm, merge, detail, list)
 - List, inspect, and converge intelligence topics that group canonical entries
 - Check service health before or after an API workflow
 
@@ -104,46 +104,46 @@ Tags help organize sources. Each datasource accepts up to 16 unique tags. Each t
 
 List responses include only safe summaries. For `rest_api` type datasources, secrets are redacted and counts replace raw credential fields. This prevents accidental credential exposure when reviewing configurations.
 
-## Intelligence Query
+## Intelligence Query (Topic-First)
 
-Query and manage the hidden-channel intelligence knowledge base built by the private ingestion pipeline. All intelligence routes require Bearer auth.
+All intelligence routes require Bearer auth. The old entry-based routes (`/intelligence/entries*`, `/intelligence/discovery`, `/intelligence/labels`, `/intelligence/search`) have been removed in the topic-only refactor.
 
-Synchronous endpoints provide access to canonical knowledge entries, discovery candidates, searchable labels, and raw evidence:
+Synchronous topic workflow endpoints:
 
-- `GET /intelligence/entries` — List canonical entries with time window, type, label, and `tracking_scope` filters, paginated
-- `GET /intelligence/discovery` — List entries whose follow status is unset
-- `GET /intelligence/labels` — List searchable primary labels
-- `GET /intelligence/entries/{entry_id}` — Get a single entry with optional latest raw evidence (`include_raw=true`) plus paginated evidence context groups
-- `POST /intelligence/entries/{entry_id}/follow-status` — Set an entry's follow status to `follow`, `unfollow`, or `unset`
-- `GET /intelligence/search` — Semantic search using required `q` parameter, ranked by vector similarity plus repository scoring, paginated
-- `GET /intelligence/raw/{raw_item_id}` — Get original raw text for a collected item (30-day TTL)
+- `POST /intelligence/topics` — Create a topic draft from a user theme (returns AI-generated prompt draft)
+- `POST /intelligence/topics/{topic_id}/revise` — Revise the draft prompt with feedback
+- `PUT /intelligence/topics/{topic_id}/prompt` — Manually set/replace the prompt text
+- `POST /intelligence/topics/{topic_id}/confirm` — Confirm and activate the topic for research
+- `GET /intelligence/topics` — List topics with status filters
+- `GET /intelligence/topics/{topic_id}` — Get topic detail including prompt versions and active findings
+- `POST /intelligence/topics/{topic_id}/merge-preview` — Create a merge preview from active findings
+- `POST /intelligence/topics/{topic_id}/merge-accept` — Accept a merge preview (archives source findings)
+- `POST /intelligence/topics/{topic_id}/pause` — Pause topic research
+- `POST /intelligence/topics/{topic_id}/archive` — Archive a topic
+- `GET /intelligence/topic-runs` — List topic research run logs with optional filters
 
 These endpoints are synchronous; there is no async job/poll flow. Results return immediately.
 
-Raw text is byte-for-byte original within the TTL window. After expiration, `raw_text` is `null` and `is_expired` is `true`. Canonical structured knowledge remains queryable indefinitely.
-
-The `window` parameter accepts `<N>h` (hours) or `<N>d` (days), e.g. `7d`, `24h`; invalid values are ignored by the current implementation. Entry types are `channel` and `slang`. Primary labels are `AI`, `crypto`, `DARK_WEB`, `ACCOUNT_TRADING`, `PAYMENT`, `GAME`, `ECOMMERCE`, `SOCIAL_MEDIA`, `DEVELOPER_TOOLS`, and `OTHER` values; see the reference for exact API string values.
-
-The `tracking_scope` parameter is supported by `/intelligence/entries` and `/intelligence/search`. Valid values are `following`, `discovery`, `unset`, `unfollowed`, and `all`; default is `following`. Invalid values return `400`.
-
-Canonical entries use a follow state of `follow`, `unfollow`, or `unset`. Newly collected slang and channel entries default to `unset`.
-
-For full parameter details, response schemas, and examples, see the [Intelligence Query Reference](references/intelligence-query.md).
+Topics have lifecycle states: `draft`, `active`, `paused`, `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours. Accepting a preview archives the exact source findings bound to it; stale previews (where active findings changed) are rejected.
 
 ## Intelligence Topics
 
-Topics automatically group followed canonical entries to reduce noise in `/intel_recent` and enable LLM-based deep-dive enrichment. Topic routes are synchronous and Bearer-protected.
+In the topic-only refactor, topics are the sole first-class intelligence objects. They drive scheduled LLM research from raw ingested messages, storing findings and supporting merge operations. All topic routes require Bearer auth.
 
-- `GET /intelligence/topics` — List active topics with entry counts, paginated. Query `active_only=false` to include inactive (merged) topics.
-- `GET /intelligence/topics/{topic_id}` — Get topic detail including enriched summary, source channels, methods, vulnerabilities, latest findings, linked entries, and recent run logs.
-- `GET /intelligence/topic-runs` — List topic run logs (auto_link, enrich, converge). Filter by `topic_id` or `run_type`.
-- `POST /intelligence/topics/converge` — Trigger LLM-based topic convergence. Merges similar topics using embedding similarity + LLM confirmation. Returns `merged_count` and `skipped`.
+Topic workflow endpoints:
 
-When you follow an entry via `POST /intelligence/entries/{entry_id}/follow-status` with `"follow_status":"follow"`, the system automatically assigns it to a topic. The response may include optional `topic` and `topic_error` fields reflecting the topic assignment result.
-
-When you unfollow an entry, its `topic_id` is cleared. If the topic has no remaining linked entries, it is automatically deactivated.
-
-For full topic response schemas and examples, see the [Intelligence Query Reference](references/intelligence-query.md).
+- `POST /intelligence/topics` — Create a topic draft from a user theme (returns AI-generated prompt draft)
+- `POST /intelligence/topics/{topic_id}/revise` — Revise the draft prompt with feedback
+- `PUT /intelligence/topics/{topic_id}/prompt` — Manually set/replace the prompt text
+- `POST /intelligence/topics/{topic_id}/confirm` — Confirm and activate the topic for research
+- `GET /intelligence/topics` — List topics with lifecycle status and pagination
+- `GET /intelligence/topics/{topic_id}` — Get topic detail including prompt versions and active findings
+- `POST /intelligence/topics/{topic_id}/merge-preview` — Create a merge preview from active findings
+- `POST /intelligence/topics/{topic_id}/merge-accept` — Accept a merge preview (archives source findings)
+- `POST /intelligence/topics/{topic_id}/pause` — Pause topic research
+- `POST /intelligence/topics/{topic_id}/archive` — Archive a topic
+- `GET /intelligence/topic-runs` — List topic research run logs with optional filters
+- `POST /intelligence/topics/converge` — Trigger LLM-based topic convergence
 
 ## Telegram Webhook
 
@@ -166,17 +166,18 @@ Supported HTTP routes:
 - `GET /datasources` - List all datasources
 - `DELETE /datasources/{id}` - Delete a datasource
 - `POST /telegram/webhook` - Telegram webhook receiver
-- `GET /intelligence/entries` - List intelligence entries (synchronous, Bearer-protected)
-- `GET /intelligence/discovery` - List entries whose follow status is unset
-- `GET /intelligence/labels` - List searchable intelligence primary labels
-- `GET /intelligence/entries/{entry_id}` - Get intelligence entry detail with optional raw evidence
-- `POST /intelligence/entries/{entry_id}/follow-status` - Set intelligence entry follow status
-- `GET /intelligence/search` - Semantic search across intelligence entries (paginated with `page`/`page_size`)
-- `GET /intelligence/raw/{raw_item_id}` - Get raw intelligence item by ID
-- `GET /intelligence/topics` - List intelligence topics with entry counts
-- `GET /intelligence/topics/{topic_id}` - Get topic detail with linked entries and run logs
-- `GET /intelligence/topic-runs` - List topic run logs with optional filters
-- `POST /intelligence/topics/converge` - Trigger topic convergence (merges similar topics via LLM)
+- `POST /intelligence/topics` - Create topic draft (synchronous, Bearer-protected)
+- `POST /intelligence/topics/{id}/revise` - Revise topic prompt
+- `PUT /intelligence/topics/{id}/prompt` - Manually set topic prompt
+- `POST /intelligence/topics/{id}/confirm` - Confirm and activate topic
+- `GET /intelligence/topics` - List topics with status filters
+- `GET /intelligence/topics/{id}` - Get topic detail with findings
+- `POST /intelligence/topics/{id}/merge-preview` - Create merge preview
+- `POST /intelligence/topics/{id}/merge-accept` - Accept merge preview
+- `POST /intelligence/topics/{id}/pause` - Pause topic
+- `POST /intelligence/topics/{id}/archive` - Archive topic
+- `GET /intelligence/topic-runs` - List topic research run logs
+- `POST /intelligence/topics/converge` - Trigger topic convergence
 
 ## Non-Goals
 

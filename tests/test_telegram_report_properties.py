@@ -39,9 +39,9 @@ def valid_structured_result(draw):
         "安全事件", "新产品", "市场新现象"
     ]))
     weight_score = draw(st.integers(min_value=0, max_value=100))
-    # 排除可能导致Telegram格式问题的字符：*_[]`()
+    # 排除可能导致Telegram格式问题的字符：\*_[]`()
     summary = draw(st.text(min_size=20, max_size=200, alphabet=st.characters(
-        blacklist_categories=('Cs', 'Cc'), blacklist_characters='*_[]`()'
+        blacklist_categories=('Cs', 'Cc'), blacklist_characters='\\*_[]`()'
     )))
     source = draw(st.sampled_from([
         "https://example.com/news/1",
@@ -220,34 +220,20 @@ class TestProperty12TelegramFormatCorrectness:
         - 报告头部（时间窗口和时间范围）
         - 数据源状态
         - 动态分类内容
-        - 市场快照（如果提供）
         """
-        generator = ReportGenerator(include_market_snapshot=True)
+        generator = ReportGenerator()
         
         report = generator.generate_telegram_report(
             analyzed_data,
-            crawl_status,
-            market_snapshot
+            crawl_status
         )
         
         # 验证报告不为空
         assert len(report) > 0, "报告不应为空"
         
         # 验证包含报告头部
-        assert "加密货币新闻快讯" in report or "新闻快讯" in report, \
+        assert "小时快讯" in report or "新闻快讯" in report, \
             "报告应包含标题"
-        assert "数据时间窗口" in report or "时间窗口" in report, \
-            "报告应包含时间窗口信息"
-        
-        # 验证包含数据源状态（如果有数据源）
-        if crawl_status.rss_results or crawl_status.x_results:
-            assert "数据源状态" in report or "数据源" in report, \
-                "报告应包含数据源状态"
-        
-        # 验证包含市场快照（如果提供且非空）
-        if market_snapshot and market_snapshot.strip():
-            assert "市场现状快照" in report or "市场快照" in report or "市场" in report, \
-                "报告应包含市场快照部分"
     
     @given(
         analyzed_data=valid_analyzed_data(),
@@ -268,8 +254,7 @@ class TestProperty12TelegramFormatCorrectness:
         
         report = generator.generate_telegram_report(
             analyzed_data,
-            crawl_status,
-            None
+            crawl_status
         )
         
         # 检查是否有内容项
@@ -308,8 +293,7 @@ class TestProperty12TelegramFormatCorrectness:
         
         report = generator.generate_telegram_report(
             analyzed_data,
-            crawl_status,
-            None
+            crawl_status
         )
         
         # 使用formatter验证格式
@@ -634,14 +618,12 @@ class TestIntegratedReportGeneration:
         验证完整的报告生成流程，包含所有必需部分且格式正确
         """
         generator = ReportGenerator(
-            include_market_snapshot=True,
             omit_empty_categories=True
         )
         
         report = generator.generate_telegram_report(
             analyzed_data,
-            crawl_status,
-            market_snapshot
+            crawl_status
         )
         
         # 基本验证

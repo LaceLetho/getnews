@@ -90,8 +90,8 @@ class TestHyperlinkFormatting:
         """测试包含特殊字符的超链接"""
         formatter = TelegramFormatter()
         result = formatter.format_hyperlink("查看_详情", "https://example.com/page?id=123")
-        # 文本中的特殊字符应该被转义
-        assert "[查看\\_详情]" in result
+        # 文本中的特殊字符应该被转义（仅方括号和反引号）
+        assert "[查看_详情]" in result
         assert "(https://example.com/page?id=123)" in result
     
     def test_create_telegram_hyperlink_alias(self):
@@ -110,16 +110,16 @@ class TestSpecialCharacterEscaping:
     """特殊字符转义测试"""
     
     def test_escape_underscore(self):
-        """测试下划线转义"""
+        """测试下划线转义 —— 下划线在普通文本中不需要转义"""
         formatter = TelegramFormatter()
         result = formatter.escape_special_characters("test_value")
-        assert result == "test\\_value"
+        assert result == "test_value"
     
     def test_escape_asterisk(self):
-        """测试星号转义"""
+        """测试星号转义 —— 星号在普通文本中不需要转义"""
         formatter = TelegramFormatter()
         result = formatter.escape_special_characters("test*value")
-        assert result == "test\\*value"
+        assert result == "test*value"
     
     def test_escape_brackets(self):
         """测试方括号转义"""
@@ -134,13 +134,14 @@ class TestSpecialCharacterEscaping:
         assert result == "test\\`value"
     
     def test_escape_multiple_special_chars(self):
-        """测试多个特殊字符转义"""
+        """测试多个特殊字符转义 —— 仅转义方括号和反引号"""
         formatter = TelegramFormatter()
         result = formatter.escape_special_characters("test_value*with[brackets]")
-        assert "\\_" in result
-        assert "\\*" in result
         assert "\\[" in result
         assert "\\]" in result
+        # 下划线和星号在普通文本中不需要转义
+        assert "_" in result
+        assert "*" in result
     
     def test_escape_already_escaped(self):
         """测试避免重复转义"""
@@ -151,9 +152,9 @@ class TestSpecialCharacterEscaping:
         assert result == "test\\_value"
     
     def test_escape_telegram_text_function(self):
-        """测试快捷函数escape_telegram_text"""
+        """测试escape_telegram_text函数 —— 下划线在普通文本中不需要转义"""
         result = escape_telegram_text("test_value")
-        assert result == "test\\_value"
+        assert result == "test_value"
     
     def test_no_escape_when_disabled(self):
         """测试禁用转义时的行为"""

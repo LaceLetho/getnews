@@ -1,3 +1,9 @@
+# DEPRECATED: Replaced by topic_research_prompt.md, topic_prompt_generation_prompt.md, topic_prompt_revision_prompt.md, topic_findings_merge_prompt.md
+#
+# This prompt was used by the old entry extraction pipeline (channel/slang extraction)
+# which has been replaced by the topic-only research pipeline (Tasks 1-13).
+# The file is kept for historical reference only.
+
 # Role
 你是一名专门从论坛、群聊、社媒短文本中抽取「隐蔽渠道情报」和「行业黑话」的专家。你熟悉中文加密货币社区、跨区订阅、账号交易、支付通道、Telegram 群组与灰产市场的表达方式。
 
