@@ -33,7 +33,6 @@ class IntelligencePipeline:
         merge_engine: Any,
         search_service: Any,
         topic_enricher: Any = None,
-        topic_converger: Any = None,
     ):
         self.data_source_factory = data_source_factory
         self.intelligence_repository = intelligence_repository
@@ -41,7 +40,6 @@ class IntelligencePipeline:
         self.merge_engine = merge_engine
         self.search_service = search_service
         self.topic_enricher = topic_enricher
-        self.topic_converger = topic_converger
         self.logger = logging.getLogger(__name__)
         self.backfill_hours = self._resolve_backfill_hours(extractor)
         self.raw_message_retention_days = self._resolve_raw_message_retention_days(extractor)
@@ -59,7 +57,6 @@ class IntelligencePipeline:
             "embeddings_updated": 0,
             "skipped_untracked_slang_items": 0,
             "topics_enriched": 0,
-            "topics_converged": 0,
             "raw_text_purged": 0,
             "errors": [],
         }
@@ -91,13 +88,6 @@ class IntelligencePipeline:
                 result["topics_enriched"] = self.topic_enricher.enrich_due_topics()
             except Exception:
                 self.logger.exception("Topic enrichment failed")
-
-        if self.topic_converger:
-            try:
-                convergence_result = self.topic_converger.run_daily_if_needed()
-                result["topics_converged"] = convergence_result.get("merged_count", 0)
-            except Exception:
-                self.logger.exception("Topic convergence failed")
 
         result["raw_text_purged"] = self._run_ttl_cleanup()
 

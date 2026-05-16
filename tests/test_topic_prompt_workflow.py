@@ -223,10 +223,10 @@ class TestNewPromptsExcludeOldCategoryLanguage:
             f"Prompt {filename} must not use 'slangs' as output key"
         )
 
-    def test_old_prompt_still_exists_untouched(self) -> None:
+    def test_old_entry_extraction_prompt_removed(self) -> None:
         old_prompt = PROMPTS_DIR / "intelligence_extraction_prompt.md"
-        assert old_prompt.exists(), (
-            "Old intelligence_extraction_prompt.md should still exist (not deleted)"
+        assert not old_prompt.exists(), (
+            "Old intelligence_extraction_prompt.md should be removed after topic-only refactor"
         )
 
 

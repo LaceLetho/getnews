@@ -207,9 +207,6 @@ class TelegramCommandHandler:
         application.add_handler(CommandHandler("topic_list", self._handle_topic_list_command))
         application.add_handler(CommandHandler("topic_detail", self._handle_topic_detail_command))
         application.add_handler(CommandHandler("topic_logs", self._handle_topic_logs_command))
-        application.add_handler(
-            CommandHandler("topic_converge", self._handle_topic_converge_command)
-        )
         application.add_handler(CommandHandler("topic_merge", self._handle_topic_merge_command))
         application.add_handler(CommandHandler("topic_pause", self._handle_topic_pause_command))
         application.add_handler(CommandHandler("topic_archive", self._handle_topic_archive_command))
@@ -754,7 +751,6 @@ class TelegramCommandHandler:
                 BotCommand("topic_merge", "合并主题发现"),
                 BotCommand("topic_pause", "暂停主题"),
                 BotCommand("topic_archive", "归档主题"),
-                BotCommand("topic_converge", "手动触发主题收敛"),
                 BotCommand("market", "获取当前市场现状快照"),
                 BotCommand("status", "查询系统运行状态"),
                 BotCommand("tokens", "查看LLM token使用统计"),
@@ -2725,96 +2721,6 @@ class TelegramCommandHandler:
                 await callback_query.answer("\u5904\u7406\u56de\u8c03\u5931\u8d25")
             except Exception:
                 pass
-
-    async def _handle_topic_converge_command(self, update: Any, context: Any) -> None:
-        try:
-            msg = update.effective_message or update.message
-            if msg is None:
-                return
-            user_id = str(update.effective_user.id if update.effective_user else "unknown")
-            username = update.effective_user.username if update.effective_user else "unknown"
-
-            if not self.is_authorized_user(user_id, username):
-                await msg.reply_text("\u274c 权限拒绝")
-                return
-
-            chat_id = str(update.effective_chat.id if update.effective_chat else user_id)
-            pipeline = getattr(self.execution_coordinator, "_intelligence_pipeline", None)
-            converger = getattr(pipeline, "topic_converger", None) if pipeline else None
-            if converger is None:
-                from ..intelligence.topic_converger import TopicConverger
-
-                repository = self._get_intelligence_repository()
-                if repository is None:
-                    await msg.reply_text("❌ 情报仓储未初始化")
-                    return
-                config_manager = getattr(self.execution_coordinator, "config_manager", None)
-                config_data = getattr(config_manager, "config_data", {}) if config_manager else {}
-                intelligence_config = dict(config_data.get("intelligence_collection", {}) or {})
-                converger = TopicConverger(
-                    intelligence_repository=repository,
-                    search_service=self._get_intelligence_search_service(),
-                    config=intelligence_config.get("topic_enrichment", {}),
-                )
-            user_objective = " ".join(getattr(context, "args", []) or []).strip()
-            if not user_objective:
-                command_text = str(getattr(msg, "text", "") or "").strip()
-                parts = command_text.split(maxsplit=1)
-                if len(parts) > 1 and parts[0].split("@", 1)[0] == "/topic_converge":
-                    user_objective = parts[1].strip()
-            mode_label = "用户需求引导收敛" if user_objective else "自动相似主题收敛"
-
-            def execute_in_background():
-                self._execute_topic_converge_and_notify(
-                    user_id=user_id,
-                    username=username,
-                    chat_id=chat_id,
-                    converger=converger,
-                    user_objective=user_objective or None,
-                    mode_label=mode_label,
-                )
-
-            threading.Thread(target=execute_in_background, daemon=True).start()
-            await msg.reply_text(
-                f"{mode_label}已开始。\n执行完成后会自动发送结果，详情可查看 /topic_logs"
-            )
-        except Exception as e:
-            self.logger.error(f"处理/topic_converge命令时发生错误: {e}")
-
-    def _execute_topic_converge_and_notify(
-        self,
-        user_id: str,
-        username: str,
-        chat_id: str,
-        converger: Any,
-        user_objective: Optional[str],
-        mode_label: str,
-    ) -> None:
-        try:
-            result = converger.run_convergence(user_objective=user_objective)
-            merged = result.get("merged_count", 0)
-            if result.get("skipped") and result.get("reason") not in {
-                None,
-                "not_enough_topics",
-            }:
-                reason_label = {
-                    "planning_failed": "规划失败，且规则降级未找到足够相关主题",
-                    "no_client": "LLM客户端未初始化",
-                }.get(str(result.get("reason") or ""), str(result.get("reason") or "未知原因"))
-                response = f"{mode_label}未完成：{reason_label}\n" "请稍后重试，详情见 /topic_logs"
-            else:
-                response = (
-                    f"{mode_label}执行完成：\n" f"合并 {merged} 个主题\n" "详情见 /topic_logs"
-                )
-            self._log_command_execution("/topic_converge", user_id, username, None, True, response)
-            self._send_message_sync(chat_id, response)
-        except Exception as e:
-            error_msg = f"{mode_label}执行失败: {str(e)}"
-            self.logger.error(error_msg)
-            self._log_command_execution(
-                "/topic_converge", user_id, username, None, False, error_msg
-            )
-            self._send_message_sync(chat_id, f"❌ {error_msg}")
 
     def _execute_semantic_search_and_notify(
         self,

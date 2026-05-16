@@ -551,8 +551,6 @@ class MainController:
         from .intelligence.pipeline import IntelligencePipeline
         from .intelligence.search import IntelligenceSearchService
         from .intelligence.topic_enricher import TopicEnricher
-        from .intelligence.topic_converger import TopicConverger
-
         intelligence_config = self.config_manager.get_intelligence_config()
         setattr(self.intelligence_repository, "datasource_repository", self.datasource_repository)
 
@@ -571,12 +569,6 @@ class MainController:
             config=enrichment_config,
         ) if enrichment_config.get("enabled", True) else None
 
-        topic_converger = TopicConverger(
-            intelligence_repository=self.intelligence_repository,
-            search_service=search_service,
-            config=enrichment_config,
-        ) if enrichment_config.get("enabled", True) else None
-
         self._intelligence_pipeline = IntelligencePipeline(
             data_source_factory=get_data_source_factory(),
             intelligence_repository=self.intelligence_repository,
@@ -584,7 +576,6 @@ class MainController:
             merge_engine=None,
             search_service=search_service,
             topic_enricher=topic_enricher,
-            topic_converger=topic_converger,
         )
         self.logger.info("IntelligencePipeline初始化完成（ingestion-only）")
 

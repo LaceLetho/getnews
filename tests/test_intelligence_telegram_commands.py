@@ -234,46 +234,6 @@ def test_unauthorized_intel_callback_does_not_set_follow_status():
     pass
 
 
-def test_topic_converge_falls_back_to_message_text_for_objective():
-    converger = Mock()
-    pipeline = SimpleNamespace(topic_converger=converger)
-    coordinator = SimpleNamespace(_intelligence_pipeline=pipeline)
-    handler: Any = _make_handler(coordinator)
-    handler._execute_topic_converge_and_notify = Mock()
-
-    update = _make_update()
-    update.message.text = (
-        "/topic_converge 关注GPT/Claude会员的非官方购买渠道，"
-        "挖掘渠道源头、系统漏洞、套利机会"
-    )
-    context = SimpleNamespace(args=[])
-
-    started_targets = []
-
-    def fake_thread(target, daemon):
-        started_targets.append((target, daemon))
-        return SimpleNamespace(start=lambda: target())
-
-    with patch(
-        "crypto_news_analyzer.reporters.telegram_command_handler.threading.Thread", fake_thread
-    ):
-        asyncio.run(handler._handle_topic_converge_command(update, context))
-
-    converger.run_convergence.assert_not_called()
-    handler._execute_topic_converge_and_notify.assert_called_once_with(
-        user_id="1",
-        username="tester",
-        chat_id="chat_1",
-        converger=converger,
-        user_objective="关注GPT/Claude会员的非官方购买渠道，挖掘渠道源头、系统漏洞、套利机会",
-        mode_label="用户需求引导收敛",
-    )
-    assert len(started_targets) == 1
-    assert started_targets[0][1] is True
-    update.message.reply_text.assert_awaited_once()
-    assert "已开始" in update.message.reply_text.await_args.args[0]
-
-
 @pytest.mark.skip(reason="Old intel callback query handler removed in topic-only refactor (Task 12)")
 def test_intel_pagination_callback_expired_state_is_safe():
     handler: Any = _make_handler()
