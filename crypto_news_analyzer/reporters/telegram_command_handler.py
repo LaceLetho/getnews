@@ -12,6 +12,11 @@ Telegram命令处理器
 - 需求16.8: 记录所有手动触发的执行历史和触发用户信息
 - 需求16.10: 支持配置授权用户列表，限制命令执行权限
 - 需求16.11: 未授权用户发送命令时返回权限拒绝消息
+
+SHARED INFRASTRUCTURE — Single bot handler registering BOTH news commands
+(/analyze, /market, /semantic_search, /datasource_*) AND intelligence commands
+(/topic_*). Domain grouping: news → /analyze, /market, /semantic_search,
+/datasource_*; intelligence → /topic_*.
 """
 
 import asyncio
@@ -194,22 +199,30 @@ class TelegramCommandHandler:
             builder = builder.updater(None)
 
         application = builder.build()
+
+        # NEWS domain commands
+        self._register_news_commands(application)
+
+        # INTELLIGENCE domain commands
+        self._register_intelligence_commands(application)
+
+        # SHARED infrastructure commands
+        application.add_handler(CommandHandler("start", self._handle_start_command))
+        application.add_handler(
+            CallbackQueryHandler(self._handle_topic_callback_query, pattern=r"^topic:")
+        )
+        return application
+
+    def _register_news_commands(self, application: Application) -> None:
+        """Register NEWS domain Telegram commands.
+
+        News commands operate on ContentItem data: analysis, semantic search,
+        market snapshots, system status, token stats, and datasource management.
+        """
         application.add_handler(CommandHandler("analyze", self._handle_analyze_command))
         application.add_handler(
             CommandHandler("semantic_search", self._handle_semantic_search_command)
         )
-        application.add_handler(CommandHandler("topic_create", self._handle_topic_create_command))
-        application.add_handler(CommandHandler("topic_revise", self._handle_topic_revise_command))
-        application.add_handler(
-            CommandHandler("topic_set_prompt", self._handle_topic_set_prompt_command)
-        )
-        application.add_handler(CommandHandler("topic_confirm", self._handle_topic_confirm_command))
-        application.add_handler(CommandHandler("topic_list", self._handle_topic_list_command))
-        application.add_handler(CommandHandler("topic_detail", self._handle_topic_detail_command))
-        application.add_handler(CommandHandler("topic_logs", self._handle_topic_logs_command))
-        application.add_handler(CommandHandler("topic_merge", self._handle_topic_merge_command))
-        application.add_handler(CommandHandler("topic_pause", self._handle_topic_pause_command))
-        application.add_handler(CommandHandler("topic_archive", self._handle_topic_archive_command))
         application.add_handler(CommandHandler("market", self._handle_market_command))
         application.add_handler(CommandHandler("status", self._handle_status_command))
         application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
@@ -223,11 +236,25 @@ class TelegramCommandHandler:
             CommandHandler("datasource_delete", self._handle_datasource_delete_command)
         )
         application.add_handler(CommandHandler("help", self._handle_help_command))
-        application.add_handler(CommandHandler("start", self._handle_start_command))
+
+    def _register_intelligence_commands(self, application: Application) -> None:
+        """Register INTELLIGENCE domain Telegram commands.
+
+        Intelligence commands operate on RawIntelligenceItem and IntelligenceTopic data:
+        topic creation, revision, confirmation, listing, detail, logs, merge, pause, archive.
+        """
+        application.add_handler(CommandHandler("topic_create", self._handle_topic_create_command))
+        application.add_handler(CommandHandler("topic_revise", self._handle_topic_revise_command))
         application.add_handler(
-            CallbackQueryHandler(self._handle_topic_callback_query, pattern=r"^topic:")
+            CommandHandler("topic_set_prompt", self._handle_topic_set_prompt_command)
         )
-        return application
+        application.add_handler(CommandHandler("topic_confirm", self._handle_topic_confirm_command))
+        application.add_handler(CommandHandler("topic_list", self._handle_topic_list_command))
+        application.add_handler(CommandHandler("topic_detail", self._handle_topic_detail_command))
+        application.add_handler(CommandHandler("topic_logs", self._handle_topic_logs_command))
+        application.add_handler(CommandHandler("topic_merge", self._handle_topic_merge_command))
+        application.add_handler(CommandHandler("topic_pause", self._handle_topic_pause_command))
+        application.add_handler(CommandHandler("topic_archive", self._handle_topic_archive_command))
 
     def _generate_callback_token(self) -> str:
         return secrets.token_urlsafe(8)[:10]
@@ -737,28 +764,30 @@ class TelegramCommandHandler:
         在Telegram对话框中显示可用命令列表
         """
         try:
-            commands = [
-                BotCommand("start", "获取您的用户ID和授权状态"),
-                BotCommand("analyze", "分析消息，可指定小时数如/analyze 24"),
-                BotCommand("semantic_search", "语义搜索，如/semantic_search 24 BTC adoption"),
-                BotCommand("topic_create", "从主题创建研究草稿"),
-                BotCommand("topic_revise", "修订主题提示词"),
-                BotCommand("topic_set_prompt", "手动设置主题提示词"),
-                BotCommand("topic_confirm", "确认并激活主题"),
-                BotCommand("topic_list", "查看主题列表"),
-                BotCommand("topic_detail", "查看主题详情和发现"),
-                BotCommand("topic_logs", "查看主题运行日志"),
-                BotCommand("topic_merge", "合并主题发现"),
-                BotCommand("topic_pause", "暂停主题"),
-                BotCommand("topic_archive", "归档主题"),
-                BotCommand("market", "获取当前市场现状快照"),
-                BotCommand("status", "查询系统运行状态"),
-                BotCommand("tokens", "查看LLM token使用统计"),
-                BotCommand("datasource_list", "查看数据源列表"),
-                BotCommand("datasource_add", "添加数据源"),
-                BotCommand("datasource_delete", "删除数据源"),
-                BotCommand("help", "显示帮助信息"),
-            ]
+            commands = []
+            # Shared
+            commands.append(BotCommand("start", "获取您的用户ID和授权状态"))
+            commands.append(BotCommand("help", "显示帮助信息"))
+            # News domain
+            commands.append(BotCommand("analyze", "分析消息，可指定小时数如/analyze 24"))
+            commands.append(BotCommand("semantic_search", "语义搜索，如/semantic_search 24 BTC adoption"))
+            commands.append(BotCommand("market", "获取当前市场现状快照"))
+            commands.append(BotCommand("status", "查询系统运行状态"))
+            commands.append(BotCommand("tokens", "查看LLM token使用统计"))
+            commands.append(BotCommand("datasource_list", "查看数据源列表"))
+            commands.append(BotCommand("datasource_add", "添加数据源"))
+            commands.append(BotCommand("datasource_delete", "删除数据源"))
+            # Intelligence domain
+            commands.append(BotCommand("topic_create", "从主题创建研究草稿"))
+            commands.append(BotCommand("topic_revise", "修订主题提示词"))
+            commands.append(BotCommand("topic_set_prompt", "手动设置主题提示词"))
+            commands.append(BotCommand("topic_confirm", "确认并激活主题"))
+            commands.append(BotCommand("topic_list", "查看主题列表"))
+            commands.append(BotCommand("topic_detail", "查看主题详情和发现"))
+            commands.append(BotCommand("topic_logs", "查看主题运行日志"))
+            commands.append(BotCommand("topic_merge", "合并主题发现"))
+            commands.append(BotCommand("topic_pause", "暂停主题"))
+            commands.append(BotCommand("topic_archive", "归档主题"))
 
             await self.application.bot.set_my_commands(commands)
             self.logger.info("Bot命令菜单设置成功")
@@ -3093,6 +3122,8 @@ class TelegramCommandHandler:
 
         help_text = ["🤖 加密货币新闻分析机器人\n", "可用命令:\n"]
 
+        # News domain
+        help_text.append("📰 新闻分析\n")
         if "analyze" in user_permissions:
             help_text.append(
                 "/analyze [hours] - 按时间窗口执行分析\n"
@@ -3105,27 +3136,20 @@ class TelegramCommandHandler:
                 "hours 为必填参数，例如 /semantic_search 24 BTC adoption。\n"
             )
 
-        help_text.append("/topic_create <主题> - 从主题创建研究草稿\n")
-        help_text.append("/topic_revise <topic_id> <反馈> - 修订主题提示词\n")
-        help_text.append("/topic_set_prompt <topic_id> <提示词> - 手动设置主题提示词\n")
-        help_text.append("/topic_confirm <topic_id> - 确认并激活主题\n")
-        help_text.append("/topic_list [page] - 查看主题列表\n")
-        help_text.append("/topic_detail <topic_id> - 查看主题详情和发现\n")
-        help_text.append("/topic_logs <topic_id> - 查看主题运行日志\n")
-        help_text.append("/topic_merge <topic_id> - 合并主题发现\n")
-        help_text.append("/topic_pause <topic_id> - 暂停主题\n")
-        help_text.append("/topic_archive <topic_id> - 归档主题\n")
+        if "market" in user_permissions:
+            help_text.append(
+                "/market - 获取当前市场现状快照\n" "使用联网AI服务获取实时市场信息和分析。\n"
+            )
 
         if "status" in user_permissions:
             help_text.append(
                 "/status - 查询系统运行状态\n" "显示当前执行状态、系统信息和最近执行结果。\n"
             )
 
-        help_text.append("/help - 显示此帮助信息\n查看所有可用命令和使用说明。\n")
-
-        help_text.append(
-            "/tokens - 查看LLM token使用统计\n" "显示最近50次调用的token使用情况和缓存命中率。\n"
-        )
+        if "tokens" in user_permissions or not user_permissions:
+            help_text.append(
+                "/tokens - 查看LLM token使用统计\n" "显示最近50次调用的token使用情况和缓存命中率。\n"
+            )
 
         if "datasource" in user_permissions or not user_permissions:
             help_text.append(
@@ -3167,10 +3191,22 @@ class TelegramCommandHandler:
                 "注意: 如果数据源有活跃的入库任务，将无法删除。\n"
             )
 
-        if "market" in user_permissions:
-            help_text.append(
-                "/market - 获取当前市场现状快照\n" "使用联网AI服务获取实时市场信息和分析。\n"
-            )
+        # Intelligence domain
+        help_text.append("\n🧠 情报研究\n")
+        help_text.append("/topic_create <主题> - 从主题创建研究草稿\n")
+        help_text.append("/topic_revise <topic_id> <反馈> - 修订主题提示词\n")
+        help_text.append("/topic_set_prompt <topic_id> <提示词> - 手动设置主题提示词\n")
+        help_text.append("/topic_confirm <topic_id> - 确认并激活主题\n")
+        help_text.append("/topic_list [page] - 查看主题列表\n")
+        help_text.append("/topic_detail <topic_id> - 查看主题详情和发现\n")
+        help_text.append("/topic_logs <topic_id> - 查看主题运行日志\n")
+        help_text.append("/topic_merge <topic_id> - 合并主题发现\n")
+        help_text.append("/topic_pause <topic_id> - 暂停主题\n")
+        help_text.append("/topic_archive <topic_id> - 归档主题\n")
+
+        # Shared
+        help_text.append("\n⚙️ 通用\n")
+        help_text.append("/help - 显示此帮助信息\n查看所有可用命令和使用说明。\n")
 
         help_text.append(
             "\n注意事项:\n"

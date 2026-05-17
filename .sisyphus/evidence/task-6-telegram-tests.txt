@@ -1,0 +1,49 @@
+# Task 6: Telegram Test Results
+# Generated after refactoring telegram_command_handler.py
+
+## Test Run
+Command: uv run pytest tests/news/test_telegram_command_handler_analyze.py tests/news/test_telegram_command_handler_semantic_search.py tests/intelligence/test_intelligence_telegram_commands.py tests/intelligence/test_topic_findings_telegram.py tests/shared/test_telegram_command_handler_datasource.py -v
+
+## Results
+- PASSED: 63 tests
+- SKIPPED: 26 tests (all pre-existing skips for old /intel_* commands)
+- FAILED: 0 tests
+
+## Post-Change Command Inventory Verification
+All 20 commands confirmed registered via ast-grep:
+
+### News Domain (8 commands)
+- analyze -> _handle_analyze_command
+- semantic_search -> _handle_semantic_search_command
+- market -> _handle_market_command
+- status -> _handle_status_command
+- tokens -> _handle_tokens_command
+- datasource_list -> _handle_datasource_list_command
+- datasource_add -> _handle_datasource_add_command
+- datasource_delete -> _handle_datasource_delete_command
+
+### Intelligence Domain (10 commands)
+- topic_create -> _handle_topic_create_command
+- topic_revise -> _handle_topic_revise_command
+- topic_set_prompt -> _handle_topic_set_prompt_command
+- topic_confirm -> _handle_topic_confirm_command
+- topic_list -> _handle_topic_list_command
+- topic_detail -> _handle_topic_detail_command
+- topic_logs -> _handle_topic_logs_command
+- topic_merge -> _handle_topic_merge_command
+- topic_pause -> _handle_topic_pause_command
+- topic_archive -> _handle_topic_archive_command
+
+### Shared (2 commands)
+- help -> _handle_help_command
+- start -> _handle_start_command
+
+### Callback Handlers (1)
+- ^topic: -> _handle_topic_callback_query
+
+## Verification: Pre-change vs Post-change
+- Command names: IDENTICAL
+- Command count: IDENTICAL (20 + 1 callback)
+- Handler methods: IDENTICAL
+- Authorization: UNCHANGED (centralized is_authorized_user)
+- Rate limiting: UNCHANGED (centralized check_rate_limit)

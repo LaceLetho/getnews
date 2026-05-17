@@ -1,0 +1,17 @@
+PASS: found exact heading "Dual-Domain Architecture"
+PASS: found exact heading "Agent Boundary Rules"
+PASS: found term (case-insensitive) "ContentItem"
+PASS: found term (case-insensitive) "RawIntelligenceItem"
+PASS: found term (case-insensitive) "DataSourcePurpose.NEWS"
+PASS: found term (case-insensitive) "DataSourcePurpose.INTELLIGENCE"
+PASS: found term (case-insensitive) "ingestion"
+PASS: found term (case-insensitive) "NOT two repos or two services"
+PASS: found term (case-insensitive) "do NOT recommend legacy api-server"
+PASS: found term (case-insensitive) "entry-based intelligence is compatibility-only"
+PASS: found term (case-insensitive) "TopicFinding"
+
+OVERALL: PASS
+OK: old section "Build/Lint/Test Commands" preserved
+OK: old section "Code Style Guidelines" preserved
+OK: old section "Important Notes" preserved
+OK: old section "Configuration" preserved

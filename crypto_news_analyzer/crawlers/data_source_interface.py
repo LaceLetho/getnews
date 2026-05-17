@@ -2,12 +2,22 @@
 数据源接口定义
 
 定义所有数据源必须实现的统一接口，支持插件化架构。
+
+SHARED CRAWLER INTERFACE — Implemented by both NEWS crawlers (returning
+ContentItem: rss, x, rest_api) and INTELLIGENCE crawlers (returning
+RawIntelligenceItem: v2ex, telegram_group). See boundary rules in AGENTS.md.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Sequence, Union
 
 from ..models import ContentItem
+from ..domain.models import RawIntelligenceItem
+
+# Union alias for crawler return values. Using Sequence (covariant) to allow
+# implementations to return List[ContentItem] or List[RawIntelligenceItem].
+# News crawlers return ContentItem; intelligence crawlers return RawIntelligenceItem.
+CrawlItem = Union[ContentItem, RawIntelligenceItem]
 
 
 class DataSourceInterface(ABC):
@@ -15,6 +25,12 @@ class DataSourceInterface(ABC):
     数据源统一接口
 
     所有数据源爬取器必须实现此接口，以确保系统的一致性和可扩展性。
+
+    IMPORTANT: crawlers are split into two bounded contexts with different return types:
+    - NEWS crawlers (rss, x, rest_api): crawl() returns List[ContentItem]
+    - INTELLIGENCE crawlers (telegram_group, v2ex): crawl() returns List[RawIntelligenceItem]
+
+    Subclasses MUST document their return type in their own crawl() signature.
     """
 
     @abstractmethod
@@ -29,18 +45,21 @@ class DataSourceInterface(ABC):
         pass
 
     @abstractmethod
-    def crawl(self, config: Dict[str, Any]) -> List[ContentItem]:
+    def crawl(self, config: Dict[str, Any]) -> Sequence[CrawlItem]:
         """
         爬取数据源内容
+
+        NEWS crawlers return Sequence[ContentItem].
+        INTELLIGENCE crawlers return Sequence[RawIntelligenceItem].
 
         Args:
             config: 数据源配置
 
         Returns:
-            List[ContentItem]: 爬取到的内容项列表
+            Sequence[CrawlItem]: 爬取到的内容项列表（ContentItem 或 RawIntelligenceItem）
 
         Raises:
-            CrawlerError: 爬取失败时抛出
+            CrawlError: 爬取失败时抛出
         """
         pass
 

@@ -1,0 +1,1779 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.2, pytest-9.0.2, pluggy-1.6.0
+rootdir: /data/workspace/getnews
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.12.1, hypothesis-6.151.9, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 1113 items
+
+tests/integration/test_intelligence_pgvector.py .ssssss                  [  0%]
+tests/integration/test_intelligence_schema.py Fs                         [  0%]
+tests/telegram-multi-user-authorization/test_rate_limit_analyze_only.py . [  0%]
+..                                                                       [  1%]
+tests/telegram-multi-user-authorization/test_task_2_1_load_authorized_users.py . [  1%]
+.......                                                                  [  1%]
+tests/telegram-multi-user-authorization/test_task_2_2_username_resolution.py . [  1%]
+........                                                                 [  2%]
+tests/telegram-multi-user-authorization/test_task_2_3_initialization_logging.py . [  2%]
+......                                                                   [  3%]
+tests/telegram-multi-user-authorization/test_task_3_1_user_not_found_errors.py . [  3%]
+.......                                                                  [  3%]
+tests/telegram-multi-user-authorization/test_task_3_2_api_error_handling.py . [  4%]
+..........                                                               [  4%]
+tests/telegram-multi-user-authorization/test_task_3_3_bot_permission_errors.py . [  5%]
+.........                                                                [  5%]
+tests/telegram-multi-user-authorization/test_task_6_1_chat_context.py .. [  6%]
+.......                                                                  [  6%]
+tests/telegram-multi-user-authorization/test_task_6_2_extract_chat_context.py . [  6%]
+............                                                             [  7%]
+tests/telegram-multi-user-authorization/test_task_7_1_log_authorization_attempt.py . [  7%]
+...............                                                          [  9%]
+tests/telegram-multi-user-authorization/test_task_8_1_handle_analyze_command.py . [  9%]
+...                                                                      [  9%]
+tests/telegram-multi-user-authorization/test_task_8_2_handle_status_command.py . [  9%]
+............                                                             [ 10%]
+tests/test_analyze_time_window_override_regression.py .                  [ 10%]
+tests/test_api_server.py ...............................                 [ 13%]
+tests/test_api_server_semantic_search.py ...........                     [ 14%]
+tests/test_banned_legacy_reference_scan.py .F.                           [ 14%]
+tests/test_bird_dependency_unit.py ..F.....F.................            [ 17%]
+tests/test_bird_integration_properties.py FFF                            [ 17%]
+tests/test_cache_manager.py ....................                         [ 19%]
+tests/test_cache_manager_properties.py .........                         [ 20%]
+tests/test_category_parser.py F.F.F......                                [ 21%]
+tests/test_config_file_management_properties.py ........                 [ 21%]
+tests/test_config_manager.py .......                                     [ 22%]
+tests/test_config_persistence_properties.py .....                        [ 22%]
+tests/test_data_source_factory.py .......................                [ 24%]
+tests/test_data_storage_properties.py .....                              [ 25%]
+tests/test_datasource_bootstrap.py ............                          [ 26%]
+tests/test_datasource_repository.py ...............                      [ 27%]
+tests/test_docker_entrypoint_legacy_alias_rejection.py ....              [ 28%]
+tests/test_dynamic_classification_manager.py ........................    [ 30%]
+tests/test_embedding_backfill_mode.py ......                             [ 30%]
+tests/test_embedding_service.py ..                                       [ 31%]
+tests/test_execution_coordinator_cache_integration.py .......            [ 31%]
+tests/test_extensibility_unit.py .........FF..FFF.FFF                    [ 33%]
+tests/test_ingestion_jobs.py ....                                        [ 33%]
+tests/test_ingestion_runtime.py F............                            [ 35%]
+tests/test_intelligence_api.py ......ssssssssssssss.sssssssssssss.ssss   [ 38%]
+tests/test_intelligence_config.py ..                                     [ 38%]
+tests/test_intelligence_datasource_payloads.py ......                    [ 39%]
+tests/test_intelligence_extraction.py ..                                 [ 39%]
+tests/test_intelligence_ingestion_runtime.py sssssssssss....             [ 40%]
+tests/test_intelligence_merge.py ...                                     [ 41%]
+tests/test_intelligence_models.py ......                                 [ 41%]
+tests/test_intelligence_repositories.py .......................          [ 43%]
+tests/test_intelligence_security_guardrails.py .....                     [ 44%]
+tests/test_intelligence_semantic_search.py ssss                          [ 44%]
+tests/test_intelligence_telegram_collector.py .......                    [ 45%]
+tests/test_intelligence_telegram_commands.py ssssssssssssssssssssssssss  [ 47%]
+tests/test_intelligence_ttl.py ..                                        [ 47%]
+tests/test_intelligence_v2ex_collector.py ...                            [ 47%]
+tests/test_llm_analyzer.py ...............F..............                [ 50%]
+tests/test_llm_analyzer_cache_integration.py ..................          [ 52%]
+tests/test_llm_registry.py ................                              [ 53%]
+tests/test_logging_redaction.py ..                                       [ 53%]
+tests/test_main_controller.py .................................          [ 56%]
+tests/test_multi_step_analysis_properties.py FFFFF......FFF              [ 58%]
+tests/test_multi_step_analysis_unit.py ................................. [ 61%]
+......                                                                   [ 61%]
+tests/test_next_execution_time_fix.py ...                                [ 61%]
+tests/test_openclaw_skill_crypto_news_http_api.py .FF.......F.......     [ 63%]
+tests/test_opencode_skill_crypto_news_debug.py ......                    [ 63%]
+tests/test_postgres_storage_path.py .F............                       [ 65%]
+tests/test_raw_message_retention.py .....                                [ 65%]
+tests/test_report_generator.py .......................                   [ 67%]
+tests/test_rss_content_parsing_properties.py .....                       [ 68%]
+tests/test_rss_crawler.py ....................................           [ 71%]
+tests/test_run_wrapper.py .                                              [ 71%]
+tests/test_semantic_search_contracts.py .......                          [ 72%]
+tests/test_semantic_search_service.py ...........                        [ 73%]
+tests/test_semantic_search_storage.py ......                             [ 73%]
+tests/test_structured_output_manager.py ................................ [ 76%]
+...............                                                          [ 77%]
+tests/test_telegram_command_handler_analyze.py ..........                [ 78%]
+tests/test_telegram_command_handler_datasource.py ...................... [ 80%]
+...........                                                              [ 81%]
+tests/test_telegram_command_handler_semantic_search.py ...........       [ 82%]
+tests/test_telegram_command_pbt.py ...                                   [ 83%]
+tests/test_telegram_formatter.py ....................................... [ 86%]
+...............                                                          [ 87%]
+tests/test_telegram_real_config.py ..                                    [ 88%]
+tests/test_telegram_report_properties.py ............                    [ 89%]
+tests/test_telegram_sender.py ..................                         [ 90%]
+tests/test_telegram_sending_reliability_properties.py ...                [ 91%]
+tests/test_timezone_integration.py ......                                [ 91%]
+tests/test_timezone_utils.py ...........                                 [ 92%]
+tests/test_topic_findings_api.py ..................                      [ 94%]
+tests/test_topic_findings_telegram.py .........                          [ 94%]
+tests/test_topic_prompt_workflow.py .................................... [ 98%]
+.........                                                                [ 99%]
+tests/test_topic_research_scheduler.py ...........                       [100%]
+
+=================================== FAILURES ===================================
+____________ test_intelligence_runtime_bootstrap_matches_migration _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f379ea32a10>
+
+    def test_intelligence_runtime_bootstrap_matches_migration(monkeypatch):
+        migration_sql = Path("migrations/postgresql/003_intelligence_schema.sql").read_text(
+            encoding="utf-8"
+        )
+        executed = []
+    
+        class FakeCursor:
+            rowcount = 1
+    
+            def execute(self, query, params=None):
+                executed.append((query, params))
+    
+            def fetchone(self):
+                return None
+    
+            def fetchall(self):
+                return []
+    
+        class FakeConnection:
+            def cursor(self):
+                return FakeCursor()
+    
+            def commit(self):
+                return None
+    
+            def rollback(self):
+                return None
+    
+            def close(self):
+                return None
+    
+        class FakePsycopg:
+            def connect(self, *_args, **_kwargs):
+                return FakeConnection()
+    
+        monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", FakePsycopg())
+        monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
+    
+        DataManager(
+            StorageConfig(
+                backend="postgres",
+                database_url="postgresql://user:pass@localhost:5432/db",
+                pgvector_dimensions=1536,
+            )
+        )
+        runtime_sql = "\n".join(query for query, _ in executed)
+    
+        for fragment in [
+            "CREATE EXTENSION IF NOT EXISTS vector",
+            "CREATE TABLE IF NOT EXISTS raw_intelligence_items",
+            "CREATE TABLE IF NOT EXISTS intelligence_extraction_observations",
+            "CREATE TABLE IF NOT EXISTS intelligence_canonical_entries",
+            "CREATE TABLE IF NOT EXISTS intelligence_aliases",
+            "CREATE TABLE IF NOT EXISTS intelligence_related_candidates",
+            "CREATE TABLE IF NOT EXISTS intelligence_crawl_checkpoints",
+            "embedding vector(1536)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_canonical_entries_type_key",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_raw_items_dedupe",
+        ]:
+>           assert fragment in migration_sql
+E           AssertionError: assert 'CREATE UNIQUE INDEX IF NOT EXISTS idx_intelligence_raw_items_dedupe' in 'CREATE EXTENSION IF NOT EXISTS vector;\n\nCREATE TABLE IF NOT EXISTS raw_intelligence_items (\n    id TEXT PRIMARY KE...E INDEX IF NOT EXISTS idx_intelligence_crawl_checkpoints_updated_at\nON intelligence_crawl_checkpoints (updated_at);\n'
+
+tests/integration/test_intelligence_schema.py:69: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:52:42.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.storage.data_manager", "message": "数据库表结构初始化完成"}
+{"timestamp": "2026-05-17T10:52:42.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.storage.data_manager", "message": "数据管理器初始化完成，后端: postgres, 数据库: postgres"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.storage.data_manager:data_manager.py:414 数据库表结构初始化完成
+INFO     crypto_news_analyzer.storage.data_manager:data_manager.py:69 数据管理器初始化完成，后端: postgres, 数据库: postgres
+____________ test_iter_candidate_files_covers_known_legacy_hotspots ____________
+
+    def test_iter_candidate_files_covers_known_legacy_hotspots():
+        candidate_paths = {
+            file_path.relative_to(REPO_ROOT).as_posix() for file_path in iter_candidate_files(REPO_ROOT)
+        }
+    
+>       assert KNOWN_HOTSPOTS.issubset(candidate_paths)
+E       AssertionError: assert False
+E        +  where False = <built-in method issubset of set object at 0x7f379f110900>({'.env.template', 'AGENTS.md', 'README.md', 'crypto_news_analyzer/main.py', 'crypto_news_analyzer/reporters/telegram_command_handler.py', 'docker-entrypoint.sh', ...})
+E        +    where <built-in method issubset of set object at 0x7f379f110900> = {'.env.template', 'AGENTS.md', 'README.md', 'crypto_news_analyzer/main.py', 'crypto_news_analyzer/reporters/telegram_command_handler.py', 'docker-entrypoint.sh', ...}.issubset
+
+tests/test_banned_legacy_reference_scan.py:71: AssertionError
+______________________ TestBirdConfig.test_default_config ______________________
+
+self = <tests.test_bird_dependency_unit.TestBirdConfig testMethod=test_default_config>
+
+    def test_default_config(self):
+        """测试默认配置"""
+        config = BirdConfig()
+    
+        self.assertEqual(config.executable_path, "bird")
+        self.assertEqual(config.timeout_seconds, 300)
+        self.assertEqual(config.max_retries, 3)
+        self.assertEqual(config.output_format, "json")
+        self.assertEqual(config.rate_limit_delay, 1.0)
+        self.assertEqual(config.config_file_path, "~/.bird/config.json")
+        self.assertTrue(config.enable_auto_retry)
+        self.assertEqual(config.retry_delay_seconds, 60)
+>       self.assertEqual(config.bird_max_page, 5)
+E       AssertionError: 3 != 5
+
+tests/test_bird_dependency_unit.py:36: AssertionError
+_________ TestBirdDependencyManager.test_get_installation_instructions _________
+
+self = <tests.test_bird_dependency_unit.TestBirdDependencyManager testMethod=test_get_installation_instructions>
+
+    def test_get_installation_instructions(self):
+        """测试获取安装指导"""
+        instructions = self.manager.get_installation_instructions()
+    
+        self.assertIsInstance(instructions, str)
+        self.assertIn("npm install -g @laceletho/bird@latest", instructions)
+>       self.assertIn("pip install", instructions)
+E       AssertionError: 'pip install' not found in 'Bird工具安装指南:\n\n1. 通过npm安装 (推荐):\n   npm install -g @laceletho/bird@latest\n\n安装完成后，请确保bird工具在PATH环境变量中，或在配置文件中指定完整路径。'
+
+tests/test_bird_dependency_unit.py:232: AssertionError
+______ TestBirdIntegrationProperties.test_bird_authentication_consistency ______
+
+self = <tests.test_bird_integration_properties.TestBirdIntegrationProperties testMethod=test_bird_authentication_consistency>
+config = BirdConfig(executable_path='bird', timeout_seconds=30, max_retries=1, output_format='json', rate_limit_delay=1.0, config_file_path='/tmp/tmptedwtupi/bird_config.json', enable_auto_retry=False, retry_delay_seconds=30, bird_max_page=3)
+auth_data = ('00000000', '00000000')
+
+    @given(
+        config=valid_bird_config(),
+        auth_data=st.tuples(
+            st.text(min_size=8, max_size=50),  # ct0
+            st.text(min_size=8, max_size=50)   # auth_token
+        )
+    )
+    @settings(max_examples=30, deadline=None)
+    def test_bird_authentication_consistency(self, config, auth_data):
+        """
+        测试bird工具认证的一致性
+    
+        验证需求 4.12 - 通过bird工具的配置文件或环境变量管理X/Twitter认证信息
+        """
+        config.config_file_path = os.path.join(self.temp_dir, "bird_config.json")
+        ct0, auth_token = auth_data
+    
+        # 模拟bird工具可用
+        dependency_status = DependencyStatus(
+            available=True,
+            version="1.0.0",
+            executable_path="bird",
+            error_message=None,
+            installation_instructions=None
+        )
+    
+        with patch('crypto_news_analyzer.crawlers.bird_dependency_manager.BirdDependencyManager') as mock_dependency_manager:
+            mock_manager_instance = Mock()
+            mock_manager_instance.check_bird_availability.return_value = dependency_status
+            mock_dependency_manager.return_value = mock_manager_instance
+    
+            with patch('subprocess.run') as mock_subprocess:
+                mock_result = Mock()
+                mock_result.returncode = 0
+                mock_result.stdout = '{"version": "1.0.0"}'
+                mock_result.stderr = ""
+                mock_subprocess.return_value = mock_result
+    
+                try:
+>                   wrapper = BirdWrapper(config)
+                              ^^^^^^^^^^^^^^^^^^^
+
+tests/test_bird_integration_properties.py:370: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+crypto_news_analyzer/crawlers/bird_wrapper.py:43: in __init__
+    self._validate_bird_availability()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.crawlers.bird_wrapper.BirdWrapper object at 0x7f379ce11910>
+
+    def _validate_bird_availability(self) -> None:
+        """验证bird工具可用性"""
+        status = self.dependency_manager.check_bird_availability()
+        if not status.available:
+            error_msg = f"Bird工具不可用: {status.error_message}"
+            self.logger.error(error_msg)
+>           raise RuntimeError(error_msg)
+E           RuntimeError: Bird工具不可用: 未找到bird工具可执行文件
+
+crypto_news_analyzer/crawlers/bird_wrapper.py:56: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+self = <tests.test_bird_integration_properties.TestBirdIntegrationProperties testMethod=test_bird_authentication_consistency>
+
+    @given(
+>       config=valid_bird_config(),
+               ^^^^^^^
+        auth_data=st.tuples(
+            st.text(min_size=8, max_size=50),  # ct0
+            st.text(min_size=8, max_size=50)   # auth_token
+        )
+    )
+
+tests/test_bird_integration_properties.py:332: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_bird_integration_properties.py:393: in test_bird_authentication_consistency
+    self.fail(f"认证设置失败: {str(e)}")
+E   AssertionError: 认证设置失败: Bird工具不可用: 未找到bird工具可执行文件
+E   Falsifying example: test_bird_authentication_consistency(
+E       self=<tests.test_bird_integration_properties.TestBirdIntegrationProperties testMethod=test_bird_authentication_consistency>,
+E       config=BirdConfig(executable_path='bird',
+E        timeout_seconds=30,
+E        max_retries=1,
+E        output_format='json',
+E        rate_limit_delay=1.0,
+E        config_file_path=(lambda x: f'~/.bird/{x}.json')('00000'),
+E        enable_auto_retry=False,
+E        retry_delay_seconds=30,
+E        bird_max_page=3),
+E       auth_data=('00000000', '00000000'),
+E   )
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.bird_dependency_manager", "message": "开始检查bird工具可用性"}
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.crawlers.bird_wrapper", "message": "Bird工具不可用: 未找到bird工具可执行文件"}
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.bird_dependency_manager", "message": "开始检查bird工具可用性"}
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.crawlers.bird_wrapper", "message": "Bird工具不可用: 未找到bird工具可执行文件"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.crawlers.bird_dependency_manager:bird_dependency_manager.py:81 开始检查bird工具可用性
+ERROR    crypto_news_analyzer.crawlers.bird_wrapper:bird_wrapper.py:55 Bird工具不可用: 未找到bird工具可执行文件
+INFO     crypto_news_analyzer.crawlers.bird_dependency_manager:bird_dependency_manager.py:81 开始检查bird工具可用性
+ERROR    crypto_news_analyzer.crawlers.bird_wrapper:bird_wrapper.py:55 Bird工具不可用: 未找到bird工具可执行文件
+____ TestBirdIntegrationProperties.test_bird_command_execution_consistency _____
+
+self = <tests.test_bird_integration_properties.TestBirdIntegrationProperties testMethod=test_bird_command_execution_consistency>
+config = BirdConfig(executable_path='bird', timeout_seconds=30, max_retries=1, output_format='json', rate_limit_delay=1.0, config_file_path='/tmp/tmpgx5ixtqz/bird_config.json', enable_auto_retry=False, retry_delay_seconds=30, bird_max_page=3)
+command_result = BirdResult(success=True, output='[{"id": "1000000000000000000", "text": "0000000000", "createdAt": "Sun May 17 10:52:5...unt": 0, "replyCount": 0}]', error='', exit_code=0, execution_time=1.0, command=['bird', 'list-timeline', '123456789'])
+
+    @given(
+        config=valid_bird_config(),
+        command_result=bird_command_result()
+    )
+    @settings(max_examples=50, deadline=None)
+    def test_bird_command_execution_consistency(self, config, command_result):
+        """
+        测试bird工具命令执行的一致性
+    
+        验证需求 4.6 - bird工具执行失败时应该记录错误状态并继续处理其他源
+        """
+        config.config_file_path = os.path.join(self.temp_dir, "bird_config.json")
+    
+        # 模拟bird工具可用
+        dependency_status = DependencyStatus(
+            available=True,
+            version="1.0.0",
+            executable_path="bird",
+            error_message=None,
+            installation_instructions=None
+        )
+    
+        with patch('crypto_news_analyzer.crawlers.bird_dependency_manager.BirdDependencyManager') as mock_dependency_manager:
+            mock_manager_instance = Mock()
+            mock_manager_instance.check_bird_availability.return_value = dependency_status
+            mock_dependency_manager.return_value = mock_manager_instance
+    
+            with patch('subprocess.run') as mock_subprocess:
+                # 模拟bird工具命令执行
+                mock_result = Mock()
+                mock_result.returncode = command_result.exit_code
+                mock_result.stdout = command_result.output
+                mock_result.stderr = command_result.error
+                mock_subprocess.return_value = mock_result
+    
+                try:
+>                   wrapper = BirdWrapper(config)
+                              ^^^^^^^^^^^^^^^^^^^
+
+tests/test_bird_integration_properties.py:292: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+crypto_news_analyzer/crawlers/bird_wrapper.py:43: in __init__
+    self._validate_bird_availability()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.crawlers.bird_wrapper.BirdWrapper object at 0x7f379e1adad0>
+
+    def _validate_bird_availability(self) -> None:
+        """验证bird工具可用性"""
+        status = self.dependency_manager.check_bird_availability()
+        if not status.available:
+            error_msg = f"Bird工具不可用: {status.error_message}"
+            self.logger.error(error_msg)
+>           raise RuntimeError(error_msg)
+E           RuntimeError: Bird工具不可用: 未找到bird工具可执行文件
+
+crypto_news_analyzer/crawlers/bird_wrapper.py:56: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+self = <tests.test_bird_integration_properties.TestBirdIntegrationProperties testMethod=test_bird_command_execution_consistency>
+
+    @given(
+>       config=valid_bird_config(),
+               ^^^^^^^
+        command_result=bird_command_result()
+    )
+
+tests/test_bird_integration_properties.py:257: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_bird_integration_properties.py:324: in test_bird_command_execution_consistency
+    self.fail(f"成功的命令执行不应该抛出异常: {str(e)}")
+E   AssertionError: 成功的命令执行不应该抛出异常: Bird工具不可用: 未找到bird工具可执行文件
+E   Falsifying example: test_bird_command_execution_consistency(
+E       self=<tests.test_bird_integration_properties.TestBirdIntegrationProperties testMethod=test_bird_command_execution_consistency>,
+E       config=BirdConfig(executable_path='bird',
+E        timeout_seconds=30,
+E        max_retries=1,
+E        output_format='json',
+E        rate_limit_delay=1.0,
+E        config_file_path=(lambda x: f'~/.bird/{x}.json')('00000'),
+E        enable_auto_retry=False,
+E        retry_delay_seconds=30,
+E        bird_max_page=3),
+E       command_result=BirdResult(success=True,
+E        output='[{"id": "1000000000000000000", "text": "0000000000", "createdAt": "Sun May 17 10:52:56 +0000 2026", "author": {"username": "000", "name": "00000"}, "authorId": "1000000000", "retweetCount": 0, "likeCount": 0, "replyCount": 0}]',
+E        error='',
+E        exit_code=0,
+E        execution_time=1.0,
+E        command=['bird', 'list-timeline', '123456789']),
+E   )
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.bird_dependency_manager", "message": "开始检查bird工具可用性"}
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.crawlers.bird_wrapper", "message": "Bird工具不可用: 未找到bird工具可执行文件"}
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.bird_dependency_manager", "message": "开始检查bird工具可用性"}
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.crawlers.bird_wrapper", "message": "Bird工具不可用: 未找到bird工具可执行文件"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.crawlers.bird_dependency_manager:bird_dependency_manager.py:81 开始检查bird工具可用性
+ERROR    crypto_news_analyzer.crawlers.bird_wrapper:bird_wrapper.py:55 Bird工具不可用: 未找到bird工具可执行文件
+INFO     crypto_news_analyzer.crawlers.bird_dependency_manager:bird_dependency_manager.py:81 开始检查bird工具可用性
+ERROR    crypto_news_analyzer.crawlers.bird_wrapper:bird_wrapper.py:55 Bird工具不可用: 未找到bird工具可执行文件
+_______ TestBirdIntegrationProperties.test_bird_integration_consistency ________
+  + Exception Group Traceback (most recent call last):
+  |   File "/data/workspace/getnews/tests/test_bird_integration_properties.py", line 176, in test_bird_integration_consistency
+  |     config=valid_bird_config(),
+  |            ^^^^^^^
+  |   File "/data/workspace/getnews/.venv/lib/python3.11/site-packages/hypothesis/core.py", line 2246, in wrapped_test
+  |     raise the_error_hypothesis_found
+  | ExceptionGroup: Hypothesis found 2 distinct failures. (2 sub-exceptions)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/data/workspace/getnews/tests/test_bird_integration_properties.py", line 211, in test_bird_integration_consistency
+    |     wrapper = BirdWrapper(config)
+    |               ^^^^^^^^^^^^^^^^^^^
+    |   File "/data/workspace/getnews/crypto_news_analyzer/crawlers/bird_wrapper.py", line 43, in __init__
+    |     self._validate_bird_availability()
+    |   File "/data/workspace/getnews/crypto_news_analyzer/crawlers/bird_wrapper.py", line 56, in _validate_bird_availability
+    |     raise RuntimeError(error_msg)
+    | RuntimeError: Bird工具不可用: 未找到bird工具可执行文件
+    | 
+    | During handling of the above exception, another exception occurred:
+    | 
+    | Traceback (most recent call last):
+    |   File "/data/workspace/getnews/tests/test_bird_integration_properties.py", line 235, in test_bird_integration_consistency
+    |     self.fail(f"Bird工具可用时初始化失败: {str(e)}")
+    |   File "/usr/lib/python3.11/unittest/case.py", line 703, in fail
+    |     raise self.failureException(msg)
+    | AssertionError: Bird工具可用时初始化失败: Bird工具不可用: 未找到bird工具可执行文件
+    | Falsifying example: test_bird_integration_consistency(
+    |     self=<tests.test_bird_integration_properties.TestBirdIntegrationProperties testMethod=test_bird_integration_consistency>,
+    |     config=BirdConfig(executable_path='bird',
+    |      timeout_seconds=30,
+    |      max_retries=1,
+    |      output_format='json',
+    |      rate_limit_delay=1.0,
+    |      config_file_path=(lambda x: f'~/.bird/{x}.json')('00000'),
+    |      enable_auto_retry=False,
+    |      retry_delay_seconds=30,
+    |      bird_max_page=3),
+    |     x_source=XSource(name='00000',
+    |      url='https://x.com/i/lists/1000000000000000000',
+    |      type='list'),
+    |     dependency_status=DependencyStatus(available=True,
+    |      version='1.0.0',
+    |      executable_path='/usr/local/bin/bird',
+    |      error_message=None,
+    |      installation_instructions=None),
+    | )
+    +---------------- 2 ----------------
+    | Traceback (most recent call last):
+    |   File "/data/workspace/getnews/tests/test_bird_integration_properties.py", line 241, in test_bird_integration_consistency
+    |     wrapper = BirdWrapper(config)
+    |               ^^^^^^^^^^^^^^^^^^^
+    |   File "/data/workspace/getnews/crypto_news_analyzer/crawlers/bird_wrapper.py", line 43, in __init__
+    |     self._validate_bird_availability()
+    |   File "/data/workspace/getnews/crypto_news_analyzer/crawlers/bird_wrapper.py", line 56, in _validate_bird_availability
+    |     raise RuntimeError(error_msg)
+    | RuntimeError: Bird工具不可用: 未找到bird工具可执行文件
+    | 
+    | During handling of the above exception, another exception occurred:
+    | 
+    | Traceback (most recent call last):
+    |   File "/data/workspace/getnews/tests/test_bird_integration_properties.py", line 249, in test_bird_integration_consistency
+    |     assert dependency_status.error_message in error_message, f"错误信息应该包含具体原因: {error_message}"
+    | AssertionError: 错误信息应该包含具体原因: Bird工具不可用: 未找到bird工具可执行文件
+    | assert 'Bird tool not found' in 'Bird工具不可用: 未找到bird工具可执行文件'
+    |  +  where 'Bird tool not found' = DependencyStatus(available=False, version=None, executable_path=None, error_message='Bird tool not found', installation_instructions='Please install bird tool').error_message
+    | Falsifying example: test_bird_integration_consistency(
+    |     self=<tests.test_bird_integration_properties.TestBirdIntegrationProperties testMethod=test_bird_integration_consistency>,
+    |     config=BirdConfig(executable_path='bird',
+    |      timeout_seconds=30,
+    |      max_retries=1,
+    |      output_format='json',
+    |      rate_limit_delay=1.0,
+    |      config_file_path=(lambda x: f'~/.bird/{x}.json')('00000'),
+    |      enable_auto_retry=False,
+    |      retry_delay_seconds=30,
+    |      bird_max_page=3),
+    |     x_source=XSource(name='00000',
+    |      url='https://x.com/i/lists/1000000000000000000',
+    |      type='list'),
+    |     dependency_status=DependencyStatus(available=False,
+    |      version=None,
+    |      executable_path=None,
+    |      error_message='Bird tool not found',
+    |      installation_instructions='Please install bird tool'),
+    | )
+    +------------------------------------
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.bird_dependency_manager", "message": "开始检查bird工具可用性"}
+{"timestamp": "2026-05-17T10:52:56.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.crawlers.bird_wrapper", "message": "Bird工具不可用: 未找到bird工具可执行文件"}
+{"timestamp": "2026-05-17T10:52:57.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.bird_dependency_manager", "message": "开始检查bird工具可用性"}
+{"timestamp": "2026-05-17T10:52:57.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.crawlers.bird_wrapper", "message": "Bird工具不可用: 未找到bird工具可执行文件"}
+{"timestamp": "2026-05-17T10:52:57.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.bird_dependency_manager", "message": "开始检查bird工具可用性"}
+{"timestamp": "2026-05-17T10:52:57.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.crawlers.bird_wrapper", "message": "Bird工具不可用: 未找到bird工具可执行文件"}
+{"timestamp": "2026-05-17T10:52:57.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.bird_dependency_manager", "message": "开始检查bird工具可用性"}
+{"timestamp": "2026-05-17T10:52:57.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.crawlers.bird_wrapper", "message": "Bird工具不可用: 未找到bird工具可执行文件"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.crawlers.bird_dependency_manager:bird_dependency_manager.py:81 开始检查bird工具可用性
+ERROR    crypto_news_analyzer.crawlers.bird_wrapper:bird_wrapper.py:55 Bird工具不可用: 未找到bird工具可执行文件
+INFO     crypto_news_analyzer.crawlers.bird_dependency_manager:bird_dependency_manager.py:81 开始检查bird工具可用性
+ERROR    crypto_news_analyzer.crawlers.bird_wrapper:bird_wrapper.py:55 Bird工具不可用: 未找到bird工具可执行文件
+INFO     crypto_news_analyzer.crawlers.bird_dependency_manager:bird_dependency_manager.py:81 开始检查bird工具可用性
+ERROR    crypto_news_analyzer.crawlers.bird_wrapper:bird_wrapper.py:55 Bird工具不可用: 未找到bird工具可执行文件
+INFO     crypto_news_analyzer.crawlers.bird_dependency_manager:bird_dependency_manager.py:81 开始检查bird工具可用性
+ERROR    crypto_news_analyzer.crawlers.bird_wrapper:bird_wrapper.py:55 Bird工具不可用: 未找到bird工具可执行文件
+______________________ test_parse_categories_from_prompt _______________________
+
+    def test_parse_categories_from_prompt():
+        """测试从提示词文件解析分类"""
+        categories = parse_categories_from_prompt()
+    
+        # 验证解析出了分类
+        assert len(categories) > 0
+    
+        # 验证包含Truth分类
+        assert "Truth" in categories
+        assert categories["Truth"].name == "真相"
+        assert categories["Truth"].emoji == "💡"
+    
+        # 验证不包含Security分类
+        assert "Security" not in categories
+    
+        # 验证包含其他主要分类
+        assert "Whale" in categories
+>       assert "Fed" in categories
+E       AssertionError: assert 'Fed' in {'AlphaInsight': CategoryDefinition(key='AlphaInsight', name='深度洞察', description='深度市场分析与逻辑推演。 - **核心标准**：包含对市场结构、资金博弈...企的重大异动。 3. **相关性**：纳指（NDX）的关键点位突破或崩盘。 - *排除*：与Crypto无关的传统消费股（如可口可乐）、与Crypto无关的普通美股财报、低于1亿美元的并购等股权交易。', emoji='📈'), ...}
+
+tests/test_category_parser.py:32: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:53:27.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.analyzers.category_parser", "message": "成功解析 12 个分类定义"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.analyzers.category_parser:category_parser.py:114 成功解析 12 个分类定义
+_________________________ test_get_category_emoji_map __________________________
+
+    def test_get_category_emoji_map():
+        """测试获取emoji映射"""
+        emoji_map = get_category_emoji_map()
+    
+        # 验证Truth分类的emoji
+        assert "真相" in emoji_map
+        assert emoji_map["真相"] == "💡"
+    
+        # 验证其他分类的emoji
+        assert "大户动向" in emoji_map
+        assert emoji_map["大户动向"] == "🐋"
+    
+>       assert "利率事件" in emoji_map
+E       AssertionError: assert '利率事件' in {'大户动向': '🐋', '套利机会': '💰', '宏观流动性': '📊', '忽略': '🚫', ...}
+
+tests/test_category_parser.py:66: AssertionError
+___________________________ test_get_category_names ____________________________
+
+    def test_get_category_names():
+        """测试获取分类名称列表"""
+        parser = CategoryParser()
+        names = parser.get_category_names()
+    
+        # 验证包含Truth
+        assert "真相" in names
+    
+        # 验证不包含Security
+        assert "安全事件" not in names
+    
+        # 验证包含其他主要分类
+        assert "大户动向" in names
+>       assert "利率事件" in names
+E       AssertionError: assert '利率事件' in ['深度洞察', '相关资产', '大户动向', '宏观流动性', '监管政策', '新产品', ...]
+
+tests/test_category_parser.py:107: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:53:27.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.analyzers.category_parser", "message": "成功解析 12 个分类定义"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.analyzers.category_parser:category_parser.py:114 成功解析 12 个分类定义
+_____ TestDynamicConfigurationUpdates.test_config_manager_dynamic_loading ______
+
+self = <tests.test_extensibility_unit.TestDynamicConfigurationUpdates object at 0x7f379ec47dd0>
+
+    def test_config_manager_dynamic_loading(self):
+        """测试配置管理器动态加载"""
+        manager = ConfigManager(self.config_path)
+    
+        # 初始加载
+>       config1 = manager.load_config()
+                  ^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_extensibility_unit.py:464: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.config.manager.ConfigManager object at 0x7f379deece90>
+
+    def load_config(self) -> Dict[str, Any]:
+        """
+        加载配置文件
+    
+        Returns:
+            配置数据字典
+    
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式无效
+        """
+        try:
+            if not self.config_path.exists():
+                self.logger.info(f"配置文件不存在，创建默认配置: {self.config_path}")
+                self._create_default_config()
+    
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.config_data = self.parse_jsonc(f.read())
+    
+            if not self.validate_config(self.config_data):
+>               raise ValueError("配置文件验证失败")
+E               ValueError: 配置文件验证失败
+
+crypto_news_analyzer/config/manager.py:78: ValueError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "最大存储空间必须为正整数"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:172 最大存储空间必须为正整数
+ERROR    crypto_news_analyzer.config.manager:manager.py:87 加载配置文件失败: 配置文件验证失败
+____ TestDynamicConfigurationUpdates.test_rest_api_sources_dynamic_addition ____
+
+self = <tests.test_extensibility_unit.TestDynamicConfigurationUpdates object at 0x7f379ec48490>
+
+    def test_rest_api_sources_dynamic_addition(self):
+        """测试REST API数据源的动态添加"""
+        manager = ConfigManager(self.config_path)
+    
+        # 初始配置没有REST API源
+>       config = manager.load_config()
+                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_extensibility_unit.py:493: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.config.manager.ConfigManager object at 0x7f379c9f1f90>
+
+    def load_config(self) -> Dict[str, Any]:
+        """
+        加载配置文件
+    
+        Returns:
+            配置数据字典
+    
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式无效
+        """
+        try:
+            if not self.config_path.exists():
+                self.logger.info(f"配置文件不存在，创建默认配置: {self.config_path}")
+                self._create_default_config()
+    
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.config_data = self.parse_jsonc(f.read())
+    
+            if not self.validate_config(self.config_data):
+>               raise ValueError("配置文件验证失败")
+E               ValueError: 配置文件验证失败
+
+crypto_news_analyzer/config/manager.py:78: ValueError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "最大存储空间必须为正整数"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:172 最大存储空间必须为正整数
+ERROR    crypto_news_analyzer.config.manager:manager.py:87 加载配置文件失败: 配置文件验证失败
+__ TestDynamicConfigurationUpdates.test_configuration_validation_after_update __
+
+self = <tests.test_extensibility_unit.TestDynamicConfigurationUpdates object at 0x7f379ec49850>
+
+    def test_configuration_validation_after_update(self):
+        """测试配置更新后的验证"""
+        manager = ConfigManager(self.config_path)
+    
+        # 测试有效的配置更新
+>       config = manager.load_config()
+                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_extensibility_unit.py:598: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.config.manager.ConfigManager object at 0x7f379c4d4050>
+
+    def load_config(self) -> Dict[str, Any]:
+        """
+        加载配置文件
+    
+        Returns:
+            配置数据字典
+    
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式无效
+        """
+        try:
+            if not self.config_path.exists():
+                self.logger.info(f"配置文件不存在，创建默认配置: {self.config_path}")
+                self._create_default_config()
+    
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.config_data = self.parse_jsonc(f.read())
+    
+            if not self.validate_config(self.config_data):
+>               raise ValueError("配置文件验证失败")
+E               ValueError: 配置文件验证失败
+
+crypto_news_analyzer/config/manager.py:78: ValueError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "最大存储空间必须为正整数"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:172 最大存储空间必须为正整数
+ERROR    crypto_news_analyzer.config.manager:manager.py:87 加载配置文件失败: 配置文件验证失败
+____ TestDynamicConfigurationUpdates.test_configuration_backup_and_restore _____
+
+self = <tests.test_extensibility_unit.TestDynamicConfigurationUpdates object at 0x7f379ec49ed0>
+
+    def test_configuration_backup_and_restore(self):
+        """测试配置备份和恢复"""
+        manager = ConfigManager(self.config_path)
+    
+        # 加载初始配置
+>       original_config = manager.load_config()
+                          ^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_extensibility_unit.py:618: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.config.manager.ConfigManager object at 0x7f379c491190>
+
+    def load_config(self) -> Dict[str, Any]:
+        """
+        加载配置文件
+    
+        Returns:
+            配置数据字典
+    
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式无效
+        """
+        try:
+            if not self.config_path.exists():
+                self.logger.info(f"配置文件不存在，创建默认配置: {self.config_path}")
+                self._create_default_config()
+    
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.config_data = self.parse_jsonc(f.read())
+    
+            if not self.validate_config(self.config_data):
+>               raise ValueError("配置文件验证失败")
+E               ValueError: 配置文件验证失败
+
+crypto_news_analyzer/config/manager.py:78: ValueError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "最大存储空间必须为正整数"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:172 最大存储空间必须为正整数
+ERROR    crypto_news_analyzer.config.manager:manager.py:87 加载配置文件失败: 配置文件验证失败
+____ TestDynamicConfigurationUpdates.test_concurrent_configuration_updates _____
+
+self = <tests.test_extensibility_unit.TestDynamicConfigurationUpdates object at 0x7f379ec45c50>
+
+    def test_concurrent_configuration_updates(self):
+        """测试并发配置更新"""
+        manager1 = ConfigManager(self.config_path)
+        manager2 = ConfigManager(self.config_path)
+    
+        # 两个管理器同时加载配置
+>       config1 = manager1.load_config()
+                  ^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_extensibility_unit.py:655: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.config.manager.ConfigManager object at 0x7f379d033490>
+
+    def load_config(self) -> Dict[str, Any]:
+        """
+        加载配置文件
+    
+        Returns:
+            配置数据字典
+    
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式无效
+        """
+        try:
+            if not self.config_path.exists():
+                self.logger.info(f"配置文件不存在，创建默认配置: {self.config_path}")
+                self._create_default_config()
+    
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.config_data = self.parse_jsonc(f.read())
+    
+            if not self.validate_config(self.config_data):
+>               raise ValueError("配置文件验证失败")
+E               ValueError: 配置文件验证失败
+
+crypto_news_analyzer/config/manager.py:78: ValueError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "最大存储空间必须为正整数"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:172 最大存储空间必须为正整数
+ERROR    crypto_news_analyzer.config.manager:manager.py:87 加载配置文件失败: 配置文件验证失败
+___ TestDynamicConfigurationUpdates.test_missing_configuration_file_handling ___
+
+self = <tests.test_extensibility_unit.TestDynamicConfigurationUpdates object at 0x7f379ec48f50>
+
+    def test_missing_configuration_file_handling(self):
+        """测试缺失配置文件处理"""
+        missing_config_path = os.path.join(self.temp_dir, "missing_config.jsonc")
+        manager = ConfigManager(missing_config_path)
+    
+        # 加载不存在的配置文件应该创建默认配置
+        config = manager.load_config()
+    
+        # 验证默认配置已创建
+        assert os.path.exists(missing_config_path)
+>       assert config["execution_interval"] == 3600
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'execution_interval'
+
+tests/test_extensibility_unit.py:688: KeyError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "配置文件不存在，创建默认配置: /tmp/tmpx0nlwxeh/missing_config.jsonc"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "配置文件验证通过"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "配置已保存到: /tmp/tmpx0nlwxeh/missing_config.jsonc"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "配置文件验证通过"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "配置文件加载成功"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+INFO     crypto_news_analyzer.config.manager:manager.py:71 配置文件不存在，创建默认配置: /tmp/tmpx0nlwxeh/missing_config.jsonc
+INFO     crypto_news_analyzer.config.manager:manager.py:240 配置文件验证通过
+INFO     crypto_news_analyzer.config.manager:manager.py:268 配置已保存到: /tmp/tmpx0nlwxeh/missing_config.jsonc
+INFO     crypto_news_analyzer.config.manager:manager.py:240 配置文件验证通过
+INFO     crypto_news_analyzer.config.manager:manager.py:80 配置文件加载成功
+__ TestExtensibilityIntegration.test_new_data_source_with_config_integration ___
+
+self = <tests.test_extensibility_unit.TestExtensibilityIntegration object at 0x7f379ec4a5d0>
+
+    def test_new_data_source_with_config_integration(self):
+        """测试新数据源与配置管理的集成"""
+        # 注册自定义数据源
+        self.factory.register_source("custom", CustomDataSource)
+    
+        # 创建包含自定义数据源的配置
+        config_data = {
+            "execution_interval": 3600,
+            "time_window_hours": 24,
+            "storage": {"retention_days": 30, "database_path": "./test.db"},
+            "auth": {
+                "LLM_API_KEY": "test_key",
+                "TELEGRAM_BOT_TOKEN": "test_token",
+                "TELEGRAM_CHANNEL_ID": "test_channel",
+            },
+            "llm_config": {"model": "gpt-4"},
+            "rss_sources": [],
+            "custom_sources": [
+                {
+                    "name": "Custom Integration Source",
+                    "endpoint": "https://api.custom.com/data",
+                    "custom_param": "integration_test",
+                }
+            ],
+        }
+    
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+    
+        # 使用配置管理器加载配置
+        manager = ConfigManager(self.config_path)
+>       config = manager.load_config()
+                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_extensibility_unit.py:739: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.config.manager.ConfigManager object at 0x7f379dd67710>
+
+    def load_config(self) -> Dict[str, Any]:
+        """
+        加载配置文件
+    
+        Returns:
+            配置数据字典
+    
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式无效
+        """
+        try:
+            if not self.config_path.exists():
+                self.logger.info(f"配置文件不存在，创建默认配置: {self.config_path}")
+                self._create_default_config()
+    
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.config_data = self.parse_jsonc(f.read())
+    
+            if not self.validate_config(self.config_data):
+>               raise ValueError("配置文件验证失败")
+E               ValueError: 配置文件验证失败
+
+crypto_news_analyzer/config/manager.py:78: ValueError
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.data_source_factory", "message": "数据源工厂初始化完成"}
+------------------------------ Captured log setup ------------------------------
+INFO     crypto_news_analyzer.crawlers.data_source_factory:data_source_factory.py:25 数据源工厂初始化完成
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.data_source_factory", "message": "注册数据源类型: custom -> CustomDataSource"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "最大存储空间必须为正整数"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.crawlers.data_source_factory:data_source_factory.py:51 注册数据源类型: custom -> CustomDataSource
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:172 最大存储空间必须为正整数
+ERROR    crypto_news_analyzer.config.manager:manager.py:87 加载配置文件失败: 配置文件验证失败
+_ TestExtensibilityIntegration.test_dynamic_data_source_registration_and_config_update _
+
+self = <tests.test_extensibility_unit.TestExtensibilityIntegration object at 0x7f379ec4a950>
+
+    def test_dynamic_data_source_registration_and_config_update(self):
+        """测试动态数据源注册和配置更新"""
+        # 初始状态：只有内置数据源
+        available_types = self.factory.get_available_source_types()
+        initial_count = len(available_types)
+    
+        # 动态注册新数据源
+        self.factory.register_source("dynamic", AdvancedDataSource)
+    
+        # 验证注册成功
+        new_available_types = self.factory.get_available_source_types()
+        assert len(new_available_types) == initial_count + 1
+        assert "dynamic" in new_available_types
+    
+        # 创建配置文件包含新数据源
+        config_data = {
+            "execution_interval": 3600,
+            "time_window_hours": 24,
+            "storage": {"retention_days": 30, "database_path": "./test.db"},
+            "auth": {
+                "LLM_API_KEY": "test_key",
+                "TELEGRAM_BOT_TOKEN": "test_token",
+                "TELEGRAM_CHANNEL_ID": "test_channel",
+            },
+            "llm_config": {"model": "gpt-4"},
+            "rss_sources": [],
+            "dynamic_sources": [
+                {
+                    "name": "Dynamic Source 1",
+                    "endpoint": "https://api.dynamic.com/v1/data",
+                    "auth_token": "dynamic_token_1",
+                    "features": ["batch_mode"],
+                }
+            ],
+        }
+    
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+    
+        # 动态添加更多数据源配置
+        config_data["dynamic_sources"].append(
+            {
+                "name": "Dynamic Source 2",
+                "endpoint": "https://api.dynamic.com/v2/data",
+                "auth_token": "dynamic_token_2",
+                "features": ["real_time", "filtering"],
+            }
+        )
+    
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+    
+        # 重新加载配置并验证
+        manager = ConfigManager(self.config_path)
+>       config = manager.load_config()
+                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_extensibility_unit.py:812: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.config.manager.ConfigManager object at 0x7f379c4e89d0>
+
+    def load_config(self) -> Dict[str, Any]:
+        """
+        加载配置文件
+    
+        Returns:
+            配置数据字典
+    
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式无效
+        """
+        try:
+            if not self.config_path.exists():
+                self.logger.info(f"配置文件不存在，创建默认配置: {self.config_path}")
+                self._create_default_config()
+    
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.config_data = self.parse_jsonc(f.read())
+    
+            if not self.validate_config(self.config_data):
+>               raise ValueError("配置文件验证失败")
+E               ValueError: 配置文件验证失败
+
+crypto_news_analyzer/config/manager.py:78: ValueError
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.data_source_factory", "message": "数据源工厂初始化完成"}
+------------------------------ Captured log setup ------------------------------
+INFO     crypto_news_analyzer.crawlers.data_source_factory:data_source_factory.py:25 数据源工厂初始化完成
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.crawlers.data_source_factory", "message": "注册数据源类型: dynamic -> AdvancedDataSource"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "最大存储空间必须为正整数"}
+{"timestamp": "2026-05-17T10:54:00.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.crawlers.data_source_factory:data_source_factory.py:51 注册数据源类型: dynamic -> AdvancedDataSource
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:172 最大存储空间必须为正整数
+ERROR    crypto_news_analyzer.config.manager:manager.py:87 加载配置文件失败: 配置文件验证失败
+_____ test_initialize_ingestion_system_skips_analysis_report_and_telegram ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-0/test_initialize_ingestion_syst0')
+
+    def test_initialize_ingestion_system_skips_analysis_report_and_telegram(tmp_path):
+        config_path = tmp_path / "config.jsonc"
+        db_path = tmp_path / "ingestion_runtime.db"
+    
+        config_path.write_text(
+            json.dumps(
+                {
+                    "execution_interval": 10,
+                    "time_window_hours": 24,
+                    "storage": {
+                        "retention_days": 30,
+                        "max_storage_mb": 1000,
+                        "cleanup_frequency": "daily",
+                        "database_path": str(db_path),
+                    },
+                    "llm_config": {},
+                    "rss_sources": [],
+                    "x_sources": [],
+                    "rest_api_sources": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+    
+        controller = MainController(str(config_path))
+>       assert controller.initialize_ingestion_system() is True
+E       assert False is True
+E        +  where False = initialize_ingestion_system()
+E        +    where initialize_ingestion_system = <crypto_news_analyzer.execution_coordinator.MainController object at 0x7f379c4d6850>.initialize_ingestion_system
+
+tests/test_ingestion_runtime.py:73: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:04.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.execution_coordinator", "message": "已加载 3 条执行历史记录"}
+{"timestamp": "2026-05-17T10:54:04.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.execution_coordinator", "message": "主控制器初始化完成"}
+{"timestamp": "2026-05-17T10:54:04.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.execution_coordinator", "message": "开始初始化摄取服务组件（ingestion-only）"}
+{"timestamp": "2026-05-17T10:54:04.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:04.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "LLM配置无效: llm_config is missing required fields: fallback_models, market_model, model."}
+{"timestamp": "2026-05-17T10:54:04.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+{"timestamp": "2026-05-17T10:54:04.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.execution_coordinator", "message": "摄取服务初始化失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.execution_coordinator:execution_coordinator.py:1789 已加载 3 条执行历史记录
+INFO     crypto_news_analyzer.execution_coordinator:execution_coordinator.py:189 主控制器初始化完成
+INFO     crypto_news_analyzer.execution_coordinator:execution_coordinator.py:457 开始初始化摄取服务组件（ingestion-only）
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:200 LLM配置无效: llm_config is missing required fields: fallback_models, market_model, model.
+ERROR    crypto_news_analyzer.config.manager:manager.py:87 加载配置文件失败: 配置文件验证失败
+ERROR    crypto_news_analyzer.execution_coordinator:execution_coordinator.py:471 摄取服务初始化失败: 配置文件验证失败
+______________________ TestLLMAnalyzer.test_update_config ______________________
+
+self = <tests.test_llm_analyzer.TestLLMAnalyzer object at 0x7f379e693c50>
+
+    def test_update_config(self):
+        """测试更新配置"""
+        analyzer = LLMAnalyzer(mock_mode=True)
+    
+        # 初始值
+        assert analyzer.temperature == 0.5
+>       assert analyzer.batch_size == 8
+E       assert 10 == 8
+E        +  where 10 = <crypto_news_analyzer.analyzers.llm_analyzer.LLMAnalyzer object at 0x7f379d08e190>.batch_size
+
+tests/test_llm_analyzer.py:360: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:21.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.utils.conversation_cache", "message": "从缓存加载会话ID [llm_analyzer]: cd825e83-0e9e-44f1-a008-72a7803f011a"}
+{"timestamp": "2026-05-17T10:54:21.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.analyzers.market_snapshot_service", "message": "市场快照服务运行在模拟模式"}
+{"timestamp": "2026-05-17T10:54:21.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.analyzers.structured_output_manager", "message": "初始化结构化输出管理器，使用库: instructor"}
+{"timestamp": "2026-05-17T10:54:21.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.analyzers.llm_analyzer", "message": "LLM分析器运行在模拟模式"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.utils.conversation_cache:conversation_cache.py:48 从缓存加载会话ID [llm_analyzer]: cd825e83-0e9e-44f1-a008-72a7803f011a
+INFO     crypto_news_analyzer.analyzers.market_snapshot_service:market_snapshot_service.py:170 市场快照服务运行在模拟模式
+INFO     crypto_news_analyzer.analyzers.structured_output_manager:structured_output_manager.py:192 初始化结构化输出管理器，使用库: instructor
+INFO     crypto_news_analyzer.analyzers.llm_analyzer:llm_analyzer.py:188 LLM分析器运行在模拟模式
+_ TestMarketSnapshotConsistency.test_market_snapshot_always_returns_valid_snapshot _
+
+self = <tests.test_multi_step_analysis_properties.TestMarketSnapshotConsistency object at 0x7f379e528710>
+
+    @given(prompt_template=st.text(min_size=10, max_size=500))
+>   @settings(max_examples=100, deadline=None)
+               ^^^^^^^
+
+tests/test_multi_step_analysis_properties.py:140: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.test_multi_step_analysis_properties.TestMarketSnapshotConsistency object at 0x7f379e528710>
+prompt_template = '0000000000'
+
+    @given(prompt_template=st.text(min_size=10, max_size=500))
+    @settings(max_examples=100, deadline=None)
+    def test_market_snapshot_always_returns_valid_snapshot(self, prompt_template: str):
+        """
+        属性测试：市场快照获取总是返回有效快照
+    
+        **功能: crypto-news-analyzer, 属性 5: 市场快照获取一致性**
+        **验证: 需求 5.1, 5.2, 5.18**
+        """
+        # 使用模拟模式，避免真实API调用
+>       service = MarketSnapshotService(
+            GROK_API_KEY="test_key",
+            cache_dir=self.cache_dir,
+            mock_mode=True
+        )
+E       TypeError: MarketSnapshotService.__init__() got an unexpected keyword argument 'GROK_API_KEY'
+E       Falsifying example: test_market_snapshot_always_returns_valid_snapshot(
+E           self=<tests.test_multi_step_analysis_properties.TestMarketSnapshotConsistency object at 0x7f379e528710>,
+E           prompt_template='0000000000',
+E       )
+
+tests/test_multi_step_analysis_properties.py:149: TypeError
+____ TestMarketSnapshotConsistency.test_market_snapshot_caching_consistency ____
+
+self = <tests.test_multi_step_analysis_properties.TestMarketSnapshotConsistency object at 0x7f379e528bd0>
+
+    @given(
+>       prompt1=st.text(min_size=10, max_size=200),
+               ^^^^^^^
+        prompt2=st.text(min_size=10, max_size=200)
+    )
+
+tests/test_multi_step_analysis_properties.py:167: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.test_multi_step_analysis_properties.TestMarketSnapshotConsistency object at 0x7f379e528bd0>
+prompt1 = '0000000000', prompt2 = '0000000000'
+
+    @given(
+        prompt1=st.text(min_size=10, max_size=200),
+        prompt2=st.text(min_size=10, max_size=200)
+    )
+    @settings(max_examples=50, deadline=None)
+    def test_market_snapshot_caching_consistency(self, prompt1: str, prompt2: str):
+        """
+        属性测试：市场快照缓存一致性
+    
+        验证缓存机制的正确性
+        """
+        # 使用非模拟模式来测试缓存（模拟模式不使用缓存）
+>       service = MarketSnapshotService(
+            GROK_API_KEY="",  # 空密钥，强制使用备用快照
+            cache_dir=self.cache_dir,
+            cache_ttl_minutes=30,
+            mock_mode=False
+        )
+E       TypeError: MarketSnapshotService.__init__() got an unexpected keyword argument 'GROK_API_KEY'
+E       Falsifying example: test_market_snapshot_caching_consistency(
+E           self=<tests.test_multi_step_analysis_properties.TestMarketSnapshotConsistency object at 0x7f379e528bd0>,
+E           prompt1='0000000000',
+E           prompt2='0000000000',
+E       )
+
+tests/test_multi_step_analysis_properties.py:178: TypeError
+____ TestMarketSnapshotConsistency.test_market_snapshot_fallback_mechanism _____
+
+self = <tests.test_multi_step_analysis_properties.TestMarketSnapshotConsistency object at 0x7f379e52a790>
+
+    def test_market_snapshot_fallback_mechanism(self):
+        """
+        属性测试：市场快照备用机制
+    
+        验证在服务不可用时使用备用快照
+        """
+        # 不提供API密钥，强制使用备用快照
+>       service = MarketSnapshotService(
+            GROK_API_KEY="",
+            cache_dir=self.cache_dir,
+            mock_mode=False
+        )
+E       TypeError: MarketSnapshotService.__init__() got an unexpected keyword argument 'GROK_API_KEY'
+
+tests/test_multi_step_analysis_properties.py:208: TypeError
+______ TestPromptMergingCorrectness.test_prompt_merging_contains_snapshot ______
+
+self = <tests.test_multi_step_analysis_properties.TestPromptMergingCorrectness object at 0x7f379e529690>
+
+    @given(snapshot=valid_market_snapshot())
+>   @settings(max_examples=100, deadline=None)
+               ^^^^^^^
+
+tests/test_multi_step_analysis_properties.py:261: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.test_multi_step_analysis_properties.TestPromptMergingCorrectness object at 0x7f379e529690>
+snapshot = MarketSnapshot(content='0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000', timestamp=datetime.datetime(2026, 5, 17, 10, 54, 27, 474021), source='grok', quality_score=1.0, is_valid=True)
+
+    @given(snapshot=valid_market_snapshot())
+    @settings(max_examples=100, deadline=None)
+    def test_prompt_merging_contains_snapshot(self, snapshot: MarketSnapshot):
+        """
+        属性测试：合并后的提示词包含市场快照
+    
+        **功能: crypto-news-analyzer, 属性 6: 提示词合并正确性**
+        **验证: 需求 5.4**
+        """
+>       analyzer = LLMAnalyzer(
+            api_key="test_key",
+            market_prompt_path=self.market_prompt_path,
+            analysis_prompt_path=self.analysis_prompt_path,
+            mock_mode=True
+        )
+E       TypeError: LLMAnalyzer.__init__() got an unexpected keyword argument 'api_key'
+E       Falsifying example: test_prompt_merging_contains_snapshot(
+E           self=<tests.test_multi_step_analysis_properties.TestPromptMergingCorrectness object at 0x7f379e529690>,
+E           snapshot=MarketSnapshot(content='0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
+E            timestamp=datetime.datetime(2026, 5, 17, 10, 54, 27, 474021),
+E            source='grok',
+E            quality_score=1.0,
+E            is_valid=True),
+E       )
+
+tests/test_multi_step_analysis_properties.py:269: TypeError
+_________ TestPromptMergingCorrectness.test_static_prompt_consistency __________
+
+self = <tests.test_multi_step_analysis_properties.TestPromptMergingCorrectness object at 0x7f379e529ad0>
+
+    @given(
+>       snapshot1=valid_market_snapshot(),
+               ^^^^^^^
+        snapshot2=valid_market_snapshot()
+    )
+
+tests/test_multi_step_analysis_properties.py:287: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.test_multi_step_analysis_properties.TestPromptMergingCorrectness object at 0x7f379e529ad0>
+snapshot1 = MarketSnapshot(content='0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000', timestamp=datetime.datetime(2026, 5, 17, 10, 54, 27, 513516), source='grok', quality_score=1.0, is_valid=True)
+snapshot2 = MarketSnapshot(content='00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000', timestamp=datetime.datetime(2026, 5, 17, 10, 54, 27, 514030), source='grok', quality_score=1.0, is_valid=True)
+
+    @given(
+        snapshot1=valid_market_snapshot(),
+        snapshot2=valid_market_snapshot()
+    )
+    @settings(max_examples=50, deadline=None)
+    def test_static_prompt_consistency(self, snapshot1: MarketSnapshot, snapshot2: MarketSnapshot):
+        """
+        属性测试：静态系统提示词的一致性
+    
+        无论市场快照如何变化，静态系统提示词应该保持不变
+        """
+        assume(snapshot1.content != snapshot2.content)
+    
+>       analyzer = LLMAnalyzer(
+            api_key="test_key",
+            market_prompt_path=self.market_prompt_path,
+            analysis_prompt_path=self.analysis_prompt_path,
+            mock_mode=True
+        )
+E       TypeError: LLMAnalyzer.__init__() got an unexpected keyword argument 'api_key'
+E       Falsifying example: test_static_prompt_consistency(
+E           self=<tests.test_multi_step_analysis_properties.TestPromptMergingCorrectness object at 0x7f379e529ad0>,
+E           snapshot1=MarketSnapshot(content='0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
+E            timestamp=datetime.datetime(2026, 5, 17, 10, 54, 27, 513516),
+E            source='grok',
+E            quality_score=1.0,
+E            is_valid=True),
+E           snapshot2=MarketSnapshot(content='00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
+E            timestamp=datetime.datetime(2026, 5, 17, 10, 54, 27, 514030),
+E            source='grok',
+E            quality_score=1.0,
+E            is_valid=True),
+E       )
+
+tests/test_multi_step_analysis_properties.py:299: TypeError
+___ TestBatchAnalysisCompleteness.test_batch_analysis_returns_valid_results ____
+
+self = <tests.test_multi_step_analysis_properties.TestBatchAnalysisCompleteness object at 0x7f379e538a50>
+
+    @given(items=st.lists(valid_content_item(), min_size=1, max_size=30))
+>   @settings(max_examples=100, deadline=None)
+               ^^^^^^^
+
+tests/test_multi_step_analysis_properties.py:544: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.test_multi_step_analysis_properties.TestBatchAnalysisCompleteness object at 0x7f379e538a50>
+items = [ContentItem(id='item_1', title='0000000000', content='00000000000000000000000000000000000000000000000000', url='https...com/news/1', publish_time=datetime.datetime(2026, 5, 17, 10, 54, 28, 942598), source_name='PANews', source_type='rss')]
+
+    @given(items=st.lists(valid_content_item(), min_size=1, max_size=30))
+    @settings(max_examples=100, deadline=None)
+    def test_batch_analysis_returns_valid_results(self, items: List[ContentItem]):
+        """
+        属性测试：批量分析返回有效结果
+    
+        **功能: crypto-news-analyzer, 属性 9: 批量分析完整性**
+        **验证: 需求 5.6, 5.7**
+        """
+>       analyzer = LLMAnalyzer(
+            api_key="test_key",
+            market_prompt_path=self.market_prompt_path,
+            analysis_prompt_path=self.analysis_prompt_path,
+            mock_mode=True
+        )
+E       TypeError: LLMAnalyzer.__init__() got an unexpected keyword argument 'api_key'
+E       Falsifying example: test_batch_analysis_returns_valid_results(
+E           self=<tests.test_multi_step_analysis_properties.TestBatchAnalysisCompleteness object at 0x7f379e538a50>,
+E           items=[ContentItem(id='item_1',
+E             title='0000000000',
+E             content='00000000000000000000000000000000000000000000000000',
+E             url='https://example.com/news/1',
+E             publish_time=datetime.datetime(2026, 5, 17, 10, 54, 28, 942598),
+E             source_name='PANews',
+E             source_type='rss')],
+E       )
+
+tests/test_multi_step_analysis_properties.py:552: TypeError
+____ TestBatchAnalysisCompleteness.test_batch_analysis_handles_empty_input _____
+
+self = <tests.test_multi_step_analysis_properties.TestBatchAnalysisCompleteness object at 0x7f379e538850>
+
+    @given(items=st.lists(valid_content_item(), min_size=0, max_size=10))
+>   @settings(max_examples=50, deadline=None)
+               ^^^^^^^
+
+tests/test_multi_step_analysis_properties.py:575: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.test_multi_step_analysis_properties.TestBatchAnalysisCompleteness object at 0x7f379e538850>
+items = []
+
+    @given(items=st.lists(valid_content_item(), min_size=0, max_size=10))
+    @settings(max_examples=50, deadline=None)
+    def test_batch_analysis_handles_empty_input(self, items: List[ContentItem]):
+        """
+        属性测试：批量分析处理空输入
+    
+        验证空输入的处理
+        """
+>       analyzer = LLMAnalyzer(
+            api_key="test_key",
+            market_prompt_path=self.market_prompt_path,
+            analysis_prompt_path=self.analysis_prompt_path,
+            mock_mode=True
+        )
+E       TypeError: LLMAnalyzer.__init__() got an unexpected keyword argument 'api_key'
+E       Falsifying example: test_batch_analysis_handles_empty_input(
+E           self=<tests.test_multi_step_analysis_properties.TestBatchAnalysisCompleteness object at 0x7f379e538850>,
+E           items=[],
+E       )
+
+tests/test_multi_step_analysis_properties.py:582: TypeError
+_______ TestBatchAnalysisCompleteness.test_batch_analysis_deduplication ________
+
+self = <tests.test_multi_step_analysis_properties.TestBatchAnalysisCompleteness object at 0x7f379e538fd0>
+
+    @given(items=st.lists(valid_content_item(), min_size=5, max_size=20))
+>   @settings(max_examples=30, deadline=None)
+               ^^^^^^^
+
+tests/test_multi_step_analysis_properties.py:600: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <tests.test_multi_step_analysis_properties.TestBatchAnalysisCompleteness object at 0x7f379e538fd0>
+items = [ContentItem(id='item_1', title='0000000000', content='00000000000000000000000000000000000000000000000000', url='https....com/news/1', publish_time=datetime.datetime(2026, 5, 17, 10, 54, 29, 16067), source_name='PANews', source_type='rss')]
+
+    @given(items=st.lists(valid_content_item(), min_size=5, max_size=20))
+    @settings(max_examples=30, deadline=None)
+    def test_batch_analysis_deduplication(self, items: List[ContentItem]):
+        """
+        属性测试：批量分析去重功能
+    
+        验证分析结果的去重（模拟模式下，每3条保留1条）
+        """
+>       analyzer = LLMAnalyzer(
+            api_key="test_key",
+            market_prompt_path=self.market_prompt_path,
+            analysis_prompt_path=self.analysis_prompt_path,
+            mock_mode=True,
+            batch_size=50  # 确保一次处理所有内容
+        )
+E       TypeError: LLMAnalyzer.__init__() got an unexpected keyword argument 'api_key'
+E       Falsifying example: test_batch_analysis_deduplication(
+E           self=<tests.test_multi_step_analysis_properties.TestBatchAnalysisCompleteness object at 0x7f379e538fd0>,
+E           items=[ContentItem(id='item_1',
+E             title='0000000000',
+E             content='00000000000000000000000000000000000000000000000000',
+E             url='https://example.com/news/1',
+E             publish_time=datetime.datetime(2026, 5, 17, 10, 54, 29, 14104),
+E             source_name='PANews',
+E             source_type='rss'),
+E            ContentItem(id='item_1',
+E             title='0000000000',
+E             content='00000000000000000000000000000000000000000000000000',
+E             url='https://example.com/news/1',
+E             publish_time=datetime.datetime(2026, 5, 17, 10, 54, 29, 14633),
+E             source_name='PANews',
+E             source_type='rss'),
+E            ContentItem(id='item_1',
+E             title='0000000000',
+E             content='00000000000000000000000000000000000000000000000000',
+E             url='https://example.com/news/1',
+E             publish_time=datetime.datetime(2026, 5, 17, 10, 54, 29, 15122),
+E             source_name='PANews',
+E             source_type='rss'),
+E            ContentItem(id='item_1',
+E             title='0000000000',
+E             content='00000000000000000000000000000000000000000000000000',
+E             url='https://example.com/news/1',
+E             publish_time=datetime.datetime(2026, 5, 17, 10, 54, 29, 15603),
+E             source_name='PANews',
+E             source_type='rss'),
+E            ContentItem(id='item_1',
+E             title='0000000000',
+E             content='00000000000000000000000000000000000000000000000000',
+E             url='https://example.com/news/1',
+E             publish_time=datetime.datetime(2026, 5, 17, 10, 54, 29, 16067),
+E             source_name='PANews',
+E             source_type='rss')],
+E       )
+
+tests/test_multi_step_analysis_properties.py:607: TypeError
+____ test_skill_requires_frontmatter_required_sections_and_reference_links _____
+
+    def test_skill_requires_frontmatter_required_sections_and_reference_links() -> None:
+        frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
+    
+        assert frontmatter.get("name") == "crypto-news-http-api"
+        assert (
+            frontmatter.get("description")
+            == "Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, intelligence operations, or health checks from OpenClaw."
+        )
+        assert "primaryEnv: API_KEY" in frontmatter.get("metadata", "")
+        assert body.startswith("# Crypto News HTTP API Skill")
+    
+        for heading in [
+            "When to Use",
+            "Quick Reference",
+            "OpenClaw Runtime",
+            "Analyze Workflow",
+            "Semantic Search",
+            "Datasource Management",
+            "Intelligence Query",
+            "Telegram Webhook",
+            "Endpoint Index",
+            "Non-Goals",
+            "Updating",
+        ]:
+>           assert _section(body, heading)
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_openclaw_skill_crypto_news_http_api.py:101: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+body = '# Crypto News HTTP API Skill\n\nUse this skill to call the Crypto News Analyzer HTTP API from OpenClaw.\n\n## When to... trust the code and tests over prose docs. Source precedence: code and tests first, then reference files, then guides.'
+heading = 'Intelligence Query'
+
+    def _section(body: str, heading: str) -> str:
+        marker = f"## {heading}\n"
+        start = body.find(marker)
+>       assert start != -1, f"Missing section: {heading}"
+E       AssertionError: Missing section: Intelligence Query
+E       assert -1 != -1
+
+tests/test_openclaw_skill_crypto_news_http_api.py:45: AssertionError
+_______ test_skill_endpoint_index_lists_only_supported_live_http_routes ________
+
+    def test_skill_endpoint_index_lists_only_supported_live_http_routes() -> None:
+        _frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
+        endpoint_index = _section(body, "Endpoint Index")
+    
+        for endpoint in [
+            "GET /health",
+            "POST /analyze",
+            "GET /analyze/{job_id}",
+            "GET /analyze/{job_id}/result",
+            "POST /semantic-search",
+            "GET /semantic-search/{job_id}",
+            "GET /semantic-search/{job_id}/result",
+            "POST /datasources",
+            "GET /datasources",
+            "DELETE /datasources/{id}",
+            "POST /telegram/webhook",
+            "GET /intelligence/entries",
+            "GET /intelligence/discovery",
+            "GET /intelligence/labels",
+            "GET /intelligence/entries/{entry_id}",
+            "POST /intelligence/entries/{entry_id}/follow-status",
+            "GET /intelligence/search",
+            "GET /intelligence/raw/{raw_item_id}",
+        ]:
+>           assert endpoint in endpoint_index, f"Missing supported endpoint: {endpoint}"
+E           AssertionError: Missing supported endpoint: GET /intelligence/entries
+E           assert 'GET /intelligence/entries' in 'Supported HTTP routes:\n\n- `GET /health` - Service health check\n- `POST /analyze` - Create an analysis job (async, ...ligence/topic-runs` - List topic research run logs\n- `POST /intelligence/topics/converge` - Trigger topic convergence'
+
+tests/test_openclaw_skill_crypto_news_http_api.py:137: AssertionError
+____ test_skill_intelligence_query_section_covers_current_routes_and_state _____
+
+    def test_skill_intelligence_query_section_covers_current_routes_and_state() -> None:
+        _frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
+>       intelligence_query = _section(body, "Intelligence Query")
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_openclaw_skill_crypto_news_http_api.py:284: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+body = '# Crypto News HTTP API Skill\n\nUse this skill to call the Crypto News Analyzer HTTP API from OpenClaw.\n\n## When to... trust the code and tests over prose docs. Source precedence: code and tests first, then reference files, then guides.'
+heading = 'Intelligence Query'
+
+    def _section(body: str, heading: str) -> str:
+        marker = f"## {heading}\n"
+        start = body.find(marker)
+>       assert start != -1, f"Missing section: {heading}"
+E       AssertionError: Missing section: Intelligence Query
+E       assert -1 != -1
+
+tests/test_openclaw_skill_crypto_news_http_api.py:45: AssertionError
+__________ test_config_manager_supports_postgres_via_env_database_url __________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-0/test_config_manager_supports_p0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f379dc132d0>
+
+    def test_config_manager_supports_postgres_via_env_database_url(tmp_path, monkeypatch):
+        config_path = tmp_path / "config.jsonc"
+        config_path.write_text(
+            """
+            {
+              "storage": {
+                "retention_days": 30,
+                "max_storage_mb": 1000,
+                "cleanup_frequency": "daily",
+                "backend": "postgres"
+              },
+              "llm_config": {"model": "gpt-4"}
+            }
+            """,
+            encoding="utf-8",
+        )
+    
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        manager = ConfigManager(str(config_path))
+>       config = manager.load_config()
+                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_postgres_storage_path.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.config.manager.ConfigManager object at 0x7f379dc13190>
+
+    def load_config(self) -> Dict[str, Any]:
+        """
+        加载配置文件
+    
+        Returns:
+            配置数据字典
+    
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式无效
+        """
+        try:
+            if not self.config_path.exists():
+                self.logger.info(f"配置文件不存在，创建默认配置: {self.config_path}")
+                self._create_default_config()
+    
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.config_data = self.parse_jsonc(f.read())
+    
+            if not self.validate_config(self.config_data):
+>               raise ValueError("配置文件验证失败")
+E               ValueError: 配置文件验证失败
+
+crypto_news_analyzer/config/manager.py:78: ValueError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-17T10:54:29.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-17T10:54:29.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "LLM配置无效: llm_config is missing required fields: fallback_models, market_model."}
+{"timestamp": "2026-05-17T10:54:29.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.config.manager:manager.py:51 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:200 LLM配置无效: llm_config is missing required fields: fallback_models, market_model.
+ERROR    crypto_news_analyzer.config.manager:manager.py:87 加载配置文件失败: 配置文件验证失败
+=============================== warnings summary ===============================
+tests/telegram-multi-user-authorization/test_task_3_2_api_error_handling.py::test_rate_limit_error_handling
+tests/telegram-multi-user-authorization/test_task_3_2_api_error_handling.py::test_rate_limit_error_handling
+tests/telegram-multi-user-authorization/test_task_3_2_api_error_handling.py::test_multiple_different_api_errors
+tests/telegram-multi-user-authorization/test_task_3_2_api_error_handling.py::test_multiple_different_api_errors
+  /data/workspace/getnews/.venv/lib/python3.11/site-packages/telegram/error.py:243: PTBDeprecationWarning: Deprecated since version v22.2: In a future major version attribute `retry_after` will be of type `datetime.timedelta`. You can opt-in early by setting `PTB_TIMEDELTA=true` or ``PTB_TIMEDELTA=1`` as an environment variable.
+    return get_timedelta_value(  # type: ignore[return-value]
+
+tests/test_telegram_formatter.py::TestFormatValidation::test_validate_unmatched_bold
+  /data/workspace/getnews/crypto_news_analyzer/reporters/telegram_formatter.py:269: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
+    self.logger.warn(f"未转义*的位置: {positions[:10]}")  # 只显示前10个
+
+tests/test_telegram_formatter.py::TestFormatValidation::test_validate_unmatched_italic
+  /data/workspace/getnews/crypto_news_analyzer/reporters/telegram_formatter.py:280: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
+    self.logger.warn(f"未转义_位置{i+1}: ...{context}...")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.11.2-final-0 ________________
+
+Name                                                               Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------------------------------
+crypto_news_analyzer/__init__.py                                       2      0   100%
+crypto_news_analyzer/analyzers/__init__.py                             7      0   100%
+crypto_news_analyzer/analyzers/category_parser.py                    101      9    91%   201-202, 233, 257-265, 287
+crypto_news_analyzer/analyzers/dynamic_classification_manager.py      97      1    99%   148
+crypto_news_analyzer/analyzers/intelligence_extractor.py             225    225     0%   3-482
+crypto_news_analyzer/analyzers/llm_analyzer.py                       478    150    69%   39-40, 146-147, 154-155, 177-178, 196, 242, 256-257, 260, 299-301, 351, 362, 412-414, 427, 437, 450, 486, 521-522, 556, 613, 619-625, 704, 712, 755-780, 790-838, 844, 853-854, 857-860, 866, 870-872, 950-975, 1011-1016, 1031-1055, 1067-1079, 1091-1092, 1117-1121, 1130-1132, 1168-1182, 1191-1201
+crypto_news_analyzer/analyzers/market_snapshot_service.py            324    166    49%   18-19, 37, 39, 41, 58, 63-64, 138-140, 172, 192-193, 203-237, 251-374, 389-390, 427, 472-473, 481-482, 508-509, 527-555, 645-648, 675-676, 687-748, 757-776
+crypto_news_analyzer/analyzers/prompt_manager.py                     145     77    47%   49, 58-59, 98-120, 132-152, 163-178, 187, 194-196, 202-217, 221-222, 261, 271, 282-283, 287-298, 304, 313-314, 326-340, 357-368
+crypto_news_analyzer/analyzers/structured_output_manager.py          700    223    68%   35, 37, 74, 110, 118, 126, 138, 167, 231-232, 244-245, 253-258, 299-312, 338-351, 380-493, 567, 588-591, 611, 638-639, 644-645, 667-670, 673-676, 698-714, 722-727, 759, 809-837, 882, 902, 907-917, 958-982, 1037-1038, 1077, 1080, 1084, 1090, 1092, 1096, 1098, 1102, 1110-1117, 1123, 1156, 1160-1162, 1173, 1194, 1200-1204, 1214-1217, 1220-1222, 1226, 1230, 1309-1319, 1341-1342, 1352-1353, 1356-1357, 1366-1372, 1382-1385, 1404, 1409, 1424, 1433-1434, 1436-1437, 1452, 1456, 1461
+crypto_news_analyzer/analyzers/token_usage_tracker.py                 64     35    45%   28, 42-44, 81-92, 107-109, 118-136, 152-168, 180-197, 201-202
+crypto_news_analyzer/api_server.py                                   971    252    74%   88-89, 97-98, 479, 494-498, 503-533, 537-540, 563-576, 585-592, 602-608, 621, 630-651, 658, 669, 697-698, 704, 708-711, 717, 733, 783, 803-819, 830-845, 862-863, 882-883, 929-939, 948-949, 954-955, 957-959, 976-978, 990-991, 996-1000, 1089, 1094-1095, 1099, 1118, 1143, 1178, 1205-1206, 1223, 1234-1235, 1257, 1270-1274, 1300, 1316, 1325-1327, 1347, 1357, 1363-1367, 1395, 1407, 1429-1435, 1450-1468, 1481-1505, 1529-1533, 1559-1563, 1598-1600, 1617, 1643, 1690-1712, 1728, 1763-1770, 1795-1797, 1813, 1821, 1827, 1858-1860, 1863, 1884-1885
+crypto_news_analyzer/config/__init__.py                                0      0   100%
+crypto_news_analyzer/config/llm_registry.py                          172     26    85%   32, 35, 38, 41, 68, 71, 74, 77, 80, 83, 87, 90, 93, 96, 102, 108, 321, 327, 336, 354-356, 375, 378, 392, 440
+crypto_news_analyzer/config/manager.py                               263     47    82%   177-178, 182-183, 188-189, 195, 210-212, 238, 243-245, 270-272, 355-356, 374-375, 431-432, 448-464, 468, 489-490, 494-495, 499-501, 639-641
+crypto_news_analyzer/crawlers/__init__.py                             18      4    78%   22-25
+crypto_news_analyzer/crawlers/bird_dependency_manager.py             254    131    48%   85-86, 102-163, 169, 180, 189-190, 211, 215-220, 240-242, 246-263, 272-301, 305-315, 319-329, 333-356, 365-408, 412-414, 418-420, 461-462, 466, 469, 492-493, 541, 553-554, 560-561
+crypto_news_analyzer/crawlers/bird_wrapper.py                        285    136    52%   68-69, 74-76, 85-86, 95-103, 181-186, 212-218, 231, 233, 266-268, 285-286, 289, 304-308, 316-320, 344-345, 348, 355, 360, 376-380, 388-392, 417-461, 480-488, 499-508, 520-522, 526-559, 581, 596-597, 601-603, 620-625, 655-656, 662-663
+crypto_news_analyzer/crawlers/data_source_factory.py                 148     29    80%   111, 119-122, 191, 210-212, 231-233, 256-258, 264-265, 299-307, 328-329, 393-396
+crypto_news_analyzer/crawlers/data_source_interface.py                47     12    74%   29, 45, 58, 71, 81, 90, 99, 111, 137, 152-155
+crypto_news_analyzer/crawlers/plugin_system_example.py               148    148     0%   12-349
+crypto_news_analyzer/crawlers/rest_api_crawler.py                    233    188    19%   74, 78, 85, 100-160, 176-185, 201-225, 237-271, 279-306, 310-333, 337-357, 362-388, 392-423, 427-437, 441-464, 468-476, 480-484, 488-506
+crypto_news_analyzer/crawlers/rss_crawler.py                         223     36    84%   93-96, 213-215, 245-247, 270-271, 297, 353-354, 361, 385-388, 448-450, 462-478
+crypto_news_analyzer/crawlers/rss_crawler_adapter.py                  78     53    32%   43, 47, 51, 66-90, 106-111, 127-142, 154-169, 181-206, 218
+crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py       176     35    80%   49, 52, 94-98, 119-120, 154-155, 167, 180, 182, 202, 204, 206, 222, 234-235, 251-261, 265, 282, 289-296, 304, 311
+crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py           299     77    74%   63, 80, 88, 96, 103, 111, 121, 129, 155, 178-187, 198, 224, 231, 235, 255, 258, 260, 266-268, 272-275, 313, 319-321, 328, 331, 334, 337-344, 359, 361-362, 365-370, 374, 386-387, 392-393, 403, 432, 475-481, 488, 495-496, 504, 508, 510, 512, 515, 520-521
+crypto_news_analyzer/crawlers/x_crawler.py                           233    199    15%   44, 50-60, 69-79, 83-94, 98-112, 125-169, 182-235, 247-297, 310-342, 346-405, 417-419, 428-440, 447, 449-450
+crypto_news_analyzer/crawlers/x_crawler_adapter.py                   105     75    29%   49, 53, 57, 72-96, 112-124, 140-168, 180-219, 231-260, 272, 288-295, 304
+crypto_news_analyzer/datasource_payloads.py                          289     38    87%   92, 97, 102, 113, 115, 119, 124, 152, 168, 171, 197, 204, 219, 259, 261, 264, 266, 274, 283, 286, 292, 296-300, 305, 310, 338, 340, 364, 370, 399, 401, 410, 426, 454, 459, 506, 508
+crypto_news_analyzer/domain/__init__.py                                4      0   100%
+crypto_news_analyzer/domain/models.py                                847    115    86%   160, 162, 168, 170, 179-181, 233, 237, 241, 245, 257, 281, 354, 356, 358, 360, 371, 383, 445, 447, 449, 454, 456, 458, 460, 580, 582, 584, 586, 588, 590, 609, 668, 680, 711, 714, 721, 723, 725, 835, 837, 840, 842, 844, 848, 853, 855-858, 937, 940, 943, 946, 948, 950, 953, 960, 964, 1020, 1024-1029, 1061, 1064, 1082, 1154, 1157, 1160, 1163, 1166, 1169, 1221, 1224, 1227, 1230, 1233, 1239, 1242, 1295, 1298, 1301, 1341, 1344, 1347, 1351, 1355, 1389, 1392, 1432-1440, 1449-1450, 1460-1467, 1471-1481, 1500, 1502, 1504
+crypto_news_analyzer/domain/repositories.py                          357    128    64%   63, 68, 85, 100, 120, 138, 150, 161, 177, 182, 201, 206, 216, 233, 256, 277, 296, 301, 310, 314, 318, 322, 331, 341, 345, 349, 359, 369, 375, 379, 383, 392, 398, 402, 408, 416, 420, 426, 432, 436, 440, 444, 448, 452, 456, 462, 466, 470, 476, 482, 486, 492, 498, 504, 508, 514, 526, 536, 540, 544, 550, 554, 558, 564, 568, 579, 588, 592, 596, 608, 621, 631, 635, 641, 644, 647, 655, 658, 663, 668, 673, 676, 684, 687, 696, 701, 709, 712, 715, 718-719, 722, 731, 734, 737, 740, 749, 752, 757, 767, 777-785, 790, 799, 802, 805, 818, 821, 824, 827, 832, 842, 845, 848, 851, 854, 857, 860, 869, 872, 875, 896, 909, 919, 929, 937, 941
+crypto_news_analyzer/execution_coordinator.py                       1069    298    72%   197, 200, 212, 223, 238, 262, 280, 314-343, 417, 422-436, 443-444, 450-453, 519, 524-525, 539, 548-583, 586-635, 639, 649-650, 656-675, 678-713, 717, 802, 810-811, 817-825, 839-841, 866-869, 875-882, 884-885, 893-895, 993, 997-998, 1036, 1129-1130, 1145-1146, 1161-1162, 1190, 1195-1198, 1235-1238, 1274-1277, 1292-1294, 1300, 1315, 1327-1330, 1379, 1420, 1439-1442, 1477-1480, 1519-1520, 1565-1585, 1623-1624, 1629, 1704-1705, 1716-1719, 1728-1755, 1767, 1794-1796, 1813-1814, 1837, 1884-1885, 1889-1897, 1916, 1929, 1965, 1993-1994, 2003-2011, 2022-2023, 2031-2038, 2042-2047, 2092-2093, 2096, 2103-2136, 2193, 2206, 2218-2219, 2351, 2353, 2357-2358, 2371-2372, 2385-2393, 2425-2443, 2468, 2487-2488, 2502
+crypto_news_analyzer/intelligence/__init__.py                          3      0   100%
+crypto_news_analyzer/intelligence/merge.py                           200    170    15%   24-26, 29, 41-75, 85-87, 97-105, 110-111, 116-124, 129-130, 133-135, 140-165, 170-205, 208-215, 218-220, 225-226, 250-273, 276-285, 288-290, 298-319, 322-329, 332-342, 345-357, 360
+crypto_news_analyzer/intelligence/pipeline.py                        137     32    77%   77-84, 87-90, 141-145, 150-154, 178, 188, 209-220, 224, 234, 236, 245, 260, 267
+crypto_news_analyzer/intelligence/search.py                           57     44    23%   24-26, 31-39, 44-59, 77-112, 121-133
+crypto_news_analyzer/intelligence/topic_enricher.py                  181    181     0%   2-307
+crypto_news_analyzer/intelligence/topic_findings.py                  143     17    88%   47, 64, 72, 108, 151, 204, 206, 211, 239, 242-244, 257-258, 261-262, 283
+crypto_news_analyzer/intelligence/topic_prompts.py                   174     25    86%   34, 42, 61, 69, 101-104, 107, 164, 188-190, 214, 223, 258, 316, 318, 320, 324-327, 346, 350, 352
+crypto_news_analyzer/intelligence/topic_research.py                  222     19    91%   46, 53, 69, 76, 98, 106, 217-218, 222-223, 228, 272, 404, 407-409, 528, 531-532
+crypto_news_analyzer/intelligence/topics.py                            7      7     0%   2-22
+crypto_news_analyzer/main.py                                         127     36    72%   77, 80, 83, 91-92, 98-99, 101-102, 136-138, 165-167, 190-191, 199-200, 207, 211-213, 239-259, 263
+crypto_news_analyzer/models.py                                       780    221    72%   20, 23, 47, 50, 53, 56, 60, 63, 70-71, 97-99, 129, 132, 142-143, 152, 170, 173, 176, 183-184, 193, 214, 217, 220, 225, 232-233, 242, 301-308, 313-315, 328, 333, 355, 358, 361, 364, 368, 371, 374, 378, 383, 408, 410, 412, 414, 416, 418, 420, 422, 424, 426, 428, 430, 437, 446, 449, 474, 478, 480, 482, 484, 496-497, 502, 517-527, 547, 549, 551, 553, 555, 558, 560, 562, 578, 609, 611, 613, 615, 617, 619, 621, 642, 669, 671, 683, 709, 711, 713, 715, 717, 719, 726, 728, 743, 779, 785, 788, 824, 829, 845, 849-862, 866, 871, 875, 880-881, 900, 903, 906, 909, 918, 937, 940, 943, 946, 966-968, 973-980, 1000-1005, 1009-1011, 1016-1018, 1022, 1027-1028, 1087-1088, 1092-1096, 1101-1105, 1126-1129, 1134-1138, 1155-1157, 1162-1164, 1170-1171, 1176-1178, 1192-1198, 1227-1228, 1233-1234, 1239-1245, 1250-1259, 1268-1275
+crypto_news_analyzer/reporters/__init__.py                             5      0   100%
+crypto_news_analyzer/reporters/report_generator.py                   148     15    90%   69-72, 122-123, 133, 295, 306, 421, 433, 469-476
+crypto_news_analyzer/reporters/telegram_command_handler.py          1775    815    54%   142-147, 150-154, 165-168, 171-175, 178-189, 233, 236-243, 246-249, 252-261, 264-268, 272-281, 285-293, 296-316, 319-322, 332, 386, 480-485, 556, 558, 563-564, 677-713, 717-731, 766-767, 772-773, 798-809, 818, 822, 842-847, 898-904, 910-916, 928-931, 940-941, 952-966, 979-984, 1020-1022, 1027-1032, 1114-1166, 1182-1185, 1201-1214, 1231-1237, 1245-1300, 1309-1312, 1359-1360, 1373-1379, 1390-1393, 1443, 1500, 1559-1565, 1574-1577, 1645, 1707-1713, 1721-1749, 1768-1779, 1803, 1818-1824, 1827, 1830, 1839-1848, 1855-1859, 1872-1916, 1927-1932, 1935-1950, 1957-1976, 1979-1998, 2001-2008, 2014, 2019-2020, 2024-2025, 2029-2032, 2037-2038, 2058-2063, 2069, 2074-2075, 2079-2083, 2090-2091, 2108-2113, 2119, 2124-2125, 2129-2130, 2137-2138, 2154-2159, 2165, 2170-2171, 2175-2176, 2181-2182, 2186-2187, 2191-2194, 2211-2216, 2222, 2228-2229, 2233-2234, 2239-2240, 2244-2245, 2249-2250, 2279-2304, 2310, 2315-2316, 2320-2321, 2326-2327, 2331-2332, 2339-2344, 2350, 2355-2356, 2360-2361, 2366-2367, 2371-2372, 2379-2384, 2390-2391, 2396-2397, 2403, 2408-2441, 2449, 2457, 2459, 2488-2498, 2504, 2509-2510, 2515-2516, 2519-2520, 2526, 2529, 2537, 2539, 2541-2544, 2547-2548, 2551-2567, 2572-2597, 2604, 2618-2723, 2768, 2796-2832, 2894-2905, 2945-2962, 2987-3048, 3069-3070, 3191-3225, 3228, 3233, 3236, 3244-3245, 3277-3283, 3338, 3348-3349, 3352, 3366, 3400, 3402, 3439-3488, 3505-3557, 3567-3573, 3583-3601, 3639, 3658, 3672, 3686-3690, 3694-3703, 3707-3710, 3713, 3716, 3719, 3722, 3729, 3751, 3761
+crypto_news_analyzer/reporters/telegram_formatter.py                 201     23    89%   151-156, 285-287, 348, 360-363, 369-372, 450, 496-503
+crypto_news_analyzer/reporters/telegram_sender.py                    272     63    77%   125-131, 175-176, 218, 257-259, 276-283, 293-300, 312-329, 347, 510-512, 525, 538, 542-543, 557-567, 571, 575-576, 619, 621, 625, 629, 643-661
+crypto_news_analyzer/semantic_search/__init__.py                       3      0   100%
+crypto_news_analyzer/semantic_search/backfill_runner.py              122     29    76%   44, 46, 59, 72, 141, 152-154, 157-162, 166-175, 225-247
+crypto_news_analyzer/semantic_search/embedding_service.py            108     40    63%   9-10, 38-39, 42-43, 47-49, 65, 68, 77-78, 82-88, 99, 108, 118-124, 133, 135, 143-169, 174-175
+crypto_news_analyzer/semantic_search/report_builder.py                21      2    90%   70, 76
+crypto_news_analyzer/semantic_search/service.py                      386     63    84%   16-17, 70, 84-88, 104-124, 204, 206, 210, 212, 261-262, 282, 301-302, 353-359, 404, 422, 453, 470, 472, 488, 530-532, 567-569, 659, 666-669, 674, 686, 707, 713, 721-735, 746, 840, 842, 844, 846, 856-867
+crypto_news_analyzer/storage/__init__.py                               3      0   100%
+crypto_news_analyzer/storage/cache_manager.py                        250     66    74%   18-20, 49-56, 80, 104-108, 111, 148-193, 199-212, 225-228, 235, 335, 373-375, 386-387, 390, 400, 445, 490-492, 495, 517-527, 573-574, 608-609
+crypto_news_analyzer/storage/data_manager.py                        1685    537    68%   21-23, 56, 61, 765, 1062-1066, 1099, 1116, 1172-1174, 1186-1192, 1196, 1211-1213, 1230, 1264-1266, 1276-1277, 1299-1301, 1391-1428, 1437-1489, 1537, 1560-1562, 1575-1610, 1616-1617, 1622-1623, 1630, 1664-1669, 1681-1706, 1751-1752, 1773-1775, 1785-1830, 1836, 1838, 1872, 1874, 1880, 1941-2037, 2072, 2116, 2186, 2195-2207, 2214-2227, 2254-2266, 2347, 2431, 2445-2446, 2497, 2555, 2592, 2660, 2687-2691, 2705, 2725-2727, 2821-2830, 2898, 3027, 3037, 3154-3165, 3195, 3252, 3278-3284, 3320-3321, 3323-3324, 3368-3369, 3371-3372, 3386, 3396-3397, 3447-3448, 3456, 3462-3511, 3514-3526, 3529-3539, 3544-3563, 3568, 3594, 3596, 3631-3637, 3672-3673, 3675-3676, 3678-3679, 3707-3708, 3710-3711, 3713-3714, 3716-3750, 3758, 3836-3837, 3839-3840, 3842-3843, 3867-3868, 3870-3871, 3873-3874, 3936, 3942, 3960-3970, 3973-3980, 3985-4002, 4005-4020, 4025-4042, 4047-4059, 4064-4075, 4081-4093, 4098-4149, 4152-4187, 4190-4192, 4201-4221, 4226-4238, 4246-4291, 4344, 4352, 4360-4362, 4364, 4383, 4390-4392, 4394-4396, 4440, 4510, 4593, 4678, 4686-4690, 4718, 4739-4741, 4756-4774, 4778
+crypto_news_analyzer/storage/repositories.py                         655     93    86%   51, 79, 88-93, 100-104, 178, 257-258, 307-312, 315, 318, 329, 350, 353, 371, 378, 381, 408, 427, 430, 438, 443, 462-467, 470-473, 481-486, 512, 516, 544, 558, 598, 660, 669, 678, 732-733, 736, 847-848, 856-859, 862, 867, 872-873, 878-881, 884, 892, 895, 904-907, 912-913, 921-924, 1095, 1137, 1154, 1183, 1270, 1304, 1360-1379, 1402, 1443, 1468-1469, 1486, 1494, 1497, 1522, 1527, 1651-1660, 1677-1678, 1707, 1709
+crypto_news_analyzer/utils/__init__.py                                 0      0   100%
+crypto_news_analyzer/utils/conversation_cache.py                      73     37    49%   57-59, 73-74, 89-90, 100, 112-144, 153-160
+crypto_news_analyzer/utils/errors.py                                 185     83    55%   47-49, 56, 63-65, 72-76, 83-86, 115-119, 126-129, 165, 169, 181, 184-185, 192, 195, 202, 205, 216, 219, 230, 233, 262-288, 296-298, 302-304, 316-340, 348, 360-381
+crypto_news_analyzer/utils/logging.py                                114     35    69%   39, 48-49, 108, 114, 128-154, 185-186, 195-196, 206-207, 216-217, 229-248
+crypto_news_analyzer/utils/timezone_utils.py                          32      2    94%   40, 61
+------------------------------------------------------------------------------------------------
+TOTAL                                                              16431   5568    66%
+=========================== short test summary info ============================
+FAILED tests/integration/test_intelligence_schema.py::test_intelligence_runtime_bootstrap_matches_migration
+FAILED tests/test_banned_legacy_reference_scan.py::test_iter_candidate_files_covers_known_legacy_hotspots
+FAILED tests/test_bird_dependency_unit.py::TestBirdConfig::test_default_config
+FAILED tests/test_bird_dependency_unit.py::TestBirdDependencyManager::test_get_installation_instructions
+FAILED tests/test_bird_integration_properties.py::TestBirdIntegrationProperties::test_bird_authentication_consistency
+FAILED tests/test_bird_integration_properties.py::TestBirdIntegrationProperties::test_bird_command_execution_consistency
+FAILED tests/test_bird_integration_properties.py::TestBirdIntegrationProperties::test_bird_integration_consistency
+FAILED tests/test_category_parser.py::test_parse_categories_from_prompt - Ass...
+FAILED tests/test_category_parser.py::test_get_category_emoji_map - Assertion...
+FAILED tests/test_category_parser.py::test_get_category_names - AssertionErro...
+FAILED tests/test_extensibility_unit.py::TestDynamicConfigurationUpdates::test_config_manager_dynamic_loading
+FAILED tests/test_extensibility_unit.py::TestDynamicConfigurationUpdates::test_rest_api_sources_dynamic_addition
+FAILED tests/test_extensibility_unit.py::TestDynamicConfigurationUpdates::test_configuration_validation_after_update
+FAILED tests/test_extensibility_unit.py::TestDynamicConfigurationUpdates::test_configuration_backup_and_restore
+FAILED tests/test_extensibility_unit.py::TestDynamicConfigurationUpdates::test_concurrent_configuration_updates
+FAILED tests/test_extensibility_unit.py::TestDynamicConfigurationUpdates::test_missing_configuration_file_handling
+FAILED tests/test_extensibility_unit.py::TestExtensibilityIntegration::test_new_data_source_with_config_integration
+FAILED tests/test_extensibility_unit.py::TestExtensibilityIntegration::test_dynamic_data_source_registration_and_config_update
+FAILED tests/test_ingestion_runtime.py::test_initialize_ingestion_system_skips_analysis_report_and_telegram
+FAILED tests/test_llm_analyzer.py::TestLLMAnalyzer::test_update_config - asse...
+FAILED tests/test_multi_step_analysis_properties.py::TestMarketSnapshotConsistency::test_market_snapshot_always_returns_valid_snapshot
+FAILED tests/test_multi_step_analysis_properties.py::TestMarketSnapshotConsistency::test_market_snapshot_caching_consistency
+FAILED tests/test_multi_step_analysis_properties.py::TestMarketSnapshotConsistency::test_market_snapshot_fallback_mechanism
+FAILED tests/test_multi_step_analysis_properties.py::TestPromptMergingCorrectness::test_prompt_merging_contains_snapshot
+FAILED tests/test_multi_step_analysis_properties.py::TestPromptMergingCorrectness::test_static_prompt_consistency
+FAILED tests/test_multi_step_analysis_properties.py::TestBatchAnalysisCompleteness::test_batch_analysis_returns_valid_results
+FAILED tests/test_multi_step_analysis_properties.py::TestBatchAnalysisCompleteness::test_batch_analysis_handles_empty_input
+FAILED tests/test_multi_step_analysis_properties.py::TestBatchAnalysisCompleteness::test_batch_analysis_deduplication
+FAILED tests/test_openclaw_skill_crypto_news_http_api.py::test_skill_requires_frontmatter_required_sections_and_reference_links
+FAILED tests/test_openclaw_skill_crypto_news_http_api.py::test_skill_endpoint_index_lists_only_supported_live_http_routes
+FAILED tests/test_openclaw_skill_crypto_news_http_api.py::test_skill_intelligence_query_section_covers_current_routes_and_state
+FAILED tests/test_postgres_storage_path.py::test_config_manager_supports_postgres_via_env_database_url
+===== 32 failed, 1002 passed, 79 skipped, 6 warnings in 185.40s (0:03:05) ======

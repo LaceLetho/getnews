@@ -1,6 +1,6 @@
 # 加密货币新闻分析工具
 
-一个面向 Railway 双服务部署的加密货币新闻分析系统：私有 ingestion 服务负责抓取与入库，公网 analysis 服务负责 HTTP API、Telegram 命令、LLM 分析与结果查询。Phase 1 已完成服务拆分，当前共享同一个 PostgreSQL/pgvector 数据库。
+一个**双域单体仓库（dual-domain monorepo）**的加密货币新闻分析系统，在同一代码库和共享 PostgreSQL/pgvector 数据库中同时运行两个限界上下文：**News**（RSS/X/REST 新闻抓取、LLM 分析、结构化报告）和 **Intelligence**（Telegram/V2EX 群组消息收集、AI 主题研究管线）。私有 ingestion 服务负责抓取、采集与主题研究调度，公网 analysis 服务负责 HTTP API、Telegram 命令、LLM 分析与结果查询。Phase 1 已完成服务拆分。
 
 ## 当前架构
 
@@ -14,19 +14,29 @@
 
 ## 功能特性
 
-- 🔄 **多源数据收集**: 支持RSS订阅和X/Twitter内容爬取
-- 🤖 **智能分析**: 使用 MiniMax M2.1 大语言模型进行内容分析和分类
-- 📊 **结构化报告**: 生成Markdown格式的分析报告
-- 📱 **自动发送**: 通过Telegram Bot自动发送报告
-- 🔁 **Split-service 运行面**: 仅保留 `analysis-service`、`api-only`、`ingestion` 三种运行模式
-- 🔧 **数据库优先的数据源管理**: 首次启动从 `config.jsonc` 导入，运行时通过数据库管理，支持 REST API 和 Telegram 命令操作
+### 新闻分析域（News）
+
+- 🔄 **多源数据收集**: 支持 RSS 订阅、X/Twitter 内容爬取和 REST API 数据源
+- 🤖 **智能分析**: 使用大语言模型进行内容分析和分类（Kimi / Grok / OpenCode Go），支持大户动向、利率事件、监管政策、真相揭露等多种分类
+- 📊 **结构化报告**: 生成 Markdown 格式的分析报告，通过 Telegram Bot 自动发送
 - 🔎 **语义搜索**: 支持 `POST /semantic-search` 异步语义检索与 `/semantic_search` Telegram 命令
-- 🧠 **情报主题系统**: 基于 AI 的主题研究，支持创建/修订/确认主题、每日定时研究、研究成果合并与检索
+- 🔧 **数据库优先的数据源管理**: 首次启动从 `config.jsonc` 导入，运行时通过数据库管理，支持 REST API 和 Telegram 命令操作
+
+### 情报研究域（Intelligence）
+
+作为 News 的**同行域**，Intelligence 独立运行一套 AI 主题研究管线，而非 Telegram 的附属功能：
+
+- 🧠 **AI 主题研究管线**: 基于 LLM 的持续研究，支持创建/修订/确认主题 → 每日定时研究 → 研究成果合并与归档的完整生命周期
+- 📥 **群组消息收集**: 从 Telegram 群组和 V2EX 论坛采集原始消息（RawIntelligenceItem），与新闻域的 ContentItem 完全分离
+- 🌐 **独立 API 和命令面**: 提供 `/intelligence/*` REST 接口和 `/topic_*` Telegram 命令
+
+### 共享基础设施
+
+- 🔁 **Split-service 运行面**: 仅保留 `analysis-service`、`api-only`、`ingestion` 三种运行模式
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
-- 🎯 **智能分类**: 支持大户动向、利率事件、监管政策、真相揭露等多种分类
 - ☁️ **云端部署**: 支持部署到 Railway 平台
 - 🌐 **HTTP API**: 支持 Bearer Token 鉴权的异步分析接口（`POST /analyze` 创建任务，轮询获取结果）
-- 🤖 **Telegram 手动分析**: 支持 `/analyze [hours]` 按时间窗口触发分析
+- 🤖 **Telegram 交互**: 支持 `/analyze [hours]`、`/market`、`/status` 等命令
 
 如果你要通过 HTTP API 调用新闻分析接口，或你是一个需要自动调用接口的 AI，请先阅读 [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)。该文档包含最新的请求体要求、鉴权方式、异步轮询流程和生产环境验证结果。
 
@@ -47,6 +57,13 @@ crypto_news_analyzer/
 ├── crawlers/
 │   ├── rss_crawler.py          # RSS 爬取器
 │   └── x_crawler.py            # X/Twitter 爬取器
+├── intelligence/               # 情报主题研究管线（同行域）
+│   ├── pipeline.py             # 采集与主题研究调度
+│   ├── topics.py               # 主题 CRUD 管理
+│   ├── topic_prompts.py        # AI 提示词生成与版本管理
+│   ├── topic_research.py       # 每日定时主题研究
+│   ├── topic_findings.py       # 研究发现管理
+│   └── merge.py                # 研究成果合并
 ├── analyzers/
 │   ├── llm_analyzer.py         # LLM 分析器
 │   └── prompt_manager.py       # 提示词管理器

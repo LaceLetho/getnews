@@ -2,6 +2,8 @@
 分析器模块
 
 包含提示词管理器、市场快照服务、结构化输出管理器、动态分类管理器和LLM分析器。
+
+NEWS DOMAIN — LLM-based crypto news analysis (separate from intelligence/topic research).
 """
 
 from .prompt_manager import PromptManager, DynamicCategoryManager, CategoryConfig, create_content_category_enum

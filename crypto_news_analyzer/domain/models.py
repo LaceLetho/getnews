@@ -58,11 +58,12 @@ class DataSourcePurpose(str, Enum):
     INTELLIGENCE = "intelligence"
 
 
-# DEPRECATED: EntryType enum and related dataclasses (ExtractionObservation,
-# CanonicalIntelligenceEntry) were part of the old entry extraction pipeline.
-# The system is now topic-only; these remain for backward compatibility with
-# old extraction pipeline files (merge.py, extractor.py) which are also
-# deprecated and unwired from runtime.
+# DEPRECATED — Compatibility-only models from old entry extraction pipeline.
+# The ACTIVE intelligence path is topic-only (IntelligenceTopic, TopicFinding,
+# TopicPrompt, TopicFinding, TopicResearchRun). Do NOT use EntryType,
+# ExtractionObservation, or CanonicalIntelligenceEntry for new code.
+# These remain for backward compatibility with old extraction pipeline files
+# (merge.py, extractor.py) which are also deprecated and unwired from runtime.
 class EntryType(str, Enum):
     CHANNEL = "channel"
     SLANG = "slang"

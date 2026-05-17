@@ -1,0 +1,16 @@
+# Task 5 API + Datasource Test Results
+# Date: 2026-05-17
+
+## Test Files Run
+- tests/news/test_api_server.py
+- tests/news/test_api_server_semantic_search.py
+- tests/intelligence/test_intelligence_api.py
+- tests/intelligence/test_topic_findings_api.py
+- tests/shared/test_datasource_bootstrap.py
+- tests/shared/test_datasource_repository.py
+- tests/shared/test_telegram_command_handler_datasource.py
+- tests/intelligence/test_intelligence_datasource_payloads.py
+
+## Result: 134 passed, 31 skipped in ~34s
+## Skipped: 31 tests (old entry-based intelligence routes deleted in topic-only refactor)
+## Coverage: api_server.py 74% (977 stmts, 258 missed - uncovered branches are error paths)

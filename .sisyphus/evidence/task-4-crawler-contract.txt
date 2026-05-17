@@ -1,0 +1,20 @@
+TASK-4 CRAWLER CONTRACT FIX - EVIDENCE OF PASS
+=============================================
+
+QA SCRIPT (.sisyphus/evidence/qa_crawler_contract.py) OUTPUT:
+Module doc mentions ContentItem: True
+Module doc mentions RawIntelligenceItem: True
+crawl() doc mentions ContentItem: True
+crawl() doc mentions RawIntelligenceItem/RawIntelligence: True
+telegram_intelligence_crawler crawl returns List[RawIntelligenceItem] or List[Any]: True
+v2ex_intelligence_crawler crawl returns List[RawIntelligenceItem] or List[Any]: True
+
+QA RESULT: PASS
+
+PYTEST RUN:
+Command: /data/.local/bin/uv run pytest tests/shared/test_data_source_factory.py tests/intelligence/test_intelligence_telegram_collector.py tests/intelligence/test_intelligence_v2ex_collector.py -v
+Result: 33 passed in ~4s
+
+MYPY (no new errors from change):
+Command: /data/.local/bin/uv run mypy crypto_news_analyzer/crawlers/data_source_interface.py crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py
+Only pre-existing error in these files: telegram_intelligence_crawler.py:79 "Returning Any from function declared to return list[RawIntelligenceItem]" - pre-existing

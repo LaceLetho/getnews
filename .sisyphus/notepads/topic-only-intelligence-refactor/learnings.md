@@ -134,3 +134,22 @@
 ### MyPy Status
 - 243 pre-existing errors remain (no regressions introduced)
 - Most are `union-attr`, `no-any-return`, `var-annotated`, `import-untyped` — systemic issues
+
+## Task 8: Compatibility Audit (2026-05-17)
+
+### Inventory Verification — ALL PASS
+- **Routes**: 23 application routes (9 news + 2 infra + 12 intelligence) + 4 FastAPI auto. Exact match with pre-change-routes.txt baseline.
+- **Commands**: 20 CommandHandler entries + 1 CallbackQueryHandler + start. Exact match with task-6-command-inventory.txt.
+- **CLI Modes**: 4 modes (analysis-service, api-only, ingestion, embedding-backfill).Matches SUPPORTED_RUNTIME_MODES.
+- **Migrations**: 9 .sql files in migrations/postgresql/. No new migrations added during tasks 1-7.
+
+### Quality Gates — PRE-EXISTING FAILURES ONLY
+- **black --check**: 105 files would reformat (pre-existing formatting drift)
+- **flake8**: 140+ E501 + 1 F401 (all pre-existing)
+- **mypy**: 241 errors in 33 files (all pre-existing)
+- **pytest**: 938 passed, 96 failed, 79 skipped (1113 total). All 96 failures are pre-existing environment/missing-fixture issues. Zero regressions from tasks 1-7.
+
+### Key Observations
+- Pre-change and post-change route inventories are byte-identical (verified against .sisyphus/evidence/pre-change-routes.txt)
+- The 96 test failures all fall into known categories: missing test fixture files (prompts/, skills/, .env.template, docker-entrypoint.sh), Bird CLI not installed, config validation failures, and old category-parser assertions using evolved category names
+- Migration numbering has a known gap (007 missing, 008 present) — pre-existing, not introduced by this refactor

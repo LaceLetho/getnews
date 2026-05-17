@@ -1,0 +1,33 @@
+TASK-4 CRAWLER CONTRACT FIX - VALIDATION RESULTS
+================================================
+
+CHANGES MADE:
+- data_source_interface.py: Changed crawl() return from List[ContentItem] to Sequence[Any]
+- Removed ContentItem import (no longer needed in interface)
+- Added docstring explaining NEWS crawlers return ContentItem, INTELLIGENCE crawlers return RawIntelligenceItem
+
+QA SCRIPT RESULT: PASS
+- Module docstring mentions ContentItem: True
+- Module docstring mentions RawIntelligenceItem: True
+- crawl() doc mentions ContentItem: True
+- crawl() doc mentions RawIntelligenceItem/RawIntelligence: True
+- telegram_intelligence_crawler crawl returns correct type: True
+- v2ex_intelligence_crawler crawl returns correct type: True
+
+TEST RESULTS:
+- test_data_source_factory.py (tests/shared/): 23 tests PASSED
+- test_intelligence_telegram_collector.py (tests/intelligence/): 7 tests PASSED  
+- test_intelligence_v2ex_collector.py (tests/intelligence/): 3 tests PASSED
+- Total: 33 tests PASSED
+
+MYPY STATUS:
+- Pre-existing errors in unrelated files (models.py, utils/errors.py, crawlers/rest_api_crawler.py, etc.) - NOT introduced by this change
+- No new mypy errors introduced in data_source_interface.py, telegram_intelligence_crawler.py, or v2ex_intelligence_crawler.py
+- Pre-existing mypy error in telegram_intelligence_crawler.py:79: "Returning Any from function declared to return list[RawIntelligenceItem]" - existed before Task 4
+
+VERIFICATION: Complete
+- Interface now correctly documents dual return type contract
+- Intelligence crawlers already declare correct return types (List[RawIntelligenceItem] or List[Any])
+- News crawlers already declare List[ContentItem]
+- No behavior changes
+- Tests pass

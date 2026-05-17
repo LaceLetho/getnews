@@ -1,0 +1,51 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.2, pytest-9.0.2, pluggy-1.6.0
+rootdir: /data/workspace/getnews
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.12.1, hypothesis-6.151.9, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 1113 items
+
+<Dir getnews>
+  <Package tests>
+    <Dir integration>
+      <Module test_intelligence_pgvector.py>
+        <Function test_real_postgres_safety_guard_refuses_non_test_db>
+        <Function test_real_postgres_creates_all_intelligence_tables>
+        <Function test_real_postgres_vector_insert_and_search>
+        <Function test_real_postgres_canonical_upsert_increments_evidence_count>
+        <Function test_real_postgres_raw_ttl_purge>
+        <Function test_real_postgres_raw_ttl_purge_preserves_canonical_entries>
+        <Function test_real_postgres_related_candidate_constraint>
+      <Module test_intelligence_schema.py>
+        <Function test_intelligence_runtime_bootstrap_matches_migration>
+        <Function test_real_postgres_intelligence_schema_bootstraps>
+    <Dir intelligence>
+      <Module test_intelligence_api.py>
+        <Function test_intelligence_entries_unauthorized_returns_401>
+        <Function test_intelligence_search_unauthorized_returns_401>
+        <Function test_intelligence_raw_unauthorized_returns_401>
+        <Function test_intelligence_labels_unauthorized_returns_401>
+        <Function test_intelligence_follow_status_unauthorized_returns_401>
+        <Function test_intelligence_discovery_unauthorized_returns_401>
+        <Function test_list_entries_returns_paginated_sorted_by_last_seen_desc>
+        <Function test_list_entries_filters_by_entry_type>
+        <Function test_list_entries_defaults_to_following_tracking_scope>
+        <Function test_discovery_returns_unset_entries_without_marking_presented>
+        <Function test_set_follow_status_updates_tracking_state>
+        <Function test_set_follow_status_missing_and_invalid>
+        <Function test_list_entries_filters_by_primary_label>
+        <Function test_list_entries_respects_pagination>
+        <Function test_unfollow_entry_hides_from_default_entries_and_search>
+        <Function test_list_intelligence_labels_returns_primary_label_values>
+        <Function test_get_entry_detail_returns_full_entry>
+        <Function test_get_entry_detail_returns_paginated_evidence_context>
+        <Function test_get_entry_detail_preserves_expired_evidence_warning>
+        <Function test_unfollowed_entries_list_via_tracking_scope>
+        <Function test_get_entry_detail_not_found_returns_404>
+        <Function test_include_raw_returns_exact_text_within_ttl>
+        <Function test_include_raw_returns_raw_available_false_when_expired>
+        <Function test_include_raw_false_does_not_query_repository>
+        <Function test_include_raw_only_if_entry_has_raw_item_id>
+        <Function test_semantic_search_returns_ranked_results>
+Collection successful

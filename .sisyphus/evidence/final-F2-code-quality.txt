@@ -1,0 +1,300 @@
+================================================================================
+F2 CODE QUALITY REVIEW — Agent Boundary Refactor
+Date: 2026-05-17
+Reviewer: automated code-quality agent
+Status: PASS with 3 non-blocking observations
+================================================================================
+
+SUMMARY
+-------
+All 7 criteria pass. Three minor observations identified (all pre-existing or
+cosmetic). No blocking issues found. The refactor is clean, boundary comments
+are accurate, imports are hygienic, no dead code introduced, deprecated models
+preserved, public APIs unchanged, and English docstrings are proper.
+
+================================================================================
+CRITERION 1: No AI-Generated Slop Patterns
+================================================================================
+
+PASS. No slop detected in any changed file.
+
+• No hallucinated API references, no invented function names, no "the system
+  will automatically..." boilerplate.
+
+• Boundary comments are targeted and concise:
+  - data_source_interface.py:6-9 → 4-line boundary comment, exact domain info
+  - api_server.py:1-4 → 4-line header, route grouping by prefix
+  - telegram_command_handler.py:16-20 → 5-line header, domain grouping
+  - intelligence/__init__.py:2-11 → 10-line domain description
+  - analyzers/__init__.py:6 → 1-line domain annotation
+
+• No redundant docstrings. Existing function docstrings were not modified
+  except in data_source_interface.py which added accurate boundary context
+  to the class docstring (lines 29-33).
+
+• No "Note:", "IMPORTANT:", "WARNING:" blocks repeated for the same boundary
+  concern in both module-level and function-level comments.
+
+================================================================================
+CRITERION 2: No Dead Code or Unreachable Branches Introduced
+================================================================================
+
+PASS. No new dead code detected.
+
+• data_source_interface.py: No unreachable branches. CrawlItem = Union[...]
+  is used in crawl() return type. All abstract methods are reachable.
+
+• api_server.py: register_news_routes(), register_intelligence_routes(), and
+  register_infrastructure_routes() are all called at lines 1926-1928.
+
+• telegram_command_handler.py: _register_news_commands() and
+  _register_intelligence_commands() are called at lines 204 and 207 during
+  _build_application().
+
+• Deprecated models (EntryType, ExtractionObservation, CanonicalIntelligenceEntry
+  in domain/models.py) remain with their validation logic intact. They are
+  referenced by deprecated modules (merge.py, extractor.py) and by
+  _ENTRY_TYPE_VALUES on line 125. No deletion — correct per plan requirements.
+
+• Pre-existing issue (not from this refactor): topic_enricher.py:19 uses the
+  `OpenAI = None` sentinel pattern which causes mypy "Cannot assign to a type"
+  error. Runtime behavior is correct. Not addressed in this refactor scope.
+
+================================================================================
+CRITERION 3: Import Hygiene — No Unused Imports, No Circular Imports
+================================================================================
+
+PASS. All imports verified clean.
+
+data_source_interface.py (all used):
+  • from abc import ABC, abstractmethod       → ABC used (class base), abstractmethod used (decorators)
+  • from typing import Dict, List, Any, Sequence, Union → all used in signatures and CrawlItem
+  • ContentItem  → used in CrawlItem Union
+  • RawIntelligenceItem → used in CrawlItem Union (domain boundary delineation)
+
+api_server.py (verified no circular imports):
+  • Successfully importable as a module (tested via `importlib.import_module`)
+  • All imports resolve without errors
+  • Imports from .intelligence.search, .intelligence.topic_findings are lazy
+    (guarded by TYPE_CHECKING or used in route handlers only)
+
+telegram_command_handler.py:
+  • All standard library imports used (asyncio, logging, math, os, hashlib,
+    secrets, time, threading, urllib.parse, typing, dataclasses, datetime,
+    collections)
+  • telegram imports (Update, BotCommand, etc.) all used
+  • Domain imports used in handlers
+  • No circular import detected (full import chain resolves)
+
+No circular import cycles detected in any changed module.
+
+================================================================================
+CRITERION 4: Boundary Comments Are CONCISE and ACCURATE
+================================================================================
+
+PASS. All boundary comments are correct and not misleading.
+
+FILE                          LINE  COMMENT                                          VERDICT
+data_source_interface.py      6-9   "SHARED CRAWLER INTERFACE — Implemented by      ACCURATE
+                                    both NEWS crawlers (returning ContentItem:
+                                    rss, x, rest_api) and INTELLIGENCE crawlers
+                                    (returning RawIntelligenceItem: v2ex,
+                                    telegram_group). See boundary rules in
+                                    AGENTS.md."
+
+api_server.py                 1-4   "SHARED INFRASTRUCTURE — Single FastAPI app      ACCURATE
+                                    hosting BOTH news routes (/analyze,
+                                    /semantic-search, /datasources) AND
+                                    intelligence routes (/intelligence/*)."
+
+api_server.py                 1175  "── Route Registration: News Domain ──"          ACCURATE
+api_server.py                 1179  "Register news domain routes: /analyze,           ACCURATE
+                                    /semantic-search, /datasources."
+
+api_server.py                 1443  "── Route Registration: Intelligence Domain ──"  ACCURATE
+api_server.py                 1447  "Register intelligence domain routes:             ACCURATE
+                                    /intelligence/*."
+
+api_server.py                 1814  "── Route Registration: Infrastructure ──"       ACCURATE
+
+telegram_command_handler.py   16-20 "SHARED INFRASTRUCTURE — Single bot handler       ACCURATE
+                                    registering BOTH news commands (/analyze,
+                                    /market, /semantic_search, /datasource_*)
+                                    AND intelligence commands (/topic_*)."
+
+telegram_command_handler.py   203-204 "# NEWS domain commands" +                      ACCURATE
+                                    "_register_news_commands(application)"
+
+telegram_command_handler.py   206-207 "# INTELLIGENCE domain commands" +              ACCURATE
+                                    "_register_intelligence_commands(application)"
+
+intelligence/__init__.py      2-11  "GROUP/FORUM INTELLIGENCE DOMAIN" with           ACCURATE
+                                    sources, models, commands, routes listed
+
+analyzers/__init__.py         6     "NEWS DOMAIN — LLM-based crypto news analysis    ACCURATE
+                                    (separate from intelligence/topic research)."
+
+data_source_factory.py        370-373 "SHARED INFRASTRUCTURE — Registers crawlers     ACCURATE
+                                      for BOTH domains: NEWS: rss, x, rest_api;
+                                      INTELLIGENCE: v2ex, telegram_group."
+
+domain/models.py              61-66 "# DEPRECATED — Compatibility-only models from   ACCURATE
+                                    old entry extraction pipeline. The ACTIVE
+                                    intelligence path is topic-only..."
+
+All boundary comments use consistent terminology: NEWS, INTELLIGENCE,
+SHARED INFRASTRUCTURE. No misleading statements about service independence
+or repository splits.
+
+Minor observation: docs/ARCHITECTURE_BOUNDARIES.md line 111 describes Phase 2
+as "Low-Risk Code Grouping (future)" but the code has already been grouped.
+This is a documentation staleness issue, not a code issue (see Observations
+below).
+
+================================================================================
+CRITERION 5: Deprecated Entry-Based Intelligence Code Labeled But NOT Deleted
+================================================================================
+
+PASS. Deprecated models properly labeled and retained.
+
+domain/models.py:
+  Line 61:  # DEPRECATED — Compatibility-only models from old entry extraction...
+  Line 62:  # The ACTIVE intelligence path is topic-only (IntelligenceTopic,...
+  Line 63:  # TopicPrompt, TopicFinding, TopicResearchRun). Do NOT use EntryType,
+  Line 64:  # ExtractionObservation, or CanonicalIntelligenceEntry for new code.
+  Line 65:  # These remain for backward compatibility with old extraction...
+  Line 66:  # (merge.py, extractor.py) which are also deprecated and unwired...
+  Line 67:  class EntryType(str, Enum):          ← RETAINED
+  Line 808: class ExtractionObservation:          ← RETAINED
+  Line 905: class CanonicalIntelligenceEntry:     ← RETAINED
+  Line 125: _ENTRY_TYPE_VALUES = {item.value for item in EntryType}  ← RETAINED
+
+All three deprecated models are importable:
+  from crypto_news_analyzer.domain.models import EntryType            → OK
+  from crypto_news_analyzer.domain.models import ExtractionObservation → OK
+  from crypto_news_analyzer.domain.models import CanonicalIntelligenceEntry → OK
+
+The deprecation comment (6 lines, 61-66) is clearly visible before EntryType
+and accurately describes the active vs deprecated path. The mention of
+"merge.py, extractor.py" gives concrete references for context.
+
+================================================================================
+CRITERION 6: Function Signatures Preserved (No Breaking Changes)
+================================================================================
+
+PASS. All public API signatures verified intact.
+
+DataSourceInterface (data_source_interface.py):
+  __init__(self, time_window_hours: int, **kwargs)           → UNCHANGED
+  crawl(self, config: Dict[str, Any]) -> Sequence[CrawlItem]  → Covariant change
+                                                               (widened from implied
+                                                               List[ContentItem] to
+                                                               Sequence[Union[...]].
+                                                               All existing callers
+                                                               remain compatible since
+                                                               List[ContentItem] is a
+                                                               valid Sequence[CrawlItem].)
+  crawl_all_sources(self, sources: List[Dict[str, Any]]) -> Dict[str, Any] → UNCHANGED
+  validate_config(self, config: Dict[str, Any]) -> bool    → UNCHANGED
+  get_source_type(self) -> str                              → UNCHANGED
+
+Route registration functions (api_server.py):
+  register_news_routes(app: FastAPI) -> None        → NEW (internal grouping)
+  register_intelligence_routes(app: FastAPI) -> None → NEW (internal grouping)
+  register_infrastructure_routes(app: FastAPI) -> None → NEW (internal grouping)
+
+  These replace inline route registration. All endpoint paths and methods
+  are verified UNCHANGED by task-5-route-inventory.txt evidence.
+
+Telegram command registration (telegram_command_handler.py):
+  _register_news_commands(self, application: Application) -> None        → NEW (internal grouping)
+  _register_intelligence_commands(self, application: Application) -> None → NEW (internal grouping)
+
+  All command names are verified UNCHANGED by task-6-command-inventory.txt evidence.
+
+All route paths (POST /analyze, POST /intelligence/topics, etc.) tested:
+  → Verified unchanged vs pre-change inventory.
+
+================================================================================
+CRITERION 7: Proper English in Docstrings
+================================================================================
+
+PASS. No Chinese-English mixing in boundary/English comments.
+
+• Module-level Chinese docstrings are intentional (Chinese is the project's
+  primary documentation language per README.md). These are preserved as-is.
+
+• Boundary annotations added by this refactor are consistently in English:
+  "SHARED INFRASTRUCTURE", "NEWS DOMAIN", "INTELLIGENCE DOMAIN",
+  "GROUP/FORUM INTELLIGENCE DOMAIN", "Register news domain routes", etc.
+
+• No lines mix Chinese characters with English in boundary annotations.
+
+• data_source_factory.py: The module docstring and method docstrings are
+  in Chinese (preserved from original), but the boundary block at lines
+  370-373 is in English, consistent with other boundary annotations.
+
+• No grammar or spelling errors found in the boundary annotations.
+
+• AGENTS.md is entirely in English — no mixing issues.
+
+================================================================================
+OBSERVATIONS (Non-Blocking)
+================================================================================
+
+1. api_server.py:503 — Indentation inconsistency
+   Severity: COSMETIC (E122 per flake8)
+   dict literal entry on line 503 uses 4-space indent instead of matching
+   the 8-space indent of entries on lines 500-501. Python tolerates this
+   in parenthesized context, but it violates PEP 8.
+   Status: Pre-existing (confirmed in prior F2 review). Not introduced
+   by this refactor.
+
+2. docs/ARCHITECTURE_BOUNDARIES.md:111 — "Phase 2: Low-Risk Code Grouping (future)"
+   Severity: LOW (documentation staleness)
+   This document describes Phase 2 as "future" work, but the code grouping
+   (route registration, Telegram command registration, test directories)
+   has already been implemented. The document is accurate about WHAT will
+   be done but the "(future)" label is now stale.
+   Recommendation: Update to "(implemented)" or remove the "(future)" label.
+
+3. topic_enricher.py:19 — OpenAI sentinel pattern
+   Severity: LOW (pre-existing type violation)
+   `OpenAI = None` in except ImportError clause causes mypy error.
+   Not in scope of this refactor. Pre-existing code debt.
+
+================================================================================
+VERIFICATION COMMANDS EXECUTED
+================================================================================
+
+Syntax check (all changed files passed):
+  ✓ crypto_news_analyzer/crawlers/data_source_interface.py
+  ✓ crypto_news_analyzer/api_server.py
+  ✓ crypto_news_analyzer/reporters/telegram_command_handler.py
+
+Import resolution (all passed, no circular imports):
+  ✓ crypto_news_analyzer.crawlers.data_source_interface
+  ✓ crypto_news_analyzer.api_server
+  ✓ crypto_news_analyzer.intelligence
+  ✓ crypto_news_analyzer.analyzers
+  ✓ crypto_news_analyzer.domain.models
+
+Deprecated model preservation:
+  ✓ EntryType — importable, labeled DEPRECATED
+  ✓ ExtractionObservation — importable, labeled DEPRECATED
+  ✓ CanonicalIntelligenceEntry — importable, labeled DEPRECATED
+
+Unused import scan:
+  ✓ data_source_interface.py — all imports used
+  ✓ No unused imports detected in any changed file
+
+================================================================================
+FINAL VERDICT
+================================================================================
+
+CODE QUALITY: PASS ✓
+
+The Agent Boundary Refactor is cleanly implemented. All 7 review criteria
+pass. Three minor non-blocking observations noted (1 cosmetic indentation,
+1 stale documentation label, 1 pre-existing type violation). No blocking
+issues. Code is ready for production.

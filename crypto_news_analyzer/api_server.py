@@ -1,3 +1,8 @@
+# SHARED INFRASTRUCTURE — Single FastAPI app hosting BOTH news routes
+# (/analyze, /semantic-search, /datasources) AND intelligence routes (/intelligence/*).
+# Domain grouping is by route prefix: news → /analyze, /semantic-search, /datasources;
+# intelligence → /intelligence/*.
+
 """
 HTTP API服务器
 
@@ -63,6 +68,9 @@ SEMANTIC_SEARCH_JOB_RESULT_PATH = "/semantic-search/{job_id}/result"
 SEMANTIC_SEARCH_TELEGRAM_COMMAND = "/semantic_search <hours> <topic>"
 
 
+# ── Application State ──────────────────────────────────────────────────
+
+
 class AppState:
     """Application state container for lifespan management."""
 
@@ -109,6 +117,9 @@ class AppState:
         self.semantic_search_repository = None
         self.datasource_repository = None
         self.intelligence_repository = None
+
+
+# ── Request/Response Models ────────────────────────────────────────────
 
 
 class AnalyzeRequest(BaseModel):
@@ -453,6 +464,9 @@ class TopicLifecycleActionResponse(BaseModel):
     topic_id: str
     lifecycle_status: str
     updated_at: Optional[str] = None
+
+
+# ── Helper Functions ───────────────────────────────────────────────────
 
 
 def _datetime_to_iso(value: Optional[datetime]) -> Optional[str]:
@@ -1158,84 +1172,11 @@ def enqueue_semantic_search_job(
     return _semantic_search_request_to_job_record(job)
 
 
-def create_api_server(
-    config_path: str = "./config.jsonc",
-    start_services: bool = True,
-    start_scheduler: Optional[bool] = None,
-    start_command_listener: Optional[bool] = None,
-) -> FastAPI:
-    """创建并初始化API服务器。"""
+# ── Route Registration: News Domain ────────────────────────────────────
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        """FastAPI lifespan context manager for proper startup/shutdown."""
-        # Startup
-        app_state = AppState()
-        app.state.app_state = app_state
 
-        controller = MainController(config_path)
-        if not controller.initialize_system():
-            raise RuntimeError("Failed to initialize system")
-
-        app_state.controller = controller
-        app_state.analysis_repository = controller.analysis_repository
-        app_state.datasource_repository = controller.datasource_repository
-        app_state.semantic_search_repository = getattr(
-            controller, "semantic_search_repository", None
-        )
-        if app_state.semantic_search_repository is None:
-            repositories = getattr(controller, "_repositories", None)
-            if isinstance(repositories, dict):
-                app_state.semantic_search_repository = repositories.get("semantic_search")
-
-        app_state.intelligence_repository = getattr(controller, "intelligence_repository", None)
-        if app_state.intelligence_repository is None:
-            repositories = getattr(controller, "_repositories", None)
-            if isinstance(repositories, dict):
-                app_state.intelligence_repository = cast(
-                    IntelligenceRepository, repositories.get("intelligence")
-                )
-
-        effective_start_scheduler = start_services if start_scheduler is None else start_scheduler
-        effective_start_command_listener = (
-            start_services if start_command_listener is None else start_command_listener
-        )
-
-        if effective_start_scheduler:
-            controller.start_scheduler()
-            logger.info("Scheduler started in API runtime")
-        else:
-            logger.info("Scheduler disabled in API runtime")
-
-        if effective_start_command_listener:
-            if controller.command_handler:
-                if (
-                    hasattr(controller.command_handler, "uses_webhook")
-                    and controller.command_handler.uses_webhook()
-                ):
-                    await controller.command_handler.initialize_webhook()
-                    app_state.telegram_uses_webhook = True
-                    logger.info("Telegram webhook started in API mode")
-                else:
-                    controller.start_command_listener()
-                    logger.info("Telegram command listener started in API mode")
-            else:
-                logger.warning("Telegram command handler not configured, listener not started")
-        else:
-            logger.info("Telegram command listener disabled in API runtime")
-
-        logger.info("API server initialized")
-        yield
-        # Shutdown
-        logger.info("API server shutting down")
-        if app_state.telegram_uses_webhook and controller.command_handler:
-            try:
-                await controller.command_handler.shutdown_webhook()
-            except Exception as exc:
-                logger.warning(f"Error shutting down Telegram webhook: {exc}")
-        app_state.cleanup()
-
-    app = FastAPI(title="Crypto News Analyzer API", lifespan=lifespan)
+def register_news_routes(app: FastAPI) -> None:
+    """Register news domain routes: /analyze, /semantic-search, /datasources."""
 
     @app.post("/analyze", response_model=AnalyzeAcceptedResponse, status_code=202)
     async def analyze(
@@ -1407,7 +1348,103 @@ def create_api_server(
             raise HTTPException(status_code=404, detail="Semantic search job not found")
         return _semantic_search_request_to_job_record(job).to_result_response()
 
-    # ── Topic workflow endpoints ───────────────────────────────────────────
+    @app.post("/datasources", response_model=DataSourceCreateResponse, status_code=201)
+    async def create_datasource(
+        request: DataSourceCreateRequest,
+        _: Annotated[str, Depends(verify_api_key)],
+        req: Request,
+    ):
+        repository = _get_datasource_repository(req)
+
+        try:
+            validated_payload = validate_datasource_create_payload(
+                request.model_dump(exclude_none=True)
+            )
+        except DataSourcePayloadValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+        try:
+            saved_datasource = repository.save(validated_payload.to_domain_datasource())
+        except DataSourceAlreadyExistsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to create datasource: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        return DataSourceCreateResponse(
+            success=True,
+            datasource=_to_datasource_response_item(saved_datasource),
+        )
+
+    @app.get("/datasources", response_model=DataSourceListResponse)
+    async def list_datasources(
+        _: Annotated[str, Depends(verify_api_key)],
+        req: Request,
+        purpose: Optional[str] = None,
+        source_type: Optional[str] = None,
+    ):
+        repository = _get_datasource_repository(req)
+        if purpose is not None and purpose not in {item.value for item in DataSourcePurpose}:
+            raise HTTPException(
+                status_code=422, detail="purpose must be one of: news, intelligence"
+            )
+        try:
+            datasource_items = repository.list(purpose=purpose, source_type=source_type)
+        except TypeError:
+            datasource_items = repository.list()
+            if purpose is not None:
+                datasource_items = [
+                    datasource
+                    for datasource in datasource_items
+                    if getattr(datasource, "purpose", None) == purpose
+                ]
+            if source_type is not None:
+                datasource_items = [
+                    datasource
+                    for datasource in datasource_items
+                    if getattr(datasource, "source_type", None) == source_type
+                ]
+        datasources = sorted(
+            datasource_items,
+            key=lambda datasource: (
+                getattr(datasource, "purpose", ""),
+                getattr(datasource, "source_type", ""),
+                getattr(datasource, "name", ""),
+            ),
+        )
+
+        return DataSourceListResponse(
+            success=True,
+            datasources=[_to_datasource_response_item(datasource) for datasource in datasources],
+        )
+
+    @app.delete("/datasources/{datasource_id}", status_code=204)
+    async def delete_datasource(
+        datasource_id: str,
+        _: Annotated[str, Depends(verify_api_key)],
+        req: Request,
+    ):
+        repository = _get_datasource_repository(req)
+
+        try:
+            deleted = repository.delete(datasource_id)
+        except DataSourceInUseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to delete datasource {datasource_id}: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Datasource not found")
+
+        return Response(status_code=204)
+
+
+# ── Route Registration: Intelligence Domain ────────────────────────────
+
+
+def register_intelligence_routes(app: FastAPI) -> None:
+    """Register intelligence domain routes: /intelligence/*."""
 
     @app.post("/intelligence/topics", response_model=TopicPromptVersionResponse, status_code=201)
     async def create_topic_draft(
@@ -1773,96 +1810,12 @@ def create_api_server(
             page_size=page_size,
         )
 
-    @app.post("/datasources", response_model=DataSourceCreateResponse, status_code=201)
-    async def create_datasource(
-        request: DataSourceCreateRequest,
-        _: Annotated[str, Depends(verify_api_key)],
-        req: Request,
-    ):
-        repository = _get_datasource_repository(req)
 
-        try:
-            validated_payload = validate_datasource_create_payload(
-                request.model_dump(exclude_none=True)
-            )
-        except DataSourcePayloadValidationError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
+# ── Route Registration: Infrastructure ─────────────────────────────────
 
-        try:
-            saved_datasource = repository.save(validated_payload.to_domain_datasource())
-        except DataSourceAlreadyExistsError as exc:
-            raise HTTPException(status_code=409, detail=str(exc))
-        except Exception as exc:
-            logger.error(f"Failed to create datasource: {exc}")
-            raise HTTPException(status_code=500, detail=str(exc))
 
-        return DataSourceCreateResponse(
-            success=True,
-            datasource=_to_datasource_response_item(saved_datasource),
-        )
-
-    @app.get("/datasources", response_model=DataSourceListResponse)
-    async def list_datasources(
-        _: Annotated[str, Depends(verify_api_key)],
-        req: Request,
-        purpose: Optional[str] = None,
-        source_type: Optional[str] = None,
-    ):
-        repository = _get_datasource_repository(req)
-        if purpose is not None and purpose not in {item.value for item in DataSourcePurpose}:
-            raise HTTPException(
-                status_code=422, detail="purpose must be one of: news, intelligence"
-            )
-        try:
-            datasource_items = repository.list(purpose=purpose, source_type=source_type)
-        except TypeError:
-            datasource_items = repository.list()
-            if purpose is not None:
-                datasource_items = [
-                    datasource
-                    for datasource in datasource_items
-                    if getattr(datasource, "purpose", None) == purpose
-                ]
-            if source_type is not None:
-                datasource_items = [
-                    datasource
-                    for datasource in datasource_items
-                    if getattr(datasource, "source_type", None) == source_type
-                ]
-        datasources = sorted(
-            datasource_items,
-            key=lambda datasource: (
-                getattr(datasource, "purpose", ""),
-                getattr(datasource, "source_type", ""),
-                getattr(datasource, "name", ""),
-            ),
-        )
-
-        return DataSourceListResponse(
-            success=True,
-            datasources=[_to_datasource_response_item(datasource) for datasource in datasources],
-        )
-
-    @app.delete("/datasources/{datasource_id}", status_code=204)
-    async def delete_datasource(
-        datasource_id: str,
-        _: Annotated[str, Depends(verify_api_key)],
-        req: Request,
-    ):
-        repository = _get_datasource_repository(req)
-
-        try:
-            deleted = repository.delete(datasource_id)
-        except DataSourceInUseError as exc:
-            raise HTTPException(status_code=409, detail=str(exc))
-        except Exception as exc:
-            logger.error(f"Failed to delete datasource {datasource_id}: {exc}")
-            raise HTTPException(status_code=500, detail=str(exc))
-
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Datasource not found")
-
-        return Response(status_code=204)
+def register_infrastructure_routes(app: FastAPI) -> None:
+    """Register infrastructure routes: /health, /telegram/webhook."""
 
     @app.get("/health")
     async def health_check(req: Request):
@@ -1885,5 +1838,93 @@ def create_api_server(
             raise HTTPException(status_code=503, detail=str(exc))
 
         return {"ok": True}
+
+
+# ── App Factory ────────────────────────────────────────────────────────
+
+
+def create_api_server(
+    config_path: str = "./config.jsonc",
+    start_services: bool = True,
+    start_scheduler: Optional[bool] = None,
+    start_command_listener: Optional[bool] = None,
+) -> FastAPI:
+    """创建并初始化API服务器。"""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """FastAPI lifespan context manager for proper startup/shutdown."""
+        # Startup
+        app_state = AppState()
+        app.state.app_state = app_state
+
+        controller = MainController(config_path)
+        if not controller.initialize_system():
+            raise RuntimeError("Failed to initialize system")
+
+        app_state.controller = controller
+        app_state.analysis_repository = controller.analysis_repository
+        app_state.datasource_repository = controller.datasource_repository
+        app_state.semantic_search_repository = getattr(
+            controller, "semantic_search_repository", None
+        )
+        if app_state.semantic_search_repository is None:
+            repositories = getattr(controller, "_repositories", None)
+            if isinstance(repositories, dict):
+                app_state.semantic_search_repository = repositories.get("semantic_search")
+
+        app_state.intelligence_repository = getattr(controller, "intelligence_repository", None)
+        if app_state.intelligence_repository is None:
+            repositories = getattr(controller, "_repositories", None)
+            if isinstance(repositories, dict):
+                app_state.intelligence_repository = cast(
+                    IntelligenceRepository, repositories.get("intelligence")
+                )
+
+        effective_start_scheduler = start_services if start_scheduler is None else start_scheduler
+        effective_start_command_listener = (
+            start_services if start_command_listener is None else start_command_listener
+        )
+
+        if effective_start_scheduler:
+            controller.start_scheduler()
+            logger.info("Scheduler started in API runtime")
+        else:
+            logger.info("Scheduler disabled in API runtime")
+
+        if effective_start_command_listener:
+            if controller.command_handler:
+                if (
+                    hasattr(controller.command_handler, "uses_webhook")
+                    and controller.command_handler.uses_webhook()
+                ):
+                    await controller.command_handler.initialize_webhook()
+                    app_state.telegram_uses_webhook = True
+                    logger.info("Telegram webhook started in API mode")
+                else:
+                    controller.start_command_listener()
+                    logger.info("Telegram command listener started in API mode")
+            else:
+                logger.warning("Telegram command handler not configured, listener not started")
+        else:
+            logger.info("Telegram command listener disabled in API runtime")
+
+        logger.info("API server initialized")
+        yield
+        # Shutdown
+        logger.info("API server shutting down")
+        if app_state.telegram_uses_webhook and controller.command_handler:
+            try:
+                await controller.command_handler.shutdown_webhook()
+            except Exception as exc:
+                logger.warning(f"Error shutting down Telegram webhook: {exc}")
+        app_state.cleanup()
+
+    app = FastAPI(title="Crypto News Analyzer API", lifespan=lifespan)
+
+    # Register routes by domain
+    register_news_routes(app)
+    register_intelligence_routes(app)
+    register_infrastructure_routes(app)
 
     return app

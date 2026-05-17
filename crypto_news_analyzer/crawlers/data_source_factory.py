@@ -366,6 +366,11 @@ def register_builtin_sources() -> None:
     注册内置数据源类型
 
     这个函数会在模块导入时自动调用，注册系统内置的数据源类型。
+
+    SHARED INFRASTRUCTURE — Registers crawlers for BOTH domains:
+      - NEWS: rss, x, rest_api  (DataSourcePurpose.NEWS, returns ContentItem)
+      - INTELLIGENCE: v2ex, telegram_group  (DataSourcePurpose.INTELLIGENCE, returns RawIntelligenceItem)
+    See DataSourcePurpose for domain gating.
     """
     factory = get_data_source_factory()
 

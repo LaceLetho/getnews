@@ -1,0 +1,99 @@
+ROUTE INVENTORY COMPARISON - Task 5
+=====================================
+
+Pre-change routes (27 application routes + 6 FastAPI auto-generated):
+DELETE /datasources/{datasource_id}
+GET /analyze/{job_id}
+GET /analyze/{job_id}/result
+GET /datasources
+GET /docs
+GET /docs/oauth2-redirect
+GET /health
+GET /intelligence/topic-runs
+GET /intelligence/topics
+GET /intelligence/topics/{topic_id}
+GET /intelligence/topics/{topic_id}/runs
+GET /openapi.json
+GET /redoc
+GET /semantic-search/{job_id}
+GET /semantic-search/{job_id}/result
+POST /analyze
+POST /datasources
+POST /intelligence/topics
+POST /intelligence/topics/{topic_id}/archive
+POST /intelligence/topics/{topic_id}/confirm
+POST /intelligence/topics/{topic_id}/merge-accept
+POST /intelligence/topics/{topic_id}/merge-preview
+POST /intelligence/topics/{topic_id}/pause
+POST /intelligence/topics/{topic_id}/revise
+POST /semantic-search
+POST /telegram/webhook
+PUT /intelligence/topics/{topic_id}/prompt
+
+Post-change routes:
+DELETE /datasources/{datasource_id}
+GET /analyze/{job_id}
+GET /analyze/{job_id}/result
+GET /datasources
+GET /docs
+GET /docs/oauth2-redirect
+GET /health
+GET /intelligence/topic-runs
+GET /intelligence/topics
+GET /intelligence/topics/{topic_id}
+GET /intelligence/topics/{topic_id}/runs
+GET /openapi.json
+GET /redoc
+GET /semantic-search/{job_id}
+GET /semantic-search/{job_id}/result
+POST /analyze
+POST /datasources
+POST /intelligence/topics
+POST /intelligence/topics/{topic_id}/archive
+POST /intelligence/topics/{topic_id}/confirm
+POST /intelligence/topics/{topic_id}/merge-accept
+POST /intelligence/topics/{topic_id}/merge-preview
+POST /intelligence/topics/{topic_id}/pause
+POST /intelligence/topics/{topic_id}/revise
+POST /semantic-search
+POST /telegram/webhook
+PUT /intelligence/topics/{topic_id}/prompt
+
+RESULT: PASS - Route inventories match exactly
+
+# Post-change Route Inventory (Task 5)
+# Verified via FastAPI app.routes introspection
+# Auto-generated OpenAPI routes excluded from comparison
+
+## News Routes (9)
+DELETE /datasources/{datasource_id}
+GET /analyze/{job_id}
+GET /analyze/{job_id}/result
+GET /datasources
+POST /analyze
+POST /datasources
+POST /semantic-search
+GET /semantic-search/{job_id}
+GET /semantic-search/{job_id}/result
+
+## Infrastructure Routes (2)
+GET /health
+POST /telegram/webhook
+
+## Intelligence Routes (12)
+GET /intelligence/topic-runs
+GET /intelligence/topics
+GET /intelligence/topics/{topic_id}
+GET /intelligence/topics/{topic_id}/runs
+POST /intelligence/topics
+POST /intelligence/topics/{topic_id}/archive
+POST /intelligence/topics/{topic_id}/confirm
+POST /intelligence/topics/{topic_id}/merge-accept
+POST /intelligence/topics/{topic_id}/merge-preview
+POST /intelligence/topics/{topic_id}/pause
+POST /intelligence/topics/{topic_id}/revise
+PUT /intelligence/topics/{topic_id}/prompt
+
+## Total: 23 application routes (9 news + 2 infra + 12 intelligence)
+## MATCH: Pre-change and post-change inventories are identical
+## +4 auto-generated OpenAPI routes: /docs, /docs/oauth2-redirect, /openapi.json, /redoc
