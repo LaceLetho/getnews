@@ -2,21 +2,27 @@ TASK-4 CRAWLER CONTRACT FIX - VALIDATION RESULTS
 ================================================
 
 CHANGES MADE:
-- data_source_interface.py: Changed crawl() return from List[ContentItem] to Sequence[Any]
-- Removed ContentItem import (no longer needed in interface)
-- Added docstring explaining NEWS crawlers return ContentItem, INTELLIGENCE crawlers return RawIntelligenceItem
+- data_source_interface.py: Changed crawl() return from List[ContentItem] to Sequence[CrawlItem]
+  where CrawlItem = Union[ContentItem, RawIntelligenceItem]
+- Added CrawlItem type alias (line 20)
+- Added module-level boundary comment (lines 6-8)
+- Enhanced class docstring with NEWS/INTELLIGENCE return type clarification (lines 29-33)
+- Enhanced crawl() docstring with per-domain return type documentation (lines 52-53)
+- Imports ContentItem and RawIntelligenceItem for CrawlItem Union
 
 QA SCRIPT RESULT: PASS
 - Module docstring mentions ContentItem: True
 - Module docstring mentions RawIntelligenceItem: True
 - crawl() doc mentions ContentItem: True
 - crawl() doc mentions RawIntelligenceItem/RawIntelligence: True
+- CrawlItem = Union[ContentItem, RawIntelligenceItem] defined: True
+- crawl() returns Sequence[CrawlItem] (not Sequence[Any]): True
 - telegram_intelligence_crawler crawl returns correct type: True
 - v2ex_intelligence_crawler crawl returns correct type: True
 
 TEST RESULTS:
 - test_data_source_factory.py (tests/shared/): 23 tests PASSED
-- test_intelligence_telegram_collector.py (tests/intelligence/): 7 tests PASSED  
+- test_intelligence_telegram_collector.py (tests/intelligence/): 7 tests PASSED
 - test_intelligence_v2ex_collector.py (tests/intelligence/): 3 tests PASSED
 - Total: 33 tests PASSED
 
@@ -26,8 +32,8 @@ MYPY STATUS:
 - Pre-existing mypy error in telegram_intelligence_crawler.py:79: "Returning Any from function declared to return list[RawIntelligenceItem]" - existed before Task 4
 
 VERIFICATION: Complete
-- Interface now correctly documents dual return type contract
-- Intelligence crawlers already declare correct return types (List[RawIntelligenceItem] or List[Any])
-- News crawlers already declare List[ContentItem]
+- Interface now correctly documents dual return type contract via CrawlItem = Union[ContentItem, RawIntelligenceItem]
+- Return type is Sequence[CrawlItem] (covariant), not Sequence[Any]
+- Intelligence crawlers declare correct return types (List[RawIntelligenceItem])
+- News crawlers declare List[ContentItem]
 - No behavior changes
-- Tests pass

@@ -134,7 +134,7 @@ class V2EXIntelligenceCrawler(DataSourceInterface):
 
         return True
 
-    def crawl(self, config: Dict[str, Any]) -> List[Any]:
+    def crawl(self, config: Dict[str, Any]) -> List[RawIntelligenceItem]:
         self.validate_config(config)
 
         api_version = str(config["api_version"]).strip().lower()

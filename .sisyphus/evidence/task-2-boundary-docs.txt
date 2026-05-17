@@ -1,1 +1,35 @@
-PASS
+TASK-2 BOUNDARY DOCS EVIDENCE
+==============================
+
+QA SCRIPT (.sisyphus/evidence/qa_task2_boundary.py) OUTPUT:
+README.md contains "dual-domain monorepo": True
+README.md lists intelligence/ as peer module: True
+README.md contains "同行域" (peer domain) description: True
+docs/ARCHITECTURE_BOUNDARIES.md exists: True
+ARCHITECTURE_BOUNDARIES.md contains News data flow (RSS/X/REST -> ContentItem): True
+ARCHITECTURE_BOUNDARIES.md contains Intelligence data flow (Telegram/V2EX -> RawIntelligenceItem): True
+ARCHITECTURE_BOUNDARIES.md contains Critical Boundary Rule: True
+ARCHITECTURE_BOUNDARIES.md contains Shared Infrastructure table: True
+ARCHITECTURE_BOUNDARIES.md contains Compatibility Contract: True
+ARCHITECTURE_BOUNDARIES.md contains Out of Scope section: True
+
+QA RESULT: PASS
+
+DOCUMENTATION DETAILS:
+
+README.md (verified content):
+  - Opening paragraph: "一个双域单体仓库（dual-domain monorepo）的加密货币新闻分析系统"
+  - Repository structure lists: intelligence/ # 情报主题研究管线（同行域）
+  - Features section has separate "新闻分析域（News）" and "情报研究域（Intelligence)" headings
+  - Intelligence described as News的"同行域" (peer domain), not Telegram sub-feature
+  - Intelligence features: AI主题研究管线, 群组消息收集, 独立API和命令面
+
+docs/ARCHITECTURE_BOUNDARIES.md (137 lines, verified content):
+  - Line 7: "single-package, dual-domain monorepo"
+  - Lines 15-17: News data flow: RSS/X/REST → ContentItem → LLMAnalyzer → ReportGenerator
+  - Lines 31-33: Intelligence data flow: Telegram/V2EX → RawIntelligenceItem → TopicResearchScheduler → TopicFinding
+  - Lines 43-44: Critical Boundary Rule: "Never mix ContentItem with RawIntelligenceItem"
+  - Lines 53-67: Shared Infrastructure table (11 components with domain awareness column)
+  - Lines 71-101: Compatibility Contract (HTTP endpoints, Telegram commands, CLI modes, env vars, DB, config)
+  - Lines 105-120: Scope (Phase 1 documentation, Phase 2 code grouping)
+  - Lines 122-137: Out of Scope (no repo/DB/service split, no renames, no config changes)

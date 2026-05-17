@@ -258,14 +258,14 @@ Wave 3: Task 8 compatibility audit and final local verification.
   - Pattern: `crypto_news_analyzer/crawlers/rest_api_crawler.py` - News crawler expected to return `ContentItem`.
   - Pattern: `crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py` - Intelligence crawler expected to return `RawIntelligenceItem`.
   - Pattern: `crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py` - Intelligence crawler expected to return raw intelligence items.
-  - Test: `tests/test_data_source_factory.py` - Existing factory/crawler tests to extend.
-  - Test: `tests/test_intelligence_telegram_collector.py` and `tests/test_intelligence_v2ex_collector.py` - Existing intelligence crawler tests.
+  - Test: `tests/shared/test_data_source_factory.py` - Existing factory/crawler tests to extend.
+  - Test: `tests/intelligence/test_intelligence_telegram_collector.py` and `tests/intelligence/test_intelligence_v2ex_collector.py` - Existing intelligence crawler tests.
 
   **Acceptance Criteria**:
   - [ ] `data_source_interface.py` no longer states or implies all crawlers return only `List[ContentItem]`.
   - [ ] News crawler annotations remain compatible with `ContentItem`.
   - [ ] Intelligence crawler annotations explicitly allow or state `RawIntelligenceItem`.
-  - [ ] `uv run pytest tests/test_data_source_factory.py tests/test_intelligence_telegram_collector.py tests/test_intelligence_v2ex_collector.py -v` exits 0.
+  - [ ] `uv run pytest tests/shared/test_data_source_factory.py tests/intelligence/test_intelligence_telegram_collector.py tests/intelligence/test_intelligence_v2ex_collector.py -v` exits 0.
   - [ ] `uv run mypy crypto_news_analyzer/` has no new errors attributable to this change.
 
   **QA Scenarios**:
@@ -278,12 +278,12 @@ Wave 3: Task 8 compatibility audit and final local verification.
 
   Scenario: Crawler factory and collectors still pass
     Tool: Bash
-    Steps: Run `uv run pytest tests/test_data_source_factory.py tests/test_intelligence_telegram_collector.py tests/test_intelligence_v2ex_collector.py -v` and `uv run mypy crypto_news_analyzer/`.
+    Steps: Run `uv run pytest tests/shared/test_data_source_factory.py tests/intelligence/test_intelligence_telegram_collector.py tests/intelligence/test_intelligence_v2ex_collector.py -v` and `uv run mypy crypto_news_analyzer/`.
     Expected: Targeted pytest exits 0; mypy has no new crawler-interface errors.
     Evidence: .sisyphus/evidence/task-4-validation.txt
   ```
 
-  **Commit**: NO | Optional message if user explicitly requests commits later: `refactor(crawlers): clarify news and intelligence crawl item types` | Files: [`crypto_news_analyzer/crawlers/data_source_interface.py`, `crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py`, `crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py`, `tests/test_data_source_factory.py`, `tests/test_intelligence_telegram_collector.py`, `tests/test_intelligence_v2ex_collector.py`]
+  **Commit**: NO | Optional message if user explicitly requests commits later: `refactor(crawlers): clarify news and intelligence crawl item types` | Files: [`crypto_news_analyzer/crawlers/data_source_interface.py`, `crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py`, `crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py`, `tests/shared/test_data_source_factory.py`, `tests/intelligence/test_intelligence_telegram_collector.py`, `tests/intelligence/test_intelligence_v2ex_collector.py`]
 
 - [x] 5. Group FastAPI routes by domain without changing public API behavior
 
@@ -299,16 +299,16 @@ Wave 3: Task 8 compatibility audit and final local verification.
 
   **References**:
   - Pattern: `crypto_news_analyzer/api_server.py` - Current app factory and route definitions.
-  - Test: `tests/test_api_server.py` - Existing news/analyze API tests.
-  - Test: `tests/test_api_server_semantic_search.py` - Existing semantic search API tests.
-  - Test: `tests/test_intelligence_api.py` - Existing intelligence route tests.
-  - Test: `tests/test_topic_findings_api.py` - Existing topic findings route tests.
+  - Test: `tests/news/test_api_server.py` - Existing news/analyze API tests.
+  - Test: `tests/news/test_api_server_semantic_search.py` - Existing semantic search API tests.
+  - Test: `tests/intelligence/test_intelligence_api.py` - Existing intelligence route tests.
+  - Test: `tests/intelligence/test_topic_findings_api.py` - Existing topic findings route tests.
   - Test: `tests/*datasource*.py` - Existing datasource tests discovered in repo; include any datasource API coverage if present.
   - API/Type: `crypto_news_analyzer/domain/models.py` - Request/response domain models used by routes.
 
   **Acceptance Criteria**:
   - [ ] Pre-change and post-change route inventories match for path+method across `/health`, `/analyze`, `/semantic-search`, `/datasources`, and `/intelligence/*`.
-  - [ ] `uv run pytest tests/test_api_server.py tests/test_api_server_semantic_search.py tests/test_intelligence_api.py tests/test_topic_findings_api.py tests/test_telegram_command_handler_datasource.py tests/test_datasource_bootstrap.py tests/test_datasource_repository.py tests/test_intelligence_datasource_payloads.py -v` exits 0, or any absent file is omitted with evidence from `glob tests/*datasource*.py`.
+  - [ ] `uv run pytest tests/news/test_api_server.py tests/news/test_api_server_semantic_search.py tests/intelligence/test_intelligence_api.py tests/intelligence/test_topic_findings_api.py tests/shared/test_telegram_command_handler_datasource.py tests/shared/test_datasource_bootstrap.py tests/shared/test_datasource_repository.py tests/intelligence/test_intelligence_datasource_payloads.py -v` exits 0, or any absent file is omitted with evidence from `glob tests/*datasource*.py`.
   - [ ] App factory import path from `crypto_news_analyzer.api_server` remains valid.
   - [ ] No new FastAPI app is introduced.
 
@@ -322,12 +322,12 @@ Wave 3: Task 8 compatibility audit and final local verification.
 
   Scenario: API behavior tests pass
     Tool: Bash
-    Steps: Run `uv run pytest tests/test_api_server.py tests/test_api_server_semantic_search.py tests/test_intelligence_api.py tests/test_topic_findings_api.py tests/test_telegram_command_handler_datasource.py tests/test_datasource_bootstrap.py tests/test_datasource_repository.py tests/test_intelligence_datasource_payloads.py -v`, omitting only files proven absent by a file glob.
+    Steps: Run `uv run pytest tests/news/test_api_server.py tests/news/test_api_server_semantic_search.py tests/intelligence/test_intelligence_api.py tests/intelligence/test_topic_findings_api.py tests/shared/test_telegram_command_handler_datasource.py tests/shared/test_datasource_bootstrap.py tests/shared/test_datasource_repository.py tests/intelligence/test_intelligence_datasource_payloads.py -v`, omitting only files proven absent by a file glob.
     Expected: Exit code 0.
     Evidence: .sisyphus/evidence/task-5-api-tests.txt
   ```
 
-  **Commit**: NO | Optional message if user explicitly requests commits later: `refactor(api): group news and intelligence routes` | Files: [`crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/api/news_routes.py`, `crypto_news_analyzer/api/intelligence_routes.py`, `tests/test_api_server.py`, `tests/test_api_server_semantic_search.py`, `tests/test_intelligence_api.py`, `tests/test_topic_findings_api.py`, `tests/*datasource*.py`]
+  **Commit**: NO | Optional message if user explicitly requests commits later: `refactor(api): group news and intelligence routes` | Files: [`crypto_news_analyzer/api_server.py`, `crypto_news_analyzer/api/news_routes.py`, `crypto_news_analyzer/api/intelligence_routes.py`, `tests/news/test_api_server.py`, `tests/news/test_api_server_semantic_search.py`, `tests/intelligence/test_intelligence_api.py`, `tests/intelligence/test_topic_findings_api.py`, `tests/shared/*datasource*.py`]
 
 - [x] 6. Group Telegram commands by domain without changing command behavior
 
@@ -343,16 +343,16 @@ Wave 3: Task 8 compatibility audit and final local verification.
 
   **References**:
   - Pattern: `crypto_news_analyzer/reporters/telegram_command_handler.py` - Current mixed command handler.
-  - Test: `tests/test_telegram_command_handler_analyze.py` - News analyze command tests.
-  - Test: `tests/test_telegram_command_handler_semantic_search.py` - Semantic search command tests.
-  - Test: `tests/test_intelligence_telegram_commands.py` - Topic command tests.
-  - Test: `tests/test_topic_findings_telegram.py` - Topic merge Telegram tests.
+  - Test: `tests/news/test_telegram_command_handler_analyze.py` - News analyze command tests.
+  - Test: `tests/news/test_telegram_command_handler_semantic_search.py` - Semantic search command tests.
+  - Test: `tests/intelligence/test_intelligence_telegram_commands.py` - Topic command tests.
+  - Test: `tests/intelligence/test_topic_findings_telegram.py` - Topic merge Telegram tests.
   - API/Type: `crypto_news_analyzer/models.py` - Telegram command config and chat context models.
 
   **Acceptance Criteria**:
   - [ ] Command inventory before and after matches exactly for command names and aliases.
   - [ ] Authorization and rate-limit checks remain centralized and apply to both domains.
-  - [ ] `uv run pytest tests/test_telegram_command_handler_analyze.py tests/test_telegram_command_handler_semantic_search.py tests/test_intelligence_telegram_commands.py tests/test_topic_findings_telegram.py -v` exits 0.
+  - [ ] `uv run pytest tests/news/test_telegram_command_handler_analyze.py tests/news/test_telegram_command_handler_semantic_search.py tests/intelligence/test_intelligence_telegram_commands.py tests/intelligence/test_topic_findings_telegram.py -v` exits 0.
   - [ ] Help output still includes both news and topic commands with domain grouping.
 
   **QA Scenarios**:
@@ -365,12 +365,12 @@ Wave 3: Task 8 compatibility audit and final local verification.
 
   Scenario: Telegram behavior tests pass
     Tool: Bash
-    Steps: Run `uv run pytest tests/test_telegram_command_handler_analyze.py tests/test_telegram_command_handler_semantic_search.py tests/test_intelligence_telegram_commands.py tests/test_topic_findings_telegram.py -v`.
+    Steps: Run `uv run pytest tests/news/test_telegram_command_handler_analyze.py tests/news/test_telegram_command_handler_semantic_search.py tests/intelligence/test_intelligence_telegram_commands.py tests/intelligence/test_topic_findings_telegram.py -v`.
     Expected: Exit code 0.
     Evidence: .sisyphus/evidence/task-6-telegram-tests.txt
   ```
 
-  **Commit**: NO | Optional message if user explicitly requests commits later: `refactor(telegram): group news and topic commands` | Files: [`crypto_news_analyzer/reporters/telegram_command_handler.py`, `crypto_news_analyzer/reporters/telegram_news_commands.py`, `crypto_news_analyzer/reporters/telegram_intelligence_commands.py`, `tests/test_telegram_command_handler_analyze.py`, `tests/test_telegram_command_handler_semantic_search.py`, `tests/test_intelligence_telegram_commands.py`, `tests/test_topic_findings_telegram.py`]
+  **Commit**: NO | Optional message if user explicitly requests commits later: `refactor(telegram): group news and topic commands` | Files: [`crypto_news_analyzer/reporters/telegram_command_handler.py`, `crypto_news_analyzer/reporters/telegram_news_commands.py`, `crypto_news_analyzer/reporters/telegram_intelligence_commands.py`, `tests/news/test_telegram_command_handler_analyze.py`, `tests/news/test_telegram_command_handler_semantic_search.py`, `tests/intelligence/test_intelligence_telegram_commands.py`, `tests/intelligence/test_topic_findings_telegram.py`]
 
 - [x] 7. Organize tests by domain only when import-safe
 
@@ -386,9 +386,9 @@ Wave 3: Task 8 compatibility audit and final local verification.
 
   **References**:
   - Pattern: `tests/` - Current flat test directory.
-  - Test: `tests/test_intelligence_api.py`, `tests/test_topic_research_scheduler.py`, `tests/test_topic_prompt_workflow.py` - Intelligence tests.
-  - Test: `tests/test_llm_analyzer.py`, `tests/test_report_generator.py`, `tests/test_api_server.py` - News tests.
-  - Test: `tests/test_data_source_factory.py`, `tests/test_config_manager.py`, `tests/test_ingestion_runtime.py` - Likely shared tests.
+  - Test: `tests/intelligence/test_intelligence_api.py`, `tests/intelligence/test_topic_research_scheduler.py`, `tests/intelligence/test_topic_prompt_workflow.py` - Intelligence tests.
+  - Test: `tests/news/test_llm_analyzer.py`, `tests/news/test_report_generator.py`, `tests/news/test_api_server.py` - News tests.
+  - Test: `tests/shared/test_data_source_factory.py`, `tests/shared/test_config_manager.py`, `tests/shared/test_ingestion_runtime.py` - Likely shared tests.
   - Pattern: `pyproject.toml` - Pytest, black, mypy, flake8 config if present.
 
   **Acceptance Criteria**:
@@ -466,10 +466,10 @@ Wave 3: Task 8 compatibility audit and final local verification.
 > All QA and evidence collection is agent-executed; the explicit user "okay" is a workflow approval gate after evidence is presented, not a manual QA requirement.
 > **Do NOT auto-proceed after verification. Wait for user's explicit approval before marking work complete.**
 > **Never mark F1-F4 as checked before getting user's okay.** Rejection or user feedback -> fix -> re-run -> present again -> wait for okay.
-- [x] F1. Plan Compliance Audit — oracle
-- [x] F2. Code Quality Review — unspecified-high
-- [x] F3. Real Manual QA — unspecified-high
-- [x] F4. Scope Fidelity Check — deep
+- [ ] F1. Plan Compliance Audit — oracle
+- [ ] F2. Code Quality Review — unspecified-high
+- [ ] F3. Real Manual QA — unspecified-high
+- [ ] F4. Scope Fidelity Check — deep
 
 ## Commit Strategy
 - Do not commit unless the user explicitly requests commits.

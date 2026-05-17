@@ -1,1 +1,27 @@
-PASS
+TASK-2 API GUIDE LINK EVIDENCE
+===============================
+
+QA SCRIPT (.sisyphus/evidence/qa_task2_api_guide.py) OUTPUT:
+README.md references docs/AI_ANALYZE_API_GUIDE.md: True
+README.md contains POST /analyze async workflow description: True
+docs/AI_ANALYZE_API_GUIDE.md exists and is unchanged: True
+
+QA RESULT: PASS
+
+VERIFICATION DETAILS:
+
+README.md references to AI_ANALYZE_API_GUIDE.md (3 occurrences):
+  1. Line ~13: "如果你要通过 HTTP API 调用新闻分析接口...请先阅读 [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)"
+  2. Line ~52: "如果你要通过 HTTP API 调用新闻分析接口...请先阅读 [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)"
+  3. Line ~175: "调用 POST /analyze 前，建议先阅读 [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)"
+
+POST /analyze async workflow preserved in README.md:
+  - "POST /analyze 创建任务，轮询获取结果"
+  - Request constraint: hours > 0, user_id validation
+  - Response: 202 Accepted with job_id, status, status_url, result_url, time_window_hours
+  - Status flow: queued → running → completed / failed
+
+docs/AI_ANALYZE_API_GUIDE.md:
+  - File exists at expected path
+  - Not modified by Task 2 (boundary documentation only)
+  - Remains the authoritative reference for /analyze API contract

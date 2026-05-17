@@ -1,4 +1,25 @@
-"""Dump route inventory from api_server.py for comparison."""
+"""Dump route inventory from api_server.py for comparison.
+
+Verification utility used during the Agent Boundary Refactor (Task 5)
+to capture pre-change and post-change HTTP route inventories. Outputs
+sorted "METHOD PATH" lines for all registered FastAPI routes, excluding
+only HEAD and OPTIONS. FastAPI documentation routes such as /docs, /redoc,
+and /openapi.json are intentionally included so two inventories from the
+same app factory can be diffed exactly.
+
+Usage:
+    uv run python scripts/dump_routes.py
+
+Output example:
+    DELETE /datasources/{datasource_id}
+    GET /health
+    POST /analyze
+    ...
+
+The output is designed to be diffed against a saved baseline to verify
+that route grouping refactors did not change public endpoint paths or methods.
+"""
+
 import sys
 import os
 import logging

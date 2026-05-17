@@ -6,15 +6,25 @@ Module doc mentions ContentItem: True
 Module doc mentions RawIntelligenceItem: True
 crawl() doc mentions ContentItem: True
 crawl() doc mentions RawIntelligenceItem/RawIntelligence: True
-telegram_intelligence_crawler crawl returns List[RawIntelligenceItem] or List[Any]: True
-v2ex_intelligence_crawler crawl returns List[RawIntelligenceItem] or List[Any]: True
+CrawlItem = Union[ContentItem, RawIntelligenceItem] defined: True
+crawl() returns Sequence[CrawlItem] (not Sequence[Any]): True
+telegram_intelligence_crawler crawl returns List[RawIntelligenceItem]: True
+v2ex_intelligence_crawler crawl returns List[RawIntelligenceItem]: True
 
 QA RESULT: PASS
 
 PYTEST RUN:
-Command: /data/.local/bin/uv run pytest tests/shared/test_data_source_factory.py tests/intelligence/test_intelligence_telegram_collector.py tests/intelligence/test_intelligence_v2ex_collector.py -v
+Command: uv run pytest tests/shared/test_data_source_factory.py tests/intelligence/test_intelligence_telegram_collector.py tests/intelligence/test_intelligence_v2ex_collector.py -v
 Result: 33 passed in ~4s
 
 MYPY (no new errors from change):
-Command: /data/.local/bin/uv run mypy crypto_news_analyzer/crawlers/data_source_interface.py crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py
+Command: uv run mypy crypto_news_analyzer/crawlers/data_source_interface.py crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py
 Only pre-existing error in these files: telegram_intelligence_crawler.py:79 "Returning Any from function declared to return list[RawIntelligenceItem]" - pre-existing
+
+INTERFACE CONTRACT (data_source_interface.py):
+  - Line 20: CrawlItem = Union[ContentItem, RawIntelligenceItem]
+  - Line 48: def crawl(self, config: Dict[str, Any]) -> Sequence[CrawlItem]
+  - Lines 29-33: Class docstring clarifies NEWS vs INTELLIGENCE return types
+  - Lines 52-53: crawl() docstring documents per-domain return types
+  - No longer implies all crawlers return only ContentItem
+  - Uses Sequence (covariant) not List (invariant) for return type flexibility
