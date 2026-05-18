@@ -7,6 +7,7 @@ These adapters wrap the existing DataManager and CacheManager.
 """
 
 import json
+import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple, Set, cast
 
@@ -39,6 +40,8 @@ from ..storage.data_manager import DataManager
 from ..storage.cache_manager import SentMessageCacheManager
 from ..utils.errors import StorageError, UnsupportedBackendError
 from ..models import StorageConfig, ContentItem, CrawlStatus
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_optional_datetime(value: Any) -> Optional[datetime]:
@@ -641,9 +644,13 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 (intelligence_topic_id,),
             )
             row = cursor.fetchone()
-        if row and row[0] is not None:
-            return int(row[0])
-        return 0
+        max_version = int(row[0]) if (row and row[0] is not None) else 0
+        logger.debug(
+            "get_max_prompt_version: topic_id=%s max_version=%d",
+            intelligence_topic_id,
+            max_version,
+        )
+        return max_version
 
     def save_topic_prompt(self, prompt: TopicPrompt) -> str:
         columns = [

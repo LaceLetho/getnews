@@ -141,10 +141,11 @@ class _TopicPromptLLMService:
 
         completions = getattr(getattr(request_client, "chat", None), "completions", None)
         if completions is not None and hasattr(completions, "create"):
+            user_content = json.dumps(user_payload, ensure_ascii=False)
             kwargs: Dict[str, Any] = {
                 "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+                    {"role": "user", "content": user_content},
                 ],
                 "response_format": {"type": "json_object"},
                 # Use deepseek-v4-flash with thinking enabled for prompt
@@ -157,21 +158,72 @@ class _TopicPromptLLMService:
                 "Topic prompt LLM request starting: model=deepseek-v4-flash thinking=enabled max_retries=%s",
                 max_retries,
             )
+            logger.debug(
+                "Topic prompt LLM system prompt (first 500 chars): %s",
+                system_prompt[:500],
+            )
+            logger.debug(
+                "Topic prompt LLM user payload: %s",
+                user_content[:2000],
+            )
             try:
                 response = completions.create(**kwargs)
             except Exception:
-                logger.exception("Topic prompt LLM request failed")
+                logger.exception(
+                    "Topic prompt LLM request failed. "
+                    "System prompt (full): %s\nUser payload (full): %s",
+                    system_prompt,
+                    user_content,
+                )
                 raise
             logger.info("Topic prompt LLM response received")
             content = response.choices[0].message.content
+            logger.debug(
+                "Topic prompt LLM raw response content (first 2000 chars): %s",
+                str(content)[:2000],
+            )
         elif hasattr(self.llm_client, "complete"):
+            logger.info("Topic prompt LLM using legacy complete() interface")
             content = self.llm_client.complete(system_prompt, user_payload)
+            logger.debug(
+                "Topic prompt LLM complete() raw response: %s",
+                str(content)[:2000],
+            )
         else:
             raise TypeError("llm_client must expose chat.completions.create() or complete()")
 
         if isinstance(content, dict):
+            logger.info("Topic prompt LLM returned dict directly")
             return dict(content)
-        return json.loads(str(content))
+
+        # Parse JSON string response
+        raw_str = str(content)
+        try:
+            parsed = json.loads(raw_str)
+        except json.JSONDecodeError as json_err:
+            logger.error(
+                "Topic prompt LLM returned invalid JSON. "
+                "Raw content (first 2000 chars): %s",
+                raw_str[:2000],
+            )
+            raise ValueError(
+                f"LLM returned invalid JSON: {json_err}. "
+                f"Raw response (first 500 chars): {raw_str[:500]}"
+            ) from json_err
+
+        if not isinstance(parsed, dict):
+            logger.error(
+                "Topic prompt LLM returned non-dict JSON type=%s value=%r",
+                type(parsed).__name__,
+                parsed,
+            )
+            raise ValueError(
+                f"LLM returned unexpected JSON type {type(parsed).__name__} "
+                f"(expected a JSON object/dict). Value: {parsed!r}"
+            )
+
+        logger.info("Topic prompt LLM parsed response successfully")
+        return parsed
 
 
 class TopicPromptGenerator(_TopicPromptLLMService):
@@ -229,21 +281,75 @@ class TopicPromptReviser(_TopicPromptLLMService):
         and override with the server-computed value to prevent duplicates.
         """
         current_version = _parse_prompt_version(existing_prompt.prompt_version)
+        logger.info(
+            "Revising prompt for topic %s: current_version=%s expected_version=%s "
+            "existing_prompt_id=%s existing_status=%s feedback_len=%d",
+            existing_prompt.intelligence_topic_id,
+            current_version,
+            expected_version,
+            existing_prompt.id,
+            existing_prompt.status,
+            len(user_feedback),
+        )
+        logger.debug(
+            "Revision user_feedback: %s",
+            user_feedback[:500],
+        )
+        logger.debug(
+            "Existing prompt text (first 1000 chars): %s",
+            existing_prompt.prompt_text[:1000],
+        )
         if expected_version <= current_version:
             raise ValueError(
                 f"expected_version ({expected_version}) must be greater than "
                 f"current_version ({current_version})"
             )
+        llm_user_payload = {
+            "existing_prompt": existing_prompt.prompt_text,
+            "user_feedback": user_feedback,
+            "version": current_version,
+            "expected_version": expected_version,
+        }
+        logger.info(
+            "Calling LLM for prompt revision: topic=%s version=%s->%s",
+            existing_prompt.intelligence_topic_id,
+            current_version,
+            expected_version,
+        )
         payload = self._call_llm(
             self._load_template("topic_prompt_revision_prompt.md"),
-            {
-                "existing_prompt": existing_prompt.prompt_text,
-                "user_feedback": user_feedback,
-                "version": current_version,
-                "expected_version": expected_version,
-            },
+            llm_user_payload,
         )
-        revision = TopicPromptRevision.model_validate(payload)
+        logger.info(
+            "LLM revision response received for topic %s: type=%s",
+            existing_prompt.intelligence_topic_id,
+            type(payload).__name__,
+        )
+        logger.debug(
+            "LLM revision payload keys: %s",
+            list(payload.keys()) if isinstance(payload, dict) else "N/A",
+        )
+        try:
+            revision = TopicPromptRevision.model_validate(payload)
+        except Exception as validate_err:
+            logger.error(
+                "Failed to validate LLM revision response for topic %s. "
+                "Raw payload (first 2000 chars): %s",
+                existing_prompt.intelligence_topic_id,
+                json.dumps(payload, ensure_ascii=False, default=str)[:2000],
+            )
+            raise ValueError(
+                f"LLM revision response validation failed: {validate_err}. "
+                f"Raw payload keys: {list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__}"
+            ) from validate_err
+
+        logger.info(
+            "LLM revision validated: topic_name=%r llm_version=%s revision_note=%r confidence=%s",
+            revision.topic_name,
+            revision.version,
+            revision.revision_note[:100] if revision.revision_note else "",
+            revision.confidence,
+        )
         # The LLM is instructed to return expected_version, but we enforce it
         # server-side to prevent any LLM hallucination from causing duplicates.
         if revision.version != expected_version:
@@ -255,6 +361,17 @@ class TopicPromptReviser(_TopicPromptLLMService):
         sanitized_text, sanitize_warnings = _sanitize_prompt_text(
             revision.revised_prompt
         )
+        if sanitize_warnings:
+            logger.warning(
+                "Prompt revision sanitization warnings for topic %s: %s",
+                existing_prompt.intelligence_topic_id,
+                sanitize_warnings,
+            )
+        logger.info(
+            "Revision sanitized: original_len=%d sanitized_len=%d",
+            len(revision.revised_prompt),
+            len(sanitized_text),
+        )
         audit_entry = {
             "action": "revised",
             "topic_name": revision.topic_name,
@@ -264,7 +381,7 @@ class TopicPromptReviser(_TopicPromptLLMService):
         }
         if sanitize_warnings:
             audit_entry["sanitize_warnings"] = sanitize_warnings
-        return TopicPrompt.create(
+        result = TopicPrompt.create(
             intelligence_topic_id=existing_prompt.intelligence_topic_id,
             prompt_version=str(expected_version),
             prompt_text=sanitized_text,
@@ -276,6 +393,13 @@ class TopicPromptReviser(_TopicPromptLLMService):
                 audit_entry,
             ],
         )
+        logger.info(
+            "Revision complete: topic=%s new_version=%s new_prompt_id=%s",
+            existing_prompt.intelligence_topic_id,
+            expected_version,
+            result.id,
+        )
+        return result
 
 
 def _parse_prompt_version(value: str) -> int:
@@ -382,22 +506,52 @@ class TopicPromptWorkflowService:
         in the database to prevent duplicate key violations — the LLM is never
         trusted to determine the version on its own.
         """
+        logger.info(
+            "revise_prompt started: topic_id=%s feedback_len=%d activated_by=%s",
+            topic_id,
+            len(feedback),
+            activated_by,
+        )
         prompts = self.repository.list_topic_prompts(topic_id, limit=1)
         if not prompts:
             raise ValueError(f"No prompt found for topic {topic_id}")
         existing = prompts[0]
+        logger.info(
+            "revise_prompt existing prompt: id=%s version=%s status=%s created_at=%s",
+            existing.id,
+            existing.prompt_version,
+            existing.status,
+            existing.created_at,
+        )
 
         # Compute the next version server-side from the actual DB max, not from
         # the "most recent" prompt (which is ordered by timestamp, not version).
         max_version = self.repository.get_max_prompt_version(topic_id)
         expected_version = max_version + 1
+        logger.info(
+            "revise_prompt version computation: existing_version=%s max_version=%d expected_version=%d",
+            existing.prompt_version,
+            max_version,
+            expected_version,
+        )
 
         revised = self._get_reviser().revise(
             existing, feedback,
             expected_version=expected_version,
             activated_by=activated_by,
         )
+        logger.info(
+            "revise_prompt saving new version: topic_id=%s new_version=%d new_id=%s",
+            topic_id,
+            expected_version,
+            revised.id,
+        )
         self.repository.create_topic_prompt_version(revised)
+        logger.info(
+            "revise_prompt complete: topic_id=%s new_version=%d",
+            topic_id,
+            expected_version,
+        )
         return revised
 
     def replace_prompt_manual(

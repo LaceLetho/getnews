@@ -2126,10 +2126,19 @@ class TelegramCommandHandler:
                     send_error,
                 )
         except Exception as e:
-            self.logger.exception("后台处理/topic_revise失败: topic_id=%s error=%s", topic_id, e)
+            self.logger.exception(
+                "后台处理/topic_revise失败: topic_id=%s error_type=%s error=%s",
+                topic_id,
+                type(e).__name__,
+                e,
+            )
             self._log_command_execution("/topic_revise", user_id, username, topic_id, False, str(e))
             try:
-                await self._reply_text_with_timeout(msg, f"❌ 修订失败: {str(e)}")
+                error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+                await self._reply_text_with_timeout(
+                    msg,
+                    f"❌ 修订失败: {error_detail}\n\n请查看服务器日志获取详细信息。",
+                )
             except Exception as send_error:
                 self.logger.error("发送/topic_revise失败响应失败: %s", send_error)
         finally:
