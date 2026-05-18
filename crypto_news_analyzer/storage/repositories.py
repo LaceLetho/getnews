@@ -628,6 +628,23 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
     def create_topic_prompt_version(self, prompt: TopicPrompt) -> str:
         return self.save_topic_prompt(prompt)
 
+    def get_max_prompt_version(self, intelligence_topic_id: str) -> int:
+        """Return the highest prompt_version (as integer) for a topic, or 0 if none exist."""
+        with self._data._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._data._sql(
+                    "SELECT MAX(CAST(prompt_version AS INTEGER)) "
+                    "FROM intelligence_topic_prompt_versions "
+                    "WHERE intelligence_topic_id = ?"
+                ),
+                (intelligence_topic_id,),
+            )
+            row = cursor.fetchone()
+        if row and row[0] is not None:
+            return int(row[0])
+        return 0
+
     def save_topic_prompt(self, prompt: TopicPrompt) -> str:
         columns = [
             "id",
@@ -651,6 +668,23 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         assignments = ", ".join(f"{column} = {excluded}.{column}" for column in columns[3:])
         with self._data._lock:
             with self._data._get_connection() as conn:
+                # Guard against inserting a duplicate (intelligence_topic_id,
+                # prompt_version) pair that belongs to a DIFFERENT prompt id.
+                # Same-id updates (e.g. confirm_prompt archiving) are allowed.
+                existing = conn.cursor().execute(
+                    self._data._sql(
+                        "SELECT id FROM intelligence_topic_prompt_versions "
+                        "WHERE intelligence_topic_id = ? AND prompt_version = ? "
+                        "LIMIT 1"
+                    ),
+                    (prompt.intelligence_topic_id, prompt.prompt_version),
+                ).fetchone()
+                if existing and existing[0] != prompt.id:
+                    raise ValueError(
+                        f"Prompt version {prompt.prompt_version} already exists "
+                        f"for topic {prompt.intelligence_topic_id} "
+                        f"(existing prompt id: {existing[0]})"
+                    )
                 conn.cursor().execute(
                     self._data._sql(f"""
                     INSERT INTO intelligence_topic_prompt_versions ({', '.join(columns)})

@@ -461,6 +461,25 @@ class IntelligenceRepository(ABC):
     def create_topic_prompt_version(self, prompt: TopicPrompt) -> str:
         return self.save_topic_prompt(prompt)
 
+    def get_max_prompt_version(self, intelligence_topic_id: str) -> int:
+        """Return the highest prompt_version (as integer) for a topic, or 0 if none exist.
+
+        Subclasses MUST override this with a direct MAX query — the default
+        implementation falls back to scanning all prompts for the topic.
+        """
+        prompts = self.list_topic_prompts(intelligence_topic_id, limit=0)
+        if not prompts:
+            return 0
+        max_version = 0
+        for p in prompts:
+            try:
+                v = int(str(p.prompt_version).strip())
+                if v > max_version:
+                    max_version = v
+            except (TypeError, ValueError):
+                pass
+        return max_version
+
     def get_active_topic_prompt(self, topic_id: str) -> Optional[TopicPrompt]:
         prompts = self.list_topic_prompts(topic_id, status="active", limit=1)
         return prompts[0] if prompts else None

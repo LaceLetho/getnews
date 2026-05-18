@@ -218,20 +218,40 @@ class TopicPromptReviser(_TopicPromptLLMService):
         self,
         existing_prompt: TopicPrompt,
         user_feedback: str,
+        expected_version: int,
         activated_by: Optional[str] = None,
     ) -> TopicPrompt:
+        """Revise a prompt, producing version `expected_version`.
+
+        The caller is responsible for determining the correct next version
+        (typically max_version + 1 from the database).  The LLM is still asked
+        to return a version number, but we validate it against `expected_version`
+        and override with the server-computed value to prevent duplicates.
+        """
         current_version = _parse_prompt_version(existing_prompt.prompt_version)
+        if expected_version <= current_version:
+            raise ValueError(
+                f"expected_version ({expected_version}) must be greater than "
+                f"current_version ({current_version})"
+            )
         payload = self._call_llm(
             self._load_template("topic_prompt_revision_prompt.md"),
             {
                 "existing_prompt": existing_prompt.prompt_text,
                 "user_feedback": user_feedback,
                 "version": current_version,
+                "expected_version": expected_version,
             },
         )
         revision = TopicPromptRevision.model_validate(payload)
-        if revision.version <= current_version:
-            raise ValueError("revised prompt version must increment")
+        # The LLM is instructed to return expected_version, but we enforce it
+        # server-side to prevent any LLM hallucination from causing duplicates.
+        if revision.version != expected_version:
+            logger.warning(
+                "LLM returned version %s but expected %s; using server-computed version",
+                revision.version,
+                expected_version,
+            )
         sanitized_text, sanitize_warnings = _sanitize_prompt_text(
             revision.revised_prompt
         )
@@ -246,7 +266,7 @@ class TopicPromptReviser(_TopicPromptLLMService):
             audit_entry["sanitize_warnings"] = sanitize_warnings
         return TopicPrompt.create(
             intelligence_topic_id=existing_prompt.intelligence_topic_id,
-            prompt_version=str(revision.version),
+            prompt_version=str(expected_version),
             prompt_text=sanitized_text,
             schema_version=revision.schema_version,
             created_by=existing_prompt.created_by,
@@ -356,13 +376,27 @@ class TopicPromptWorkflowService:
         feedback: str,
         activated_by: Optional[str] = None,
     ) -> TopicPrompt:
-        """Revise the most recent prompt for a topic using LLM and user feedback."""
+        """Revise the most recent prompt for a topic using LLM and user feedback.
+
+        The next version number is computed server-side from MAX(prompt_version)
+        in the database to prevent duplicate key violations — the LLM is never
+        trusted to determine the version on its own.
+        """
         prompts = self.repository.list_topic_prompts(topic_id, limit=1)
         if not prompts:
             raise ValueError(f"No prompt found for topic {topic_id}")
         existing = prompts[0]
 
-        revised = self._get_reviser().revise(existing, feedback, activated_by=activated_by)
+        # Compute the next version server-side from the actual DB max, not from
+        # the "most recent" prompt (which is ordered by timestamp, not version).
+        max_version = self.repository.get_max_prompt_version(topic_id)
+        expected_version = max_version + 1
+
+        revised = self._get_reviser().revise(
+            existing, feedback,
+            expected_version=expected_version,
+            activated_by=activated_by,
+        )
         self.repository.create_topic_prompt_version(revised)
         return revised
 
@@ -381,9 +415,12 @@ class TopicPromptWorkflowService:
                 f"prompt_text exceeds maximum length of {self.max_prompt_length} characters"
             )
 
-        prompts = self.repository.list_topic_prompts(topic_id, limit=1)
-        next_version = _parse_prompt_version(prompts[0].prompt_version) + 1 if prompts else 1
+        # Use MAX(prompt_version) from DB — not timestamp-ordered query —
+        # to guarantee the next version is truly unique.
+        max_version = self.repository.get_max_prompt_version(topic_id)
+        next_version = max_version + 1
 
+        prompts = self.repository.list_topic_prompts(topic_id, limit=1)
         audit_entry: Dict[str, Any] = {
             "action": "manual_replace",
             "previous_version": prompts[0].prompt_version if prompts else None,
@@ -455,8 +492,10 @@ class TopicPromptWorkflowService:
                 f"new_prompt_text exceeds maximum length of {self.max_prompt_length} characters"
             )
 
-        current_version = _parse_prompt_version(active.prompt_version)
-        next_version = current_version + 1
+        # Use MAX(prompt_version) from DB to avoid collisions with existing
+        # draft versions that may have higher version numbers than the active one.
+        max_version = self.repository.get_max_prompt_version(topic_id)
+        next_version = max_version + 1
 
         audit_entry: Dict[str, Any] = {
             "action": "edited",

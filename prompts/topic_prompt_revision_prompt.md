@@ -9,6 +9,7 @@
 1. existing_prompt：当前版本的研究提示词全文。
 2. user_feedback：用户对提示词的修订意见，可能包括：范围调整、方向变更、格式要求、证据要求变更等。
 3. version：当前提示词版本号（整数）。
+4. expected_version：期望的新版本号（整数），必须等于 version + 1。你必须在输出中使用此值作为 version 字段。
 
 修订规则：
 1. 必须保留原提示词中用户未要求修改的部分。
@@ -44,7 +45,7 @@
 
 字段要求：
 1. revised_prompt 是修订后的完整提示词文本。
-2. version 是递增后的版本号（原 version + 1）。
+2. version 是 expected_version 的值（即原 version + 1）。你必须原样使用 expected_version，不要自己计算。
 3. revision_note 用 1-2 句话说明本次修订的核心变更。
 4. changes_summary 是变更点列表，每条不超过 40 个中文字符。
 5. confidence 取 0.0 到 1.0。
