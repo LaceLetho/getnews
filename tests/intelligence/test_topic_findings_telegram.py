@@ -155,6 +155,8 @@ def test_topic_detail():
                 )
             ),
             list_entries_by_topic=Mock(return_value=[]),
+            get_active_topic_prompt=Mock(return_value=None),
+            list_active_findings=Mock(return_value=[]),
         )
     )
 

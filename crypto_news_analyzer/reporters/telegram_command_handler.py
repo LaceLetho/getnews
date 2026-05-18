@@ -368,6 +368,39 @@ class TelegramCommandHandler:
             text = text.replace(char, "\\" + char)
         return text
 
+    @staticmethod
+    def _split_text_for_telegram(text: str, max_length: int = 4000) -> List[str]:
+        """Split text into chunks under Telegram's message size limit.
+
+        Splits at line boundaries to preserve readability.
+        Single lines exceeding max_length are hard-split.
+        """
+        if len(text) <= max_length:
+            return [text]
+
+        parts: List[str] = []
+        current_part = ""
+        lines = text.split("\n")
+
+        for line in lines:
+            test = current_part + "\n" + line if current_part else line
+            if len(test) <= max_length:
+                current_part = test
+            else:
+                if current_part:
+                    parts.append(current_part)
+                    current_part = line
+                else:
+                    # Single long line: hard-split
+                    for i in range(0, len(line), max_length):
+                        parts.append(line[i : i + max_length])
+                    current_part = ""
+
+        if current_part:
+            parts.append(current_part)
+
+        return parts
+
     def _load_authorized_users(self) -> None:
         """
         加载授权用户列表
@@ -2685,8 +2718,14 @@ class TelegramCommandHandler:
             if not topic_id:
                 await msg.reply_text("用法: /topic_detail <topic_id>")
                 return
+
             response = self.handle_topic_detail_command(user_id, username, topic_id)
-            await msg.reply_text(response, parse_mode="Markdown")
+            chunks = self._split_text_for_telegram(response)
+            total = len(chunks)
+            for i, chunk in enumerate(chunks):
+                if total > 1:
+                    chunk = f"🔬 主题详情 ({i + 1}/{total})\n\n" + chunk
+                await msg.reply_text(chunk, parse_mode="Markdown")
         except Exception as e:
             self.logger.error(f"处理/topic_detail命令时发生错误: {e}")
 
@@ -2699,7 +2738,7 @@ class TelegramCommandHandler:
             if topic is None:
                 return "❌ 主题未找到"
             esc = self._escape_markdown_v1
-            lines = [f"🔬 {esc(topic.name)}\n"]
+            lines: List[str] = [f"🔬 {esc(topic.name)}\n"]
             if topic.description:
                 lines.append(f"*描述*\n{esc(topic.description)}\n")
             if topic.enriched_summary:
@@ -2708,11 +2747,43 @@ class TelegramCommandHandler:
                 lines.append(f"*🛠 方法*\n{esc(topic.methods)}\n")
             if topic.vulnerabilities:
                 lines.append(f"*🧨 漏洞/内幕*\n{esc(topic.vulnerabilities)}\n")
-            if topic.latest_findings:
-                lines.append("*🆕 最新发现*")
-                for finding in topic.latest_findings:
-                    lines.append(f"  • {esc(str(finding))}")
+
+            active_prompt = repository.get_active_topic_prompt(topic_id)
+            if active_prompt:
+                safe_prompt = active_prompt.prompt_text.replace("```", "'''")
+                lines.append(
+                    f"*✏️ 当前提示词 (v{esc(active_prompt.prompt_version)})*\n"
+                    f"```\n{safe_prompt}\n```\n"
+                )
+
+            active_findings = repository.list_active_findings(topic_id)
+            if active_findings:
+                lines.append(f"*🔍 活跃研究发现 ({len(active_findings)} 条)*")
+                for i, finding in enumerate(active_findings, 1):
+                    payload = finding.finding_payload or {}
+                    title = str(
+                        payload.get("finding", "")
+                        or payload.get("title", "")
+                        or payload.get("summary", "")
+                        or ""
+                    )
+                    if not title:
+                        title = esc(str(payload)[:150])
+                    else:
+                        title = esc(title[:200])
+                    conf_str = ""
+                    conf = getattr(finding, "confidence", 0.0) or 0.0
+                    if conf > 0:
+                        conf_str = f" [置信度: {conf:.0%}]"
+                    lines.append(f"  • #{i} {title}{conf_str}")
                 lines.append("")
+
+            if topic.latest_findings:
+                lines.append("*🆕 最新发现摘要*")
+                for finding in topic.latest_findings:
+                    lines.append(f"  • {esc(str(finding)[:200])}")
+                lines.append("")
+
             self._log_command_execution("/topic_detail", user_id, username, topic_id, True, "")
             return "\n".join(lines)
         except Exception as e:
