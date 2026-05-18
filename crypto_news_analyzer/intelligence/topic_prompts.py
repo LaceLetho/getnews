@@ -40,24 +40,24 @@ logger = logging.getLogger(__name__)
 
 
 def _topic_prompt_llm_timeout_seconds() -> Optional[float]:
-    raw_value = os.getenv("TOPIC_PROMPT_LLM_TIMEOUT_SECONDS", "90").strip()
+    raw_value = os.getenv("TOPIC_PROMPT_LLM_TIMEOUT_SECONDS", "180").strip()
     if not raw_value:
         return None
     try:
         timeout_seconds = float(raw_value)
     except ValueError:
         logger.warning(
-            "Invalid TOPIC_PROMPT_LLM_TIMEOUT_SECONDS=%r; using default 90 seconds",
+            "Invalid TOPIC_PROMPT_LLM_TIMEOUT_SECONDS=%r; using default 180 seconds",
             raw_value,
         )
-        return 90.0
+        return 180.0
     return timeout_seconds if timeout_seconds > 0 else None
 
 
 def _topic_prompt_llm_max_retries() -> int:
-    raw_value = os.getenv("TOPIC_PROMPT_LLM_MAX_RETRIES", "0").strip()
+    raw_value = os.getenv("TOPIC_PROMPT_LLM_MAX_RETRIES", "1").strip()
     if not raw_value:
-        return 0
+        return 1
     try:
         return max(0, int(raw_value))
     except ValueError:
