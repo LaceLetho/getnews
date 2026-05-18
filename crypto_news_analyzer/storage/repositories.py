@@ -637,14 +637,19 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
             cursor = conn.cursor()
             cursor.execute(
                 self._data._sql(
-                    "SELECT MAX(CAST(prompt_version AS INTEGER)) "
+                    "SELECT MAX(CAST(prompt_version AS INTEGER)) AS max_ver "
                     "FROM intelligence_topic_prompt_versions "
                     "WHERE intelligence_topic_id = ?"
                 ),
                 (intelligence_topic_id,),
             )
             row = cursor.fetchone()
-        max_version = int(row[0]) if (row and row[0] is not None) else 0
+        # PostgreSQL uses dict_row → access by column name; SQLite Row supports
+        # both integer index and column name access.
+        if self._data.backend == "postgres":
+            max_version = int(row["max_ver"]) if (row and row["max_ver"] is not None) else 0
+        else:
+            max_version = int(row[0]) if (row and row[0] is not None) else 0
         logger.debug(
             "get_max_prompt_version: topic_id=%s max_version=%d",
             intelligence_topic_id,
