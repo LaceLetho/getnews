@@ -285,6 +285,14 @@ MODELS: Dict[str, Dict[str, ModelRecord]] = {
             supports_thinking_level=True,
             supports_responses_api=False,
         ),
+        "deepseek-v4-flash": ModelRecord(
+            provider="opencode-go",
+            name="deepseek-v4-flash",
+            supports_web_search=False,
+            supports_x_search=False,
+            supports_thinking_level=True,
+            supports_responses_api=False,
+        ),
     },
 }
 

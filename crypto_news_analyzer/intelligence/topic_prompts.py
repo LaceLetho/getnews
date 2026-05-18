@@ -40,24 +40,24 @@ logger = logging.getLogger(__name__)
 
 
 def _topic_prompt_llm_timeout_seconds() -> Optional[float]:
-    raw_value = os.getenv("TOPIC_PROMPT_LLM_TIMEOUT_SECONDS", "180").strip()
+    raw_value = os.getenv("TOPIC_PROMPT_LLM_TIMEOUT_SECONDS", "90").strip()
     if not raw_value:
         return None
     try:
         timeout_seconds = float(raw_value)
     except ValueError:
         logger.warning(
-            "Invalid TOPIC_PROMPT_LLM_TIMEOUT_SECONDS=%r; using default 180 seconds",
+            "Invalid TOPIC_PROMPT_LLM_TIMEOUT_SECONDS=%r; using default 90 seconds",
             raw_value,
         )
-        return 180.0
+        return 90.0
     return timeout_seconds if timeout_seconds > 0 else None
 
 
 def _topic_prompt_llm_max_retries() -> int:
-    raw_value = os.getenv("TOPIC_PROMPT_LLM_MAX_RETRIES", "1").strip()
+    raw_value = os.getenv("TOPIC_PROMPT_LLM_MAX_RETRIES", "0").strip()
     if not raw_value:
-        return 1
+        return 0
     try:
         return max(0, int(raw_value))
     except ValueError:
@@ -141,22 +141,20 @@ class _TopicPromptLLMService:
 
         completions = getattr(getattr(request_client, "chat", None), "completions", None)
         if completions is not None and hasattr(completions, "create"):
-            timeout_seconds = _topic_prompt_llm_timeout_seconds()
             kwargs: Dict[str, Any] = {
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
                 ],
                 "response_format": {"type": "json_object"},
+                # Use deepseek-v4-flash with thinking enabled for prompt
+                # generation/revision.  Flash is faster than pro while still
+                # producing high-quality structured prompts with thinking.
+                "model": "deepseek-v4-flash",
+                "extra_body": {"thinking": {"type": "enabled"}},
             }
-            if timeout_seconds is not None:
-                kwargs["timeout"] = timeout_seconds
-            if self.model_name:
-                kwargs["model"] = self.model_name
             logger.info(
-                "Topic prompt LLM request starting: model=%s timeout=%s max_retries=%s",
-                self.model_name or "default",
-                timeout_seconds,
+                "Topic prompt LLM request starting: model=deepseek-v4-flash thinking=enabled max_retries=%s",
                 max_retries,
             )
             try:
