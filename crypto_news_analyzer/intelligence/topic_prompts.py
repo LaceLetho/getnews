@@ -17,6 +17,25 @@ from ..domain.repositories import IntelligenceRepository
 PROMPT_GENERATION_SCHEMA_VERSION = "topic-prompt-generation-v1"
 PROMPT_REVISION_SCHEMA_VERSION = "topic-prompt-revision-v1"
 
+# Patterns that indicate the generated/revised prompt text is trying to define its
+# own output JSON schema — which MUST be stripped because the output format is
+# governed by topic_research_prompt.md (schema_version: topic-research-v1).
+_OUTPUT_SCHEMA_INDICATORS = (
+    # JSON code blocks that look like schema definitions
+    (r"```json\s*\{[^`]*?\}\s*```", "json code block"),
+    (r"```\s*\{[^`]*?(?:findings|channel_or_actor|source_platform|product_type)[^`]*?\}\s*```", "output schema code block"),
+    # Lines that declare output fields not in the standard topic-research-v1 schema
+    (r'"channel_or_actor"\s*:', "forbidden field channel_or_actor"),
+    (r'"source_platform"\s*:', "forbidden field source_platform"),
+    (r'"product_type"\s*:', "forbidden field product_type"),
+    (r'"price_range"\s*:', "forbidden field price_range"),
+    (r'"acquisition_method_summary"\s*:', "forbidden field acquisition_method_summary"),
+    (r'"upstream_hypothesis"\s*:', "forbidden field upstream_hypothesis"),
+    (r'"risk_level"\s*:', "forbidden field risk_level"),
+    (r'"legitimacy"\s*:', "forbidden field legitimacy"),
+    (r'"follow_up"\s*:', "forbidden field follow_up"),
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -172,21 +191,25 @@ class TopicPromptGenerator(_TopicPromptLLMService):
             {"user_theme": user_theme, "source_context": source_context or {}},
         )
         draft = TopicPromptDraft.model_validate(payload)
+        sanitized_text, sanitize_warnings = _sanitize_prompt_text(
+            draft.research_prompt_draft
+        )
+        audit_entry = {
+            "action": "generated",
+            "topic_name": draft.topic_name,
+            "topic_description": draft.topic_description,
+            "suggested_time_window_hours": draft.suggested_time_window_hours,
+            "confidence": draft.confidence,
+        }
+        if sanitize_warnings:
+            audit_entry["sanitize_warnings"] = sanitize_warnings
         return TopicPrompt.create(
             intelligence_topic_id=intelligence_topic_id,
             prompt_version="1",
-            prompt_text=draft.research_prompt_draft,
+            prompt_text=sanitized_text,
             schema_version=draft.schema_version,
             created_by=created_by,
-            audit_history=[
-                {
-                    "action": "generated",
-                    "topic_name": draft.topic_name,
-                    "topic_description": draft.topic_description,
-                    "suggested_time_window_hours": draft.suggested_time_window_hours,
-                    "confidence": draft.confidence,
-                }
-            ],
+            audit_history=[audit_entry],
         )
 
 
@@ -211,22 +234,28 @@ class TopicPromptReviser(_TopicPromptLLMService):
         revision = TopicPromptRevision.model_validate(payload)
         if revision.version <= current_version:
             raise ValueError("revised prompt version must increment")
+        sanitized_text, sanitize_warnings = _sanitize_prompt_text(
+            revision.revised_prompt
+        )
+        audit_entry = {
+            "action": "revised",
+            "topic_name": revision.topic_name,
+            "revision_note": revision.revision_note,
+            "changes_summary": revision.changes_summary,
+            "confidence": revision.confidence,
+        }
+        if sanitize_warnings:
+            audit_entry["sanitize_warnings"] = sanitize_warnings
         return TopicPrompt.create(
             intelligence_topic_id=existing_prompt.intelligence_topic_id,
             prompt_version=str(revision.version),
-            prompt_text=revision.revised_prompt,
+            prompt_text=sanitized_text,
             schema_version=revision.schema_version,
             created_by=existing_prompt.created_by,
             activated_by=activated_by,
             audit_history=[
                 *list(existing_prompt.audit_history or []),
-                {
-                    "action": "revised",
-                    "topic_name": revision.topic_name,
-                    "revision_note": revision.revision_note,
-                    "changes_summary": revision.changes_summary,
-                    "confidence": revision.confidence,
-                },
+                audit_entry,
             ],
         )
 
@@ -237,6 +266,36 @@ def _parse_prompt_version(value: str) -> int:
     except (TypeError, ValueError):
         digits = "".join(ch for ch in str(value or "") if ch.isdigit())
         return int(digits or "0")
+
+
+def _sanitize_prompt_text(prompt_text: str) -> tuple[str, list[str]]:
+    """Strip conflicting output-schema content from a generated/revised prompt.
+
+    Returns (sanitized_text, warnings).  The sanitized text still describes
+    *what* to research but no longer embeds its own JSON output format.
+    """
+    import re as _re
+
+    warnings: list[str] = []
+    sanitized = str(prompt_text or "")
+
+    for pattern, label in _OUTPUT_SCHEMA_INDICATORS:
+        if _re.search(pattern, sanitized):
+            warnings.append(f"Detected {label} in prompt text — will be stripped")
+            sanitized = _re.sub(pattern, "", sanitized)
+
+    # Collapse multiple blank lines created by stripping
+    sanitized = _re.sub(r"\n{3,}", "\n\n", sanitized)
+    sanitized = sanitized.strip()
+
+    if warnings:
+        logger.warning(
+            "Prompt sanitization stripped %d conflicting schema indicators: %s",
+            len(warnings),
+            warnings,
+        )
+
+    return sanitized, warnings
 
 
 class TopicPromptWorkflowService:
