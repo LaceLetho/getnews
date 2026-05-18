@@ -1,10 +1,12 @@
 """Telegram command handler tests (topic-only)."""
+
 import asyncio
+import threading
 import time
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from telegram.ext import Application, CallbackQueryHandler
@@ -81,6 +83,60 @@ def _make_callback_update(user_id="1", username="tester", chat_id="chat_1", data
         answer=AsyncMock(),
     )
     return SimpleNamespace(callback_query=callback_query)
+
+
+@pytest.mark.asyncio
+async def test_topic_revise_runs_in_background_and_deduplicates_active_request():
+    handler = _make_handler()
+    handler.is_authorized_user = Mock(return_value=True)
+
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingReviseService:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def revise_prompt(self, topic_id: str, feedback: str, activated_by: str) -> SimpleNamespace:
+            self.calls += 1
+            started.set()
+            release.wait(timeout=5)
+            return SimpleNamespace(prompt_text="revised prompt", prompt_version="2")
+
+    service = BlockingReviseService()
+    handler._get_topic_prompt_workflow_service = Mock(return_value=service)
+
+    context = SimpleNamespace(args=["topic-1", "remove", "line"])
+    first_update = _make_update()
+
+    await handler._handle_topic_revise_command(first_update, context)
+    first_update.message.reply_text.assert_awaited_once_with(
+        "⏳ 已收到修订请求，正在后台处理。完成后会发送结果。"
+    )
+
+    for _ in range(20):
+        if started.is_set():
+            break
+        await asyncio.sleep(0.05)
+
+    assert started.is_set()
+    assert service.calls == 1
+
+    second_update = _make_update()
+    await handler._handle_topic_revise_command(second_update, context)
+
+    assert service.calls == 1
+    second_update.message.reply_text.assert_awaited_once_with(
+        "⏳ 相同修订请求正在处理中，请稍后查看结果。"
+    )
+
+    release.set()
+    for _ in range(20):
+        if not handler._active_topic_revision_keys:
+            break
+        await asyncio.sleep(0.05)
+
+    assert not handler._active_topic_revision_keys
 
 
 @pytest.mark.skip(reason="Internal telegram API changed, needs update for new ptb version")
@@ -234,7 +290,9 @@ def test_unauthorized_intel_callback_does_not_set_follow_status():
     pass
 
 
-@pytest.mark.skip(reason="Old intel callback query handler removed in topic-only refactor (Task 12)")
+@pytest.mark.skip(
+    reason="Old intel callback query handler removed in topic-only refactor (Task 12)"
+)
 def test_intel_pagination_callback_expired_state_is_safe():
     handler: Any = _make_handler()
     handler.is_authorized_user = Mock(return_value=True)

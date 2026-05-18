@@ -28,7 +28,7 @@ import secrets
 import time
 import threading
 from urllib.parse import quote, urlsplit, urlunsplit
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
@@ -137,6 +137,13 @@ class TelegramCommandHandler:
 
         # Intel callback pagination state cache
         self._callback_state: Dict[str, dict] = {}
+
+        # Telegram may retry webhook deliveries if a handler blocks too long. Track
+        # in-flight and recently completed prompt revisions so one logical request
+        # cannot trigger many LLM calls.
+        self._active_topic_revision_keys: Set[str] = set()
+        self._recent_topic_revision_results: Dict[str, Dict[str, Any]] = {}
+        self._topic_revision_result_ttl_seconds = 15 * 60
 
         self._load_authorized_users()
 
@@ -770,7 +777,9 @@ class TelegramCommandHandler:
             commands.append(BotCommand("help", "显示帮助信息"))
             # News domain
             commands.append(BotCommand("analyze", "分析消息，可指定小时数如/analyze 24"))
-            commands.append(BotCommand("semantic_search", "语义搜索，如/semantic_search 24 BTC adoption"))
+            commands.append(
+                BotCommand("semantic_search", "语义搜索，如/semantic_search 24 BTC adoption")
+            )
             commands.append(BotCommand("market", "获取当前市场现状快照"))
             commands.append(BotCommand("status", "查询系统运行状态"))
             commands.append(BotCommand("tokens", "查看LLM token使用统计"))
@@ -2026,6 +2035,99 @@ class TelegramCommandHandler:
         setattr(self.execution_coordinator, "topic_finding_merge_service", service)
         return service
 
+    def _build_topic_revision_key(self, user_id: str, topic_id: str, feedback: str) -> str:
+        normalized_feedback = " ".join(str(feedback or "").split())
+        digest = hashlib.sha256(normalized_feedback.encode("utf-8")).hexdigest()[:16]
+        return f"{user_id}:{topic_id}:{digest}"
+
+    def _get_recent_topic_revision_response(self, key: str) -> Optional[str]:
+        now = time.monotonic()
+        expired_keys = [
+            item_key
+            for item_key, item in self._recent_topic_revision_results.items()
+            if float(item.get("expires_at", 0.0)) <= now
+        ]
+        for item_key in expired_keys:
+            self._recent_topic_revision_results.pop(item_key, None)
+
+        cached = self._recent_topic_revision_results.get(key)
+        if cached is None:
+            return None
+        response = cached.get("response")
+        return str(response) if response else None
+
+    def _remember_topic_revision_response(self, key: str, response: str) -> None:
+        self._recent_topic_revision_results[key] = {
+            "response": response,
+            "expires_at": time.monotonic() + self._topic_revision_result_ttl_seconds,
+        }
+
+    async def _reply_text_with_timeout(
+        self,
+        msg: Any,
+        text: str,
+        parse_mode: Optional[str] = None,
+        timeout_seconds: float = 8.0,
+    ) -> None:
+        kwargs: Dict[str, Any] = {}
+        if parse_mode:
+            kwargs["parse_mode"] = parse_mode
+        await asyncio.wait_for(msg.reply_text(text, **kwargs), timeout=timeout_seconds)
+
+    async def _run_topic_revise_background(
+        self,
+        msg: Any,
+        service: Any,
+        topic_id: str,
+        feedback: str,
+        user_id: str,
+        username: str,
+        request_key: str,
+    ) -> None:
+        try:
+            self.logger.info(
+                "开始后台处理/topic_revise: topic_id=%s user_id=%s request_key=%s",
+                topic_id,
+                user_id,
+                request_key,
+            )
+            prompt = await asyncio.to_thread(
+                service.revise_prompt,
+                topic_id=topic_id,
+                feedback=feedback,
+                activated_by=username,
+            )
+            esc = self._escape_markdown_v1
+            trunc_prompt = esc(prompt.prompt_text[:500])
+            suffix = "..." if len(prompt.prompt_text) > 500 else ""
+            response = (
+                f"✏️ *提示词已修订*\n\n"
+                f"*Topic ID*: `{esc(topic_id)}`\n"
+                f"*Version*: {esc(prompt.prompt_version)}\n\n"
+                f"*修订后提示词*:\n{trunc_prompt}{suffix}\n\n"
+                f"审查后使用 `/topic_confirm {esc(topic_id)}` 激活"
+            )
+            self._remember_topic_revision_response(request_key, response)
+            self._log_command_execution("/topic_revise", user_id, username, topic_id, True, "")
+            try:
+                await self._reply_text_with_timeout(msg, response, parse_mode="Markdown")
+            except Exception as send_error:
+                self.logger.error(
+                    "发送/topic_revise成功响应失败: topic_id=%s version=%s error=%s",
+                    topic_id,
+                    getattr(prompt, "prompt_version", "unknown"),
+                    send_error,
+                )
+        except Exception as e:
+            self.logger.exception("后台处理/topic_revise失败: topic_id=%s error=%s", topic_id, e)
+            self._log_command_execution("/topic_revise", user_id, username, topic_id, False, str(e))
+            try:
+                await self._reply_text_with_timeout(msg, f"❌ 修订失败: {str(e)}")
+            except Exception as send_error:
+                self.logger.error("发送/topic_revise失败响应失败: %s", send_error)
+        finally:
+            self._active_topic_revision_keys.discard(request_key)
+
     def _normalize_intelligence_primary_label(self, label: Optional[str]) -> Optional[str]:
         normalized = str(label or "").strip()
         if not normalized:
@@ -2119,21 +2221,52 @@ class TelegramCommandHandler:
                 await msg.reply_text("\u274c 主题服务未初始化")
                 return
 
-            prompt = service.revise_prompt(
-                topic_id=topic_id, feedback=feedback, activated_by=username
+            request_key = self._build_topic_revision_key(user_id, topic_id, feedback)
+            cached_response = self._get_recent_topic_revision_response(request_key)
+            if cached_response:
+                await msg.reply_text(cached_response, parse_mode="Markdown")
+                self.logger.info(
+                    "忽略重复/topic_revise请求并返回缓存结果: topic_id=%s user_id=%s request_key=%s",
+                    topic_id,
+                    user_id,
+                    request_key,
+                )
+                return
+
+            if request_key in self._active_topic_revision_keys:
+                await msg.reply_text("⏳ 相同修订请求正在处理中，请稍后查看结果。")
+                self.logger.info(
+                    "忽略重复进行中的/topic_revise请求: topic_id=%s user_id=%s request_key=%s",
+                    topic_id,
+                    user_id,
+                    request_key,
+                )
+                return
+
+            self._active_topic_revision_keys.add(request_key)
+            try:
+                await self._reply_text_with_timeout(
+                    msg,
+                    "⏳ 已收到修订请求，正在后台处理。完成后会发送结果。",
+                )
+            except Exception as ack_error:
+                self.logger.warning(
+                    "发送/topic_revise接收确认失败，仍继续后台处理: topic_id=%s error=%s",
+                    topic_id,
+                    ack_error,
+                )
+
+            asyncio.create_task(
+                self._run_topic_revise_background(
+                    msg=msg,
+                    service=service,
+                    topic_id=topic_id,
+                    feedback=feedback,
+                    user_id=user_id,
+                    username=username,
+                    request_key=request_key,
+                )
             )
-            esc = self._escape_markdown_v1
-            trunc_prompt = esc(prompt.prompt_text[:500])
-            suffix = "..." if len(prompt.prompt_text) > 500 else ""
-            response = (
-                f"\u270f\ufe0f *提示词已修订*\n\n"
-                f"*Topic ID*: `{esc(topic_id)}`\n"
-                f"*Version*: {esc(prompt.prompt_version)}\n\n"
-                f"*修订后提示词*:\n{trunc_prompt}{suffix}\n\n"
-                f"审查后使用 `/topic_confirm {esc(topic_id)}` 激活"
-            )
-            await msg.reply_text(response, parse_mode="Markdown")
-            self._log_command_execution("/topic_revise", user_id, username, topic_id, True, "")
         except Exception as e:
             self.logger.error(f"处理/topic_revise命令时发生错误: {e}")
             try:
@@ -2177,9 +2310,7 @@ class TelegramCommandHandler:
                 f"审查后使用 `/topic_confirm {esc(topic_id)}` 激活"
             )
             await msg.reply_text(response, parse_mode="Markdown")
-            self._log_command_execution(
-                "/topic_set_prompt", user_id, username, topic_id, True, ""
-            )
+            self._log_command_execution("/topic_set_prompt", user_id, username, topic_id, True, "")
         except Exception as e:
             self.logger.error(f"处理/topic_set_prompt命令时发生错误: {e}")
             try:
@@ -2291,6 +2422,9 @@ class TelegramCommandHandler:
             topic_name = esc(preview_data.get("topic_name", topic_id))
             merge_summary = esc(str(preview_data.get("merge_summary", ""))[:300])
             findings_count = len(preview_data.get("merged_findings", []))
+            expires_at_text = (
+                preview.expires_at.strftime("%Y-%m-%d %H:%M UTC") if preview.expires_at else "N/A"
+            )
 
             text = (
                 f"\U0001f500 *合并预览*\n\n"
@@ -2298,7 +2432,7 @@ class TelegramCommandHandler:
                 f"*合并发现数*: {findings_count}\n"
                 f"*摘要*: {merge_summary}\n\n"
                 f"*Preview ID*: `{esc(preview.id)}`\n"
-                f"*过期时间*: {preview.expires_at.strftime('%Y-%m-%d %H:%M UTC') if preview.expires_at else 'N/A'}"
+                f"*过期时间*: {expires_at_text}"
             )
 
             if self.application is None:
@@ -2319,7 +2453,13 @@ class TelegramCommandHandler:
 
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-            keyboard = [[InlineKeyboardButton("\u2705 接受合并", callback_data=f"topic:merge:accept:{token}")]]
+            keyboard = [
+                [
+                    InlineKeyboardButton(
+                        "\u2705 接受合并", callback_data=f"topic:merge:accept:{token}"
+                    )
+                ]
+            ]
             markup = InlineKeyboardMarkup(keyboard)
             await msg.reply_text(text, reply_markup=markup, parse_mode="Markdown")
             self._log_command_execution("/topic_merge", user_id, username, topic_id, True, "")
@@ -2363,7 +2503,9 @@ class TelegramCommandHandler:
             topic.lifecycle_status = "paused"
             repository.save_topic(topic)
             esc = self._escape_markdown_v1
-            await msg.reply_text(f"\u23f8\ufe0f 主题已暂停: `{esc(topic_id)}`", parse_mode="Markdown")
+            await msg.reply_text(
+                f"\u23f8\ufe0f 主题已暂停: `{esc(topic_id)}`", parse_mode="Markdown"
+            )
             self._log_command_execution("/topic_pause", user_id, username, topic_id, True, "")
         except Exception as e:
             self.logger.error(f"处理/topic_pause命令时发生错误: {e}")
@@ -2444,7 +2586,7 @@ class TelegramCommandHandler:
                         InlineKeyboardButton(
                             "更多",
                             callback_data=f"topic:list:p:{token}:{page_num + 1}",
-                            ),
+                        ),
                     ]
                 )
             markup = InlineKeyboardMarkup(keyboard) if keyboard else None
@@ -2651,7 +2793,7 @@ class TelegramCommandHandler:
                 token = data.split(":", 3)[3]
                 state = self._get_callback_state(token)
                 if not state:
-                    await callback_query.answer("\u64cd\u4f5c\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u6267\u884c\u547d\u4ee4")
+                    await callback_query.answer("操作已过期，请重新执行命令")
                     return
                 preview_id = state.get("preview_id", "")
                 topic_id = state.get("topic_id", "")
@@ -3148,7 +3290,8 @@ class TelegramCommandHandler:
 
         if "tokens" in user_permissions or not user_permissions:
             help_text.append(
-                "/tokens - 查看LLM token使用统计\n" "显示最近50次调用的token使用情况和缓存命中率。\n"
+                "/tokens - 查看LLM token使用统计\n"
+                "显示最近50次调用的token使用情况和缓存命中率。\n"
             )
 
         if "datasource" in user_permissions or not user_permissions:

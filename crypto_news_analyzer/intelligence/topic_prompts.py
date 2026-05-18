@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -12,9 +14,36 @@ from pydantic import BaseModel, Field, field_validator
 from ..domain.models import IntelligenceTopic, TopicPrompt
 from ..domain.repositories import IntelligenceRepository
 
-
 PROMPT_GENERATION_SCHEMA_VERSION = "topic-prompt-generation-v1"
 PROMPT_REVISION_SCHEMA_VERSION = "topic-prompt-revision-v1"
+
+logger = logging.getLogger(__name__)
+
+
+def _topic_prompt_llm_timeout_seconds() -> Optional[float]:
+    raw_value = os.getenv("TOPIC_PROMPT_LLM_TIMEOUT_SECONDS", "90").strip()
+    if not raw_value:
+        return None
+    try:
+        timeout_seconds = float(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid TOPIC_PROMPT_LLM_TIMEOUT_SECONDS=%r; using default 90 seconds",
+            raw_value,
+        )
+        return 90.0
+    return timeout_seconds if timeout_seconds > 0 else None
+
+
+def _topic_prompt_llm_max_retries() -> int:
+    raw_value = os.getenv("TOPIC_PROMPT_LLM_MAX_RETRIES", "0").strip()
+    if not raw_value:
+        return 0
+    try:
+        return max(0, int(raw_value))
+    except ValueError:
+        logger.warning("Invalid TOPIC_PROMPT_LLM_MAX_RETRIES=%r; using 0", raw_value)
+        return 0
 
 
 class TopicPromptDraft(BaseModel):
@@ -85,8 +114,15 @@ class _TopicPromptLLMService:
         return (self.prompt_dir / filename).read_text(encoding="utf-8")
 
     def _call_llm(self, system_prompt: str, user_payload: Dict[str, Any]) -> Dict[str, Any]:
-        completions = getattr(getattr(self.llm_client, "chat", None), "completions", None)
+        request_client = self.llm_client
+        max_retries = _topic_prompt_llm_max_retries()
+        with_options = getattr(request_client, "with_options", None)
+        if callable(with_options):
+            request_client = with_options(max_retries=max_retries)
+
+        completions = getattr(getattr(request_client, "chat", None), "completions", None)
         if completions is not None and hasattr(completions, "create"):
+            timeout_seconds = _topic_prompt_llm_timeout_seconds()
             kwargs: Dict[str, Any] = {
                 "messages": [
                     {"role": "system", "content": system_prompt},
@@ -94,9 +130,22 @@ class _TopicPromptLLMService:
                 ],
                 "response_format": {"type": "json_object"},
             }
+            if timeout_seconds is not None:
+                kwargs["timeout"] = timeout_seconds
             if self.model_name:
                 kwargs["model"] = self.model_name
-            response = completions.create(**kwargs)
+            logger.info(
+                "Topic prompt LLM request starting: model=%s timeout=%s max_retries=%s",
+                self.model_name or "default",
+                timeout_seconds,
+                max_retries,
+            )
+            try:
+                response = completions.create(**kwargs)
+            except Exception:
+                logger.exception("Topic prompt LLM request failed")
+                raise
+            logger.info("Topic prompt LLM response received")
             content = response.choices[0].message.content
         elif hasattr(self.llm_client, "complete"):
             content = self.llm_client.complete(system_prompt, user_payload)
@@ -222,9 +271,7 @@ class TopicPromptWorkflowService:
         if self.llm_client is None:
             raise RuntimeError("llm_client is required for LLM-based operations")
         if self._reviser is None:
-            self._reviser = TopicPromptReviser(
-                self.llm_client, self.model_name, self.prompt_dir
-            )
+            self._reviser = TopicPromptReviser(self.llm_client, self.model_name, self.prompt_dir)
         return self._reviser
 
     def create_draft_topic(
@@ -258,9 +305,7 @@ class TopicPromptWorkflowService:
             raise ValueError(f"No prompt found for topic {topic_id}")
         existing = prompts[0]
 
-        revised = self._get_reviser().revise(
-            existing, feedback, activated_by=activated_by
-        )
+        revised = self._get_reviser().revise(existing, feedback, activated_by=activated_by)
         self.repository.create_topic_prompt_version(revised)
         return revised
 
