@@ -100,7 +100,7 @@ Tests for shared components used by both domains: config, storage, data sources,
 - `test_banned_legacy_reference_scan.py` - Legacy reference scan
 - `test_docker_entrypoint_legacy_alias_rejection.py` - Docker entrypoint
 - `test_postgres_storage_path.py` - Postgres storage path
-- `test_openclaw_skill_crypto_news_http_api.py` - Openclaw skill
+- `test_openclaw_skill_smart_news.py` - Openclaw smart-news skill
 - `test_opencode_skill_crypto_news_debug.py` - Opencode skill
 - `test_logging_redaction.py` - Logging redaction
 - `test_run_wrapper.py` - Run wrapper

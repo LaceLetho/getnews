@@ -1,9 +1,9 @@
 import re
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 PUBLISH_SCRIPT_PATH = REPO_ROOT / "skills" / "publish_clawhub_skill.sh"
-SKILL_DIR = REPO_ROOT / "skills" / "crypto-news-http-api"
+SKILL_DIR = REPO_ROOT / "skills" / "smart-news"
 REFERENCE_DIR = SKILL_DIR / "references"
 SKILL_PATH = SKILL_DIR / "SKILL.md"
 ANALYZE_WORKFLOW_PATH = REFERENCE_DIR / "analyze-workflow.md"
@@ -51,9 +51,9 @@ def _section(body: str, heading: str) -> str:
     return body[start:next_start].strip()
 
 
-def test_skill_paths_target_crypto_news_http_api_files() -> None:
+def test_skill_paths_target_smart_news_files() -> None:
     assert PUBLISH_SCRIPT_PATH == REPO_ROOT / "skills" / "publish_clawhub_skill.sh"
-    assert SKILL_DIR == REPO_ROOT / "skills" / "crypto-news-http-api"
+    assert SKILL_DIR == REPO_ROOT / "skills" / "smart-news"
     assert REFERENCE_DIR == SKILL_DIR / "references"
     assert SKILL_PATH == SKILL_DIR / "SKILL.md"
     assert ANALYZE_WORKFLOW_PATH == REFERENCE_DIR / "analyze-workflow.md"
@@ -77,7 +77,7 @@ def test_skill_paths_target_crypto_news_http_api_files() -> None:
 def test_skill_requires_frontmatter_required_sections_and_reference_links() -> None:
     frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
 
-    assert frontmatter.get("name") == "crypto-news-http-api"
+    assert frontmatter.get("name") == "smart-news"
     assert (
         frontmatter.get("description")
         == "Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, intelligence operations, or health checks from OpenClaw."
@@ -92,7 +92,7 @@ def test_skill_requires_frontmatter_required_sections_and_reference_links() -> N
         "Analyze Workflow",
         "Semantic Search",
         "Datasource Management",
-        "Intelligence Query",
+        "Intelligence Query (Topic-First)",
         "Telegram Webhook",
         "Endpoint Index",
         "Non-Goals",
@@ -126,13 +126,18 @@ def test_skill_endpoint_index_lists_only_supported_live_http_routes() -> None:
         "GET /datasources",
         "DELETE /datasources/{id}",
         "POST /telegram/webhook",
-        "GET /intelligence/entries",
-        "GET /intelligence/discovery",
-        "GET /intelligence/labels",
-        "GET /intelligence/entries/{entry_id}",
-        "POST /intelligence/entries/{entry_id}/follow-status",
-        "GET /intelligence/search",
-        "GET /intelligence/raw/{raw_item_id}",
+        "POST /intelligence/topics",
+        "POST /intelligence/topics/{id}/revise",
+        "PUT /intelligence/topics/{id}/prompt",
+        "POST /intelligence/topics/{id}/confirm",
+        "GET /intelligence/topics",
+        "GET /intelligence/topics/{id}",
+        "POST /intelligence/topics/{id}/merge-preview",
+        "POST /intelligence/topics/{id}/merge-accept",
+        "POST /intelligence/topics/{id}/pause",
+        "POST /intelligence/topics/{id}/archive",
+        "GET /intelligence/topics/{id}/runs",
+        "GET /intelligence/topic-runs",
     ]:
         assert endpoint in endpoint_index, f"Missing supported endpoint: {endpoint}"
 
@@ -152,7 +157,10 @@ def test_skill_endpoint_index_lists_only_supported_live_http_routes() -> None:
         "/datasource_add",
         "/datasource_delete",
     ]:
-        assert unsupported_surface not in endpoint_index, (
+        # Avoid false substring matches (e.g. "/run" inside "/runs")
+        index_lines = [l for l in endpoint_index.split("\n") if "/runs" not in l]
+        check_text = "\n".join(index_lines)
+        assert unsupported_surface not in check_text, (
             "Unsupported surface must not be listed as a supported HTTP endpoint: "
             f"{unsupported_surface}"
         )
@@ -209,7 +217,7 @@ def test_skill_openclaw_runtime_section_covers_api_key_injection() -> None:
     for expected in [
         "metadata.openclaw.primaryEnv: API_KEY",
         "~/.openclaw/openclaw.json",
-        '"crypto-news-http-api"',
+        '"smart-news"',
         '"YOUR_API_KEY"',
         "do not send unauthenticated requests",
     ]:
@@ -281,26 +289,29 @@ def test_skill_datasource_management_covers_crud_tags_and_redaction_rules() -> N
 
 def test_skill_intelligence_query_section_covers_current_routes_and_state() -> None:
     _frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
-    intelligence_query = _section(body, "Intelligence Query")
+    intelligence_query = _section(body, "Intelligence Query (Topic-First)")
 
     for expected in [
         "All intelligence routes require Bearer auth",
-        "`GET /intelligence/entries`",
-        "`GET /intelligence/discovery`",
-        "`GET /intelligence/labels`",
-        "`GET /intelligence/entries/{entry_id}`",
-        "`POST /intelligence/entries/{entry_id}/follow-status`",
-        "`GET /intelligence/search`",
-        "`GET /intelligence/raw/{raw_item_id}`",
+        "`POST /intelligence/topics`",
+        "`POST /intelligence/topics/{topic_id}/revise`",
+        "`PUT /intelligence/topics/{topic_id}/prompt`",
+        "`POST /intelligence/topics/{topic_id}/confirm`",
+        "`GET /intelligence/topics`",
+        "`GET /intelligence/topics/{topic_id}`",
+        "`POST /intelligence/topics/{topic_id}/merge-preview`",
+        "`POST /intelligence/topics/{topic_id}/merge-accept`",
+        "`POST /intelligence/topics/{topic_id}/pause`",
+        "`POST /intelligence/topics/{topic_id}/archive`",
+        "`GET /intelligence/topics/{topic_id}/runs`",
+        "`GET /intelligence/topic-runs`",
         "no async job/poll flow",
-        "`tracking_scope`",
-        "`following`",
-        "`discovery`",
-        "`unset`",
-        "`unfollowed`",
-        "`all`",
-        "Invalid values return `400`",
-        "Canonical entries use a follow state",
+        "`draft`",
+        "`active`",
+        "`paused`",
+        "`archived`",
+        "Topics are the sole first-class intelligence objects",
+        "Merge previews expire after 24 hours",
     ]:
         assert expected in intelligence_query, f"Missing intelligence API contract: {expected}"
 
@@ -323,10 +334,9 @@ def test_skill_updating_guidance_prefers_code_and_tests_when_prose_drifts() -> N
     updating = _section(body, "Updating")
 
     assert "`api_server.py`" in updating
-    assert "`tests/test_intelligence_api.py`" in updating
     assert "`docs/AI_ANALYZE_API_GUIDE.md`" in updating
     assert "`docs/SEMANTIC_SEARCH_API_GUIDE.md`" in updating
-    assert "code and tests first, then reference files, then guides" in updating
+    assert "code first, then reference files, then guides" in updating
 
 
 def test_analyze_workflow_reference_covers_async_contract_and_current_status_result_behavior() -> (
@@ -363,7 +373,7 @@ def test_datasource_management_reference_covers_crud_tag_limits_and_redaction() 
         "422 Unprocessable Entity",
         "GET /datasources",
         "DELETE /datasources/{id}",
-        "sorted by source type and name",
+        "sorted by purpose, source type, then name",
         "Maximum 16 unique tags per datasource",
         "Each tag must be at most 32 characters after normalization",
         "Tags are converted to lowercase",
@@ -394,11 +404,11 @@ def test_operations_reference_covers_health_webhook_and_full_update_verification
         "`tests/test_api_server.py`",
         "`docs/AI_ANALYZE_API_GUIDE.md`",
         "Before merge, run the full planned verification suite",
-        "uv run pytest tests/test_openclaw_skill_crypto_news_http_api.py -v",
+        "uv run pytest tests/test_openclaw_skill_smart_news.py -v",
         'uv run pytest tests/test_api_server.py -k "health or analyze or datasource or webhook" -v',
         "uv run pytest tests/test_banned_legacy_reference_scan.py -v",
         "uv run python tests/helpers/banned_legacy_reference_scan.py",
-        "skills/publish_clawhub_skill.sh crypto-news-http-api 0.2.1",
+        "skills/publish_clawhub_skill.sh smart-news 0.3.0",
         "`clawhub` login state",
         "`CLAWHUB_SKIP_TESTS=1`",
         "code and tests over prose",
@@ -444,29 +454,29 @@ def test_intelligence_query_reference_covers_current_routes_state_and_errors() -
     intelligence_reference = _read_text(INTELLIGENCE_QUERY_PATH)
 
     for expected in [
-        "GET /intelligence/entries",
-        "GET /intelligence/discovery",
-        "GET /intelligence/labels",
-        "POST /intelligence/entries/{entry_id}/follow-status",
-        "GET /intelligence/entries/{entry_id}",
-        "GET /intelligence/search",
-        "GET /intelligence/raw/{raw_item_id}",
+        "POST /intelligence/topics",
+        "POST /intelligence/topics/{topic_id}/revise",
+        "PUT /intelligence/topics/{topic_id}/prompt",
+        "POST /intelligence/topics/{topic_id}/confirm",
+        "GET /intelligence/topics",
+        "GET /intelligence/topics/{topic_id}",
+        "POST /intelligence/topics/{topic_id}/merge-preview",
+        "POST /intelligence/topics/{topic_id}/merge-accept",
+        "POST /intelligence/topics/{topic_id}/pause",
+        "POST /intelligence/topics/{topic_id}/archive",
+        "GET /intelligence/topics/{topic_id}/runs",
+        "GET /intelligence/topic-runs",
         "All endpoints require Bearer authentication",
         "synchronous",
-        "`tracking_scope`",
-        "`following`",
-        "`discovery`",
-        "`unset`",
-        "`unfollowed`",
-        "`all`",
-        "Canonical intelligence entries use one follow state",
-        "does not mark returned entries as presented",
-        "`evidence_page`",
-        "`evidence_page_size`",
-        "Missing `q` returns `422 Unprocessable Entity`",
-        "`400` | Invalid `tracking_scope`",
-        "`503` | Intelligence repository, embedding service, or storage config is not initialized",
-        "separate from async `POST /semantic-search`",
+        "`draft`",
+        "`active`",
+        "`paused`",
+        "`archived`",
+        "Topics progress through states",
+        "Merge previews expire after 24 hours",
+        "Prompt lifecycle: create draft",
+        "`analysis-service` / `api-only` deployments",
+        "not available from `ingestion`",
     ]:
         assert (
             expected in intelligence_reference

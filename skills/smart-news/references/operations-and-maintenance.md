@@ -55,7 +55,7 @@ These files contain the ground truth for HTTP behavior:
 Before merge, run the full planned verification suite to verify the skill docs, the backing API contract, and the legacy-reference guardrails stay aligned:
 
 ```bash
-uv run pytest tests/test_openclaw_skill_crypto_news_http_api.py -v
+uv run pytest tests/test_openclaw_skill_smart_news.py -v
 uv run pytest tests/test_api_server.py -k "health or analyze or datasource or webhook" -v
 uv run pytest tests/test_banned_legacy_reference_scan.py -v
 uv run python tests/helpers/banned_legacy_reference_scan.py
@@ -68,7 +68,7 @@ Do not merge until all four commands pass.
 Publish a new ClawHub version from the repo root with:
 
 ```bash
-skills/publish_clawhub_skill.sh crypto-news-http-api 0.2.1 "Describe the release briefly."
+skills/publish_clawhub_skill.sh smart-news 0.3.0 "Describe the release briefly."
 ```
 
 Use a semver version string. The script checks `clawhub` login state and runs the skill-specific test file before publishing unless `CLAWHUB_SKIP_TESTS=1` is set.

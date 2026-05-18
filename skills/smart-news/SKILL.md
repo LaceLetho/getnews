@@ -1,7 +1,7 @@
 ---
-name: crypto-news-http-api
+name: smart-news
 description: Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, intelligence operations, or health checks from OpenClaw.
-metadata: { openclaw: { skillKey: crypto-news-http-api, primaryEnv: API_KEY } }
+metadata: { openclaw: { skillKey: smart-news, primaryEnv: API_KEY } }
 ---
 
 # Crypto News HTTP API Skill
@@ -54,7 +54,7 @@ This skill declares `metadata.openclaw.primaryEnv: API_KEY`. In OpenClaw, inject
 {
   skills: {
     entries: {
-      "crypto-news-http-api": {
+      "smart-news": {
         enabled: true,
         apiKey: "YOUR_API_KEY"
       }

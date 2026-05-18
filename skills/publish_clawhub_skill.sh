@@ -8,8 +8,8 @@ Usage:
   skills/publish_clawhub_skill.sh <skill-name> <version> [changelog]
 
 Examples:
-  skills/publish_clawhub_skill.sh crypto-news-http-api 0.2.1
-  skills/publish_clawhub_skill.sh crypto-news-http-api 0.2.1 "Tighten OpenClaw runtime guidance."
+  skills/publish_clawhub_skill.sh smart-news 0.3.0
+  skills/publish_clawhub_skill.sh smart-news 0.3.0 "Update to match current API state."
 
 Environment overrides:
   CLAWHUB_SKILL_SLUG   Publish slug override (defaults to <skill-name>)
