@@ -18,8 +18,8 @@ Typical triggers:
 - Run asynchronous semantic search for a freeform topic query
 - Poll an API job until it finishes and then fetch the final result
 - Create, list, or delete datasources through the HTTP API
-- Query and manage intelligence topics through the topic-first API (create, revise, confirm, merge, detail, list)
-- List, inspect, and converge intelligence topics that group canonical entries
+- Query and manage intelligence topics through the topic-first API (create, revise, confirm, merge, detail, list, pause, archive)
+- List intelligence topic research run logs per-topic or globally
 - Check service health before or after an API workflow
 
 ## Quick Reference
@@ -98,52 +98,36 @@ The result body returns a Markdown report with `query`, `normalized_intent`, `ma
 
 ## Datasource Management
 
-Configure news sources through the datasource API. Create sources with `POST /datasources`, list them with `GET /datasources`, and remove them with `DELETE /datasources/{id}`. All datasource routes require Bearer auth.
+Configure news and intelligence sources through the datasource API. Create sources with `POST /datasources`, list them with `GET /datasources`, and remove them with `DELETE /datasources/{id}`. All datasource routes require Bearer auth.
+
+Each datasource has a `purpose` field: `news` (RSS/X/REST feeds for analysis) or `intelligence` (Telegram groups, V2EX for topic research). The `GET /datasources` endpoint supports optional `purpose` and `source_type` query parameters for filtering. Results are sorted by purpose, source type, then name.
 
 Tags help organize sources. Each datasource accepts up to 16 unique tags. Each tag is capped at 32 characters. Tags are normalized to lowercase and deduplicated automatically.
 
-List responses include only safe summaries. For `rest_api` type datasources, secrets are redacted and counts replace raw credential fields. This prevents accidental credential exposure when reviewing configurations.
+List and create responses include only safe summaries. For `rest_api` type datasources, secrets are redacted and counts replace raw credential fields. This prevents accidental credential exposure when reviewing configurations.
 
 ## Intelligence Query (Topic-First)
 
-All intelligence routes require Bearer auth. The old entry-based routes (`/intelligence/entries*`, `/intelligence/discovery`, `/intelligence/labels`, `/intelligence/search`) have been removed in the topic-only refactor.
+All intelligence routes require Bearer auth. The deprecated entry-based routes (`/intelligence/entries*`, `/intelligence/discovery`, `/intelligence/labels`, `/intelligence/search`) have been removed in the topic-only refactor. Topics are the sole first-class intelligence objects, driving scheduled LLM research from raw ingested messages and storing findings with merge support.
 
 Synchronous topic workflow endpoints:
 
 - `POST /intelligence/topics` — Create a topic draft from a user theme (returns AI-generated prompt draft)
 - `POST /intelligence/topics/{topic_id}/revise` — Revise the draft prompt with feedback
-- `PUT /intelligence/topics/{topic_id}/prompt` — Manually set/replace the prompt text
-- `POST /intelligence/topics/{topic_id}/confirm` — Confirm and activate the topic for research
-- `GET /intelligence/topics` — List topics with status filters
-- `GET /intelligence/topics/{topic_id}` — Get topic detail including prompt versions and active findings
-- `POST /intelligence/topics/{topic_id}/merge-preview` — Create a merge preview from active findings
-- `POST /intelligence/topics/{topic_id}/merge-accept` — Accept a merge preview (archives source findings)
+- `PUT /intelligence/topics/{topic_id}/prompt` — Manually set/replace the prompt text (context-aware: edits active prompt if one exists, otherwise creates draft revision)
+- `POST /intelligence/topics/{topic_id}/confirm` — Confirm and activate the topic for research (requires `prompt_version_id`)
+- `GET /intelligence/topics` — List topics with pagination and `active_only` filter (default: true)
+- `GET /intelligence/topics/{topic_id}` — Get topic detail including prompt versions, active findings, citations, merge availability, and recent run logs
+- `POST /intelligence/topics/{topic_id}/merge-preview` — Create a merge preview from active findings (requires `prompt_version_id`)
+- `POST /intelligence/topics/{topic_id}/merge-accept` — Accept a merge preview (archives source findings, creates merged finding; requires `preview_id`)
 - `POST /intelligence/topics/{topic_id}/pause` — Pause topic research
 - `POST /intelligence/topics/{topic_id}/archive` — Archive a topic
-- `GET /intelligence/topic-runs` — List topic research run logs with optional filters
+- `GET /intelligence/topics/{topic_id}/runs` — List research run logs for a specific topic (supports `run_type` filter)
+- `GET /intelligence/topic-runs` — List topic research run logs across all topics with optional filters (`topic_id`, `run_type`)
 
 These endpoints are synchronous; there is no async job/poll flow. Results return immediately.
 
 Topics have lifecycle states: `draft`, `active`, `paused`, `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours. Accepting a preview archives the exact source findings bound to it; stale previews (where active findings changed) are rejected.
-
-## Intelligence Topics
-
-In the topic-only refactor, topics are the sole first-class intelligence objects. They drive scheduled LLM research from raw ingested messages, storing findings and supporting merge operations. All topic routes require Bearer auth.
-
-Topic workflow endpoints:
-
-- `POST /intelligence/topics` — Create a topic draft from a user theme (returns AI-generated prompt draft)
-- `POST /intelligence/topics/{topic_id}/revise` — Revise the draft prompt with feedback
-- `PUT /intelligence/topics/{topic_id}/prompt` — Manually set/replace the prompt text
-- `POST /intelligence/topics/{topic_id}/confirm` — Confirm and activate the topic for research
-- `GET /intelligence/topics` — List topics with lifecycle status and pagination
-- `GET /intelligence/topics/{topic_id}` — Get topic detail including prompt versions and active findings
-- `POST /intelligence/topics/{topic_id}/merge-preview` — Create a merge preview from active findings
-- `POST /intelligence/topics/{topic_id}/merge-accept` — Accept a merge preview (archives source findings)
-- `POST /intelligence/topics/{topic_id}/pause` — Pause topic research
-- `POST /intelligence/topics/{topic_id}/archive` — Archive a topic
-- `GET /intelligence/topic-runs` — List topic research run logs with optional filters
-- `POST /intelligence/topics/converge` — Trigger LLM-based topic convergence
 
 ## Telegram Webhook
 
@@ -176,8 +160,8 @@ Supported HTTP routes:
 - `POST /intelligence/topics/{id}/merge-accept` - Accept merge preview
 - `POST /intelligence/topics/{id}/pause` - Pause topic
 - `POST /intelligence/topics/{id}/archive` - Archive topic
-- `GET /intelligence/topic-runs` - List topic research run logs
-- `POST /intelligence/topics/converge` - Trigger topic convergence
+- `GET /intelligence/topics/{id}/runs` - List per-topic research run logs
+- `GET /intelligence/topic-runs` - List global topic research run logs
 
 ## Non-Goals
 
@@ -192,6 +176,6 @@ These surfaces exist but are intentionally excluded from this API-focused skill.
 
 ## Updating
 
-Keep this skill aligned with the live HTTP routes in `api_server.py`, `tests/test_intelligence_api.py`, the AI Analyze API Guide at `docs/AI_ANALYZE_API_GUIDE.md`, and the semantic search guide at `docs/SEMANTIC_SEARCH_API_GUIDE.md`.
+Keep this skill aligned with the live HTTP routes in `api_server.py`, the AI Analyze API Guide at `docs/AI_ANALYZE_API_GUIDE.md`, and the semantic search guide at `docs/SEMANTIC_SEARCH_API_GUIDE.md`.
 
-When documentation disagrees with implementation, trust the code and tests over prose docs. Source precedence: code and tests first, then reference files, then guides.
+When documentation disagrees with implementation, trust the code and tests over prose docs. Source precedence: code first, then reference files, then guides.

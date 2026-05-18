@@ -11,6 +11,7 @@ Creates a new datasource. Returns `201 Created` on success, `409 Conflict` if a 
 **Request body structure:**
 ```json
 {
+  "purpose": "news|intelligence",
   "source_type": "rss|x|rest_api",
   "tags": ["tag1", "tag2"],
   "config_payload": {
@@ -20,27 +21,18 @@ Creates a new datasource. Returns `201 Created` on success, `409 Conflict` if a 
 }
 ```
 
-**Response structure (201):**
-```json
-{
-  "success": true,
-  "datasource": {
-    "id": "uuid",
-    "name": "My Source",
-    "source_type": "rss",
-    "tags": ["tag1"],
-    "config_summary": {
-      ...
-    }
-  }
-}
-```
-
-The `name` field in the top-level request must match `config_payload.name` when both are provided. The response returns a safe summary of the config, not the full payload.
+The `purpose` field determines which pipeline the datasource feeds: `news` (RSS/X/REST for content analysis) or `intelligence` (Telegram groups, V2EX for topic research). The `name` field in the top-level request must match `config_payload.name` when both are provided.
 
 ### GET /datasources
 
-Lists all datasources sorted by source type and name. Returns `200 OK` with a list of datasource summaries.
+Lists all datasources sorted by purpose, source type, then name. Supports optional filtering by `purpose` and `source_type` query parameters. Returns `200 OK` with a list of datasource summaries.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `purpose` | string | No | Filter by `news` or `intelligence` |
+| `source_type` | string | No | Filter by datasource type (`rss`, `x`, etc.) |
 
 **Response structure:**
 ```json
@@ -50,6 +42,7 @@ Lists all datasources sorted by source type and name. Returns `200 OK` with a li
     {
       "id": "uuid",
       "name": "My Source",
+      "purpose": "news",
       "source_type": "rss",
       "tags": ["tag1"],
       "config_summary": {
@@ -172,6 +165,7 @@ Example redacted response for a rest_api datasource:
 {
   "id": "uuid",
   "name": "News API",
+  "purpose": "news",
   "source_type": "rest_api",
   "tags": [],
   "config_summary": {
@@ -302,7 +296,7 @@ Collects topics and replies from V2EX nodes using the official API.
 | 201 | Create success | N/A (returns datasource) |
 | 204 | Delete success | N/A (empty body) |
 | 200 | List success | N/A (returns list) |
-| 401 | Missing or invalid API key | "Invalid or missing API key" |
+| 401 | Missing or invalid API key | "Invalid API key" |
 | 404 | Datasource not found | "Datasource not found" |
 | 409 | Duplicate datasource | "Datasource 'type:name' already exists" |
 | 409 | Datasource in use | "Cannot delete datasource 'type:name' while matching ingestion jobs are active" |

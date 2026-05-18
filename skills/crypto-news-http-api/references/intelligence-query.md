@@ -1,363 +1,166 @@
 # Intelligence Query Reference
 
-Hidden-channel intelligence HTTP API. All endpoints require Bearer authentication and read from the canonical intelligence knowledge base built by the private ingestion pipeline.
+Topic-first intelligence HTTP API. All endpoints require Bearer authentication and manage the topic research lifecycle (create → revise → confirm → research → merge → archive).
 
-These endpoints are synchronous. Do not use an async job/poll workflow for intelligence routes.
+These endpoints are synchronous — results return immediately. Do not use an async job/poll workflow for intelligence routes.
 
 ## Authentication
 
 Send `Authorization: Bearer <API_KEY>` with every request. Missing or invalid credentials return `401 Unauthorized`.
 
-## Common Parameters
+## Topic Lifecycle
 
-### window
+Topics progress through states: `draft` → `active` → `paused` / `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours.
 
-Time window filter in the format `<N>h` (hours) or `<N>d` (days). The filter is applied to canonical entry `last_seen_at`.
+## Deprecated Routes
 
-Examples:
+The old entry-based routes (`/intelligence/entries*`, `/intelligence/discovery`, `/intelligence/labels`, `/intelligence/search`, `/intelligence/raw/*`, `/intelligence/topics/converge`) have been removed. Use only the topic-first endpoints documented below.
 
-| Value | Meaning |
-|-------|---------|
-| `24h` | Last 24 hours |
-| `7d` | Last 7 days |
-| `30d` | Last 30 days |
+---
 
-Omit `window` to query all time. The current implementation ignores invalid window strings instead of returning `400`.
+## POST /intelligence/topics
 
-### entry_type
+Create a new intelligence topic with an LLM-generated draft prompt.
 
-Filter by canonical entry category:
+### Request Body
 
-| Value | Meaning |
-|-------|---------|
-| `channel` | Social channel or community information |
-| `slang` | Industry slang or jargon term |
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `theme` | string | Yes | 1–500 characters |
+| `source_context` | object | No | Optional context for prompt generation |
 
-### primary_label
+### Status Codes
 
-Filter by primary classification. Valid API values are:
+| Code | Meaning |
+|------|---------|
+| `201` | Topic draft created |
+| `400` | Invalid theme or topic parameters |
+| `401` | Missing or invalid Bearer token |
+| `503` | LLM service unavailable |
 
-`AI`, `crypto`, `暗网`, `账号交易`, `支付`, `游戏`, `电商`, `社媒`, `开发者工具`, `其他`
+### Response (201)
 
-### tracking_scope
-
-Supported by `GET /intelligence/entries` and `GET /intelligence/search`.
-
-| Value | Meaning |
-|-------|---------|
-| `following` | Entries whose follow status is `follow`. This is the default. |
-| `discovery` | Entries whose follow status is `unset`. |
-| `unset` | Alias for unset follow status. |
-| `unfollowed` | Entries whose follow status is `unfollow`. |
-| `all` | All entries except entries whose follow status is `unfollow`. |
-
-Invalid values return `400 Bad Request`.
-
-### page / page_size
-
-Integer pagination. Defaults are `page=1` and `page_size=20`. Values are clamped to `page>=1` and `1<=page_size<=100`.
-
-## Entry State
-
-Canonical intelligence entries use one follow state: `follow`, `unfollow`, or `unset`.
-
-Newly collected slang and channel entries default to `unset`. Following/unfollowing updates this state.
-
-Discovery returns entries with `follow_status=unset`; it does not mark returned entries as presented.
-
-## GET /intelligence/entries
-
-List canonical intelligence entries sorted by repository ordering, normally newest `last_seen_at` first.
-
-### Query Parameters
-
-| Parameter | Type | Required | Default |
-|-----------|------|----------|---------|
-| `window` | string | No | all time |
-| `entry_type` | string | No | all types |
-| `primary_label` | string | No | all labels |
-| `tracking_scope` | string | No | `following` |
-| `page` | integer | No | 1 |
-| `page_size` | integer | No | 20 |
-
-### Response (200)
+Returns a `TopicPromptVersionResponse`:
 
 ```json
 {
-  "entries": [
-    {
-      "id": "entry-uuid",
-      "entry_id": "entry-uuid",
-      "entry_type": "slang",
-      "normalized_key": "term-key",
-      "display_name": "Example Term",
-      "explanation": "Meaning and context",
-      "usage_summary": "How the term is used",
-      "primary_label": "AI",
-      "secondary_tags": ["subscription", "reseller"],
-      "confidence": 0.92,
-      "first_seen_at": "2026-05-01T10:00:00+00:00",
-      "evidence_count": 8,
-      "aliases": ["alternate term"],
-      "model_name": "opencode-go/glm-5.1",
-      "prompt_version": "v1.0",
-      "schema_version": "v1.0",
-      "created_at": "2026-05-01T10:00:00+00:00",
-      "updated_at": "2026-05-04T12:30:00+00:00",
-      "is_ignored": false,
-      "ignored_at": null,
-      "ignored_by": null,
-      "tracking_enabled": true,
-      "discovery_presented_at": null
-    }
-  ],
-  "total": 42,
-  "page": 1,
-  "page_size": 20
+  "id": "prompt-uuid",
+  "intelligence_topic_id": "topic-uuid",
+  "prompt_version": "v1.0",
+  "prompt_text": "LLM-generated research prompt...",
+  "schema_version": "v1.0",
+  "status": "draft",
+  "created_by": "api",
+  "activated_by": null,
+  "activation_notes": null,
+  "created_at": "2026-05-18T10:00:00+00:00",
+  "activated_at": null,
+  "archived_at": null,
+  "updated_at": "2026-05-18T10:00:00+00:00",
+  "audit_history": []
 }
 ```
 
 ### Example
 
 ```bash
-curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/entries?window=7d&entry_type=slang&tracking_scope=all&page=1&page_size=10"
-```
-
-## GET /intelligence/discovery
-
-List entries whose follow status is unset.
-
-### Query Parameters
-
-| Parameter | Type | Required | Default |
-|-----------|------|----------|---------|
-| `window` | string | No | all time |
-| `primary_label` | string | No | all labels |
-| `page` | integer | No | 1 |
-| `page_size` | integer | No | 20 |
-
-### Response (200)
-
-Same envelope and entry item shape as `GET /intelligence/entries`.
-
-### Example
-
-```bash
-curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/discovery?primary_label=AI&page=1&page_size=10"
-```
-
-To list entries marked not followed, call `GET /intelligence/entries?tracking_scope=unfollowed`.
-
-## GET /intelligence/labels
-
-List searchable primary labels. Use the returned `value` in `primary_label` filters.
-
-If there are no canonical entries, the endpoint returns all enum labels. Otherwise it returns labels that currently exist among entries with active follow visibility.
-
-### Response (200)
-
-```json
-{
-  "labels": [
-    {"name": "AI", "value": "AI"},
-    {"name": "CRYPTO", "value": "crypto"},
-    {"name": "PAYMENT", "value": "支付"}
-  ]
-}
-```
-
-### Example
-
-```bash
-curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/labels"
-```
-
-## POST /intelligence/entries/{entry_id}/follow-status
-
-Set an entry's follow status. The operation is idempotent and returns `404` if the entry does not exist.
-
-```json
-{
-  "follow_status": "follow"
-}
-```
-
-`follow_status` must be `follow`, `unfollow`, or `unset`.
-
-### Response (200)
-
-```json
-{
-  "success": true,
-  "entry_id": "entry-uuid",
-  "tracking_enabled": true,
-  "is_ignored": false,
-  "follow_status": "follow"
-}
-```
-
-The response may also include optional topic assignment fields when following an entry:
-
-| Field | Type | Meaning |
-|-------|------|---------|
-| `topic` | object or null | `{ "id": "...", "name": "..." }` if a topic was assigned |
-| `topic_error` | string or null | Error message if topic assignment failed |
-
-Both fields are omitted from the response when null.
-
-Example:
-
-```bash
-curl -X POST \
+curl -X POST "https://news.tradao.xyz/intelligence/topics" \
   -H "Authorization: Bearer ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"follow_status":"unfollow"}' \
-  "https://news.tradao.xyz/intelligence/entries/entry-uuid/follow-status"
+  -d '{"theme": "crypto payment channels in Telegram groups"}'
 ```
 
-Invalid status values return `422 Unprocessable Entity`.
+---
 
-## GET /intelligence/entries/{entry_id}
+## POST /intelligence/topics/{topic_id}/revise
 
-Get a single intelligence entry by ID. The detail response includes latest source display information when available and paginated evidence context groups.
+Revise the most recent draft prompt using LLM and user feedback. Returns a new prompt version.
 
-### Query Parameters
+### Request Body
 
-| Parameter | Type | Required | Default |
-|-----------|------|----------|---------|
-| `include_raw` | boolean | No | false |
-| `evidence_page` | integer | No | 1 |
-| `evidence_page_size` | integer | No | 5 |
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `feedback` | string | Yes | 1–5000 characters |
 
-`evidence_page_size` is clamped to `1..100`.
+### Response
 
-### Response (200)
-
-The base detail fields match entry list items and add:
-
-```json
-{
-  "last_seen_at": "2026-05-04T12:30:00+00:00",
-  "source": "telegram_group: https://t.me/example/123",
-  "raw_available": true,
-  "raw_evidence": {
-    "raw_item_id": "raw-uuid",
-    "raw_text": "Original raw text",
-    "source_type": "telegram_group",
-    "source_url": "https://t.me/example/123",
-    "published_at": "2026-05-04T12:00:00+00:00",
-    "collected_at": "2026-05-04T13:00:00+00:00",
-    "expires_at": "2026-06-03T13:00:00+00:00"
-  },
-  "evidence_groups": [
-    {
-      "observation_id": "observation-uuid",
-      "raw_item_id": "raw-uuid",
-      "observed_at": "2026-05-04T13:00:00+00:00",
-      "published_at": "2026-05-04T12:00:00+00:00",
-      "collected_at": "2026-05-04T13:00:00+00:00",
-      "anchor_raw_item": {
-        "raw_item_id": "raw-uuid",
-        "raw_text": "Original raw text",
-        "source_type": "telegram_group",
-        "source_url": "https://t.me/example/123",
-        "source": "telegram_group: https://t.me/example/123",
-        "published_at": "2026-05-04T12:00:00+00:00",
-        "collected_at": "2026-05-04T13:00:00+00:00",
-        "expires_at": "2026-06-03T13:00:00+00:00",
-        "is_expired": false
-      },
-      "neighboring_raw_items": [],
-      "warning": null
-    }
-  ],
-  "evidence_page": 1,
-  "evidence_page_size": 5,
-  "evidence_total": 1
-}
-```
-
-When `include_raw=true` but latest raw text is expired or unavailable, `raw_available` is `false` and `raw_evidence` remains `null`. Evidence group raw text is also null for expired or purged raw items, with a warning when applicable.
-
-Returns `404` if the entry ID does not exist.
+Returns a `TopicPromptVersionResponse` with the revised prompt.
 
 ### Example
 
 ```bash
-curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/entries/entry-uuid?include_raw=true&evidence_page=1&evidence_page_size=5"
+curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/revise" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"feedback": "Focus on stablecoin settlement, exclude NFT marketplaces"}'
 ```
 
-## GET /intelligence/search
+---
 
-Semantic search across canonical intelligence entries matched by `tracking_scope`. The route embeds the required query text and returns ranked results.
+## PUT /intelligence/topics/{topic_id}/prompt
 
-### Query Parameters
+Manually set or replace the topic prompt text. Context-aware behavior:
+- If an active prompt exists → edits it in place (new version with same activation)
+- If no active prompt → creates a draft revision
 
-| Parameter | Type | Required | Default |
-|-----------|------|----------|---------|
-| `q` | string | Yes | - |
-| `entry_type` | string | No | all types |
-| `primary_label` | string | No | all labels |
-| `window` | string | No | all time |
-| `tracking_scope` | string | No | `following` |
-| `page` | integer | No | 1 |
-| `page_size` | integer | No | 20 |
+### Request Body
 
-Missing `q` returns `422 Unprocessable Entity`. If the embedding service or storage configuration is unavailable, the endpoint returns `503 Service Unavailable`.
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `prompt_text` | string | Yes | 1–50000 characters |
 
-### Response (200)
+### Response
 
-```json
-{
-  "results": [
-    {
-      "id": "entry-uuid",
-      "entry_id": "entry-uuid",
-      "entry_type": "channel",
-      "normalized_key": "channel-key",
-      "display_name": "Example Channel",
-      "explanation": "Context for this channel",
-      "primary_label": "AI",
-      "secondary_tags": ["reseller", "subscription"],
-      "confidence": 0.88,
-      "evidence_count": 5,
-      "similarity_score": 0.9234,
-      "is_ignored": false,
-      "ignored_at": null,
-      "ignored_by": null,
-      "tracking_enabled": true
-    }
-  ],
-  "total": 25,
-  "page": 1,
-  "page_size": 20
-}
-```
+Returns a `TopicPromptVersionResponse`.
 
 ### Example
 
 ```bash
-curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/search?q=payment%20channels&window=7d&tracking_scope=all&page=1&page_size=10"
+curl -X PUT "https://news.tradao.xyz/intelligence/topics/topic-uuid/prompt" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt_text": "Custom manual research prompt text..."}'
 ```
+
+---
+
+## POST /intelligence/topics/{topic_id}/confirm
+
+Confirm a draft prompt version, activating it for scheduled research.
+
+### Request Body
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `prompt_version_id` | string | Yes | Must reference a draft prompt version |
+| `activation_notes` | string | No | Max 2000 characters |
+
+### Response
+
+Returns a `TopicPromptVersionResponse` with status `active`.
+
+### Example
+
+```bash
+curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/confirm" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt_version_id": "prompt-uuid", "activation_notes": "Ready for daily research"}'
+```
+
+---
 
 ## GET /intelligence/topics
 
-List intelligence topics grouped from followed canonical entries.
+List intelligence topics with pagination and filtering.
 
 ### Query Parameters
 
-| Parameter | Type | Required | Default |
-|-----------|------|----------|---------|
-| `active_only` | boolean | No | true |
-| `page` | integer | No | 1 |
-| `page_size` | integer | No | 20 |
-
-Set `active_only=false` to include merged/inactive topics.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `active_only` | boolean | No | `true` | Filter to active topics only |
+| `page` | integer | No | 1 | Page number (1-based) |
+| `page_size` | integer | No | 20 | Items per page |
 
 ### Response (200)
 
@@ -366,15 +169,15 @@ Set `active_only=false` to include merged/inactive topics.
   "items": [
     {
       "id": "topic-uuid",
-      "name": "接码平台",
-      "description": "接码平台相关情报",
-      "enriched_summary": "LLM generated deep-dive summary",
-      "entry_count": 2,
-      "enriched_at": "2026-05-14T06:00:00+00:00",
-      "updated_at": "2026-05-14T06:30:00+00:00"
+      "name": "Stablecoin Settlement Channels",
+      "description": "Research on stablecoin payment channels",
+      "enriched_summary": "LLM-generated deep-dive summary of findings",
+      "finding_count": 5,
+      "enriched_at": "2026-05-18T06:00:00+00:00",
+      "updated_at": "2026-05-18T06:30:00+00:00"
     }
   ],
-  "total": 31,
+  "total": 12,
   "page": 1,
   "page_size": 20
 }
@@ -387,15 +190,11 @@ curl -H "Authorization: Bearer ${API_KEY}" \
   "https://news.tradao.xyz/intelligence/topics?active_only=true&page=1&page_size=20"
 ```
 
+---
+
 ## GET /intelligence/topics/{topic_id}
 
-Get full detail for a single topic including linked entries and recent run logs.
-
-### Path Parameters
-
-| Parameter | Type | Required |
-|-----------|------|----------|
-| `topic_id` | string | Yes |
+Get full detail for a single topic including prompt versions, active findings, citations, merge availability, and recent run logs.
 
 ### Response (200)
 
@@ -403,49 +202,78 @@ Get full detail for a single topic including linked entries and recent run logs.
 {
   "topic": {
     "id": "topic-uuid",
-    "name": "接码平台",
-    "description": "接码平台相关情报",
-    "enriched_summary": "LLM generated deep-dive summary",
-    "source_channels": [
-      {"name": "channel-a", "url": "https://t.me/example", "type": "telegram_group", "confidence": 0.9}
-    ],
-    "methods": "LLM-inferred attack methods",
-    "vulnerabilities": "LLM-inferred vulnerabilities",
-    "latest_findings": ["finding 1", "finding 2"],
+    "name": "Stablecoin Settlement Channels",
+    "description": "Research on stablecoin payment channels",
+    "enriched_summary": "LLM-generated summary",
+    "source_channels": [],
+    "methods": null,
+    "vulnerabilities": null,
+    "latest_findings": [],
     "is_active": true,
-    "enriched_at": "2026-05-14T06:00:00+00:00",
-    "updated_at": "2026-05-14T06:30:00+00:00"
+    "enriched_at": "2026-05-18T06:00:00+00:00",
+    "updated_at": "2026-05-18T06:30:00+00:00"
   },
-  "entries": [
+  "prompt_versions": [
     {
-      "id": "entry-uuid",
-      "entry_type": "slang",
-      "display_name": "接码",
-      "primary_label": "账号交易",
-      "follow_status": "follow",
-      "topic_id": "topic-uuid",
-      "confidence": 0.92,
-      "evidence_count": 8
+      "id": "prompt-uuid",
+      "intelligence_topic_id": "topic-uuid",
+      "prompt_version": "v1.0",
+      "prompt_text": "Research prompt text...",
+      "schema_version": "v1.0",
+      "status": "active",
+      "created_by": "api",
+      "activated_by": "api",
+      "activation_notes": "Ready for daily research",
+      "created_at": "2026-05-18T10:00:00+00:00",
+      "activated_at": "2026-05-18T10:05:00+00:00",
+      "archived_at": null,
+      "updated_at": "2026-05-18T10:05:00+00:00",
+      "audit_history": []
     }
   ],
+  "current_prompt": { /* same shape as above, the active prompt */ },
+  "active_findings": [
+    {
+      "id": "finding-uuid",
+      "intelligence_topic_id": "topic-uuid",
+      "prompt_version_id": "prompt-uuid",
+      "finding_payload": { /* LLM-generated structured finding */ },
+      "confidence": 0.92,
+      "citations": [
+        {
+          "raw_item_id": "raw-uuid",
+          "source_type": "telegram_group",
+          "source_url": "https://t.me/example/123",
+          "published_at": "2026-05-18T05:00:00+00:00"
+        }
+      ],
+      "source_finding_ids": [],
+      "status": "active",
+      "found_at": "2026-05-18T06:00:00+00:00",
+      "created_at": "2026-05-18T06:00:00+00:00",
+      "updated_at": "2026-05-18T06:00:00+00:00"
+    }
+  ],
+  "citations": [ /* deduplicated list of all citations across active findings */ ],
+  "merge_available": false,
   "recent_logs": [
     {
       "id": "log-uuid",
-      "run_type": "converge",
+      "run_type": "topic_research",
       "status": "success",
       "topic_id": "topic-uuid",
       "entry_id": null,
-      "message": "Merged 接码 <- 接码平台",
-      "details": {"keeper_id": "...", "merged_id": "...", "similarity": 0.8988},
-      "started_at": "2026-05-14T06:30:00+00:00",
-      "finished_at": "2026-05-14T06:30:01+00:00",
-      "created_at": "2026-05-14T06:30:01+00:00"
+      "message": null,
+      "details": {},
+      "started_at": "2026-05-18T06:00:00+00:00",
+      "finished_at": "2026-05-18T06:00:01+00:00",
+      "created_at": "2026-05-18T06:00:01+00:00"
     }
   ]
 }
 ```
 
-Returns `404` if topic ID does not exist.
+Returns `404` if the topic ID does not exist.
 
 ### Example
 
@@ -454,18 +282,133 @@ curl -H "Authorization: Bearer ${API_KEY}" \
   "https://news.tradao.xyz/intelligence/topics/topic-uuid"
 ```
 
-## GET /intelligence/topic-runs
+---
 
-List topic run logs with optional filters. Run types are `auto_link` (entry-to-topic assignment), `enrich` (LLM enrichment), and `converge` (topic merging).
+## POST /intelligence/topics/{topic_id}/merge-preview
+
+Create a persisted merge preview from active findings. The preview synthesizes active findings into a consolidated result using LLM. Returns `201 Created`.
+
+### Request Body
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `prompt_version_id` | string | Yes | Must reference prompt version that generated the findings |
+
+### Response (201)
+
+```json
+{
+  "preview_id": "preview-uuid",
+  "topic_id": "topic-uuid",
+  "state": "pending",
+  "content_hash": "abc123...",
+  "expires_at": "2026-05-19T10:30:00+00:00",
+  "preview_payload": { /* LLM-generated merged content */ },
+  "created_at": "2026-05-18T10:30:00+00:00"
+}
+```
+
+Previews expire after 24 hours. Returns `400` if no active findings exist or another error occurs.
+
+### Example
+
+```bash
+curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/merge-preview" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt_version_id": "prompt-uuid"}'
+```
+
+---
+
+## POST /intelligence/topics/{topic_id}/merge-accept
+
+Accept a merge preview: validates the preview is still current, persists the merged finding, and archives the source findings.
+
+### Request Body
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `preview_id` | string | Yes | Must reference a valid pending preview |
+
+### Response
+
+Returns a `TopicFindingResponse` for the merged finding. Returns `400` if the preview is stale, expired, or otherwise invalid.
+
+### Example
+
+```bash
+curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/merge-accept" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"preview_id": "preview-uuid"}'
+```
+
+---
+
+## POST /intelligence/topics/{topic_id}/pause
+
+Pause a topic, stopping further scheduled research runs.
+
+### Response (200)
+
+```json
+{
+  "success": true,
+  "topic_id": "topic-uuid",
+  "lifecycle_status": "paused",
+  "updated_at": "2026-05-18T11:00:00+00:00"
+}
+```
+
+Returns `404` if the topic ID does not exist.
+
+### Example
+
+```bash
+curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/pause" \
+  -H "Authorization: Bearer ${API_KEY}"
+```
+
+---
+
+## POST /intelligence/topics/{topic_id}/archive
+
+Archive a topic, removing it from active research permanently.
+
+### Response (200)
+
+```json
+{
+  "success": true,
+  "topic_id": "topic-uuid",
+  "lifecycle_status": "archived",
+  "updated_at": "2026-05-18T12:00:00+00:00"
+}
+```
+
+Returns `404` if the topic ID does not exist.
+
+### Example
+
+```bash
+curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/archive" \
+  -H "Authorization: Bearer ${API_KEY}"
+```
+
+---
+
+## GET /intelligence/topics/{topic_id}/runs
+
+List research run logs for a specific topic.
 
 ### Query Parameters
 
-| Parameter | Type | Required | Default |
-|-----------|------|----------|---------|
-| `topic_id` | string | No | all topics |
-| `run_type` | string | No | all types |
-| `page` | integer | No | 1 |
-| `page_size` | integer | No | 20 |
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `run_type` | string | No | all types | Filter by run type |
+| `page` | integer | No | 1 | Page number |
+| `page_size` | integer | No | 20 | Items per page |
 
 ### Response (200)
 
@@ -474,15 +417,15 @@ List topic run logs with optional filters. Run types are `auto_link` (entry-to-t
   "items": [
     {
       "id": "log-uuid",
-      "run_type": "auto_link",
+      "run_type": "topic_research",
       "status": "success",
       "topic_id": "topic-uuid",
-      "entry_id": "entry-uuid",
+      "entry_id": null,
       "message": null,
       "details": {},
-      "started_at": "2026-05-14T06:00:00+00:00",
-      "finished_at": "2026-05-14T06:00:00+00:00",
-      "created_at": "2026-05-14T06:00:00+00:00"
+      "started_at": "2026-05-18T06:00:00+00:00",
+      "finished_at": "2026-05-18T06:00:01+00:00",
+      "created_at": "2026-05-18T06:00:01+00:00"
     }
   ],
   "page": 1,
@@ -494,99 +437,65 @@ List topic run logs with optional filters. Run types are `auto_link` (entry-to-t
 
 ```bash
 curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/topic-runs?run_type=converge&page=1&page_size=10"
+  "https://news.tradao.xyz/intelligence/topics/topic-uuid/runs?page=1&page_size=10"
 ```
 
-## POST /intelligence/topics/converge
+---
 
-Trigger LLM-based topic convergence. Finds similar topic pairs via vector embedding similarity (cosine >= 0.88 by default), then confirms each merge candidate with LLM. The keeper is the topic with more linked entries.
+## GET /intelligence/topic-runs
 
-Requires `POST`. No request body is needed.
+List topic research run logs across all topics with optional filters.
 
-### Response (200)
+### Query Parameters
 
-```json
-{
-  "success": true,
-  "merged_count": 1,
-  "skipped": false,
-  "message": "Merged 1 topic pairs"
-}
-```
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `topic_id` | string | No | all topics | Filter by topic |
+| `run_type` | string | No | all types | Filter by run type |
+| `page` | integer | No | 1 | Page number |
+| `page_size` | integer | No | 20 | Items per page |
 
-If no similar pairs exist, `merged_count` is 0 and `skipped` may be true.
+### Response
 
-### Example
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/topics/converge"
-```
-
-## GET /intelligence/raw/{raw_item_id}
-
-Get a raw intelligence item by ID. Returns original collected text if it is still within its retention window.
-
-### Path Parameters
-
-| Parameter | Type | Required |
-|-----------|------|----------|
-| `raw_item_id` | string | Yes |
-
-### Response (200)
-
-```json
-{
-  "raw_text": "Original raw text",
-  "source_type": "v2ex",
-  "source_url": "https://www.v2ex.com/t/1210190",
-  "published_at": "2026-05-04T10:30:00+00:00",
-  "expires_at": "2026-06-03T13:45:00+00:00",
-  "is_expired": false
-}
-```
-
-After expiration:
-
-```json
-{
-  "raw_text": null,
-  "source_type": "v2ex",
-  "source_url": "https://www.v2ex.com/t/1210190",
-  "published_at": "2026-05-04T10:30:00+00:00",
-  "expires_at": "2026-06-03T13:45:00+00:00",
-  "is_expired": true
-}
-```
-
-Returns `404` if raw item ID does not exist.
+Same shape as `GET /intelligence/topics/{topic_id}/runs`.
 
 ### Example
 
 ```bash
 curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/raw/raw-uuid"
+  "https://news.tradao.xyz/intelligence/topic-runs?run_type=topic_research&page=1&page_size=10"
 ```
+
+---
 
 ## Status Codes
 
 | Status | Meaning |
 |--------|---------|
 | `200` | Success |
-| `400` | Invalid `tracking_scope` |
+| `201` | Topic draft or merge preview created |
+| `400` | Invalid parameters or merge preview error |
 | `401` | Missing or invalid Bearer token |
-| `404` | Entry, raw item, or topic not found |
-| `422` | FastAPI validation error, such as missing `q` on search |
-| `500` | Controller not initialized (converge only) |
-| `503` | Intelligence repository, embedding service, or storage config is not initialized |
+| `404` | Topic or resource not found |
+| `422` | FastAPI validation error |
+| `500` | Internal server error |
+| `503` | LLM service or repository not initialized |
 
 ## Notes
 
-- Raw text is returned byte-for-byte while available; it is not summarized or redacted by these routes.
-- Expired raw text is represented as `raw_text: null` and `is_expired: true`.
-- Canonical structured knowledge remains queryable after raw text expires.
-- `GET /intelligence/search` is separate from async `POST /semantic-search`; intelligence search is synchronous and query-only.
-- Following an entry automatically assigns it to a topic via `POST /intelligence/entries/{entry_id}/follow-status`; unfollowing clears the topic link and deactivates empty topics.
-- Topic convergence requires topics to have embedding vectors. The analysis service needs `OPENAI_API_KEY` and `OPENCODE_API_KEY` to generate embeddings and run LLM-based merge confirmation.
+- All intelligence routes are synchronous — results return immediately without polling.
+- Only `active` topics receive scheduled research from the ingestion service.
+- Merge previews expire after 24 hours; accepting a stale preview is rejected.
+- Prompt lifecycle: create draft → revise (optional) → confirm → active. Manual edits via `PUT /prompt` can shortcut this.
 - These endpoints exist only on `analysis-service` / `api-only` deployments. They are not available from `ingestion`.
+
+## Updating
+
+Canonical sources for this reference:
+
+1. `crypto_news_analyzer/api_server.py` — route definitions and response models
+2. `crypto_news_analyzer/intelligence/topic_prompts.py` — prompt workflow service
+3. `crypto_news_analyzer/intelligence/topic_findings.py` — findings and merge service
+4. `crypto_news_analyzer/domain/models.py` — `TopicLifecycleStatus` enum
+
+When sources disagree, trust code over prose.
