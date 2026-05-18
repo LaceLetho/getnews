@@ -2375,7 +2375,7 @@ class TelegramCommandHandler:
             await msg.reply_text(response, parse_mode="Markdown")
             self._log_command_execution("/topic_confirm", user_id, username, topic_id, True, "")
         except Exception as e:
-            self.logger.error(f"处理/topic_confirm命令时发生错误: {e}")
+            self.logger.error(f"处理/topic_confirm命令时发生错误: {type(e).__name__}: {e}", exc_info=True)
             try:
                 await msg.reply_text(f"\u274c 确认失败: {str(e)}")
             except Exception:

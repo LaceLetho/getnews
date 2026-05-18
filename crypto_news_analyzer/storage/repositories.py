@@ -691,12 +691,14 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                     ),
                     (prompt.intelligence_topic_id, prompt.prompt_version),
                 ).fetchone()
-                if existing and existing[0] != prompt.id:
-                    raise ValueError(
-                        f"Prompt version {prompt.prompt_version} already exists "
-                        f"for topic {prompt.intelligence_topic_id} "
-                        f"(existing prompt id: {existing[0]})"
-                    )
+                if existing:
+                    existing_id = existing["id"] if self._data.backend == "postgres" else existing[0]
+                    if existing_id != prompt.id:
+                        raise ValueError(
+                            f"Prompt version {prompt.prompt_version} already exists "
+                            f"for topic {prompt.intelligence_topic_id} "
+                            f"(existing prompt id: {existing_id})"
+                        )
                 conn.cursor().execute(
                     self._data._sql(f"""
                     INSERT INTO intelligence_topic_prompt_versions ({', '.join(columns)})

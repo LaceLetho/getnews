@@ -204,8 +204,8 @@ class SentMessageCacheManager:
             except Exception as e:
                 if conn is not None:
                     conn.rollback()
-                logger.error(f"数据库操作失败: {e}")
-                raise StorageError(f"数据库操作失败: {e}", operation="database_operation")
+                logger.error(f"数据库操作失败: {type(e).__name__}: {e}", exc_info=True)
+                raise StorageError(f"数据库操作失败: {type(e).__name__}: {e}", operation="database_operation")
             finally:
                 if conn is not None:
                     conn.close()
@@ -224,8 +224,8 @@ class SentMessageCacheManager:
             yield conn
         except Exception as e:
             conn.rollback()
-            logger.error(f"数据库操作失败: {e}")
-            raise StorageError(f"数据库操作失败: {e}", operation="database_operation")
+            logger.error(f"数据库操作失败: {type(e).__name__}: {e}", exc_info=True)
+            raise StorageError(f"数据库操作失败: {type(e).__name__}: {e}", operation="database_operation")
         finally:
             # 不在这里关闭连接，保持连接池
             pass
