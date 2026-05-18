@@ -19,10 +19,6 @@ INTELLIGENCE_SOURCE_TYPES = ("telegram_group", "v2ex")
 
 class IntelligencePipeline:
     """Collect topic research raw messages and enforce raw TTL.
-
-    Legacy extractor/merge constructor arguments are accepted for import and
-    test compatibility, but this runtime no longer calls channel/slang
-    extraction, canonicalization, entry embeddings, or entry linking.
     """
 
     def __init__(
@@ -30,16 +26,12 @@ class IntelligencePipeline:
         data_source_factory: Any,
         intelligence_repository: Any,
         extractor: Any,
-        merge_engine: Any,
-        search_service: Any,
-        topic_enricher: Any = None,
+        merge_engine: Any = None,
     ):
         self.data_source_factory = data_source_factory
         self.intelligence_repository = intelligence_repository
         self.extractor = extractor
         self.merge_engine = merge_engine
-        self.search_service = search_service
-        self.topic_enricher = topic_enricher
         self.logger = logging.getLogger(__name__)
         self.backfill_hours = self._resolve_backfill_hours(extractor)
         self.raw_message_retention_days = self._resolve_raw_message_retention_days(extractor)
@@ -52,11 +44,6 @@ class IntelligencePipeline:
             "sources_processed": 0,
             "items_crawled": 0,
             "items_new": 0,
-            "observations": 0,
-            "canonical_entries": 0,
-            "embeddings_updated": 0,
-            "skipped_untracked_slang_items": 0,
-            "topics_enriched": 0,
             "raw_text_purged": 0,
             "errors": [],
         }
@@ -68,10 +55,6 @@ class IntelligencePipeline:
                 for key in (
                     "items_crawled",
                     "items_new",
-                    "observations",
-                    "canonical_entries",
-                    "embeddings_updated",
-                    "skipped_untracked_slang_items",
                 ):
                     result[key] += int(source_result.get(key, 0))
             except Exception as exc:
@@ -82,12 +65,6 @@ class IntelligencePipeline:
                 result["errors"].append(error_msg)
                 self.logger.exception(error_msg)
                 self._save_error_checkpoint(datasource, str(exc))
-
-        if self.topic_enricher:
-            try:
-                result["topics_enriched"] = self.topic_enricher.enrich_due_topics()
-            except Exception:
-                self.logger.exception("Topic enrichment failed")
 
         result["raw_text_purged"] = self._run_ttl_cleanup()
 
@@ -112,10 +89,6 @@ class IntelligencePipeline:
         return {
             "items_crawled": len(items),
             "items_new": len(new_items),
-            "observations": 0,
-            "canonical_entries": 0,
-            "embeddings_updated": 0,
-            "skipped_untracked_slang_items": 0,
         }
 
     def _list_intelligence_datasources(self) -> List[DataSource]:

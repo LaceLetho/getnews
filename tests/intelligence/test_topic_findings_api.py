@@ -184,15 +184,6 @@ class InMemoryTopicRepository:
             results = [f for f in results if f.status == status]
         return results[offset : offset + limit]
 
-    def list_topic_run_logs(
-        self,
-        topic_id: Optional[str] = None,
-        run_type: Optional[str] = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> List[Any]:
-        return []
-
     def list_entries_by_topic(
         self, topic_id: str, limit: int = 100, offset: int = 0
     ) -> List[Any]:
@@ -526,7 +517,6 @@ def test_unauthorized_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
             ("post", "/intelligence/topics/topic-1/merge-accept"),
             ("post", "/intelligence/topics/topic-1/pause"),
             ("post", "/intelligence/topics/topic-1/archive"),
-            ("get", "/intelligence/topics/topic-1/runs"),
             ("get", "/intelligence/topics/topic-1"),
         ]
         for method, path in endpoints:
@@ -715,16 +705,3 @@ def test_archive_topic(monkeypatch: pytest.MonkeyPatch) -> None:
         data = resp.json()
         assert data["success"] is True
         assert data["lifecycle_status"] == "archived"
-
-
-def test_list_topic_research_runs(monkeypatch: pytest.MonkeyPatch) -> None:
-    repo = InMemoryTopicRepository()
-    topic_id, _ = _make_topic_and_prompt(repo)
-
-    controller = _TopicApiFakeController(repo)
-    with _build_topic_test_app(monkeypatch, controller) as client:
-        resp = client.get(f"/intelligence/topics/{topic_id}/runs", headers=_authorized())
-        assert resp.status_code == 200, resp.text
-        data = resp.json()
-        assert data["items"] == []
-        assert data["page"] == 1

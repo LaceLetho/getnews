@@ -2,7 +2,7 @@
 
 Tests the topic-only intelligence refactor Telegram surface:
 topic_create, topic_revise, topic_set_prompt, topic_confirm,
-topic_list, topic_detail, topic_merge, topic_pause, topic_archive, topic_logs.
+topic_list, topic_detail, topic_merge, topic_pause, topic_archive.
 """
 
 import asyncio
@@ -146,15 +146,8 @@ def test_topic_detail():
                 return_value=SimpleNamespace(
                     id="topic-001",
                     name="BTC ETF",
-                    description="Study BTC ETF flows",
-                    enriched_summary="Deep dive analysis...",
-                    source_channels=[],
-                    methods="",
-                    vulnerabilities="",
-                    latest_findings=[],
                 )
             ),
-            list_entries_by_topic=Mock(return_value=[]),
             get_active_topic_prompt=Mock(return_value=None),
             list_active_findings=Mock(return_value=[]),
         )
@@ -312,7 +305,7 @@ def test_topic_revise():
 
     reply = update.message.reply_text.await_args
     assert reply is not None
-    assert "topic-001" in str(reply.args[0])
+    assert "后台处理" in str(reply.args[0])
 
 
 # --- Topic set_prompt ---

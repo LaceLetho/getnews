@@ -18,7 +18,7 @@ import uuid
 from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, cast
 from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import FastAPI, HTTPException, Depends, Response, Request, Body
+from fastapi import FastAPI, HTTPException, Depends, Response, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, field_validator
 import os
@@ -50,7 +50,6 @@ from .storage.repositories import (
     PostgresSemanticSearchRepository,
     SQLiteAnalysisRepository,
 )
-from .intelligence.search import IntelligenceSearchService
 from .intelligence.topic_findings import MergePreviewError
 from .domain.repositories import IntelligenceRepository
 
@@ -352,22 +351,13 @@ class DataSourceListResponse(BaseModel):
 class IntelligenceTopicItemResponse(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
-    enriched_summary: Optional[str] = None
     finding_count: int = 0
-    enriched_at: Optional[str] = None
     updated_at: Optional[str] = None
 
 
 class IntelligenceTopicListResponse(BaseModel):
     items: list[IntelligenceTopicItemResponse]
     total: int
-    page: int
-    page_size: int
-
-
-class IntelligenceTopicRunsResponse(BaseModel):
-    items: list[Dict[str, Any]]
     page: int
     page_size: int
 
@@ -440,7 +430,6 @@ class TopicDetailResponse(BaseModel):
     active_findings: List[TopicFindingResponse] = Field(default_factory=list)
     citations: List[Dict[str, Any]] = Field(default_factory=list)
     merge_available: bool = False
-    recent_logs: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class MergePreviewResponse(BaseModel):
@@ -451,12 +440,6 @@ class MergePreviewResponse(BaseModel):
     expires_at: Optional[str] = None
     preview_payload: Dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[str] = None
-
-
-class TopicResearchRunsResponse(BaseModel):
-    items: List[Dict[str, Any]] = Field(default_factory=list)
-    page: int = 1
-    page_size: int = 20
 
 
 class TopicLifecycleActionResponse(BaseModel):
@@ -477,30 +460,8 @@ def _topic_to_dict(topic: Any) -> Dict[str, Any]:
     return {
         "id": str(getattr(topic, "id", "")),
         "name": str(getattr(topic, "name", "")),
-        "description": getattr(topic, "description", None),
-        "enriched_summary": getattr(topic, "enriched_summary", None),
-        "source_channels": getattr(topic, "source_channels", []),
-        "methods": getattr(topic, "methods", None),
-        "vulnerabilities": getattr(topic, "vulnerabilities", None),
-        "latest_findings": getattr(topic, "latest_findings", []),
         "is_active": bool(getattr(topic, "is_active", True)),
-        "enriched_at": _datetime_to_iso(getattr(topic, "enriched_at", None)),
         "updated_at": _datetime_to_iso(getattr(topic, "updated_at", None)),
-    }
-
-
-def _log_to_dict(log: Any) -> Dict[str, Any]:
-    return {
-        "id": str(getattr(log, "id", "")),
-        "run_type": str(getattr(log, "run_type", "")),
-        "status": str(getattr(log, "status", "")),
-        "topic_id": getattr(log, "topic_id", None),
-        "entry_id": getattr(log, "entry_id", None),
-        "message": getattr(log, "message", None),
-        "details": getattr(log, "details", {}),
-        "started_at": _datetime_to_iso(getattr(log, "started_at", None)),
-        "finished_at": _datetime_to_iso(getattr(log, "finished_at", None)),
-        "created_at": _datetime_to_iso(getattr(log, "created_at", None)),
     }
 
 
@@ -836,30 +797,6 @@ def _build_semantic_search_service(controller: MainController) -> SemanticSearch
         semantic_search_config=config_manager.get_semantic_search_config(),
         llm_config_payload=dict(config_manager.config_data.get("llm_config", {})),
         provider_credentials=provider_credentials,
-    )
-
-
-def _build_intelligence_search_service(controller: MainController) -> IntelligenceSearchService:
-    """Build IntelligenceSearchService on demand for API querying."""
-    if controller.config_manager is None:
-        raise HTTPException(status_code=503, detail="System not initialized")
-
-    intelligence_repository = getattr(controller, "intelligence_repository", None)
-    if intelligence_repository is None:
-        raise HTTPException(status_code=503, detail="Intelligence repository not initialized")
-
-    embedding_service = getattr(controller, "embedding_service", None)
-    if embedding_service is None:
-        raise HTTPException(status_code=503, detail="Embedding service not initialized")
-
-    storage_config = getattr(controller, "storage_config", None)
-    if storage_config is None:
-        raise HTTPException(status_code=503, detail="Storage config not initialized")
-
-    return IntelligenceSearchService(
-        embedding_service=embedding_service,
-        intelligence_repository=intelligence_repository,
-        storage_config=storage_config,
     )
 
 
@@ -1690,32 +1627,6 @@ def register_intelligence_routes(app: FastAPI) -> None:
             updated_at=_datetime_to_iso(topic.updated_at),
         )
 
-    @app.get(
-        "/intelligence/topics/{topic_id}/runs",
-        response_model=IntelligenceTopicRunsResponse,
-    )
-    async def list_topic_research_runs(
-        topic_id: str,
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-        run_type: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-    ):
-        """List research runs for a specific topic."""
-        repository = _get_intelligence_repository(req)
-        logs = repository.list_topic_run_logs(
-            topic_id=topic_id,
-            run_type=run_type,
-            limit=max(1, page_size),
-            offset=max(0, page - 1) * max(1, page_size),
-        )
-        return IntelligenceTopicRunsResponse(
-            items=[_log_to_dict(log) for log in logs],
-            page=page,
-            page_size=page_size,
-        )
-
     @app.get("/intelligence/topics", response_model=IntelligenceTopicListResponse)
     async def list_intelligence_topics(
         req: Request,
@@ -1739,10 +1650,7 @@ def register_intelligence_routes(app: FastAPI) -> None:
                 IntelligenceTopicItemResponse(
                     id=topic.id,
                     name=topic.name,
-                    description=topic.description,
-                    enriched_summary=topic.enriched_summary,
                     finding_count=finding_count,
-                    enriched_at=_datetime_to_iso(topic.enriched_at),
                     updated_at=_datetime_to_iso(topic.updated_at),
                 )
             )
@@ -1767,7 +1675,6 @@ def register_intelligence_routes(app: FastAPI) -> None:
         prompt_versions = repository.list_topic_prompts(topic_id, limit=50, offset=0)
         current_prompt = repository.get_active_topic_prompt(topic_id)
         active_findings = repository.list_active_findings(topic_id)
-        logs = repository.list_topic_run_logs(topic_id=topic_id, limit=10, offset=0)
 
         all_citations: list[dict[str, Any]] = []
         for finding in active_findings:
@@ -1785,29 +1692,6 @@ def register_intelligence_routes(app: FastAPI) -> None:
             active_findings=[_finding_to_response(f) for f in active_findings],
             citations=all_citations,
             merge_available=merge_available,
-            recent_logs=[_log_to_dict(log) for log in logs],
-        )
-
-    @app.get("/intelligence/topic-runs", response_model=IntelligenceTopicRunsResponse)
-    async def list_intelligence_topic_runs(
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-        topic_id: Optional[str] = None,
-        run_type: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-    ):
-        repository = _get_intelligence_repository(req)
-        logs = repository.list_topic_run_logs(
-            topic_id=topic_id,
-            run_type=run_type,
-            limit=max(1, page_size),
-            offset=max(0, page - 1) * max(1, page_size),
-        )
-        return IntelligenceTopicRunsResponse(
-            items=[_log_to_dict(log) for log in logs],
-            page=page,
-            page_size=page_size,
         )
 
 

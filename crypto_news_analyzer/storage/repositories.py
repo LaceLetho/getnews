@@ -12,15 +12,12 @@ from typing import List, Optional, Dict, Any, Tuple, Set, cast
 
 from ..domain.models import (
     AnalysisRequest,
-    CanonicalIntelligenceEntry,
     DataSource,
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
-    ExtractionObservation,
     IngestionJob,
     IntelligenceCrawlCheckpoint,
     IntelligenceTopic,
-    IntelligenceTopicRunLog,
     FindingArchive,
     MergePreview,
     RawIntelligenceItem,
@@ -33,8 +30,6 @@ from ..domain.repositories import (
     AnalysisRepository,
     DataSourceRepository,
     IngestionRepository,
-    IntelligenceEvidenceAnchor,
-    IntelligenceRawContextWindow,
     IntelligenceRepository,
     ContentRepository,
     CacheRepository,
@@ -600,237 +595,6 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
     def purge_raw_text_older_than(self, cutoff_time: datetime) -> int:
         return self._data.purge_raw_intelligence_text_older_than(cutoff_time)
 
-    def save_observation(self, observation: ExtractionObservation) -> str:
-        return self._data.upsert_intelligence_observation(observation.to_dict())
-
-    def get_observations_by_raw_item(self, raw_item_id: str) -> List[ExtractionObservation]:
-        rows = self._data.get_intelligence_observations_by_raw_item(raw_item_id)
-        return [ExtractionObservation.from_dict(row) for row in rows]
-
-    def get_raw_item_ids_with_existing_observations(
-        self, raw_item_ids: List[str], prompt_version: str
-    ) -> Set[str]:
-        return self._data.get_raw_item_ids_with_existing_observations(raw_item_ids, prompt_version)
-
-    def get_uncanonicalized_observations(self, limit: int) -> List[ExtractionObservation]:
-        rows = self._data.get_uncanonicalized_intelligence_observations(limit)
-        return [ExtractionObservation.from_dict(row) for row in rows]
-
-    def mark_observation_canonicalized(self, observation_id: str) -> bool:
-        return self._data.mark_intelligence_observation_canonicalized(observation_id)
-
-    def save_canonical_entry(
-        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
-    ) -> str:
-        return self._data.upsert_canonical_intelligence_entry(
-            entry.to_dict(), observation_id=observation_id
-        )
-
-    def get_canonical_entry_by_normalized_key(
-        self, entry_type: str, normalized_key: str
-    ) -> Optional[CanonicalIntelligenceEntry]:
-        row = self._data.get_canonical_intelligence_entry_by_normalized_key(
-            entry_type, normalized_key
-        )
-        return CanonicalIntelligenceEntry.from_dict(row) if row else None
-
-    def get_canonical_entry_by_id(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
-        row = self._data.get_canonical_intelligence_entry_by_id(entry_id)
-        return CanonicalIntelligenceEntry.from_dict(row) if row else None
-
-    def upsert_canonical_entry(
-        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
-    ) -> str:
-        return self._data.upsert_canonical_intelligence_entry(
-            entry.to_dict(), by_normalized_key=True, observation_id=observation_id
-        )
-
-    def save_entry_evidence_link(
-        self, entry_id: str, observation_id: str, raw_item_id: str
-    ) -> None:
-        self._data.upsert_intelligence_entry_evidence_link(entry_id, observation_id, raw_item_id)
-
-    def list_entry_evidence_anchors(
-        self, entry_id: str, page: int = 1, page_size: int = 20
-    ) -> List[IntelligenceEvidenceAnchor]:
-        rows = self._data.list_intelligence_entry_evidence_anchors(entry_id, page, page_size)
-        return [self._evidence_anchor_from_row(row) for row in rows]
-
-    def count_entry_evidence_anchors(self, entry_id: str) -> int:
-        return self._data.count_intelligence_entry_evidence_anchors(entry_id)
-
-    def get_entry_evidence_context_window(
-        self, entry_id: str, raw_item_id: str, before: int = 10, after: int = 10
-    ) -> Optional[IntelligenceRawContextWindow]:
-        row = self._data.get_intelligence_entry_evidence_context_window(
-            entry_id, raw_item_id, before, after
-        )
-        if row is None:
-            return None
-        return IntelligenceRawContextWindow(
-            anchor=self._evidence_anchor_from_row(row["anchor"]),
-            items=[RawIntelligenceItem.from_dict(item) for item in row["items"]],
-        )
-
-    def _evidence_anchor_from_row(self, row: Dict[str, Any]) -> IntelligenceEvidenceAnchor:
-        collected_at = _parse_optional_datetime(row.get("collected_at"))
-        if collected_at is None:
-            raise ValueError("evidence anchor collected_at is required")
-        return IntelligenceEvidenceAnchor(
-            entry_id=str(row["entry_id"]),
-            observation_id=str(row["observation_id"]),
-            raw_item_id=str(row["raw_item_id"]),
-            observed_at=_parse_optional_datetime(row.get("observed_at")),
-            published_at=_parse_optional_datetime(row.get("published_at")),
-            collected_at=collected_at,
-        )
-
-    def list_canonical_entries(
-        self,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        page: int = 1,
-        page_size: int = 100,
-        tracking_scope: str = "following",
-    ) -> List[CanonicalIntelligenceEntry]:
-        rows = self._data.list_canonical_intelligence_entries(
-            entry_type=entry_type,
-            primary_label=primary_label,
-            window=window,
-            page=page,
-            page_size=page_size,
-            tracking_scope=tracking_scope,
-        )
-        return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
-
-    def count_canonical_entries(
-        self,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        tracking_scope: str = "following",
-    ) -> int:
-        return self._data.count_canonical_intelligence_entries(
-            entry_type=entry_type,
-            primary_label=primary_label,
-            window=window,
-            tracking_scope=tracking_scope,
-        )
-
-    def follow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
-        row = self._data.follow_canonical_intelligence_entry(entry_id)
-        return CanonicalIntelligenceEntry.from_dict(row) if row else None
-
-    def unfollow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
-        row = self._data.unfollow_canonical_intelligence_entry(entry_id)
-        return CanonicalIntelligenceEntry.from_dict(row) if row else None
-
-    def set_canonical_entry_follow_status(
-        self, entry_id: str, follow_status: str
-    ) -> Optional[CanonicalIntelligenceEntry]:
-        row = self._data.set_canonical_intelligence_follow_status(entry_id, follow_status)
-        return CanonicalIntelligenceEntry.from_dict(row) if row else None
-
-    def set_canonical_entries_follow_status(self, entry_ids: List[str], follow_status: str) -> int:
-        return self._data.set_canonical_intelligence_entries_follow_status(entry_ids, follow_status)
-
-    def mark_discovery_presented(self, entry_ids: List[str]) -> int:
-        return self._data.mark_discovery_presented(entry_ids)
-
-    def ignore_canonical_entry(
-        self, entry_id: str, ignored_by: Optional[str] = None
-    ) -> Optional[CanonicalIntelligenceEntry]:
-        row = self._data.ignore_canonical_intelligence_entry(entry_id, ignored_by)
-        return CanonicalIntelligenceEntry.from_dict(row) if row else None
-
-    def unignore_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
-        row = self._data.unignore_canonical_intelligence_entry(entry_id)
-        return CanonicalIntelligenceEntry.from_dict(row) if row else None
-
-    def list_ignored_canonical_entries(
-        self,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        page: int = 0,
-        page_size: int = 20,
-    ) -> List[CanonicalIntelligenceEntry]:
-        rows = self._data.list_ignored_canonical_intelligence_entries(
-            entry_type=entry_type,
-            primary_label=primary_label,
-            window=window,
-            page=page,
-            page_size=page_size,
-        )
-        return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
-
-    def count_ignored_canonical_entries(
-        self,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-    ) -> int:
-        return self._data.count_ignored_canonical_intelligence_entries(
-            entry_type=entry_type,
-            primary_label=primary_label,
-            window=window,
-        )
-
-    def update_embedding(self, entry_id: str, embedding: List[float], model: str) -> bool:
-        return self._data.update_canonical_intelligence_embedding(entry_id, embedding, model)
-
-    def get_entries_missing_embeddings(self, limit: int) -> List[CanonicalIntelligenceEntry]:
-        rows = self._data.get_canonical_intelligence_entries_missing_embeddings(limit)
-        return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
-
-    def count_semantic_search_candidates(
-        self,
-        query_embedding: List[float],
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        tracking_scope: str = "following",
-    ) -> int:
-        return self._data.count_semantic_search_canonical_intelligence_entries(
-            entry_type=entry_type,
-            primary_label=primary_label,
-            window=window,
-            tracking_scope=tracking_scope,
-        )
-
-    def semantic_search(
-        self,
-        query_embedding: List[float],
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        limit: int = 20,
-        offset: int = 0,
-        tracking_scope: str = "following",
-    ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
-        rows = self._data.semantic_search_canonical_intelligence_entries(
-            query_embedding=query_embedding,
-            entry_type=entry_type,
-            primary_label=primary_label,
-            window=window,
-            limit=limit,
-            offset=offset,
-            tracking_scope=tracking_scope,
-        )
-        return [(CanonicalIntelligenceEntry.from_dict(row), score) for row, score in rows]
-
-    def save_related_candidate(
-        self,
-        entry_id_a: str,
-        entry_id_b: str,
-        similarity_score: float,
-        relationship_type: str,
-    ) -> None:
-        self._data.save_intelligence_related_candidate(
-            entry_id_a, entry_id_b, similarity_score, relationship_type
-        )
-
     def save_checkpoint(self, checkpoint: IntelligenceCrawlCheckpoint) -> None:
         self._data.upsert_intelligence_checkpoint(checkpoint.to_dict())
 
@@ -860,68 +624,6 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
 
     def count_topics(self, is_active: Optional[bool] = None) -> int:
         return self._data.count_intelligence_topics(is_active=is_active)
-
-    def update_topic_embedding(
-        self, topic_id: str, embedding: List[float], model: str
-    ) -> bool:
-        return self._data.update_intelligence_topic_embedding(topic_id, embedding, model)
-
-    def assign_entry_to_topic(
-        self, entry_id: str, topic_id: str
-    ) -> Optional[CanonicalIntelligenceEntry]:
-        row = self._data.assign_intelligence_entry_to_topic(entry_id, topic_id)
-        return CanonicalIntelligenceEntry.from_dict(row) if row else None
-
-    def list_entries_by_topic(
-        self, topic_id: str, limit: int = 100, offset: int = 0
-    ) -> List[CanonicalIntelligenceEntry]:
-        rows = self._data.list_canonical_intelligence_entries_by_topic(
-            topic_id, limit, offset
-        )
-        return [CanonicalIntelligenceEntry.from_dict(row) for row in rows]
-
-    def count_entries_by_topic(self, topic_id: str) -> int:
-        return self._data.count_canonical_intelligence_entries_by_topic(topic_id)
-
-    def list_new_topic_evidence(
-        self,
-        topic_id: str,
-        since: Optional[datetime],
-        limit: int,
-    ) -> List[Dict[str, Any]]:
-        return self._data.list_new_intelligence_topic_evidence(topic_id, since, limit)
-
-    def save_topic_run_log(self, log: IntelligenceTopicRunLog) -> str:
-        return self._data.upsert_intelligence_topic_run_log(log.to_dict())
-
-    def list_topic_run_logs(
-        self,
-        topic_id: Optional[str] = None,
-        run_type: Optional[str] = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> List[IntelligenceTopicRunLog]:
-        rows = self._data.list_intelligence_topic_run_logs(
-            topic_id=topic_id, run_type=run_type, limit=limit, offset=offset
-        )
-        return [IntelligenceTopicRunLog.from_dict(row) for row in rows]
-
-    def get_latest_topic_run_log(
-        self, run_type: str
-    ) -> Optional[IntelligenceTopicRunLog]:
-        row = self._data.get_latest_intelligence_topic_run_log(run_type)
-        return IntelligenceTopicRunLog.from_dict(row) if row else None
-
-    def semantic_search_topics(
-        self,
-        query_embedding: List[float],
-        is_active: Optional[bool] = True,
-        limit: int = 10,
-    ) -> List[Tuple[IntelligenceTopic, float]]:
-        results = self._data.semantic_search_intelligence_topics(
-            query_embedding, is_active=is_active, limit=limit
-        )
-        return [(IntelligenceTopic.from_dict(row), score) for score, row in results]
 
     def create_topic_prompt_version(self, prompt: TopicPrompt) -> str:
         return self.save_topic_prompt(prompt)

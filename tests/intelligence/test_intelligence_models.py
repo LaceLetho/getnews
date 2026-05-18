@@ -63,6 +63,9 @@ def test_no_audit_domain_model_introduced():
     names = dir(models)
     assert "IntelligenceAudit" not in names
     assert "QueryAudit" not in names
+    assert "EntryType" not in names
+    assert "ExtractionObservation" not in names
+    assert "CanonicalIntelligenceEntry" not in names
 
 
 def test_topic_lifecycle_prompt_version_and_research_run_models():

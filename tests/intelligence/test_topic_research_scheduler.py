@@ -43,7 +43,7 @@ class FakeLLMClient:
 
 class FakeTopicRepository:
     def __init__(self, llm_payload: Any = None):
-        self.topic = IntelligenceTopic.create(name="BTC ETF flow", description="ETF flow anomalies")
+        self.topic = IntelligenceTopic.create(name="BTC ETF flow")
         self.prompt = TopicPrompt.create(
             intelligence_topic_id=self.topic.id,
             prompt_version="1",
@@ -254,28 +254,17 @@ def test_no_entry_extractor_dependency() -> None:
     )
     extractor = SimpleNamespace(
         config=SimpleNamespace(collection=SimpleNamespace(backfill_hours=24, raw_message_retention_days=180)),
-        extract=lambda items: (_ for _ in ()).throw(AssertionError("legacy extractor called")),
-    )
-    merge_engine = SimpleNamespace(
-        canonicalize_observations=lambda observations: (_ for _ in ()).throw(
-            AssertionError("legacy merge called")
-        )
     )
 
     pipeline = IntelligencePipeline(
         data_source_factory=FakeFactory(FakeCrawler([raw_item])),
         intelligence_repository=RawOnlyRepository(source),
         extractor=extractor,
-        merge_engine=merge_engine,
-        search_service=SimpleNamespace(batch_generate_embeddings=lambda entries: (_ for _ in ()).throw(AssertionError("entry embedding called"))),
     )
 
     result = pipeline.run_intelligence_collection_once()
 
     assert result["items_new"] == 1
-    assert result["observations"] == 0
-    assert result["canonical_entries"] == 0
-    assert result["embeddings_updated"] == 0
 
 
 def test_malformed_llm_json() -> None:

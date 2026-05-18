@@ -2,9 +2,6 @@
 
 These tests verify that the new prompt files exist, contain required schema/version
 markers, include citation requirements, and exclude old channel/slang category language.
-
-Old concepts being replaced: EntryType, SlangObservation, ChannelObservation,
-/intel_*, /intelligence/entries*.
 """
 
 import json
@@ -27,7 +24,7 @@ from crypto_news_analyzer.models import StorageConfig
 from crypto_news_analyzer.storage.data_manager import DataManager
 from crypto_news_analyzer.storage.repositories import SQLiteIntelligenceRepository
 
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
 NEW_PROMPT_FILES = [
     "topic_prompt_generation_prompt.md",

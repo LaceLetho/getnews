@@ -29,7 +29,7 @@ from crypto_news_analyzer.reporters.telegram_command_handler import TelegramComm
 from crypto_news_analyzer.storage import repositories as storage_repositories
 from crypto_news_analyzer.models import StorageConfig, TelegramCommandConfig
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SECRET_SENTINELS = (
     "StringSession_SENTINEL_do_not_leak",
     "V2EX_PAT_SENTINEL_do_not_leak",
@@ -42,19 +42,6 @@ SECRET_SENTINELS = (
 class _FakeIntelligenceRepository:
     def list_topic_prompts(self, *_args: Any, **_kwargs: Any) -> list[Any]:
         return []
-
-    def list_topic_run_logs(self, *_args: Any, **_kwargs: Any) -> list[Any]:
-        return []
-
-    def list_canonical_entries(self, *_args: Any, **_kwargs: Any) -> list[Any]:
-        return []
-
-    def count_canonical_entries(self, *_args: Any, **_kwargs: Any) -> int:
-        return 0
-
-    def get_canonical_entry_by_id(self, _entry_id: str) -> None:
-        return None
-
 
 class _FakeDatasourceRepository:
     def __init__(self, datasources: list[Any]) -> None:

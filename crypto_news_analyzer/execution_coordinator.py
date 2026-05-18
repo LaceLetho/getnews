@@ -549,33 +549,14 @@ class MainController:
             raise ValueError("智能采集仓储未初始化")
 
         from .intelligence.pipeline import IntelligencePipeline
-        from .intelligence.search import IntelligenceSearchService
-        from .intelligence.topic_enricher import TopicEnricher
         intelligence_config = self.config_manager.get_intelligence_config()
         setattr(self.intelligence_repository, "datasource_repository", self.datasource_repository)
-
-        search_service = None
-        if self.embedding_service is not None and self.storage_config is not None:
-            search_service = IntelligenceSearchService(
-                embedding_service=self.embedding_service,
-                intelligence_repository=self.intelligence_repository,
-                storage_config=self.storage_config,
-            )
-
-        enrichment_config = intelligence_config_payload.get("topic_enrichment", {})
-        topic_enricher = TopicEnricher(
-            intelligence_repository=self.intelligence_repository,
-            search_service=search_service,
-            config=enrichment_config,
-        ) if enrichment_config.get("enabled", True) else None
 
         self._intelligence_pipeline = IntelligencePipeline(
             data_source_factory=get_data_source_factory(),
             intelligence_repository=self.intelligence_repository,
             extractor=SimpleNamespace(config=intelligence_config),
             merge_engine=None,
-            search_service=search_service,
-            topic_enricher=topic_enricher,
         )
         self.logger.info("IntelligencePipeline初始化完成（ingestion-only）")
 

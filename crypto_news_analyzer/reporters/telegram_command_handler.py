@@ -45,7 +45,6 @@ from ..datasource_payloads import (
 from ..domain.models import (
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
-    PrimaryLabel,
 )
 from ..models import (
     ChatContext,
@@ -53,7 +52,6 @@ from ..models import (
     SemanticSearchConfig,
     TelegramCommandConfig,
 )
-from ..intelligence.search import IntelligenceSearchService
 from ..utils.timezone_utils import now_utc8, format_datetime_utc8
 
 
@@ -248,7 +246,7 @@ class TelegramCommandHandler:
         """Register INTELLIGENCE domain Telegram commands.
 
         Intelligence commands operate on RawIntelligenceItem and IntelligenceTopic data:
-        topic creation, revision, confirmation, listing, detail, logs, merge, pause, archive.
+        topic creation, revision, confirmation, listing, detail, merge, pause, archive.
         """
         application.add_handler(CommandHandler("topic_create", self._handle_topic_create_command))
         application.add_handler(CommandHandler("topic_revise", self._handle_topic_revise_command))
@@ -258,7 +256,6 @@ class TelegramCommandHandler:
         application.add_handler(CommandHandler("topic_confirm", self._handle_topic_confirm_command))
         application.add_handler(CommandHandler("topic_list", self._handle_topic_list_command))
         application.add_handler(CommandHandler("topic_detail", self._handle_topic_detail_command))
-        application.add_handler(CommandHandler("topic_logs", self._handle_topic_logs_command))
         application.add_handler(CommandHandler("topic_merge", self._handle_topic_merge_command))
         application.add_handler(CommandHandler("topic_pause", self._handle_topic_pause_command))
         application.add_handler(CommandHandler("topic_archive", self._handle_topic_archive_command))
@@ -826,7 +823,6 @@ class TelegramCommandHandler:
             commands.append(BotCommand("topic_confirm", "确认并激活主题"))
             commands.append(BotCommand("topic_list", "查看主题列表"))
             commands.append(BotCommand("topic_detail", "查看主题详情和发现"))
-            commands.append(BotCommand("topic_logs", "查看主题运行日志"))
             commands.append(BotCommand("topic_merge", "合并主题发现"))
             commands.append(BotCommand("topic_pause", "暂停主题"))
             commands.append(BotCommand("topic_archive", "归档主题"))
@@ -2002,28 +1998,6 @@ class TelegramCommandHandler:
                 repository = getter()
         return repository
 
-    def _get_intelligence_search_service(self) -> Optional[Any]:
-        service = getattr(self.execution_coordinator, "intelligence_search_service", None)
-        if service is None:
-            getter = getattr(self.execution_coordinator, "get_intelligence_search_service", None)
-            if callable(getter):
-                service = getter()
-
-        if service is not None:
-            return service
-
-        repository = self._get_intelligence_repository()
-        embedding_service = getattr(self.execution_coordinator, "embedding_service", None)
-        storage_config = getattr(self.execution_coordinator, "storage_config", None)
-        if repository is None or embedding_service is None or storage_config is None:
-            return None
-
-        return IntelligenceSearchService(
-            embedding_service=embedding_service,
-            intelligence_repository=repository,
-            storage_config=storage_config,
-        )
-
     def _get_topic_prompt_workflow_service(self) -> Optional[Any]:
         service = getattr(self.execution_coordinator, "topic_prompt_workflow_service", None)
         if service is not None:
@@ -2160,16 +2134,6 @@ class TelegramCommandHandler:
                 self.logger.error("发送/topic_revise失败响应失败: %s", send_error)
         finally:
             self._active_topic_revision_keys.discard(request_key)
-
-    def _normalize_intelligence_primary_label(self, label: Optional[str]) -> Optional[str]:
-        normalized = str(label or "").strip()
-        if not normalized:
-            return None
-
-        for item in PrimaryLabel:
-            if normalized == item.value or normalized.lower() == item.name.lower():
-                return item.value
-        return normalized
 
     async def _handle_topic_create_command(self, update: Any, context: Any) -> None:
         try:
@@ -2739,14 +2703,6 @@ class TelegramCommandHandler:
                 return "❌ 主题未找到"
             esc = self._escape_markdown_v1
             lines: List[str] = [f"🔬 {esc(topic.name)}\n"]
-            if topic.description:
-                lines.append(f"*描述*\n{esc(topic.description)}\n")
-            if topic.enriched_summary:
-                lines.append(f"*📋 深度摘要*\n{esc(topic.enriched_summary)}\n")
-            if topic.methods:
-                lines.append(f"*🛠 方法*\n{esc(topic.methods)}\n")
-            if topic.vulnerabilities:
-                lines.append(f"*🧨 漏洞/内幕*\n{esc(topic.vulnerabilities)}\n")
 
             active_prompt = repository.get_active_topic_prompt(topic_id)
             if active_prompt:
@@ -2778,62 +2734,7 @@ class TelegramCommandHandler:
                     lines.append(f"  • #{i} {title}{conf_str}")
                 lines.append("")
 
-            if topic.latest_findings:
-                lines.append("*🆕 最新发现摘要*")
-                for finding in topic.latest_findings:
-                    lines.append(f"  • {esc(str(finding)[:200])}")
-                lines.append("")
-
             self._log_command_execution("/topic_detail", user_id, username, topic_id, True, "")
-            return "\n".join(lines)
-        except Exception as e:
-            return f"❌ 查询失败: {str(e)}"
-
-    async def _handle_topic_logs_command(self, update: Any, context: Any) -> None:
-        try:
-            msg = update.effective_message or update.message
-            if msg is None:
-                return
-            user_id = str(update.effective_user.id if update.effective_user else "unknown")
-            username = update.effective_user.username if update.effective_user else "unknown"
-
-            if not self.is_authorized_user(user_id, username):
-                await msg.reply_text("\u274c 权限拒绝")
-                return
-
-            parts = (msg.text or "").split(maxsplit=1)
-            topic_id = parts[1].strip() if len(parts) > 1 else ""
-            response = self.handle_topic_logs_command(user_id, username, topic_id or None)
-            await msg.reply_text(response, parse_mode="Markdown")
-        except Exception as e:
-            self.logger.error(f"处理/topic_logs命令时发生错误: {e}")
-
-    def handle_topic_logs_command(
-        self, user_id: str, username: str, topic_id: Optional[str] = None
-    ) -> str:
-        try:
-            repository = self._get_intelligence_repository()
-            if repository is None:
-                return "❌ 情报仓储未初始化"
-            logs = repository.list_topic_run_logs(topic_id=topic_id, limit=20, offset=0)
-            if not logs:
-                return "🧾 暂无运行日志"
-            esc = self._escape_markdown_v1
-            lines = ["🧾 Topic Run Logs\n"]
-            for log in logs:
-                created = log.created_at.strftime("%m-%d %H:%M") if log.created_at else ""
-                status_icon = {"success": "✅", "skipped": "⏭️", "failed": "❌"}.get(
-                    log.status, "?"
-                )
-                run_type_label = {
-                    "auto_link": "自动链接",
-                    "enrich": "主题累积",
-                    "converge": "主题收敛",
-                }.get(log.run_type, log.run_type)
-                lines.append(f"{created} {status_icon} [{run_type_label}] {log.status}")
-                if log.message:
-                    lines.append(f"  {esc(log.message[:200])}")
-            self._log_command_execution("/topic_logs", user_id, username, None, True, "")
             return "\n".join(lines)
         except Exception as e:
             return f"❌ 查询失败: {str(e)}"
@@ -3322,7 +3223,6 @@ class TelegramCommandHandler:
                 "topic_confirm",
                 "topic_list",
                 "topic_detail",
-                "topic_logs",
                 "topic_merge",
                 "topic_pause",
                 "topic_archive",
@@ -3413,7 +3313,6 @@ class TelegramCommandHandler:
         help_text.append("/topic_confirm <topic_id> - 确认并激活主题\n")
         help_text.append("/topic_list [page] - 查看主题列表\n")
         help_text.append("/topic_detail <topic_id> - 查看主题详情和发现\n")
-        help_text.append("/topic_logs <topic_id> - 查看主题运行日志\n")
         help_text.append("/topic_merge <topic_id> - 合并主题发现\n")
         help_text.append("/topic_pause <topic_id> - 暂停主题\n")
         help_text.append("/topic_archive <topic_id> - 归档主题\n")

@@ -58,36 +58,6 @@ class DataSourcePurpose(str, Enum):
     INTELLIGENCE = "intelligence"
 
 
-# DEPRECATED — Compatibility-only models from old entry extraction pipeline.
-# The ACTIVE intelligence path is topic-only (IntelligenceTopic, TopicFinding,
-# TopicPrompt, TopicFinding, TopicResearchRun). Do NOT use EntryType,
-# ExtractionObservation, or CanonicalIntelligenceEntry for new code.
-# These remain for backward compatibility with old extraction pipeline files
-# (merge.py, extractor.py) which are also deprecated and unwired from runtime.
-class EntryType(str, Enum):
-    CHANNEL = "channel"
-    SLANG = "slang"
-
-
-class PrimaryLabel(str, Enum):
-    AI = "AI"
-    CRYPTO = "crypto"
-    DARK_WEB = "暗网"
-    ACCOUNT_TRADING = "账号交易"
-    PAYMENT = "支付"
-    GAME = "游戏"
-    ECOMMERCE = "电商"
-    SOCIAL_MEDIA = "社媒"
-    DEVELOPER_TOOLS = "开发者工具"
-    OTHER = "其他"
-
-
-class IntelligenceFollowStatus(str, Enum):
-    FOLLOW = "follow"
-    UNFOLLOW = "unfollow"
-    UNSET = "unset"
-
-
 class CheckpointStatus(str, Enum):
     OK = "ok"
     RATE_LIMITED = "rate_limited"
@@ -122,10 +92,7 @@ class MergePreviewState(str, Enum):
 
 ACTIVE_INGESTION_JOB_STATUSES = frozenset({"pending", "running"})
 
-_ENTRY_TYPE_VALUES = {item.value for item in EntryType}
-_PRIMARY_LABEL_VALUES = {item.value for item in PrimaryLabel}
 _CHECKPOINT_STATUS_VALUES = {item.value for item in CheckpointStatus}
-_FOLLOW_STATUS_VALUES = {item.value for item in IntelligenceFollowStatus}
 _TOPIC_LIFECYCLE_STATUS_VALUES = {item.value for item in TopicLifecycleStatus}
 _TOPIC_PROMPT_STATUS_VALUES = {item.value for item in TopicPromptStatus}
 _TOPIC_FINDING_STATUS_VALUES = {item.value for item in TopicFindingStatus}
@@ -805,255 +772,11 @@ class RawIntelligenceItem:
 
 
 @dataclass
-class ExtractionObservation:
-    id: str
-    raw_item_id: str
-    entry_type: str
-    confidence: float
-    model_name: str
-    prompt_version: str
-    schema_version: str
-    channel_name: Optional[str] = None
-    channel_description: Optional[str] = None
-    channel_urls: List[str] = field(default_factory=list)
-    channel_handles: List[str] = field(default_factory=list)
-    channel_domains: List[str] = field(default_factory=list)
-    term: Optional[str] = None
-    normalized_term: Optional[str] = None
-    literal_meaning: Optional[str] = None
-    contextual_meaning: Optional[str] = None
-    usage_example_raw_item_id: Optional[str] = None
-    usage_quote: Optional[str] = None
-    aliases_or_variants: List[str] = field(default_factory=list)
-    detected_language: Optional[str] = None
-    primary_label: Optional[str] = None
-    secondary_tags: List[str] = field(default_factory=list)
-    is_canonicalized: bool = False
-    created_at: Optional[datetime] = None
-
-    def __post_init__(self):
-        if not self.id:
-            raise ValueError("id is required")
-        if not self.raw_item_id:
-            raise ValueError("raw_item_id is required")
-        self.entry_type = str(self.entry_type).strip().lower()
-        if self.entry_type not in _ENTRY_TYPE_VALUES:
-            raise ValueError("entry_type must be one of: channel, slang")
-        if self.primary_label and self.primary_label not in _PRIMARY_LABEL_VALUES:
-            raise ValueError("primary_label is invalid")
-        if not 0.0 <= float(self.confidence) <= 1.0:
-            raise ValueError("confidence must be between 0.0 and 1.0")
-        self.confidence = float(self.confidence)
-        for field_name in ("model_name", "prompt_version", "schema_version"):
-            if not str(getattr(self, field_name) or "").strip():
-                raise ValueError(f"{field_name} is required")
-            setattr(self, field_name, str(getattr(self, field_name)).strip())
-        if self.entry_type == EntryType.CHANNEL.value and not (
-            self.channel_name or self.channel_urls or self.channel_handles or self.channel_domains
-        ):
-            raise ValueError("channel observation requires channel_name, urls, handles, or domains")
-        if self.entry_type == EntryType.SLANG.value:
-            if not str(self.term or "").strip():
-                raise ValueError("slang observation requires term")
-            if not str(self.normalized_term or "").strip():
-                raise ValueError("slang observation requires normalized_term")
-        self.channel_urls = _validate_json_list(self.channel_urls, "channel_urls")
-        self.channel_handles = _validate_json_list(self.channel_handles, "channel_handles")
-        self.channel_domains = _validate_json_list(self.channel_domains, "channel_domains")
-        self.aliases_or_variants = _validate_json_list(
-            self.aliases_or_variants, "aliases_or_variants"
-        )
-        self.secondary_tags = _validate_json_list(self.secondary_tags, "secondary_tags")
-
-    @classmethod
-    def create(
-        cls,
-        raw_item_id: str,
-        entry_type: str,
-        confidence: float,
-        model_name: str,
-        prompt_version: str,
-        schema_version: str,
-        **kwargs: Any,
-    ) -> "ExtractionObservation":
-        return cls(
-            id=str(uuid.uuid4()),
-            raw_item_id=raw_item_id,
-            entry_type=entry_type,
-            confidence=confidence,
-            model_name=model_name,
-            prompt_version=prompt_version,
-            schema_version=schema_version,
-            created_at=datetime.utcnow(),
-            **kwargs,
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            **self.__dict__,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ExtractionObservation":
-        payload = dict(data)
-        payload["created_at"] = _parse_optional_datetime(payload.get("created_at"))
-        return cls(**payload)
-
-
-@dataclass
-class CanonicalIntelligenceEntry:
-    id: str
-    entry_type: str
-    normalized_key: str
-    display_name: str
-    confidence: float = 0.0
-    explanation: Optional[str] = None
-    usage_summary: Optional[str] = None
-    primary_label: Optional[str] = None
-    secondary_tags: List[str] = field(default_factory=list)
-    first_seen_at: Optional[datetime] = None
-    last_seen_at: Optional[datetime] = None
-    evidence_count: int = 1
-    latest_raw_item_id: Optional[str] = None
-    prompt_version: Optional[str] = None
-    model_name: Optional[str] = None
-    schema_version: Optional[str] = None
-    is_ignored: bool = False
-    ignored_at: Optional[datetime] = None
-    ignored_by: Optional[str] = None
-    tracking_enabled: bool = False
-    discovery_presented_at: Optional[datetime] = None
-    follow_status: str = IntelligenceFollowStatus.UNSET.value
-    topic_id: Optional[str] = None
-    embedding: Optional[List[float]] = None
-    embedding_model: Optional[str] = None
-    embedding_updated_at: Optional[datetime] = None
-    aliases: List[str] = field(default_factory=list)
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-    def __post_init__(self):
-        if not self.id:
-            raise ValueError("id is required")
-        self.entry_type = str(self.entry_type).strip().lower()
-        if self.entry_type not in _ENTRY_TYPE_VALUES:
-            raise ValueError("entry_type must be one of: channel, slang")
-        self.normalized_key = str(self.normalized_key).strip().lower()
-        if not self.normalized_key:
-            raise ValueError("normalized_key is required")
-        self.display_name = str(self.display_name).strip()
-        if not self.display_name:
-            raise ValueError("display_name is required")
-        if self.primary_label and self.primary_label not in _PRIMARY_LABEL_VALUES:
-            raise ValueError("primary_label is invalid")
-        if not 0.0 <= float(self.confidence) <= 1.0:
-            raise ValueError("confidence must be between 0.0 and 1.0")
-        self.confidence = float(self.confidence)
-        if self.evidence_count < 0:
-            raise ValueError("evidence_count cannot be negative")
-        self.is_ignored = bool(self.is_ignored)
-        self.follow_status = (
-            str(self.follow_status or IntelligenceFollowStatus.UNSET.value).strip().lower()
-        )
-        if self.follow_status == IntelligenceFollowStatus.UNSET.value:
-            if self.is_ignored:
-                self.follow_status = IntelligenceFollowStatus.UNFOLLOW.value
-            elif bool(self.tracking_enabled):
-                self.follow_status = IntelligenceFollowStatus.FOLLOW.value
-        if self.follow_status not in _FOLLOW_STATUS_VALUES:
-            raise ValueError("follow_status must be one of: follow, unfollow, unset")
-        self.tracking_enabled = self.follow_status == IntelligenceFollowStatus.FOLLOW.value
-        self.is_ignored = self.follow_status == IntelligenceFollowStatus.UNFOLLOW.value
-        self.secondary_tags = _validate_json_list(self.secondary_tags, "secondary_tags")
-        self.aliases = _validate_json_list(self.aliases, "aliases")
-        if self.embedding is not None:
-            self.embedding = [float(value) for value in self.embedding]
-
-    @classmethod
-    def create(
-        cls,
-        entry_type: str,
-        normalized_key: str,
-        display_name: str,
-        **kwargs: Any,
-    ) -> "CanonicalIntelligenceEntry":
-        now = datetime.utcnow()
-        kwargs.setdefault("follow_status", IntelligenceFollowStatus.UNSET.value)
-        return cls(
-            id=str(uuid.uuid4()),
-            entry_type=entry_type,
-            normalized_key=normalized_key,
-            display_name=display_name,
-            created_at=now,
-            updated_at=now,
-            **kwargs,
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        data = dict(self.__dict__)
-        for key in (
-            "first_seen_at",
-            "last_seen_at",
-            "ignored_at",
-            "discovery_presented_at",
-            "embedding_updated_at",
-            "created_at",
-            "updated_at",
-        ):
-            data[key] = data[key].isoformat() if data.get(key) else None
-        return data
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CanonicalIntelligenceEntry":
-        payload = dict(data)
-        for key in (
-            "first_seen_at",
-            "last_seen_at",
-            "ignored_at",
-            "discovery_presented_at",
-            "embedding_updated_at",
-            "created_at",
-            "updated_at",
-        ):
-            payload[key] = _parse_optional_datetime(payload.get(key))
-        if "tracking_enabled" not in payload:
-            payload["tracking_enabled"] = (
-                str(payload.get("entry_type", "")).strip().lower() == EntryType.CHANNEL.value
-            )
-        if "follow_status" not in payload:
-            if payload.get("is_ignored"):
-                payload["follow_status"] = IntelligenceFollowStatus.UNFOLLOW.value
-            elif payload.get("tracking_enabled"):
-                payload["follow_status"] = IntelligenceFollowStatus.FOLLOW.value
-            else:
-                payload["follow_status"] = IntelligenceFollowStatus.UNSET.value
-        else:
-            status = str(payload.get("follow_status") or IntelligenceFollowStatus.UNSET.value)
-            status = status.strip().lower()
-            if status in _FOLLOW_STATUS_VALUES:
-                payload["tracking_enabled"] = status == IntelligenceFollowStatus.FOLLOW.value
-                payload["is_ignored"] = status == IntelligenceFollowStatus.UNFOLLOW.value
-        return cls(**payload)
-
-
-@dataclass
 class IntelligenceTopic:
     id: str
     name: str
-    description: Optional[str] = None
-    enriched_summary: Optional[str] = None
-    source_channels: List[Dict[str, Any]] = field(default_factory=list)
-    methods: Optional[str] = None
-    vulnerabilities: Optional[str] = None
-    latest_findings: List[str] = field(default_factory=list)
     is_active: bool = True
     lifecycle_status: str = TopicLifecycleStatus.ACTIVE.value
-    last_evidence_at: Optional[datetime] = None
-    enriched_at: Optional[datetime] = None
-    embedding: Optional[List[float]] = None
-    embedding_model: Optional[str] = None
-    embedding_updated_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -1075,12 +798,6 @@ class IntelligenceTopic:
             self.is_active = False
         elif self.lifecycle_status == TopicLifecycleStatus.ACTIVE.value:
             self.is_active = True
-        self.source_channels = _validate_public_object_list(
-            self.source_channels, "source_channels"
-        )
-        self.latest_findings = _validate_json_list(self.latest_findings, "latest_findings")
-        if self.embedding is not None:
-            self.embedding = [float(value) for value in self.embedding]
 
     @classmethod
     def create(
@@ -1099,33 +816,16 @@ class IntelligenceTopic:
 
     def to_dict(self) -> Dict[str, Any]:
         data = dict(self.__dict__)
-        for key in (
-            "last_evidence_at",
-            "enriched_at",
-            "embedding_updated_at",
-            "created_at",
-            "updated_at",
-        ):
+        for key in ("created_at", "updated_at"):
             data[key] = data[key].isoformat() if data.get(key) else None
         return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceTopic":
-        payload = dict(data)
-        for key in (
-            "last_evidence_at",
-            "enriched_at",
-            "embedding_updated_at",
-            "created_at",
-            "updated_at",
-        ):
+        allowed = {"id", "name", "is_active", "lifecycle_status", "created_at", "updated_at"}
+        payload = {key: value for key, value in dict(data).items() if key in allowed}
+        for key in ("created_at", "updated_at"):
             payload[key] = _parse_optional_datetime(payload.get(key))
-        payload["source_channels"] = _validate_public_object_list(
-            payload.get("source_channels", []), "source_channels"
-        )
-        payload["latest_findings"] = _validate_json_list(
-            payload.get("latest_findings", []), "latest_findings"
-        )
         payload.setdefault(
             "lifecycle_status",
             TopicLifecycleStatus.ACTIVE.value if payload.get("is_active", True) else TopicLifecycleStatus.PAUSED.value,
@@ -1406,79 +1106,6 @@ class FindingArchive:
     def from_dict(cls, data: Dict[str, Any]) -> "FindingArchive":
         payload = dict(data)
         payload["archived_at"] = _parse_optional_datetime(payload.get("archived_at"))
-        return cls(**payload)
-
-
-@dataclass
-class IntelligenceTopicRunLog:
-    id: str
-    run_type: str
-    status: str
-    topic_id: Optional[str] = None
-    entry_id: Optional[str] = None
-    message: Optional[str] = None
-    details: Dict[str, Any] = field(default_factory=dict)
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
-
-    _ALLOWED_RUN_TYPES: ClassVar[frozenset[str]] = frozenset(
-        {"auto_link", "enrich", "converge"}
-    )
-    _ALLOWED_STATUSES: ClassVar[frozenset[str]] = frozenset(
-        {"success", "skipped", "failed"}
-    )
-
-    def __post_init__(self):
-        if not self.id:
-            raise ValueError("id is required")
-        self.run_type = str(self.run_type).strip().lower()
-        if self.run_type not in self._ALLOWED_RUN_TYPES:
-            raise ValueError("run_type must be one of: auto_link, enrich, converge")
-        self.status = str(self.status).strip().lower()
-        if self.status not in self._ALLOWED_STATUSES:
-            raise ValueError("status must be one of: success, skipped, failed")
-        self.details = _validate_public_payload(dict(self.details or {}), "details")
-
-    @classmethod
-    def create(
-        cls,
-        run_type: str,
-        status: str,
-        **kwargs: Any,
-    ) -> "IntelligenceTopicRunLog":
-        now = datetime.utcnow()
-        return cls(
-            id=str(uuid.uuid4()),
-            run_type=run_type,
-            status=status,
-            started_at=kwargs.pop("started_at", now),
-            created_at=now,
-            **kwargs,
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        data = dict(self.__dict__)
-        for key in (
-            "started_at",
-            "finished_at",
-            "created_at",
-        ):
-            data[key] = data[key].isoformat() if data.get(key) else None
-        return data
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceTopicRunLog":
-        payload = dict(data)
-        for key in (
-            "started_at",
-            "finished_at",
-            "created_at",
-        ):
-            payload[key] = _parse_optional_datetime(payload.get(key))
-        payload["details"] = _validate_public_payload(
-            payload.get("details", {}), "details"
-        )
         return cls(**payload)
 
 

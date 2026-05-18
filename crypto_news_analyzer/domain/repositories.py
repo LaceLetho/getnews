@@ -8,20 +8,16 @@ Version: 1.0.0
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple, Set
 
 from .models import (
     AnalysisRequest,
-    CanonicalIntelligenceEntry,
     DataSource,
-    ExtractionObservation,
     FindingArchive,
     IngestionJob,
     IntelligenceCrawlCheckpoint,
     IntelligenceTopic,
-    IntelligenceTopicRunLog,
     MergePreview,
     RawIntelligenceItem,
     SemanticSearchJob,
@@ -29,22 +25,6 @@ from .models import (
     TopicPrompt,
     TopicResearchRun,
 )
-
-
-@dataclass(frozen=True)
-class IntelligenceEvidenceAnchor:
-    entry_id: str
-    observation_id: str
-    raw_item_id: str
-    observed_at: Optional[datetime]
-    published_at: Optional[datetime]
-    collected_at: datetime
-
-
-@dataclass(frozen=True)
-class IntelligenceRawContextWindow:
-    anchor: IntelligenceEvidenceAnchor
-    items: List[RawIntelligenceItem]
 
 
 class AnalysisRepository(ABC):
@@ -448,188 +428,6 @@ class IntelligenceRepository(ABC):
         pass
 
     @abstractmethod
-    def save_observation(self, observation: ExtractionObservation) -> str:
-        pass
-
-    @abstractmethod
-    def get_observations_by_raw_item(self, raw_item_id: str) -> List[ExtractionObservation]:
-        pass
-
-    @abstractmethod
-    def get_raw_item_ids_with_existing_observations(
-        self, raw_item_ids: List[str], prompt_version: str
-    ) -> Set[str]:
-        pass
-
-    @abstractmethod
-    def get_uncanonicalized_observations(self, limit: int) -> List[ExtractionObservation]:
-        pass
-
-    @abstractmethod
-    def mark_observation_canonicalized(self, observation_id: str) -> bool:
-        pass
-
-    @abstractmethod
-    def save_canonical_entry(
-        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
-    ) -> str:
-        pass
-
-    @abstractmethod
-    def get_canonical_entry_by_normalized_key(
-        self, entry_type: str, normalized_key: str
-    ) -> Optional[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def get_canonical_entry_by_id(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def upsert_canonical_entry(
-        self, entry: CanonicalIntelligenceEntry, observation_id: Optional[str] = None
-    ) -> str:
-        pass
-
-    @abstractmethod
-    def save_entry_evidence_link(
-        self, entry_id: str, observation_id: str, raw_item_id: str
-    ) -> None:
-        pass
-
-    @abstractmethod
-    def list_entry_evidence_anchors(
-        self, entry_id: str, page: int = 1, page_size: int = 20
-    ) -> List[IntelligenceEvidenceAnchor]:
-        pass
-
-    @abstractmethod
-    def count_entry_evidence_anchors(self, entry_id: str) -> int:
-        pass
-
-    @abstractmethod
-    def get_entry_evidence_context_window(
-        self, entry_id: str, raw_item_id: str, before: int = 10, after: int = 10
-    ) -> Optional[IntelligenceRawContextWindow]:
-        pass
-
-    @abstractmethod
-    def list_canonical_entries(
-        self,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        page: int = 1,
-        page_size: int = 100,
-        tracking_scope: str = "following",
-    ) -> List[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def count_canonical_entries(
-        self,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        tracking_scope: str = "following",
-    ) -> int:
-        pass
-
-    @abstractmethod
-    def follow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def unfollow_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def set_canonical_entry_follow_status(
-        self, entry_id: str, follow_status: str
-    ) -> Optional[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def set_canonical_entries_follow_status(self, entry_ids: List[str], follow_status: str) -> int:
-        pass
-
-    @abstractmethod
-    def mark_discovery_presented(self, entry_ids: List[str]) -> int:
-        pass
-
-    @abstractmethod
-    def ignore_canonical_entry(
-        self, entry_id: str, ignored_by: Optional[str] = None
-    ) -> Optional[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def unignore_canonical_entry(self, entry_id: str) -> Optional[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def list_ignored_canonical_entries(
-        self,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        page: int = 0,
-        page_size: int = 20,
-    ) -> List[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def count_ignored_canonical_entries(
-        self,
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-    ) -> int:
-        pass
-
-    @abstractmethod
-    def update_embedding(self, entry_id: str, embedding: List[float], model: str) -> bool:
-        pass
-
-    @abstractmethod
-    def get_entries_missing_embeddings(self, limit: int) -> List[CanonicalIntelligenceEntry]:
-        pass
-
-    @abstractmethod
-    def count_semantic_search_candidates(
-        self,
-        query_embedding: List[float],
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        tracking_scope: str = "following",
-    ) -> int:
-        """Count canonical entries that have embeddings and match optional filters."""
-        pass
-
-    @abstractmethod
-    def semantic_search(
-        self,
-        query_embedding: List[float],
-        entry_type: Optional[str] = None,
-        primary_label: Optional[str] = None,
-        window: Optional[datetime] = None,
-        limit: int = 20,
-        offset: int = 0,
-        tracking_scope: str = "following",
-    ) -> List[Tuple[CanonicalIntelligenceEntry, float]]:
-        pass
-
-    @abstractmethod
-    def save_related_candidate(
-        self,
-        entry_id_a: str,
-        entry_id_b: str,
-        similarity_score: float,
-        relationship_type: str,
-    ) -> None:
-        pass
-
     @abstractmethod
     def save_checkpoint(self, checkpoint: IntelligenceCrawlCheckpoint) -> None:
         pass
@@ -656,57 +454,6 @@ class IntelligenceRepository(ABC):
 
     def count_topics(self, is_active: Optional[bool] = None) -> int:
         return 0
-
-    def update_topic_embedding(
-        self, topic_id: str, embedding: List[float], model: str
-    ) -> bool:
-        return False
-
-    def assign_entry_to_topic(
-        self, entry_id: str, topic_id: str
-    ) -> Optional["CanonicalIntelligenceEntry"]:
-        return None
-
-    def list_entries_by_topic(
-        self, topic_id: str, limit: int = 100, offset: int = 0
-    ) -> List["CanonicalIntelligenceEntry"]:
-        return []
-
-    def count_entries_by_topic(self, topic_id: str) -> int:
-        return 0
-
-    def list_new_topic_evidence(
-        self,
-        topic_id: str,
-        since: Optional[datetime],
-        limit: int,
-    ) -> List[Dict[str, Any]]:
-        return []
-
-    def save_topic_run_log(self, log: "IntelligenceTopicRunLog") -> str:
-        raise NotImplementedError("Topic run logging is not implemented by this repository")
-
-    def list_topic_run_logs(
-        self,
-        topic_id: Optional[str] = None,
-        run_type: Optional[str] = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> List["IntelligenceTopicRunLog"]:
-        return []
-
-    def get_latest_topic_run_log(
-        self, run_type: str
-    ) -> Optional["IntelligenceTopicRunLog"]:
-        return None
-
-    def semantic_search_topics(
-        self,
-        query_embedding: List[float],
-        is_active: Optional[bool] = True,
-        limit: int = 10,
-    ) -> List[Tuple["IntelligenceTopic", float]]:
-        return []
 
     def save_topic_prompt(self, prompt: TopicPrompt) -> str:
         raise NotImplementedError("Topic prompt persistence is not implemented by this repository")

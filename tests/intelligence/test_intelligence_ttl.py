@@ -25,7 +25,6 @@ class TTLRepository:
         ]
         self.raw_items[0].collected_at = now - timedelta(days=181)
         self.raw_items[1].collected_at = now - timedelta(days=179)
-        self.topics = [SimpleNamespace(id="topic-alpha", latest_findings=["Alpha signal"])]
 
     def get_raw_items_expiring_before(self, cutoff_time):
         return [item for item in self.raw_items if item.collected_at < cutoff_time]
@@ -50,21 +49,18 @@ def _pipeline(repository):
         intelligence_repository=repository,
         extractor=extractor,
         merge_engine=Mock(),
-        search_service=Mock(),
     )
 
 
-def test_topic_retention_cleanup_purges_only_old_raw_text_and_keeps_topic_findings():
+def test_topic_retention_cleanup_purges_only_old_raw_text():
     repository = TTLRepository()
     pipeline = _pipeline(repository)
-    topic_findings = [list(topic.latest_findings) for topic in repository.topics]
 
     purged = pipeline._run_ttl_cleanup()
 
     assert purged == 1
     assert repository.raw_items[0].raw_text is None
     assert repository.raw_items[1].raw_text == "raw"
-    assert [topic.latest_findings for topic in repository.topics] == topic_findings
 
 
 def test_ttl_cleanup_logs_purged_count(caplog):

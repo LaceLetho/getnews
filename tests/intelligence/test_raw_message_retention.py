@@ -74,7 +74,6 @@ def _pipeline(repository, retention_days=180):
         intelligence_repository=repository,
         extractor=extractor,
         merge_engine=Mock(),
-        search_service=Mock(),
     )
 
 
