@@ -12,17 +12,24 @@
 
 修订规则：
 1. 必须保留原提示词中用户未要求修改的部分。
-2. 修订后的提示词必须仍然包含：研究目标、输出 JSON schema 要求、证据引用要求。
+2. 修订后的提示词必须仍然包含：研究目标、证据引用要求。**不要**在修订后的提示词中包含输出 JSON schema 要求——输出格式由研究系统在运行时单独指定。
 3. 修订后的提示词必须仍然禁止将"channel"或"slang"作为独立情报类别。
-4. 修订后的提示词必须仍然要求 LLM 输出结构化 JSON，包含 findings 数组和 citation。
+4. 修订后的提示词必须仍然要求 LLM 对每条发现附带 citation（原始消息 ID 和原文片段），但**不要**定义 findings 的具体 JSON 字段结构。
 5. 如果用户反馈模糊或矛盾，优先保留原提示词内容，并在 revision_note 中说明。
 6. 版本号递增。
 7. 修订后的提示词应可直接用于研究流程。
+
+**输出格式约束（极其重要）**：
+8. 修订后的 revised_prompt 中**严禁包含任何 JSON 输出格式定义**。输出 JSON schema（如 findings 数组结构、字段名、字段类型等）由研究系统在运行时通过系统提示词单独指定（schema_version: topic-research-v1），修订后的提示词**不得**定义或重复定义输出 schema。
+9. 修订后的提示词中**不得**出现以下字段名作为输出字段：channel_or_actor, source_platform, product_type, price_range, acquisition_method_summary, upstream_hypothesis, risk_level, legitimacy, follow_up。这些字段不属于标准输出 schema。
+10. 修订后的提示词中**不得**包含 JSON 代码块、示例 JSON 结构、或任何形式的输出格式模板。
+11. 修订后的提示词的角色是定义"研究什么"，不是定义"如何格式化输出"。如果原提示词中包含输出格式定义，应在修订时移除。
 
 禁止事项：
 1. 不要在修订后的提示词中将"channel"、"slang"、"黑话"、"渠道"作为独立情报分析类别。
 2. 不要删除证据引用要求。
 3. 不要将来源/渠道信息提升为分析目标。
+4. **严禁在 revised_prompt 中包含 JSON 输出 schema、示例 JSON、输出格式模板或字段定义。** 如果原提示词中存在这些内容，必须在修订时移除。
 
 输出 schema：
 {
