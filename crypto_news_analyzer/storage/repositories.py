@@ -870,13 +870,16 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
             cursor = conn.cursor()
             cursor.execute(
                 self._data._sql(f"""
-                SELECT COUNT(*) FROM intelligence_topic_findings
+                SELECT COUNT(*) AS cnt FROM intelligence_topic_findings
                 WHERE {' AND '.join(filters)}
                 """),
                 tuple(params),
             )
             row = cursor.fetchone()
-        return int(row[0] if self._data.backend == "postgres" else row[0]) if row else 0
+        if self._data.backend == "postgres":
+            return int(row["cnt"]) if (row and row["cnt"] is not None) else 0
+        else:
+            return int(row[0]) if (row and row[0] is not None) else 0
 
     def archive_finding(
         self, finding_id: str, superseded_by_id: Optional[str] = None
