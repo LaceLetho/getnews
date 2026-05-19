@@ -419,6 +419,15 @@ class IntelligenceRepository(ABC):
     def get_raw_item_by_id(self, raw_item_id: str) -> Optional[RawIntelligenceItem]:
         pass
 
+    def get_raw_items_by_ids(self, raw_item_ids: List[str]) -> List[RawIntelligenceItem]:
+        """Batch-fetch raw items by their IDs. Default loops over get_raw_item_by_id."""
+        items: List[RawIntelligenceItem] = []
+        for raw_item_id in raw_item_ids:
+            item = self.get_raw_item_by_id(raw_item_id)
+            if item is not None:
+                items.append(item)
+        return items
+
     @abstractmethod
     def delete_expired_raw_items(self, cutoff_time: datetime) -> int:
         pass

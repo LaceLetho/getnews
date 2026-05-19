@@ -592,6 +592,27 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         row = self._data.get_raw_intelligence_item_by_id(raw_item_id)
         return RawIntelligenceItem.from_dict(row) if row else None
 
+    def get_raw_items_by_ids(self, raw_item_ids: List[str]) -> List[RawIntelligenceItem]:
+        if not raw_item_ids:
+            return []
+        placeholders = ", ".join(["?"] * len(raw_item_ids))
+        with self._data._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._data._sql(f"""
+                SELECT * FROM raw_intelligence_items
+                WHERE id IN ({placeholders})
+                ORDER BY published_at DESC, collected_at DESC
+                """),
+                tuple(raw_item_ids),
+            )
+            return [
+                RawIntelligenceItem.from_dict(
+                    self._data._serialize_raw_intelligence_item_row(row)
+                )
+                for row in cursor.fetchall()
+            ]
+
     def delete_expired_raw_items(self, cutoff_time: datetime) -> int:
         return self._data.delete_expired_raw_intelligence_items(cutoff_time)
 

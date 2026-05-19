@@ -702,17 +702,58 @@ class IntelligenceCommandsMixin:
                 await msg.reply_text("用法: /topic_detail <topic_id>")
                 return
 
-            response = self.handle_topic_detail_command(user_id, username, topic_id)
-            chunks = self._split_text_for_telegram(response)
-            total = len(chunks)
-            for i, chunk in enumerate(chunks):
-                if total > 1:
-                    chunk = f"🔬 主题详情 ({i + 1}/{total})\n\n" + chunk
-                await msg.reply_text(chunk, parse_mode="Markdown")
+            payload = self.handle_topic_detail_command(
+                user_id, username, topic_id, return_markup=True
+            )
+            if isinstance(payload, dict):
+                # Build inline keyboard with expand buttons for each finding
+                findings: List[Dict[str, Any]] = list(payload.get("findings", []))
+                keyboard: List[List[InlineKeyboardButton]] = []
+                token = None
+                if findings and self.application is not None:
+                    token = self._generate_callback_token()
+                    for finding_info in findings:
+                        finding_id = str(finding_info.get("id", ""))
+                        source_count = int(finding_info.get("source_count", 0))
+                        idx = int(finding_info.get("index", 0))
+                        label = f"📎 #{idx} 查看原文" if source_count == 0 else f"📎 #{idx} 查看原文 ({source_count})"
+                        keyboard.append([
+                            InlineKeyboardButton(
+                                label,
+                                callback_data=f"topic:detail:expand:{token}:{finding_id}",
+                            )
+                        ])
+
+                markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+                await msg.reply_text(
+                    str(payload.get("text", "")),
+                    reply_markup=markup,
+                    parse_mode="Markdown",
+                )
+
+                if token:
+                    state_payload = dict(payload.get("state_data", {}))
+                    state_payload.update({
+                        "kind": "topic_detail",
+                        "topic_id": topic_id,
+                        "user_id": user_id,
+                        "findings": findings,
+                    })
+                    self._store_callback_state(token, state_payload)
+            else:
+                # Fallback: plain text response (e.g., error message)
+                chunks = self._split_text_for_telegram(str(payload))
+                total = len(chunks)
+                for i, chunk in enumerate(chunks):
+                    if total > 1:
+                        chunk = f"🔬 主题详情 ({i + 1}/{total})\n\n" + chunk
+                    await msg.reply_text(chunk, parse_mode="Markdown")
         except Exception as e:
             self.logger.error(f"处理/topic_detail命令时发生错误: {e}")
 
-    def handle_topic_detail_command(self, user_id: str, username: str, topic_id: str) -> str:
+    def handle_topic_detail_command(
+        self, user_id: str, username: str, topic_id: str, return_markup: bool = False
+    ) -> Any:
         try:
             repository = self._get_intelligence_repository()
             if repository is None:
@@ -732,6 +773,7 @@ class IntelligenceCommandsMixin:
                 )
 
             active_findings = repository.list_active_findings(topic_id)
+            findings_info: List[Dict[str, Any]] = []
             if active_findings:
                 lines.append(f"*🔍 活跃研究发现 ({len(active_findings)} 条)*")
                 for i, finding in enumerate(active_findings, 1):
@@ -750,8 +792,27 @@ class IntelligenceCommandsMixin:
                     conf = getattr(finding, "confidence", 0.0) or 0.0
                     if conf > 0:
                         conf_str = f" [置信度: {conf:.0%}]"
-                    lines.append(f"  • #{i} {title}{conf_str}")
+                    source_count = len(finding.source_raw_item_ids or [])
+                    source_note = f" (📎{source_count}来源)" if source_count > 0 else ""
+                    lines.append(f"  • #{i} {title}{conf_str}{source_note}")
+
+                    if return_markup:
+                        findings_info.append({
+                            "id": finding.id,
+                            "index": i,
+                            "title": title,
+                            "confidence": conf,
+                            "source_count": source_count,
+                        })
                 lines.append("")
+
+            if return_markup:
+                lines.append("💡 点击下方按钮查看每条发现的原数据来源")
+                return {
+                    "text": "\n".join(lines),
+                    "state_data": {},
+                    "findings": findings_info,
+                }
 
             self._log_command_execution("/topic_detail", user_id, username, topic_id, True, "")
             return "\n".join(lines)
@@ -885,6 +946,106 @@ class IntelligenceCommandsMixin:
                         await callback_query.answer(str(payload))
                 else:
                     await callback_query.answer("\u7ffb\u9875\u5df2\u8fc7\u671f")
+                return
+
+            # topic:detail:expand:{token}:{finding_id}
+            if data.startswith("topic:detail:expand:"):
+                parts = data.split(":", 4)
+                if len(parts) != 5:
+                    await callback_query.answer("操作已过期")
+                    return
+                token = parts[3]
+                finding_id = parts[4]
+
+                state = self._get_callback_state(token)
+                if not state:
+                    await callback_query.answer("操作已过期，请重新执行 /topic_detail")
+                    return
+
+                repository = self._get_intelligence_repository()
+                if repository is None:
+                    await callback_query.answer("仓储未初始化")
+                    return
+
+                finding = repository.get_topic_finding_by_id(finding_id)
+                if finding is None:
+                    await callback_query.answer("发现未找到")
+                    return
+
+                raw_item_ids = finding.source_raw_item_ids or []
+                if not raw_item_ids:
+                    await callback_query.answer("该发现无关联原数据")
+                    return
+
+                # Fetch all raw items
+                raw_items = repository.get_raw_items_by_ids(raw_item_ids)
+                if not raw_items:
+                    await callback_query.answer("原数据已过期或被清理")
+                    return
+
+                await callback_query.answer(f"展开 {len(raw_items)} 条原数据")
+
+                # Build the response with source links
+                esc = self._escape_markdown_v1
+                payload = finding.finding_payload or {}
+                finding_title = str(
+                    payload.get("finding", "")
+                    or payload.get("title", "")
+                    or payload.get("summary", "")
+                    or "发现"
+                )[:100]
+
+                lines: List[str] = [
+                    f"📎 *{esc(finding_title)}*\n",
+                    f"📊 共 {len(raw_items)} 条原数据:\n",
+                ]
+
+                # Build inline keyboard for each raw item with URL
+                raw_keyboard: List[List[InlineKeyboardButton]] = []
+                for j, item in enumerate(raw_items, 1):
+                    source_label = item.source_type or "unknown"
+                    published = ""
+                    if item.published_at:
+                        published = item.published_at.strftime("%Y-%m-%d %H:%M")
+                    snippet = (item.raw_text or "")[:150].replace("\n", " ")
+                    if len(item.raw_text or "") > 150:
+                        snippet += "..."
+
+                    # Source URL for button
+                    source_url = item.source_url
+                    if not source_url and item.source_type == "telegram_group":
+                        # Try to build a Telegram message link
+                        chat_id = item.chat_id or ""
+                        ext_id = item.external_id or ""
+                        if chat_id and ext_id:
+                            # Remove -100 prefix for public links if present
+                            clean_chat = chat_id.replace("-100", "") if chat_id.startswith("-100") else chat_id
+                            source_url = f"https://t.me/c/{clean_chat}/{ext_id}"
+
+                    lines.append(
+                        f"*#{j}* [{esc(source_label)}] {esc(snippet)}\n"
+                        f"  `{published}`"
+                    )
+
+                    if source_url:
+                        raw_keyboard.append([
+                            InlineKeyboardButton(
+                                f"🔗 打开 #{j}",
+                                url=source_url,
+                            )
+                        ])
+
+                # Send as a new message with URL buttons
+                raw_markup = InlineKeyboardMarkup(raw_keyboard) if raw_keyboard else None
+                chunks = self._split_text_for_telegram("\n".join(lines))
+                for k, chunk in enumerate(chunks):
+                    header = f"📎 原数据来源 ({k + 1}/{len(chunks)})\n\n" if len(chunks) > 1 else ""
+                    await callback_query.message.reply_text(
+                        header + chunk,
+                        reply_markup=raw_markup if k == len(chunks) - 1 else None,
+                        parse_mode="Markdown",
+                        disable_web_page_preview=True,
+                    )
                 return
 
             await callback_query.answer("\u672a\u77e5\u64cd\u4f5c")
