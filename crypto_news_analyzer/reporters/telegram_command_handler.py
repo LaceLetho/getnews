@@ -2505,6 +2505,9 @@ class TelegramCommandHandlerSync:
     def get_webhook_path(self) -> str:
         return self.handler.get_webhook_path()
 
+    def get_webhook_secret_token(self) -> str:
+        return self.handler.get_webhook_secret_token()
+
     async def initialize_webhook(self) -> str:
         return await self.handler.initialize_webhook()
 
