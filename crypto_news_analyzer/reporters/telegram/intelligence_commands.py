@@ -707,8 +707,8 @@ class IntelligenceCommandsMixin:
             )
             if isinstance(payload, dict):
                 # Build inline keyboard with expand buttons for each finding.
-                # Use short prefix + index (not full UUID) to stay within
-                # Telegram's 64-byte callback_data limit.
+                # Use topic:d (short) + index (not full UUID) to stay within
+                # Telegram's 64-byte callback_data limit AND match the ^topic: handler pattern.
                 findings: List[Dict[str, Any]] = list(payload.get("findings", []))
                 keyboard: List[List[InlineKeyboardButton]] = []
                 token = None
@@ -721,7 +721,7 @@ class IntelligenceCommandsMixin:
                         keyboard.append([
                             InlineKeyboardButton(
                                 label,
-                                callback_data=f"td:e:{token}:{i}",
+                                callback_data=f"topic:d:{token}:{i}",
                             )
                         ])
 
@@ -949,8 +949,8 @@ class IntelligenceCommandsMixin:
                     await callback_query.answer("\u7ffb\u9875\u5df2\u8fc7\u671f")
                 return
 
-            # td:e:{token}:{index}  — expand finding sources (short prefix to fit 64-byte callback_data)
-            if data.startswith("td:e:"):
+            # topic:d:{token}:{index}  — expand finding sources (short prefix fits 64-byte limit + matches ^topic: handler)
+            if data.startswith("topic:d:"):
                 parts = data.split(":", 3)
                 if len(parts) != 4:
                     await callback_query.answer("操作已过期")
