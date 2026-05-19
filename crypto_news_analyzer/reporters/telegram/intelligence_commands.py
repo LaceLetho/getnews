@@ -822,8 +822,7 @@ class IntelligenceCommandsMixin:
                     if conf > 0:
                         conf_str = f" [{conf:.0%}]"
                     source_count = len(finding.source_raw_item_ids or [])
-                    source_note = f" 📎{source_count}" if source_count > 0 else ""
-                    lines.append(f"  • #{global_i} {title}{conf_str}{source_note}")
+                    lines.append(f"#{global_i} {title}{conf_str}")
 
                     if return_markup:
                         findings_info.append({
