@@ -18,7 +18,7 @@ import uuid
 from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, cast
 from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import FastAPI, HTTPException, Depends, Response, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, Response, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, field_validator
 import os
@@ -1695,6 +1695,29 @@ def register_intelligence_routes(app: FastAPI) -> None:
         )
 
 
+# ── Background webhook processing ────────────────────────────────────────
+
+
+async def _process_webhook_update_background(
+    command_handler: Any,
+    payload: Dict[str, Any],
+) -> None:
+    """Process a Telegram webhook update in the background.
+
+    Runs outside the request-response cycle so the webhook endpoint can
+    return 200 OK before long-running handlers (e.g. LLM calls) complete.
+    Deduplication by update_id is handled inside handle_webhook_update.
+    """
+    try:
+        await command_handler.handle_webhook_update(payload, secret_token=None)
+    except PermissionError:
+        logger.warning("Background webhook update rejected: permission denied")
+    except RuntimeError as exc:
+        logger.error(f"Background webhook update failed: {exc}")
+    except Exception:
+        logger.exception("Unexpected error in background webhook processing")
+
+
 # ── Route Registration: Infrastructure ─────────────────────────────────
 
 
@@ -1708,14 +1731,19 @@ def register_infrastructure_routes(app: FastAPI) -> None:
         return {"status": "healthy", "initialized": state.controller is not None}
 
     @app.post(os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook"))
-    async def telegram_webhook(req: Request):
-        """Telegram webhook endpoint."""
+    async def telegram_webhook(req: Request, background_tasks: BackgroundTasks):
+        """Telegram webhook endpoint.
+
+        Processes the update in a background task so the webhook returns
+        200 OK immediately.  This prevents Telegram from retrying the same
+        update when long-running handlers (e.g. LLM merge previews) exceed
+        the webhook response timeout.
+        """
         command_handler = _get_telegram_command_handler(req)
         payload = await req.json()
         secret_token = req.headers.get(TELEGRAM_WEBHOOK_SECRET_HEADER)
 
         # Log incoming update type for debugging
-        update_type = payload.get("message", {}).get("text", "") if isinstance(payload, dict) else ""
         if isinstance(payload, dict) and "message" in payload:
             msg_data = payload["message"]
             chat_id = msg_data.get("chat", {}).get("id", "unknown")
@@ -1726,14 +1754,20 @@ def register_infrastructure_routes(app: FastAPI) -> None:
                 f"user={user_info}, text={msg_data.get('text', '')[:80]}"
             )
 
-        try:
-            await command_handler.handle_webhook_update(payload, secret_token=secret_token)
-        except PermissionError as exc:
-            logger.warning(f"Telegram webhook permission error: {exc}")
-            raise HTTPException(status_code=403, detail=str(exc))
-        except RuntimeError as exc:
-            logger.error(f"Telegram webhook runtime error: {exc}")
-            raise HTTPException(status_code=503, detail=str(exc))
+        # Validate secret token synchronously so we reject unauthenticated
+        # requests immediately.
+        expected_secret = command_handler.get_webhook_secret_token()
+        if secret_token != expected_secret:
+            logger.warning("Telegram webhook rejected: invalid secret token")
+            raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret token")
+
+        # Process the update in the background so we can return 200 OK
+        # before the handler (which may call LLMs) completes.
+        background_tasks.add_task(
+            _process_webhook_update_background,
+            command_handler,
+            payload,
+        )
 
         return {"ok": True}
 

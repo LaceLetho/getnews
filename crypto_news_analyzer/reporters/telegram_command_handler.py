@@ -135,6 +135,14 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         self._recent_topic_revision_results: Dict[str, Dict[str, Any]] = {}
         self._topic_revision_result_ttl_seconds = 15 * 60
 
+        # Deduplicate Telegram webhook updates by update_id. Telegram retries
+        # webhooks when the handler doesn't respond within its timeout (~10-60s).
+        # Long-running operations (e.g. LLM merge previews) cause the same update
+        # to be delivered repeatedly. We track recently-seen update_ids and skip
+        # duplicates to prevent LLM credit burn from retry storms.
+        self._webhook_update_ids_seen: Set[int] = set()
+        self._webhook_update_ids_lock = threading.Lock()
+
         self._load_authorized_users()
 
         self.logger.info("Telegram命令处理器初始化完成")
@@ -887,17 +895,47 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         update_data: Dict[str, Any],
         secret_token: Optional[str] = None,
     ) -> None:
-        """处理来自Webhook的Telegram更新。"""
+        """处理来自Webhook的Telegram更新。
+
+        Deduplicates by update_id to prevent Telegram retry storms when
+        long-running handlers (e.g. LLM merge previews) exceed the webhook
+        response timeout.
+
+        When secret_token is None the caller has already validated the
+        token (e.g. in the FastAPI endpoint before deferring to a
+        background task).
+        """
         if not self.application:
             raise RuntimeError("Telegram webhook尚未初始化")
 
-        expected_secret = self.get_webhook_secret_token()
-        if secret_token != expected_secret:
-            raise PermissionError("Invalid Telegram webhook secret token")
+        if secret_token is not None:
+            expected_secret = self.get_webhook_secret_token()
+            if secret_token != expected_secret:
+                raise PermissionError("Invalid Telegram webhook secret token")
 
         update = Update.de_json(data=update_data, bot=self.application.bot)
+        update_id = update.update_id
+
+        # Deduplicate: skip if we've already seen this update_id.
+        # Telegram retries the same update_id when the webhook handler
+        # takes too long to respond.
+        with self._webhook_update_ids_lock:
+            if update_id in self._webhook_update_ids_seen:
+                self.logger.warning(
+                    f"Skipping duplicate webhook update: update_id={update_id}"
+                )
+                return
+            self._webhook_update_ids_seen.add(update_id)
+            # Keep the set bounded: purge entries older than ~30 min of
+            # typical traffic. Telegram update_ids are monotonically
+            # increasing, so we can drop anything below a threshold.
+            if len(self._webhook_update_ids_seen) > 1000:
+                # Keep only the newest 500 entries to bound memory
+                sorted_ids = sorted(self._webhook_update_ids_seen)
+                self._webhook_update_ids_seen = set(sorted_ids[-500:])
+
         self.logger.info(
-            f"Processing Telegram update: update_id={update.update_id}, "
+            f"Processing Telegram update: update_id={update_id}, "
             f"has_message={update.message is not None}, "
             f"has_channel_post={update.channel_post is not None}"
         )
