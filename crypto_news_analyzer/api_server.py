@@ -1714,11 +1714,25 @@ def register_infrastructure_routes(app: FastAPI) -> None:
         payload = await req.json()
         secret_token = req.headers.get(TELEGRAM_WEBHOOK_SECRET_HEADER)
 
+        # Log incoming update type for debugging
+        update_type = payload.get("message", {}).get("text", "") if isinstance(payload, dict) else ""
+        if isinstance(payload, dict) and "message" in payload:
+            msg_data = payload["message"]
+            chat_id = msg_data.get("chat", {}).get("id", "unknown")
+            from_user = msg_data.get("from", {})
+            user_info = f"{from_user.get('username', 'unknown')} ({from_user.get('id', 'unknown')})"
+            logger.info(
+                f"Telegram webhook received update: chat_id={chat_id}, "
+                f"user={user_info}, text={msg_data.get('text', '')[:80]}"
+            )
+
         try:
             await command_handler.handle_webhook_update(payload, secret_token=secret_token)
         except PermissionError as exc:
+            logger.warning(f"Telegram webhook permission error: {exc}")
             raise HTTPException(status_code=403, detail=str(exc))
         except RuntimeError as exc:
+            logger.error(f"Telegram webhook runtime error: {exc}")
             raise HTTPException(status_code=503, detail=str(exc))
 
         return {"ok": True}

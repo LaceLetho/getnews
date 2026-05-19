@@ -99,7 +99,12 @@ class TopicFindingMergeService:
         created_by: Optional[str] = None,
     ) -> MergePreview:
         """Create a persisted merge preview from active findings + topic prompt context."""
+        logger.info(
+            f"Creating merge preview for topic_id={topic_id}, "
+            f"prompt_version_id={prompt_version_id}"
+        )
         active_findings = self.repository.list_active_findings(topic_id)
+        logger.info(f"Found {len(active_findings)} active findings for topic_id={topic_id}")
         if len(active_findings) < 2:
             raise MergePreviewError("at least two active findings are required for merge")
 
@@ -107,7 +112,12 @@ class TopicFindingMergeService:
         if prompt is None:
             raise MergePreviewError("prompt version not found")
 
+        logger.info(
+            f"Calling LLM for merge preview: topic_id={topic_id}, "
+            f"model={self.model_name}, findings_count={len(active_findings)}"
+        )
         raw_output = self._call_llm(topic_id, prompt, active_findings)
+        logger.info(f"LLM merge response received: {len(raw_output)} chars")
         parsed = self._parse_merge_output(raw_output)
 
         preview_payload = parsed.model_dump()
@@ -226,6 +236,10 @@ class TopicFindingMergeService:
             "research_prompt": prompt.prompt_text,
             "active_findings": [self._finding_payload(f) for f in active_findings],
         }
+        logger.info(
+            f"LLM merge call: topic_id={topic_id}, model={self.model_name}, "
+            f"system_prompt_len={len(system_prompt)}, user_payload_approx_len={len(json.dumps(user_payload, ensure_ascii=False))}"
+        )
         completions = getattr(getattr(self.llm_client, "chat", None), "completions", None)
         if completions is not None and hasattr(completions, "create"):
             kwargs: Dict[str, Any] = {
@@ -237,9 +251,12 @@ class TopicFindingMergeService:
             }
             if self.model_name:
                 kwargs["model"] = self.model_name
+            logger.info(f"Sending LLM merge request: model={self.model_name}")
             response = completions.create(**kwargs)
+            logger.info(f"LLM merge response received: model={self.model_name}")
             return str(response.choices[0].message.content)
         if hasattr(self.llm_client, "complete"):
+            logger.info("Using llm_client.complete() for merge")
             return str(self.llm_client.complete(system_prompt, user_payload))
         raise TypeError("llm_client must expose chat.completions.create() or complete()")
 

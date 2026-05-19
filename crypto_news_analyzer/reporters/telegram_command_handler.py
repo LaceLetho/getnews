@@ -197,6 +197,9 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
 
         application = builder.build()
 
+        # Register global error handler to catch unhandled errors
+        application.add_error_handler(self._handle_telegram_error)
+
         # NEWS domain commands
         self._register_news_commands(application)
 
@@ -209,6 +212,16 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             CallbackQueryHandler(self._handle_topic_callback_query, pattern=r"^topic:")
         )
         return application
+
+    async def _handle_telegram_error(self, update: object, context: Any) -> None:
+        """Global error handler for Telegram application errors."""
+        import traceback
+
+        error = context.error if hasattr(context, "error") else str(context)
+        self.logger.error(
+            f"Telegram update processing error: {type(error).__name__}: {error}\n"
+            f"Update: {update}\n{traceback.format_exc()}"
+        )
 
     def _register_news_commands(self, application: Application) -> None:
         """Register NEWS domain Telegram commands.
@@ -883,6 +896,11 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             raise PermissionError("Invalid Telegram webhook secret token")
 
         update = Update.de_json(data=update_data, bot=self.application.bot)
+        self.logger.info(
+            f"Processing Telegram update: update_id={update.update_id}, "
+            f"has_message={update.message is not None}, "
+            f"has_channel_post={update.channel_post is not None}"
+        )
         await self.application.process_update(update)
 
     async def _handle_analyze_command(
@@ -1617,12 +1635,21 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             return service
         repository = self._get_intelligence_repository()
         if repository is None:
+            self.logger.warning("_get_topic_finding_merge_service: intelligence_repository is None")
             return None
         llm_analyzer = getattr(self.execution_coordinator, "llm_analyzer", None)
         llm_client = getattr(llm_analyzer, "client", None) if llm_analyzer else None
         model_name = getattr(llm_analyzer, "model", "") if llm_analyzer else ""
         if llm_client is None:
+            self.logger.warning(
+                "_get_topic_finding_merge_service: llm_client is None "
+                f"(llm_analyzer={'present' if llm_analyzer else 'None'}, "
+                f"model={model_name})"
+            )
             return None
+        self.logger.info(
+            f"_get_topic_finding_merge_service: creating service with model={model_name}"
+        )
         from ..intelligence.topic_findings import TopicFindingMergeService
 
         service = TopicFindingMergeService(

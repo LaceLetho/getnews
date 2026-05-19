@@ -381,15 +381,24 @@ class IntelligenceCommandsMixin:
                 pass
 
     async def _handle_topic_merge_command(self, update: Any, context: Any) -> None:
+        topic_id = ""  # Define before try so it's available in except handlers
+        msg = None
         try:
             msg = update.effective_message or update.message
             if msg is None:
+                self.logger.warning("/topic_merge: update has no effective_message or message, skipping")
                 return
             user_id = str(update.effective_user.id if update.effective_user else "unknown")
             username = update.effective_user.username if update.effective_user else "unknown"
             chat_id = str(msg.chat_id) if hasattr(msg, "chat_id") else ""
 
+            self.logger.info(
+                f"收到/topic_merge命令: user={username} ({user_id}), "
+                f"chat_id={chat_id}, args={context.args}"
+            )
+
             if not self.is_authorized_user(user_id, username):
+                self.logger.warning(f"/topic_merge: 用户 {username} ({user_id}) 未授权")
                 await msg.reply_text("\u274c 权限拒绝")
                 return
 
@@ -469,11 +478,20 @@ class IntelligenceCommandsMixin:
             await msg.reply_text(text, reply_markup=markup, parse_mode="Markdown")
             self._log_command_execution("/topic_merge", user_id, username, topic_id, True, "")
         except MergePreviewError as e:
-            await msg.reply_text(f"\u274c 合并失败: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"处理/topic_merge命令时发生错误: {e}")
-            try:
+            if msg is not None:
                 await msg.reply_text(f"\u274c 合并失败: {str(e)}")
+        except asyncio.CancelledError:
+            self.logger.warning(
+                f"/topic_merge cancelled (likely webhook timeout): topic_id={topic_id}"
+            )
+            raise
+        except Exception as e:
+            self.logger.error(
+                f"处理/topic_merge命令时发生错误: {type(e).__name__}: {e}", exc_info=True
+            )
+            try:
+                if msg is not None:
+                    await msg.reply_text(f"\u274c 合并失败: {str(e)}")
             except Exception:
                 pass
 
