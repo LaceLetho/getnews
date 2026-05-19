@@ -386,7 +386,9 @@ class IntelligenceCommandsMixin:
         try:
             msg = update.effective_message or update.message
             if msg is None:
-                self.logger.warning("/topic_merge: update has no effective_message or message, skipping")
+                self.logger.warning(
+                    "/topic_merge: update has no effective_message or message, skipping"
+                )
                 return
             user_id = str(update.effective_user.id if update.effective_user else "unknown")
             username = update.effective_user.username if update.effective_user else "unknown"
@@ -675,8 +677,7 @@ class IntelligenceCommandsMixin:
                 finding_count = len(findings)
                 updated = topic.updated_at.strftime("%Y-%m-%d") if topic.updated_at else "-"
                 lines.append(
-                    f"{i}. {esc(topic.name)}\n"
-                    f"   发现: {finding_count} | 最近更新: {updated}"
+                    f"{i}. {esc(topic.name)}\n" f"   发现: {finding_count} | 最近更新: {updated}"
                 )
             total_pages = max(1, (total + page_size - 1) // page_size)
             if return_markup:
@@ -738,22 +739,30 @@ class IntelligenceCommandsMixin:
                     for i, finding_info in enumerate(findings):
                         source_count = int(finding_info.get("source_count", 0))
                         idx = int(finding_info.get("index", 0))
-                        label = f"#{idx} 查看原文 📎" if source_count == 0 else f"#{idx} 查看原文 📎({source_count})"
-                        keyboard.append([
-                            InlineKeyboardButton(
-                                label,
-                                callback_data=f"topic:d:{token}:{i}",
-                            )
-                        ])
+                        label = (
+                            f"#{idx} 查看原文 📎"
+                            if source_count == 0
+                            else f"#{idx} 查看原文 📎({source_count})"
+                        )
+                        keyboard.append(
+                            [
+                                InlineKeyboardButton(
+                                    label,
+                                    callback_data=f"topic:d:{token}:{i}",
+                                )
+                            ]
+                        )
 
                 # Add "更多" button if there are more pages
                 if has_more and token:
-                    keyboard.append([
-                        InlineKeyboardButton(
-                            f"📄 更多 (第 {current_page + 1}/{total_pages} 页)",
-                            callback_data=f"topic:dm:{token}:{current_page + 1}",
-                        )
-                    ])
+                    keyboard.append(
+                        [
+                            InlineKeyboardButton(
+                                f"📄 更多 (第 {current_page + 1}/{total_pages} 页)",
+                                callback_data=f"topic:dm:{token}:{current_page + 1}",
+                            )
+                        ]
+                    )
 
                 markup = InlineKeyboardMarkup(keyboard) if keyboard else None
                 await msg.reply_text(
@@ -764,13 +773,15 @@ class IntelligenceCommandsMixin:
 
                 if token:
                     state_payload = dict(payload.get("state_data", {}))
-                    state_payload.update({
-                        "kind": "topic_detail",
-                        "topic_id": topic_id,
-                        "user_id": user_id,
-                        "findings": findings,
-                        "page": current_page,
-                    })
+                    state_payload.update(
+                        {
+                            "kind": "topic_detail",
+                            "topic_id": topic_id,
+                            "user_id": user_id,
+                            "findings": findings,
+                            "page": current_page,
+                        }
+                    )
                     self._store_callback_state(token, state_payload)
             else:
                 # Fallback: plain text response (e.g., error message)
@@ -784,8 +795,12 @@ class IntelligenceCommandsMixin:
             self.logger.error(f"处理/topic_detail命令时发生错误: {e}")
 
     def handle_topic_detail_command(
-        self, user_id: str, username: str, topic_id: str,
-        return_markup: bool = False, page: int = 1,
+        self,
+        user_id: str,
+        username: str,
+        topic_id: str,
+        return_markup: bool = False,
+        page: int = 1,
     ) -> Any:
         try:
             repository = self._get_intelligence_repository()
@@ -843,13 +858,15 @@ class IntelligenceCommandsMixin:
                     lines.append(f"#{global_i} {title}{conf_str}")
 
                     if return_markup:
-                        findings_info.append({
-                            "id": finding.id,
-                            "index": global_i,
-                            "title": title,
-                            "confidence": conf,
-                            "source_count": source_count,
-                        })
+                        findings_info.append(
+                            {
+                                "id": finding.id,
+                                "index": global_i,
+                                "title": title,
+                                "confidence": conf,
+                                "source_count": source_count,
+                            }
+                        )
                 lines.append("")
 
             if return_markup:
@@ -923,6 +940,10 @@ class IntelligenceCommandsMixin:
                         parse_mode="Markdown",
                     )
                 except MergePreviewError as e:
+                    self.logger.error(
+                        f"Merge accept failed: preview_id={preview_id}, "
+                        f"topic_id={topic_id}, error={e}"
+                    )
                     await callback_query.answer(f"\u5408\u5e76\u5931\u8d25: {str(e)}")
                 return
 
@@ -1047,30 +1068,40 @@ class IntelligenceCommandsMixin:
                 for i, finding_info in enumerate(findings):
                     source_count = int(finding_info.get("source_count", 0))
                     idx = int(finding_info.get("index", 0))
-                    label = f"#{idx} 查看原文 📎" if source_count == 0 else f"#{idx} 查看原文 📎({source_count})"
-                    keyboard.append([
-                        InlineKeyboardButton(
-                            label,
-                            callback_data=f"topic:d:{new_token}:{i}",
-                        )
-                    ])
+                    label = (
+                        f"#{idx} 查看原文 📎"
+                        if source_count == 0
+                        else f"#{idx} 查看原文 📎({source_count})"
+                    )
+                    keyboard.append(
+                        [
+                            InlineKeyboardButton(
+                                label,
+                                callback_data=f"topic:d:{new_token}:{i}",
+                            )
+                        ]
+                    )
                 if has_more:
-                    keyboard.append([
-                        InlineKeyboardButton(
-                            f"📄 更多 (第 {current_page + 1}/{total_pages} 页)",
-                            callback_data=f"topic:dm:{new_token}:{current_page + 1}",
-                        )
-                    ])
+                    keyboard.append(
+                        [
+                            InlineKeyboardButton(
+                                f"📄 更多 (第 {current_page + 1}/{total_pages} 页)",
+                                callback_data=f"topic:dm:{new_token}:{current_page + 1}",
+                            )
+                        ]
+                    )
                 markup = InlineKeyboardMarkup(keyboard) if keyboard else None
 
                 new_state = dict(payload.get("state_data", {}))
-                new_state.update({
-                    "kind": "topic_detail",
-                    "topic_id": topic_id,
-                    "user_id": str(state.get("user_id", "")),
-                    "findings": findings,
-                    "page": current_page,
-                })
+                new_state.update(
+                    {
+                        "kind": "topic_detail",
+                        "topic_id": topic_id,
+                        "user_id": str(state.get("user_id", "")),
+                        "findings": findings,
+                        "page": current_page,
+                    }
+                )
                 self._store_callback_state(new_token, new_state)
 
                 await callback_query.message.edit_text(
@@ -1165,21 +1196,26 @@ class IntelligenceCommandsMixin:
                         ext_id = item.external_id or ""
                         if chat_id and ext_id:
                             # Remove -100 prefix for public links if present
-                            clean_chat = chat_id.replace("-100", "") if chat_id.startswith("-100") else chat_id
+                            clean_chat = (
+                                chat_id.replace("-100", "")
+                                if chat_id.startswith("-100")
+                                else chat_id
+                            )
                             source_url = f"https://t.me/c/{clean_chat}/{ext_id}"
 
                     lines.append(
-                        f"*#{j}* [{esc(source_label)}] {esc(snippet)}\n"
-                        f"  `{published}`"
+                        f"*#{j}* [{esc(source_label)}] {esc(snippet)}\n" f"  `{published}`"
                     )
 
                     if source_url:
-                        raw_keyboard.append([
-                            InlineKeyboardButton(
-                                f"🔗 打开 #{j}",
-                                url=source_url,
-                            )
-                        ])
+                        raw_keyboard.append(
+                            [
+                                InlineKeyboardButton(
+                                    f"🔗 打开 #{j}",
+                                    url=source_url,
+                                )
+                            ]
+                        )
 
                 # Send as a new message with URL buttons
                 raw_markup = InlineKeyboardMarkup(raw_keyboard) if raw_keyboard else None

@@ -149,7 +149,18 @@ class TopicFindingMergeService:
             expires_at=datetime.utcnow() + timedelta(hours=24),
             created_by=created_by,
         )
-        self.repository.create_merge_preview(preview)
+        saved_id = self.repository.create_merge_preview(preview)
+        if saved_id != preview.id:
+            # An existing pending preview with the same source findings was
+            # refreshed; return the persisted record so callers always use
+            # the database-consistent ID.
+            logger.info(
+                f"Merge preview deduplicated: existing_id={saved_id}, "
+                f"newly_generated_id={preview.id}"
+            )
+            existing = self.repository.get_merge_preview(saved_id)
+            if existing is not None:
+                return existing
         return preview
 
     def accept_merge_preview(
@@ -159,14 +170,17 @@ class TopicFindingMergeService:
         operator: Optional[str] = None,
     ) -> TopicFinding:
         """Accept a merge preview: verify validity, persist merged finding, archive sources."""
+        logger.info(
+            f"Accepting merge preview: preview_id={preview_id}, "
+            f"expected_topic_id={expected_topic_id}, operator={operator}"
+        )
         preview = self.repository.get_merge_preview(preview_id)
         if preview is None:
+            logger.warning(f"Merge preview not found in database: preview_id={preview_id}")
             raise MergePreviewError("merge preview not found")
 
         if expected_topic_id and preview.intelligence_topic_id != expected_topic_id:
-            raise MergePreviewError(
-                f"merge preview does not belong to topic {expected_topic_id}"
-            )
+            raise MergePreviewError(f"merge preview does not belong to topic {expected_topic_id}")
 
         if preview.state != MergePreviewState.PENDING.value:
             raise MergePreviewError(f"merge preview is not pending (state={preview.state})")
@@ -236,9 +250,7 @@ class TopicFindingMergeService:
             encoding="utf-8"
         )
         user_payload = {
-            "topic_name": getattr(
-                self.repository.get_topic_by_id(topic_id), "name", ""
-            ),
+            "topic_name": getattr(self.repository.get_topic_by_id(topic_id), "name", ""),
             "research_prompt": prompt.prompt_text,
             "active_findings": [self._finding_payload(f) for f in active_findings],
         }

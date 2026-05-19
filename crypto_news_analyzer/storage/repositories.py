@@ -607,9 +607,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 tuple(raw_item_ids),
             )
             return [
-                RawIntelligenceItem.from_dict(
-                    self._data._serialize_raw_intelligence_item_row(row)
-                )
+                RawIntelligenceItem.from_dict(self._data._serialize_raw_intelligence_item_row(row))
                 for row in cursor.fetchall()
             ]
 
@@ -641,9 +639,7 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         limit: int = 100,
         offset: int = 0,
     ) -> List[IntelligenceTopic]:
-        rows = self._data.list_intelligence_topics(
-            is_active=is_active, limit=limit, offset=offset
-        )
+        rows = self._data.list_intelligence_topics(is_active=is_active, limit=limit, offset=offset)
         return [IntelligenceTopic.from_dict(row) for row in rows]
 
     def count_topics(self, is_active: Optional[bool] = None) -> int:
@@ -704,16 +700,22 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 # Guard against inserting a duplicate (intelligence_topic_id,
                 # prompt_version) pair that belongs to a DIFFERENT prompt id.
                 # Same-id updates (e.g. confirm_prompt archiving) are allowed.
-                existing = conn.cursor().execute(
-                    self._data._sql(
-                        "SELECT id FROM intelligence_topic_prompt_versions "
-                        "WHERE intelligence_topic_id = ? AND prompt_version = ? "
-                        "LIMIT 1"
-                    ),
-                    (prompt.intelligence_topic_id, prompt.prompt_version),
-                ).fetchone()
+                existing = (
+                    conn.cursor()
+                    .execute(
+                        self._data._sql(
+                            "SELECT id FROM intelligence_topic_prompt_versions "
+                            "WHERE intelligence_topic_id = ? AND prompt_version = ? "
+                            "LIMIT 1"
+                        ),
+                        (prompt.intelligence_topic_id, prompt.prompt_version),
+                    )
+                    .fetchone()
+                )
                 if existing:
-                    existing_id = existing["id"] if self._data.backend == "postgres" else existing[0]
+                    existing_id = (
+                        existing["id"] if self._data.backend == "postgres" else existing[0]
+                    )
                     if existing_id != prompt.id:
                         raise ValueError(
                             f"Prompt version {prompt.prompt_version} already exists "
@@ -770,7 +772,10 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 """),
                 (*params, max(1, limit), max(0, offset)),
             )
-            return [TopicPrompt.from_dict(self._serialize_topic_prompt_row(row)) for row in cursor.fetchall()]
+            return [
+                TopicPrompt.from_dict(self._serialize_topic_prompt_row(row))
+                for row in cursor.fetchall()
+            ]
 
     def create_topic_finding(self, finding: TopicFinding) -> str:
         return self.save_topic_finding(finding)
@@ -853,14 +858,15 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 """),
                 (*params, max(1, limit), max(0, offset)),
             )
-            return [TopicFinding.from_dict(self._serialize_topic_finding_row(row)) for row in cursor.fetchall()]
+            return [
+                TopicFinding.from_dict(self._serialize_topic_finding_row(row))
+                for row in cursor.fetchall()
+            ]
 
     def list_active_findings(self, topic_id: str) -> List[TopicFinding]:
         return self.list_topic_findings(topic_id, status="active")
 
-    def count_topic_findings(
-        self, intelligence_topic_id: str, status: Optional[str] = None
-    ) -> int:
+    def count_topic_findings(self, intelligence_topic_id: str, status: Optional[str] = None) -> int:
         filters = ["intelligence_topic_id = ?"]
         params: List[Any] = [intelligence_topic_id]
         if status:
@@ -988,7 +994,10 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 """),
                 (intelligence_topic_id, prompt_version, schema_version, *raw_item_ids),
             )
-            return {str(row["raw_item_id"] if self._data.backend == "postgres" else row[0]) for row in cursor.fetchall()}
+            return {
+                str(row["raw_item_id"] if self._data.backend == "postgres" else row[0])
+                for row in cursor.fetchall()
+            }
 
     def get_raw_items_since(
         self, topic_id: str, cursor_time: Optional[datetime], limit: int
@@ -1082,7 +1091,11 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                     (
                         status,
                         checkpoint_cursor,
-                        self._json_value(checkpoint_payload if checkpoint_payload is not None else existing.checkpoint_payload),
+                        self._json_value(
+                            checkpoint_payload
+                            if checkpoint_payload is not None
+                            else existing.checkpoint_payload
+                        ),
                         items_scanned,
                         findings_created,
                         error_message,
@@ -1101,7 +1114,9 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         with self._data._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                self._data._sql("SELECT * FROM intelligence_topic_research_runs WHERE id = ? LIMIT 1"),
+                self._data._sql(
+                    "SELECT * FROM intelligence_topic_research_runs WHERE id = ? LIMIT 1"
+                ),
                 (run_id,),
             )
             row = cursor.fetchone()
@@ -1118,13 +1133,20 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 """),
                 (topic_id,),
             )
-            return [TopicResearchRun.from_dict(self._serialize_topic_run_row(row)) for row in cursor.fetchall()]
+            return [
+                TopicResearchRun.from_dict(self._serialize_topic_run_row(row))
+                for row in cursor.fetchall()
+            ]
 
     def get_topic_checkpoint(
         self, topic_id: str, prompt_version_id: Optional[str]
     ) -> Optional[Dict[str, Any]]:
-        clause = "prompt_version_id IS NULL" if prompt_version_id is None else "prompt_version_id = ?"
-        params: Tuple[Any, ...] = (topic_id,) if prompt_version_id is None else (topic_id, prompt_version_id)
+        clause = (
+            "prompt_version_id IS NULL" if prompt_version_id is None else "prompt_version_id = ?"
+        )
+        params: Tuple[Any, ...] = (
+            (topic_id,) if prompt_version_id is None else (topic_id, prompt_version_id)
+        )
         with self._data._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -1193,7 +1215,9 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                     conn.commit()
         checkpoint = self.get_topic_checkpoint(topic_id, prompt_version_id)
         if checkpoint is None:
-            raise StorageError("Topic checkpoint update failed", operation="topic_checkpoint_update")
+            raise StorageError(
+                "Topic checkpoint update failed", operation="topic_checkpoint_update"
+            )
         return checkpoint
 
     def create_merge_preview(self, preview: MergePreview) -> str:
@@ -1203,6 +1227,34 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         source_ids = self._normalize_source_finding_ids(preview.source_finding_ids)
         existing = self._find_merge_preview_by_sources(preview.intelligence_topic_id, source_ids)
         if existing is not None:
+            # Refresh the existing pending preview with new LLM output and expiry
+            now = datetime.utcnow().isoformat()
+            preview_payload_json = self._json_value(preview.preview_payload)
+            source_ids_json = self._json_value(source_ids)
+            with self._data._lock:
+                with self._data._get_connection() as conn:
+                    conn.cursor().execute(
+                        self._data._sql("""
+                        UPDATE intelligence_topic_merge_previews
+                        SET preview_payload = ?,
+                            content_hash = ?,
+                            source_finding_ids = ?,
+                            expires_at = ?,
+                            created_by = COALESCE(?, created_by),
+                            updated_at = ?
+                        WHERE id = ? AND state = 'pending'
+                        """),
+                        (
+                            preview_payload_json,
+                            preview.content_hash,
+                            source_ids_json,
+                            preview.expires_at.isoformat() if preview.expires_at else None,
+                            preview.created_by,
+                            now,
+                            existing.id,
+                        ),
+                    )
+                    conn.commit()
             return existing.id
         columns = [
             "id",
@@ -1240,7 +1292,9 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         with self._data._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                self._data._sql("SELECT * FROM intelligence_topic_merge_previews WHERE id = ? LIMIT 1"),
+                self._data._sql(
+                    "SELECT * FROM intelligence_topic_merge_previews WHERE id = ? LIMIT 1"
+                ),
                 (preview_id,),
             )
             row = cursor.fetchone()
@@ -1272,7 +1326,10 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 """),
                 (*params, max(1, limit)),
             )
-            return [MergePreview.from_dict(self._serialize_merge_preview_row(row)) for row in cursor.fetchall()]
+            return [
+                MergePreview.from_dict(self._serialize_merge_preview_row(row))
+                for row in cursor.fetchall()
+            ]
 
     def accept_merge_preview(self, preview_id: str) -> bool:
         preview = self.get_merge_preview(preview_id)
@@ -1294,7 +1351,9 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         with self._data._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                self._data._sql("SELECT * FROM intelligence_finding_archives WHERE finding_id = ? LIMIT 1"),
+                self._data._sql(
+                    "SELECT * FROM intelligence_finding_archives WHERE finding_id = ? LIMIT 1"
+                ),
                 (finding_id,),
             )
             row = cursor.fetchone()
@@ -1311,7 +1370,16 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
             "preview_payload",
             "archive_metadata",
         }:
-            return self._json_value(value if value is not None else ([] if column in {"audit_history", "citations", "source_raw_item_ids", "source_finding_ids"} else {}))
+            return self._json_value(
+                value
+                if value is not None
+                else (
+                    []
+                    if column
+                    in {"audit_history", "citations", "source_raw_item_ids", "source_finding_ids"}
+                    else {}
+                )
+            )
         if isinstance(value, datetime):
             return value.isoformat()
         return value
@@ -1386,7 +1454,9 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
     def _find_merge_preview_by_sources(
         self, topic_id: str, source_finding_ids: List[str]
     ) -> Optional[MergePreview]:
-        for preview in self.list_merge_previews(topic_id, state="pending", include_expired=True, limit=1000):
+        for preview in self.list_merge_previews(
+            topic_id, state="pending", include_expired=True, limit=1000
+        ):
             if self._normalize_source_finding_ids(preview.source_finding_ids) == source_finding_ids:
                 return preview
         return None
@@ -1404,7 +1474,10 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 """),
                 (preview.intelligence_topic_id, *preview.source_finding_ids),
             )
-            active_ids = {str(row["id"] if self._data.backend == "postgres" else row[0]) for row in cursor.fetchall()}
+            active_ids = {
+                str(row["id"] if self._data.backend == "postgres" else row[0])
+                for row in cursor.fetchall()
+            }
         return active_ids == set(preview.source_finding_ids)
 
     def _set_merge_preview_state(
