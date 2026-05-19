@@ -19,7 +19,7 @@
 - 🔄 **多源数据收集**: 支持 RSS 订阅、X/Twitter 内容爬取和 REST API 数据源
 - 🤖 **智能分析**: 使用大语言模型进行内容分析和分类（Kimi / Grok / OpenCode Go），支持大户动向、利率事件、监管政策、真相揭露等多种分类
 - 📊 **结构化报告**: 生成 Markdown 格式的分析报告，通过 Telegram Bot 自动发送
-- 🔎 **语义搜索**: 支持 `POST /semantic-search` 异步语义检索与 `/semantic_search` Telegram 命令
+- 🔎 **语义搜索**: 支持 `POST /semantic-search` 异步语义检索与 `/news_semantic_search` Telegram 命令
 - 🔧 **数据库优先的数据源管理**: 首次启动从 `config.jsonc` 导入，运行时通过数据库管理，支持 REST API 和 Telegram 命令操作
 
 ### 情报研究域（Intelligence）
@@ -36,7 +36,7 @@
 - 🛡️ **容错设计**: 完善的错误处理和恢复机制
 - ☁️ **云端部署**: 支持部署到 Railway 平台
 - 🌐 **HTTP API**: 支持 Bearer Token 鉴权的异步分析接口（`POST /analyze` 创建任务，轮询获取结果）
-- 🤖 **Telegram 交互**: 支持 `/analyze [hours]`、`/market`、`/status` 等命令
+- 🤖 **Telegram 交互**: 支持 `/news_analyze [hours]`、`/news_market`、`/status` 等命令
 
 如果你要通过 HTTP API 调用新闻分析接口，或你是一个需要自动调用接口的 AI，请先阅读 [AI Analyze API Guide](docs/AI_ANALYZE_API_GUIDE.md)。该文档包含最新的请求体要求、鉴权方式、异步轮询流程和生产环境验证结果。
 
@@ -152,7 +152,7 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - 使用用户名时，bot 必须先与该用户互动过，或者用户有公开的 profile
 - 如果用户名解析失败，系统会记录警告并跳过该用户名
 - 建议对关键用户使用用户 ID 作为备份
-- 所有授权用户都有相同的权限，可以执行所有可用命令（/analyze, /status, /help 等）
+- 所有授权用户都有相同的权限，可以执行所有可用命令（/news_analyze, /status, /help 等）
 
 ### LLM 配置
 
@@ -205,7 +205,7 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 
 支持三种常驻运行模式：
 
-- `analysis-service`：启动公网分析服务，提供 `/health`、`/analyze` 接口，并启用 Telegram `/analyze`
+- `analysis-service`：启动公网分析服务，提供 `/health`、`/analyze` 接口，并启用 Telegram `/news_analyze`
 - `api-only`：仅启动 FastAPI 分析接口，不启用 Telegram 命令监听
 - `ingestion`：启动私有摄取循环，按 `EXECUTION_INTERVAL` 周期抓取内容
 
@@ -245,11 +245,11 @@ uv run flake8 crypto_news_analyzer/
 
 ### 可用命令
 
-- `/analyze [hours]` - 按时间窗口分析历史消息（不传参数时按“距上次成功分析时间”自动估算，最大24小时）
-- `/semantic_search <hours> <topic>` - 按时间窗口执行语义搜索
-- `/market` - 获取当前市场快照
+- `/news_analyze [hours]` - 按时间窗口分析历史消息（不传参数时按“距上次成功分析时间”自动估算，最大24小时）
+- `/news_semantic_search <hours> <topic>` - 按时间窗口执行语义搜索
+- `/news_market` - 获取当前市场快照
 - `/status` - 查询系统运行状态
-- `/tokens` - 查看token使用统计
+- `/news_tokens` - 查看token使用统计
 - `/help` - 显示帮助信息
 
 ### 情报主题命令
@@ -276,7 +276,7 @@ uv run flake8 crypto_news_analyzer/
 ### 报告发送规则
 
 - **默认频道报告**: 未显式指定目标聊天时，发送到 `TELEGRAM_CHANNEL_ID` 指定的频道
-- **手动分析报告**: 由 Telegram `/analyze` 触发时，发送到用户触发命令的聊天窗口（私聊或群组）
+- **手动分析报告**: 由 Telegram `/news_analyze` 触发时，发送到用户触发命令的聊天窗口（私聊或群组）
 
 ### 配置授权用户
 

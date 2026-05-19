@@ -31,7 +31,7 @@ This repo is a single package (NOT two repos or two services). The two domains s
 | Primary Data Models | ContentItem, AnalysisResult | RawIntelligenceItem, IntelligenceTopic, TopicPrompt, TopicFinding |
 | Source Types | rss, x, rest_api (DataSourcePurpose.NEWS) | telegram_group, v2ex (DataSourcePurpose.INTELLIGENCE) |
 | API Surfaces | /analyze, /semantic-search, /datasources | /intelligence/* |
-| Telegram Commands | /analyze, /market, /semantic_search, /datasource_* | /topic_* |
+| Telegram Commands | /news_analyze, /news_market, /news_semantic_search, /news_tokens, /datasource_* | /topic_* |
 | Primary Modules | analyzers/, reporters/, semantic_search/ | intelligence/ (pipeline, topic_research, prompts, findings) |
 | Shared Infrastructure | execution_coordinator.py, storage/, config/, models.py, domain/, utils/, PostgreSQL, pgvector, LLM/embedding providers | |
 
@@ -43,7 +43,7 @@ AI agents MUST observe the following rules when working on this codebase:
 
 1. **Never mix ContentItem with RawIntelligenceItem.** These live in different domains. ContentItem belongs to the News domain (crawled from RSS/X/REST). RawIntelligenceItem belongs to the Intelligence domain (collected from Telegram/V2EX). Do not pass one where the other is expected, and do not write code that couples them.
 
-2. **News commands are for ContentItem analysis.** The `/analyze`, `/market`, `/semantic_search` Telegram commands and their HTTP equivalents operate on ContentItem data. They produce AnalysisResult and Markdown reports.
+2. **News commands are for ContentItem analysis.** The `/news_analyze`, `/news_market`, `/news_semantic_search`, `/news_tokens` Telegram commands and their HTTP equivalents operate on ContentItem data. They produce AnalysisResult and Markdown reports.
 
 3. **Intelligence commands are for topic research.** The `/topic_*` Telegram commands and `/intelligence/*` HTTP endpoints operate on RawIntelligenceItem, IntelligenceTopic, TopicPrompt, and TopicFinding. They drive a prompt lifecycle: create, revise, confirm, research, merge, archive.
 

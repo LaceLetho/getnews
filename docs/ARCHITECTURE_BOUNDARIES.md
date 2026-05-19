@@ -20,7 +20,7 @@ RSS/X/REST → ContentItem → LLMAnalyzer → ReportGenerator (Markdown)
 - **Primary data models:** `ContentItem`, `AnalysisResult`
 - **Primary modules:** `analyzers/`, `reporters/`, `semantic_search/`, `crawlers/`
 - **API surfaces:** `POST /analyze`, `POST /semantic-search`, `GET/POST/DELETE /datasources`
-- **Telegram commands:** `/analyze`, `/market`, `/semantic_search`, `/datasource_*`
+- **Telegram commands:** `/news_analyze`, `/news_market`, `/news_semantic_search`, `/news_tokens`, `/datasource_*`
 
 ### Intelligence Domain
 
@@ -78,7 +78,7 @@ The following surfaces are **invariant** under the current boundary-refactoring 
 - `GET /health` — unchanged
 
 ### Telegram Commands
-- News: `/analyze`, `/market`, `/semantic_search`, `/datasource_list`, `/datasource_add`, `/datasource_delete`, `/status`, `/tokens`, `/help` — unchanged
+- News: `/news_analyze`, `/news_market`, `/news_semantic_search`, `/news_tokens`, `/datasource_list`, `/datasource_add`, `/datasource_delete`, `/status`, `/help` — unchanged
 - Intelligence: `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_detail`, `/topic_merge`, `/topic_pause`, `/topic_archive`, `/topic_logs` — unchanged
 
 ### CLI Runtime Modes
@@ -127,7 +127,7 @@ The following refactors are explicitly **out of scope**. This means: no repo spl
 - **Database split:** Both domains continue to share one PostgreSQL + pgvector database. No per-domain database.
 - **Service split:** The two Railway services (`crypto-news-analysis`, `crypto-news-ingestion`) remain as-is. No per-domain service (e.g., no separate `crypto-news-intelligence` service).
 - **Endpoint renames or removals:** No URL path changes, no command renames, no API surface restructuring.
-- **Telegram command renames:** All existing `/topic_*`, `/analyze`, `/market`, etc. commands keep their current names.
+- **Telegram command renames:** News commands use `/news_` prefix (`/news_analyze`, `/news_market`, `/news_semantic_search`, `/news_tokens`). Intelligence commands use `/topic_` prefix. No further renames.
 - **Config format changes:** `config.jsonc` structure remains as-is. No new top-level keys or format migration.
 - **MainController extraction:** `execution_coordinator.py` remains the shared orchestrator. No extraction into per-domain controllers.
 - **Shared module splits:** `storage/`, `models.py`, `domain/`, `utils/` remain shared. No per-domain fork of these.

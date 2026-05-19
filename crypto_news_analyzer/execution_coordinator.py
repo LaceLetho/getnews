@@ -1933,7 +1933,7 @@ class MainController:
         if runtime_mode in {"api-only", "analysis-service"}:
             raise RuntimeError(
                 "Manual ingestion execution is disabled in analysis-service/api-only runtime; "
-                "use /analyze or HTTP /analyze instead"
+                "use /news_analyze or HTTP /analyze instead"
             )
 
         # 检查并发限制

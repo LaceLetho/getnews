@@ -14,9 +14,9 @@ Telegram命令处理器
 - 需求16.11: 未授权用户发送命令时返回权限拒绝消息
 
 SHARED INFRASTRUCTURE — Single bot handler registering BOTH news commands
-(/analyze, /market, /semantic_search, /datasource_*) AND intelligence commands
-(/topic_*). Domain grouping: news → /analyze, /market, /semantic_search,
-/datasource_*; intelligence → /topic_*.
+(/news_analyze, /news_market, /news_semantic_search, /datasource_*) AND intelligence commands
+(/topic_*). Domain grouping: news → /news_analyze, /news_market, /news_semantic_search,
+/news_tokens, /datasource_*; intelligence → /topic_*.
 """
 
 import asyncio
@@ -224,13 +224,13 @@ class TelegramCommandHandler:
         News commands operate on ContentItem data: analysis, semantic search,
         market snapshots, system status, token stats, and datasource management.
         """
-        application.add_handler(CommandHandler("analyze", self._handle_analyze_command))
+        application.add_handler(CommandHandler("news_analyze", self._handle_analyze_command))
         application.add_handler(
-            CommandHandler("semantic_search", self._handle_semantic_search_command)
+            CommandHandler("news_semantic_search", self._handle_semantic_search_command)
         )
-        application.add_handler(CommandHandler("market", self._handle_market_command))
+        application.add_handler(CommandHandler("news_market", self._handle_market_command))
         application.add_handler(CommandHandler("status", self._handle_status_command))
-        application.add_handler(CommandHandler("tokens", self._handle_tokens_command))
+        application.add_handler(CommandHandler("news_tokens", self._handle_tokens_command))
         application.add_handler(
             CommandHandler("datasource_list", self._handle_datasource_list_command)
         )
@@ -604,7 +604,7 @@ class TelegramCommandHandler:
 
     def check_rate_limit(self, user_id: str) -> tuple[bool, Optional[str]]:
         """
-        检查用户是否超过速率限制（仅针对/analyze命令）
+        检查用户是否超过速率限制（仅针对/news_analyze命令）
 
         Args:
             user_id: 用户ID
@@ -632,14 +632,14 @@ class TelegramCommandHandler:
         if state.command_count >= max_per_hour:
             return False, f"已达到每小时命令限制 ({max_per_hour} 次)，请稍后再试"
 
-        # 检查冷却时间（仅针对/analyze命令）
+        # 检查冷却时间（仅针对/news_analyze命令）
         cooldown_seconds = self.config.command_rate_limit.get("cooldown_seconds", 1)
         seconds_since_last = (now - state.last_analyze_command_time).total_seconds()
         if seconds_since_last < cooldown_seconds:
             remaining = cooldown_seconds - seconds_since_last
             return False, f"命令冷却中，请等待 {remaining:.1f} 秒"
 
-        # 更新状态（仅更新/analyze命令的时间戳）
+        # 更新状态（仅更新/news_analyze命令的时间戳）
         state.command_count += 1
         state.last_analyze_command_time = now
 
@@ -709,7 +709,7 @@ class TelegramCommandHandler:
         需求8.1, 8.2, 8.3, 8.4: 记录授权尝试的完整上下文信息
 
         Args:
-            command: Command name (e.g., "/analyze", "/status", "/help")
+            command: Command name (e.g., "/news_analyze", "/status", "/help")
             user_id: User ID
             username: Username
             chat_type: Type of chat (private/group/supergroup)
@@ -806,13 +806,13 @@ class TelegramCommandHandler:
             commands.append(BotCommand("start", "获取您的用户ID和授权状态"))
             commands.append(BotCommand("help", "显示帮助信息"))
             # News domain
-            commands.append(BotCommand("analyze", "分析消息，可指定小时数如/analyze 24"))
+            commands.append(BotCommand("news_analyze", "分析消息，可指定小时数如/news_analyze 24"))
             commands.append(
-                BotCommand("semantic_search", "语义搜索，如/semantic_search 24 BTC adoption")
+                BotCommand("news_semantic_search", "语义搜索，如/news_semantic_search 24 BTC adoption")
             )
-            commands.append(BotCommand("market", "获取当前市场现状快照"))
+            commands.append(BotCommand("news_market", "获取当前市场现状快照"))
             commands.append(BotCommand("status", "查询系统运行状态"))
-            commands.append(BotCommand("tokens", "查看LLM token使用统计"))
+            commands.append(BotCommand("news_tokens", "查看LLM token使用统计"))
             commands.append(BotCommand("datasource_list", "查看数据源列表"))
             commands.append(BotCommand("datasource_add", "添加数据源"))
             commands.append(BotCommand("datasource_delete", "删除数据源"))
@@ -895,7 +895,7 @@ class TelegramCommandHandler:
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
         """
-        处理/analyze命令
+        处理/news_analyze命令
 
         分析指定时间窗口内的消息并发送报告。
 
@@ -920,7 +920,7 @@ class TelegramCommandHandler:
         chat_id = chat_context.chat_id
 
         self.logger.info(
-            f"收到/analyze命令，用户: {username} ({user_id}), "
+            f"收到/news_analyze命令，用户: {username} ({user_id}), "
             f"聊天类型: {chat_type}, 聊天ID: {chat_id}, "
             f"参数: {context.args}"
         )
@@ -931,7 +931,7 @@ class TelegramCommandHandler:
                 response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
                 await update.message.reply_text(response)
                 self._log_authorization_attempt(
-                    command="/analyze",
+                    command="/news_analyze",
                     user_id=user_id,
                     username=username,
                     chat_type=chat_type,
@@ -939,12 +939,12 @@ class TelegramCommandHandler:
                     authorized=False,
                     reason="user not in authorized list",
                 )
-                self._log_command_execution("/analyze", user_id, username, None, False, response)
+                self._log_command_execution("/news_analyze", user_id, username, None, False, response)
                 return
 
             # Log successful authorization
             self._log_authorization_attempt(
-                command="/analyze",
+                command="/news_analyze",
                 user_id=user_id,
                 username=username,
                 chat_type=chat_type,
@@ -956,7 +956,7 @@ class TelegramCommandHandler:
             if not allowed:
                 response = f"⏱️ 速率限制\n\n{error_msg}"
                 await update.message.reply_text(response)
-                self._log_command_execution("/analyze", user_id, username, None, False, response)
+                self._log_command_execution("/news_analyze", user_id, username, None, False, response)
                 return
 
             # 解析参数 - 从 context.args 获取小时数
@@ -966,7 +966,7 @@ class TelegramCommandHandler:
                     hours = int(context.args[0])
                 except ValueError:
                     await update.message.reply_text(
-                        "❌ 参数错误\n\n请输入有效的小时数，例如：/analyze 24"
+                        "❌ 参数错误\n\n请输入有效的小时数，例如：/news_analyze 24"
                     )
                     return
 
@@ -975,7 +975,7 @@ class TelegramCommandHandler:
             await update.message.reply_text(response, parse_mode="Markdown")
 
         except Exception as e:
-            error_msg = f"处理/analyze命令时发生错误: {str(e)}"
+            error_msg = f"处理/news_analyze命令时发生错误: {str(e)}"
             self.logger.error(
                 f"{error_msg}, 用户: {username} ({user_id}), "
                 f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
@@ -986,9 +986,9 @@ class TelegramCommandHandler:
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
         """
-        处理/semantic_search命令
+        处理/news_semantic_search命令
 
-        语法: /semantic_search <hours> <topic>
+        语法: /news_semantic_search <hours> <topic>
         """
         try:
             chat_context = self._extract_chat_context(update)
@@ -1004,13 +1004,13 @@ class TelegramCommandHandler:
         message = getattr(update, "effective_message", None) or update.message
 
         if message is None:
-            self.logger.error("/semantic_search update has no effective message")
+            self.logger.error("/news_semantic_search update has no effective message")
             return
 
         args = [str(arg).strip() for arg in (context.args or [])]
 
         self.logger.info(
-            f"收到/semantic_search命令，用户: {username} ({user_id}), "
+            f"收到/news_semantic_search命令，用户: {username} ({user_id}), "
             f"聊天类型: {chat_type}, 聊天ID: {chat_id}, 参数: {context.args}"
         )
 
@@ -1019,7 +1019,7 @@ class TelegramCommandHandler:
                 response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
                 await update.message.reply_text(response)
                 self._log_authorization_attempt(
-                    command="/semantic_search",
+                    command="/news_semantic_search",
                     user_id=user_id,
                     username=username,
                     chat_type=chat_type,
@@ -1028,12 +1028,12 @@ class TelegramCommandHandler:
                     reason="user not in authorized list",
                 )
                 self._log_command_execution(
-                    "/semantic_search", user_id, username, None, False, response
+                    "/news_semantic_search", user_id, username, None, False, response
                 )
                 return
 
             self._log_authorization_attempt(
-                command="/semantic_search",
+                command="/news_semantic_search",
                 user_id=user_id,
                 username=username,
                 chat_type=chat_type,
@@ -1046,14 +1046,14 @@ class TelegramCommandHandler:
                 response = f"⏱️ 速率限制\n\n{error_msg}"
                 await update.message.reply_text(response)
                 self._log_command_execution(
-                    "/semantic_search", user_id, username, None, False, response
+                    "/news_semantic_search", user_id, username, None, False, response
                 )
                 return
 
             if len(args) < 2:
                 await message.reply_text(
-                    "❌ 参数错误\n\n用法: /semantic_search <hours> <topic>\n"
-                    "示例: /semantic_search 24 BTC adoption"
+                    "❌ 参数错误\n\n用法: /news_semantic_search <hours> <topic>\n"
+                    "示例: /news_semantic_search 24 BTC adoption"
                 )
                 return
 
@@ -1061,15 +1061,15 @@ class TelegramCommandHandler:
                 hours = int(args[0])
             except (TypeError, ValueError):
                 await message.reply_text(
-                    "❌ 参数错误\n\n请输入有效的小时数，例如：/semantic_search 24 BTC adoption"
+                    "❌ 参数错误\n\n请输入有效的小时数，例如：/news_semantic_search 24 BTC adoption"
                 )
                 return
 
             topic = " ".join(args[1:]).strip()
             if hours <= 0 or not topic:
                 await message.reply_text(
-                    "❌ 参数错误\n\n用法: /semantic_search <hours> <topic>\n"
-                    "示例: /semantic_search 24 BTC adoption"
+                    "❌ 参数错误\n\n用法: /news_semantic_search <hours> <topic>\n"
+                    "示例: /news_semantic_search 24 BTC adoption"
                 )
                 return
 
@@ -1092,7 +1092,7 @@ class TelegramCommandHandler:
             await message.reply_text(response, parse_mode="Markdown")
 
         except Exception as e:
-            error_msg = f"处理/semantic_search命令时发生错误: {str(e)}"
+            error_msg = f"处理/news_semantic_search命令时发生错误: {str(e)}"
             self.logger.error(
                 f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
@@ -1171,9 +1171,9 @@ class TelegramCommandHandler:
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
         """
-        处理/market命令
+        处理/news_market命令
 
-        需求16.3: 实现/market命令获取并返回市场快照
+        需求16.3: 实现/news_market命令获取并返回市场快照
         需求16.17: 使用联网AI服务获取实时市场快照
         需求16.18: 将市场快照以Telegram格式发送给用户
         需求16.19: 在失败时返回错误信息并说明失败原因
@@ -1191,22 +1191,22 @@ class TelegramCommandHandler:
                 self._log_authorization_attempt(
                     user_id=user_id,
                     username=username,
-                    command="/market",
+                    command="/news_market",
                     chat_type=chat_type,
                     chat_id=chat_id,
                     authorized=False,
                 )
                 await update.message.reply_text("❌ 您没有权限执行此命令")
-                self._log_command_execution("/market", user_id, username, None, False, "权限拒绝")
+                self._log_command_execution("/news_market", user_id, username, None, False, "权限拒绝")
                 return
 
-            # /market命令不需要速率限制检查，因为它只是读取缓存的市场快照
+            # /news_market命令不需要速率限制检查，因为它只是读取缓存的市场快照
 
             # 记录授权日志
             self._log_authorization_attempt(
                 user_id=user_id,
                 username=username,
-                command="/market",
+                command="/news_market",
                 chat_type=chat_type,
                 chat_id=chat_id,
                 authorized=True,
@@ -1220,18 +1220,18 @@ class TelegramCommandHandler:
             # 不使用 Markdown 解析，避免特殊字符导致的解析错误
             await update.message.reply_text(response)
             self._log_command_execution(
-                "/market", user_id, username, None, True, "市场快照获取成功"
+                "/news_market", user_id, username, None, True, "市场快照获取成功"
             )
 
         except Exception as e:
-            error_msg = f"处理/market命令时发生错误: {str(e)}"
+            error_msg = f"处理/news_market命令时发生错误: {str(e)}"
             self.logger.error(
                 f"{error_msg}, 用户: {username} ({user_id}), "
                 f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
             await update.message.reply_text(f"❌ 命令执行失败\n\n{str(e)}")
             self._log_command_execution(
-                "/market", user_id, username, None, False, f"错误: {str(e)}"
+                "/news_market", user_id, username, None, False, f"错误: {str(e)}"
             )
 
     async def _handle_help_command(
@@ -1307,7 +1307,7 @@ class TelegramCommandHandler:
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
         """
-        处理/tokens命令 - 显示LLM token使用统计
+        处理/news_tokens命令 - 显示LLM token使用统计
         """
         try:
             chat_context = self._extract_chat_context(update)
@@ -1322,7 +1322,7 @@ class TelegramCommandHandler:
         chat_id = chat_context.chat_id
 
         self.logger.info(
-            f"收到/tokens命令，用户: {username} ({user_id}), "
+            f"收到/news_tokens命令，用户: {username} ({user_id}), "
             f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
         )
 
@@ -1332,7 +1332,7 @@ class TelegramCommandHandler:
                 response = "❌ 权限拒绝\n\n您没有权限使用此机器人。"
                 await update.message.reply_text(response)
                 self._log_authorization_attempt(
-                    command="/tokens",
+                    command="/news_tokens",
                     user_id=user_id,
                     username=username,
                     chat_type=chat_type,
@@ -1340,12 +1340,12 @@ class TelegramCommandHandler:
                     authorized=False,
                     reason="user not in authorized list",
                 )
-                self._log_command_execution("/tokens", user_id, username, None, False, response)
+                self._log_command_execution("/news_tokens", user_id, username, None, False, response)
                 return
 
             # Log successful authorization
             self._log_authorization_attempt(
-                command="/tokens",
+                command="/news_tokens",
                 user_id=user_id,
                 username=username,
                 chat_type=chat_type,
@@ -1356,10 +1356,10 @@ class TelegramCommandHandler:
             # 获取token使用统计
             response = self.handle_tokens_command()
             await update.message.reply_text(response, parse_mode="Markdown")
-            self._log_command_execution("/tokens", user_id, username, None, True, "Token统计已发送")
+            self._log_command_execution("/news_tokens", user_id, username, None, True, "Token统计已发送")
 
         except Exception as e:
-            error_msg = f"处理/tokens命令时发生错误: {str(e)}"
+            error_msg = f"处理/news_tokens命令时发生错误: {str(e)}"
             self.logger.error(
                 f"{error_msg}, 用户: {username} ({user_id}), "
                 f"聊天类型: {chat_type}, 聊天ID: {chat_id}"
@@ -1819,7 +1819,7 @@ class TelegramCommandHandler:
         self, user_id: str, username: str, chat_id: str, hours: Optional[int] = None
     ) -> str:
         """
-        处理/analyze命令的业务逻辑
+        处理/news_analyze命令的业务逻辑
 
         Args:
             user_id: 用户ID
@@ -1841,7 +1841,7 @@ class TelegramCommandHandler:
                     f"进度: {current_exec.progress * 100:.1f}%"
                 )
                 self._log_command_execution(
-                    "/analyze", user_id, username, None, False, "执行中，拒绝新请求"
+                    "/news_analyze", user_id, username, None, False, "执行中，拒绝新请求"
                 )
                 return response
 
@@ -1922,7 +1922,7 @@ class TelegramCommandHandler:
         except Exception as e:
             error_msg = f"触发分析失败: {str(e)}"
             self.logger.error(error_msg)
-            self._log_command_execution("/analyze", user_id, username, None, False, error_msg)
+            self._log_command_execution("/news_analyze", user_id, username, None, False, error_msg)
             return f"❌ 执行失败\n\n{str(e)}"
 
     def handle_semantic_search_command(
@@ -1934,14 +1934,14 @@ class TelegramCommandHandler:
         topic: str,
     ) -> str:
         """
-        处理/semantic_search命令的业务逻辑
+        处理/news_semantic_search命令的业务逻辑
         """
         try:
             semantic_search_service = self._get_semantic_search_service()
             if semantic_search_service is None:
                 response = "❌ 语义搜索服务未初始化\n\n请先完成语义搜索模块配置。"
                 self._log_command_execution(
-                    "/semantic_search",
+                    "/news_semantic_search",
                     user_id,
                     username,
                     None,
@@ -1978,7 +1978,7 @@ class TelegramCommandHandler:
             error_msg = f"触发语义搜索失败: {str(e)}"
             self.logger.error(error_msg)
             self._log_command_execution(
-                "/semantic_search", user_id, username, None, False, error_msg
+                "/news_semantic_search", user_id, username, None, False, error_msg
             )
             return f"❌ 执行失败\n\n{str(e)}"
 
@@ -2904,7 +2904,7 @@ class TelegramCommandHandler:
                         chat_id,
                     )
                     self._log_command_execution(
-                        "/semantic_search",
+                        "/news_semantic_search",
                         user_id,
                         username,
                         execution_id,
@@ -2928,7 +2928,7 @@ class TelegramCommandHandler:
                         )
                 else:
                     self._log_command_execution(
-                        "/semantic_search",
+                        "/news_semantic_search",
                         user_id,
                         username,
                         execution_id,
@@ -2947,7 +2947,7 @@ class TelegramCommandHandler:
             else:
                 error_msg = "; ".join(errors) if errors else "未知错误"
                 self._log_command_execution(
-                    "/semantic_search",
+                    "/news_semantic_search",
                     user_id,
                     username,
                     execution_id,
@@ -2982,7 +2982,7 @@ class TelegramCommandHandler:
                 self.logger.error(f"发送语义搜索错误通知失败: {str(notify_error)}")
 
             self._log_command_execution(
-                "/semantic_search",
+                "/news_semantic_search",
                 user_id,
                 username,
                 None,
@@ -3020,7 +3020,7 @@ class TelegramCommandHandler:
             errors = result.get("errors", [])
 
             self._log_command_execution(
-                "/analyze",
+                "/news_analyze",
                 user_id,
                 username,
                 execution_id,
@@ -3112,7 +3112,7 @@ class TelegramCommandHandler:
                 self.logger.error(f"发送错误通知失败: {str(notify_error)}")
 
             self._log_command_execution(
-                "/analyze", user_id, username, None, False, f"执行异常: {str(e)}"
+                "/news_analyze", user_id, username, None, False, f"执行异常: {str(e)}"
             )
 
     def handle_status_command(self, user_id: str) -> str:
@@ -3224,8 +3224,8 @@ class TelegramCommandHandler:
         # 如果没有指定权限，默认所有命令都可用
         if not user_permissions:
             user_permissions = [
-                "analyze",
-                "semantic_search",
+                "news_analyze",
+                "news_semantic_search",
                 "topic_create",
                 "topic_revise",
                 "topic_set_prompt",
@@ -3235,10 +3235,10 @@ class TelegramCommandHandler:
                 "topic_merge",
                 "topic_pause",
                 "topic_archive",
-                "market",
+                "news_market",
                 "status",
                 "help",
-                "tokens",
+                "news_tokens",
                 "datasource",
             ]
 
@@ -3246,21 +3246,21 @@ class TelegramCommandHandler:
 
         # News domain
         help_text.append("📰 新闻分析\n")
-        if "analyze" in user_permissions:
+        if "news_analyze" in user_permissions:
             help_text.append(
-                "/analyze [hours] - 按时间窗口执行分析\n"
-                "不传参数时自动估算时间窗口，支持例如 /analyze 24。\n"
+                "/news_analyze [hours] - 按时间窗口执行分析\n"
+                "不传参数时自动估算时间窗口，支持例如 /news_analyze 24。\n"
             )
 
-        if "semantic_search" in user_permissions or not user_permissions:
+        if "news_semantic_search" in user_permissions or not user_permissions:
             help_text.append(
-                "/semantic_search <hours> <topic> - 按时间窗口执行语义搜索\n"
-                "hours 为必填参数，例如 /semantic_search 24 BTC adoption。\n"
+                "/news_semantic_search <hours> <topic> - 按时间窗口执行语义搜索\n"
+                "hours 为必填参数，例如 /news_semantic_search 24 BTC adoption。\n"
             )
 
-        if "market" in user_permissions:
+        if "news_market" in user_permissions:
             help_text.append(
-                "/market - 获取当前市场现状快照\n" "使用联网AI服务获取实时市场信息和分析。\n"
+                "/news_market - 获取当前市场现状快照\n" "使用联网AI服务获取实时市场信息和分析。\n"
             )
 
         if "status" in user_permissions:
@@ -3268,9 +3268,9 @@ class TelegramCommandHandler:
                 "/status - 查询系统运行状态\n" "显示当前执行状态、系统信息和最近执行结果。\n"
             )
 
-        if "tokens" in user_permissions or not user_permissions:
+        if "news_tokens" in user_permissions or not user_permissions:
             help_text.append(
-                "/tokens - 查看LLM token使用统计\n"
+                "/news_tokens - 查看LLM token使用统计\n"
                 "显示最近50次调用的token使用情况和缓存命中率。\n"
             )
 
@@ -3341,7 +3341,7 @@ class TelegramCommandHandler:
 
     def handle_tokens_command(self) -> str:
         """
-        处理/tokens命令的业务逻辑 - 显示LLM token使用统计
+        处理/news_tokens命令的业务逻辑 - 显示LLM token使用统计
 
         Returns:
             响应消息
@@ -3352,7 +3352,7 @@ class TelegramCommandHandler:
                 not hasattr(self.execution_coordinator, "llm_analyzer")
                 or not self.execution_coordinator.llm_analyzer
             ):
-                return "❌ LLM分析器未初始化\n\n请先运行 /analyze 命令执行一次分析。"
+                return "❌ LLM分析器未初始化\n\n请先运行 /news_analyze 命令执行一次分析。"
 
             tracker = self.execution_coordinator.llm_analyzer.token_tracker
 
@@ -3360,7 +3360,7 @@ class TelegramCommandHandler:
             stats = tracker.get_statistics()
 
             if stats["total_calls"] == 0:
-                return "📊 *Token使用统计*\n\n暂无记录\n\n请先运行 /analyze 命令执行一次分析。"
+                return "📊 *Token使用统计*\n\n暂无记录\n\n请先运行 /news_analyze 命令执行一次分析。"
 
             # 格式化摘要
             summary = tracker.format_summary()
@@ -3577,7 +3577,7 @@ class TelegramCommandHandler:
 
     def handle_market_command(self, user_id: str, username: str) -> str:
         """
-        处理/market命令的业务逻辑
+        处理/news_market命令的业务逻辑
 
         需求16.3: 获取并返回当前市场现状快照（从缓存）
         需求16.17: 使用MarketSnapshotService获取市场快照（优先使用缓存）

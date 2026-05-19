@@ -27,8 +27,8 @@ Tests for RSS/X/REST crawling, LLM analysis, structured reports, and semantic se
 - `test_report_generator.py` - Markdown report generation
 - `test_api_server.py` - FastAPI analyze endpoints
 - `test_api_server_semantic_search.py` - Semantic search endpoints
-- `test_telegram_command_handler_analyze.py` - Telegram /analyze command
-- `test_telegram_command_handler_semantic_search.py` - Telegram /semantic_search command
+- `test_telegram_command_handler_analyze.py` - Telegram /news_analyze command
+- `test_telegram_command_handler_semantic_search.py` - Telegram /news_semantic_search command
 - `test_telegram_report_properties.py` - Report delivery properties
 - `test_embedding_service.py` - Embedding service
 - `test_semantic_search_service.py` - Semantic search service

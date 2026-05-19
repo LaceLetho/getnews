@@ -64,7 +64,7 @@ TELEGRAM_WEBHOOK_SECRET_HEADER = "x-telegram-bot-api-secret-token"
 SEMANTIC_SEARCH_ROUTE_PATH = "/semantic-search"
 SEMANTIC_SEARCH_JOB_STATUS_PATH = "/semantic-search/{job_id}"
 SEMANTIC_SEARCH_JOB_RESULT_PATH = "/semantic-search/{job_id}/result"
-SEMANTIC_SEARCH_TELEGRAM_COMMAND = "/semantic_search <hours> <topic>"
+SEMANTIC_SEARCH_TELEGRAM_COMMAND = "/news_semantic_search <hours> <topic>"
 
 
 # ── Application State ──────────────────────────────────────────────────

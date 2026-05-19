@@ -95,7 +95,7 @@ async def test_handle_analyze_command_logs_authorization_success(handler):
                     await handler._handle_analyze_command(update, context)
 
     mock_log_auth.assert_called_once_with(
-        command="/analyze",
+        command="/news_analyze",
         user_id="123456789",
         username="testuser",
         chat_type="group",
