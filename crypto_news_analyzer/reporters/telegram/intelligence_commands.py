@@ -425,7 +425,7 @@ class IntelligenceCommandsMixin:
 
             from ...intelligence.topic_findings import MergePreviewError
 
-            preview = merge_service.create_merge_preview(
+            preview = await merge_service.create_merge_preview(
                 topic_id=topic_id,
                 prompt_version_id=active_prompt.id,
                 created_by=username,

@@ -1525,7 +1525,7 @@ def register_intelligence_routes(app: FastAPI) -> None:
         service = _get_topic_finding_merge_service(controller, repository)
 
         try:
-            preview = service.create_merge_preview(
+            preview = await service.create_merge_preview(
                 topic_id=topic_id,
                 prompt_version_id=request_body.prompt_version_id,
                 created_by="api",

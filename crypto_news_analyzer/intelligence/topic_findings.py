@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -92,13 +93,17 @@ class TopicFindingMergeService:
         self.model_name = model_name
         self.prompt_dir = prompt_dir or Path(__file__).resolve().parents[2] / "prompts"
 
-    def create_merge_preview(
+    async def create_merge_preview(
         self,
         topic_id: str,
         prompt_version_id: str,
         created_by: Optional[str] = None,
     ) -> MergePreview:
-        """Create a persisted merge preview from active findings + topic prompt context."""
+        """Create a persisted merge preview from active findings + topic prompt context.
+
+        The LLM call is run via asyncio.to_thread() to avoid blocking the uvicorn
+        event loop in webhook handlers and API endpoints.
+        """
         logger.info(
             f"Creating merge preview for topic_id={topic_id}, "
             f"prompt_version_id={prompt_version_id}"
@@ -116,7 +121,8 @@ class TopicFindingMergeService:
             f"Calling LLM for merge preview: topic_id={topic_id}, "
             f"model={self.model_name}, findings_count={len(active_findings)}"
         )
-        raw_output = self._call_llm(topic_id, prompt, active_findings)
+        # Run the synchronous LLM call in a thread to avoid blocking the event loop
+        raw_output = await asyncio.to_thread(self._call_llm, topic_id, prompt, active_findings)
         logger.info(f"LLM merge response received: {len(raw_output)} chars")
         parsed = self._parse_merge_output(raw_output)
 

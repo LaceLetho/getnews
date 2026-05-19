@@ -186,7 +186,7 @@ def test_topic_merge():
     repo.get_active_topic_prompt.return_value = SimpleNamespace(id="prompt-001")
 
     merge_service = Mock()
-    merge_service.create_merge_preview.return_value = fake_preview
+    merge_service.create_merge_preview = AsyncMock(return_value=fake_preview)
 
     with patch.object(handler, "_get_topic_finding_merge_service", return_value=merge_service):
         with patch.object(handler, "_get_intelligence_repository", return_value=repo):

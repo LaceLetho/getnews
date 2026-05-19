@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -263,7 +264,7 @@ def test_merge_preview_creation() -> None:
         repo,
         FakeLLMClient(_valid_merge_payload()),
     )
-    preview = service.create_merge_preview(topic_id, prompt_id, created_by="tester")
+    preview = asyncio.run(service.create_merge_preview(topic_id, prompt_id, created_by="tester"))
 
     assert preview.intelligence_topic_id == topic_id
     assert sorted(preview.source_finding_ids) == sorted(source_ids)
@@ -287,7 +288,7 @@ def test_merge_accept_archives_exact_sources() -> None:
         repo,
         FakeLLMClient(_valid_merge_payload()),
     )
-    preview = service.create_merge_preview(topic_id, prompt_id)
+    preview = asyncio.run(service.create_merge_preview(topic_id, prompt_id))
 
     merged = service.accept_merge_preview(preview.id, operator="operator-01")
 
@@ -322,7 +323,7 @@ def test_stale_merge_preview_rejected() -> None:
         repo,
         FakeLLMClient(_valid_merge_payload()),
     )
-    preview = service.create_merge_preview(topic_id, prompt_id)
+    preview = asyncio.run(service.create_merge_preview(topic_id, prompt_id))
 
     new_finding = TopicFinding.create(
         intelligence_topic_id=topic_id,
@@ -357,7 +358,7 @@ def test_expired_merge_preview_rejected() -> None:
         repo,
         FakeLLMClient(_valid_merge_payload()),
     )
-    preview = service.create_merge_preview(topic_id, prompt_id)
+    preview = asyncio.run(service.create_merge_preview(topic_id, prompt_id))
 
     stored = repo.get_merge_preview(preview.id)
     stored.expires_at = datetime.utcnow() - timedelta(hours=1)
@@ -375,7 +376,7 @@ def test_reject_merge_preview() -> None:
         repo,
         FakeLLMClient(_valid_merge_payload()),
     )
-    preview = service.create_merge_preview(topic_id, prompt_id)
+    preview = asyncio.run(service.create_merge_preview(topic_id, prompt_id))
 
     service.reject_merge_preview(preview.id)
 
@@ -391,7 +392,7 @@ def test_accept_non_pending_preview_fails() -> None:
         repo,
         FakeLLMClient(_valid_merge_payload()),
     )
-    preview = service.create_merge_preview(topic_id, prompt_id)
+    preview = asyncio.run(service.create_merge_preview(topic_id, prompt_id))
     repo.reject_merge_preview(preview.id)
 
     with pytest.raises(MergePreviewError, match="not pending"):
@@ -415,7 +416,7 @@ def test_create_preview_requires_two_findings() -> None:
 
     service = TopicFindingMergeService(repo, FakeLLMClient(_valid_merge_payload()))
     with pytest.raises(MergePreviewError, match="at least two"):
-        service.create_merge_preview(topic_id, prompt_id)
+        asyncio.run(service.create_merge_preview(topic_id, prompt_id))
 
 
 # ── FastAPI TestClient integration tests ──────────────────────────────
