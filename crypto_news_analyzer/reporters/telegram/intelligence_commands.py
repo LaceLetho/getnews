@@ -706,21 +706,22 @@ class IntelligenceCommandsMixin:
                 user_id, username, topic_id, return_markup=True
             )
             if isinstance(payload, dict):
-                # Build inline keyboard with expand buttons for each finding
+                # Build inline keyboard with expand buttons for each finding.
+                # Use short prefix + index (not full UUID) to stay within
+                # Telegram's 64-byte callback_data limit.
                 findings: List[Dict[str, Any]] = list(payload.get("findings", []))
                 keyboard: List[List[InlineKeyboardButton]] = []
                 token = None
                 if findings and self.application is not None:
                     token = self._generate_callback_token()
-                    for finding_info in findings:
-                        finding_id = str(finding_info.get("id", ""))
+                    for i, finding_info in enumerate(findings):
                         source_count = int(finding_info.get("source_count", 0))
                         idx = int(finding_info.get("index", 0))
                         label = f"📎 #{idx} 查看原文" if source_count == 0 else f"📎 #{idx} 查看原文 ({source_count})"
                         keyboard.append([
                             InlineKeyboardButton(
                                 label,
-                                callback_data=f"topic:detail:expand:{token}:{finding_id}",
+                                callback_data=f"td:e:{token}:{i}",
                             )
                         ])
 
@@ -948,18 +949,31 @@ class IntelligenceCommandsMixin:
                     await callback_query.answer("\u7ffb\u9875\u5df2\u8fc7\u671f")
                 return
 
-            # topic:detail:expand:{token}:{finding_id}
-            if data.startswith("topic:detail:expand:"):
-                parts = data.split(":", 4)
-                if len(parts) != 5:
+            # td:e:{token}:{index}  — expand finding sources (short prefix to fit 64-byte callback_data)
+            if data.startswith("td:e:"):
+                parts = data.split(":", 3)
+                if len(parts) != 4:
                     await callback_query.answer("操作已过期")
                     return
-                token = parts[3]
-                finding_id = parts[4]
+                token = parts[2]
+                try:
+                    finding_index = int(parts[3])
+                except (ValueError, IndexError):
+                    await callback_query.answer("操作已过期")
+                    return
 
                 state = self._get_callback_state(token)
                 if not state:
                     await callback_query.answer("操作已过期，请重新执行 /topic_detail")
+                    return
+
+                stored_findings: List[Dict[str, Any]] = list(state.get("findings", []))
+                if finding_index < 0 or finding_index >= len(stored_findings):
+                    await callback_query.answer("发现已过期")
+                    return
+                finding_id = str(stored_findings[finding_index].get("id", ""))
+                if not finding_id:
+                    await callback_query.answer("发现数据异常")
                     return
 
                 repository = self._get_intelligence_repository()
