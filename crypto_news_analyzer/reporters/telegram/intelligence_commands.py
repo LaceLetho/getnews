@@ -717,7 +717,7 @@ class IntelligenceCommandsMixin:
                     for i, finding_info in enumerate(findings):
                         source_count = int(finding_info.get("source_count", 0))
                         idx = int(finding_info.get("index", 0))
-                        label = f"📎 #{idx} 查看原文" if source_count == 0 else f"📎 #{idx} 查看原文 ({source_count})"
+                        label = f"#{idx} 查看原文 📎" if source_count == 0 else f"#{idx} 查看原文 📎({source_count})"
                         keyboard.append([
                             InlineKeyboardButton(
                                 label,
@@ -792,10 +792,9 @@ class IntelligenceCommandsMixin:
                     conf_str = ""
                     conf = getattr(finding, "confidence", 0.0) or 0.0
                     if conf > 0:
-                        conf_str = f" [置信度: {conf:.0%}]"
+                        conf_str = f" [{conf:.0%}]"
                     source_count = len(finding.source_raw_item_ids or [])
-                    source_note = f" (📎{source_count}来源)" if source_count > 0 else ""
-                    lines.append(f"  • #{i} {title}{conf_str}{source_note}")
+                    lines.append(f"  • #{i} {title}{conf_str}")
 
                     if return_markup:
                         findings_info.append({
