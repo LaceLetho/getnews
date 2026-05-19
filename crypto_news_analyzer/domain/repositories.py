@@ -526,6 +526,11 @@ class IntelligenceRepository(ABC):
     def list_active_findings(self, topic_id: str) -> List[TopicFinding]:
         return self.list_topic_findings(topic_id, status="active")
 
+    def count_topic_findings(
+        self, intelligence_topic_id: str, status: Optional[str] = None
+    ) -> int:
+        return 0
+
     def archive_finding(
         self, finding_id: str, superseded_by_id: Optional[str] = None
     ) -> Optional[TopicFinding]:

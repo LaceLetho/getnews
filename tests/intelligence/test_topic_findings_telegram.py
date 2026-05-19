@@ -149,7 +149,8 @@ def test_topic_detail():
                 )
             ),
             get_active_topic_prompt=Mock(return_value=None),
-            list_active_findings=Mock(return_value=[]),
+            list_topic_findings=Mock(return_value=[]),
+            count_topic_findings=Mock(return_value=0),
         )
     )
 

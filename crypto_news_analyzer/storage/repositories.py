@@ -858,6 +858,26 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
     def list_active_findings(self, topic_id: str) -> List[TopicFinding]:
         return self.list_topic_findings(topic_id, status="active")
 
+    def count_topic_findings(
+        self, intelligence_topic_id: str, status: Optional[str] = None
+    ) -> int:
+        filters = ["intelligence_topic_id = ?"]
+        params: List[Any] = [intelligence_topic_id]
+        if status:
+            filters.append("status = ?")
+            params.append(status)
+        with self._data._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._data._sql(f"""
+                SELECT COUNT(*) FROM intelligence_topic_findings
+                WHERE {' AND '.join(filters)}
+                """),
+                tuple(params),
+            )
+            row = cursor.fetchone()
+        return int(row[0] if self._data.backend == "postgres" else row[0]) if row else 0
+
     def archive_finding(
         self, finding_id: str, superseded_by_id: Optional[str] = None
     ) -> Optional[TopicFinding]:

@@ -710,6 +710,9 @@ class IntelligenceCommandsMixin:
                 # Use topic:d (short) + index (not full UUID) to stay within
                 # Telegram's 64-byte callback_data limit AND match the ^topic: handler pattern.
                 findings: List[Dict[str, Any]] = list(payload.get("findings", []))
+                current_page = int(payload.get("page", 1))
+                total_pages = int(payload.get("total_pages", 1))
+                has_more = bool(payload.get("has_more", False))
                 keyboard: List[List[InlineKeyboardButton]] = []
                 token = None
                 if findings and self.application is not None:
@@ -725,6 +728,15 @@ class IntelligenceCommandsMixin:
                             )
                         ])
 
+                # Add "更多" button if there are more pages
+                if has_more and token:
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            f"📄 更多 (第 {current_page + 1}/{total_pages} 页)",
+                            callback_data=f"topic:dm:{token}:{current_page + 1}",
+                        )
+                    ])
+
                 markup = InlineKeyboardMarkup(keyboard) if keyboard else None
                 await msg.reply_text(
                     str(payload.get("text", "")),
@@ -739,6 +751,7 @@ class IntelligenceCommandsMixin:
                         "topic_id": topic_id,
                         "user_id": user_id,
                         "findings": findings,
+                        "page": current_page,
                     })
                     self._store_callback_state(token, state_payload)
             else:
@@ -753,7 +766,8 @@ class IntelligenceCommandsMixin:
             self.logger.error(f"处理/topic_detail命令时发生错误: {e}")
 
     def handle_topic_detail_command(
-        self, user_id: str, username: str, topic_id: str, return_markup: bool = False
+        self, user_id: str, username: str, topic_id: str,
+        return_markup: bool = False, page: int = 1,
     ) -> Any:
         try:
             repository = self._get_intelligence_repository()
@@ -773,11 +787,25 @@ class IntelligenceCommandsMixin:
                     f"```\n{safe_prompt}\n```\n"
                 )
 
-            active_findings = repository.list_active_findings(topic_id)
+            page_size = 10
+            offset = (page - 1) * page_size
+            # Fetch one extra to detect if there are more pages
+            active_findings = repository.list_topic_findings(
+                topic_id, status="active", limit=page_size + 1, offset=offset
+            )
+            total_active = repository.count_topic_findings(topic_id, status="active")
+            has_more = len(active_findings) > page_size
+            active_findings = active_findings[:page_size]
+            total_pages = max(1, (total_active + page_size - 1) // page_size)
+
             findings_info: List[Dict[str, Any]] = []
             if active_findings:
-                lines.append(f"*🔍 活跃研究发现 ({len(active_findings)} 条)*")
-                for i, finding in enumerate(active_findings, 1):
+                global_idx_start = offset + 1
+                lines.append(
+                    f"*🔍 活跃研究发现 (共 {total_active} 条，第 {page}/{total_pages} 页)*"
+                )
+                for i, finding in enumerate(active_findings):
+                    global_i = global_idx_start + i
                     payload = finding.finding_payload or {}
                     title = str(
                         payload.get("finding", "")
@@ -794,12 +822,13 @@ class IntelligenceCommandsMixin:
                     if conf > 0:
                         conf_str = f" [{conf:.0%}]"
                     source_count = len(finding.source_raw_item_ids or [])
-                    lines.append(f"  • #{i} {title}{conf_str}")
+                    source_note = f" 📎{source_count}" if source_count > 0 else ""
+                    lines.append(f"  • #{global_i} {title}{conf_str}{source_note}")
 
                     if return_markup:
                         findings_info.append({
                             "id": finding.id,
-                            "index": i,
+                            "index": global_i,
                             "title": title,
                             "confidence": conf,
                             "source_count": source_count,
@@ -807,11 +836,20 @@ class IntelligenceCommandsMixin:
                 lines.append("")
 
             if return_markup:
-                lines.append("💡 点击下方按钮查看每条发现的原数据来源")
+                if total_pages > 1:
+                    lines.append(
+                        f"📄 第 {page}/{total_pages} 页 | 💡 点击按钮查看原文，点击「更多」翻页"
+                    )
+                else:
+                    lines.append("💡 点击下方按钮查看每条发现的原数据来源")
                 return {
                     "text": "\n".join(lines),
                     "state_data": {},
                     "findings": findings_info,
+                    "page": page,
+                    "total_pages": total_pages,
+                    "total": total_active,
+                    "has_more": has_more,
                 }
 
             self._log_command_execution("/topic_detail", user_id, username, topic_id, True, "")
@@ -948,8 +986,86 @@ class IntelligenceCommandsMixin:
                     await callback_query.answer("\u7ffb\u9875\u5df2\u8fc7\u671f")
                 return
 
+            # topic:dm:{token}:{page}  — paginate findings list ("更多" button)
+            if data.startswith("topic:dm:"):
+                parts = data.split(":", 3)
+                if len(parts) != 4:
+                    await callback_query.answer("操作已过期")
+                    return
+                token = parts[2]
+                try:
+                    new_page = max(1, int(parts[3]))
+                except (ValueError, IndexError):
+                    await callback_query.answer("操作已过期")
+                    return
+
+                state = self._get_callback_state(token)
+                if not state:
+                    await callback_query.answer("操作已过期，请重新执行 /topic_detail")
+                    return
+
+                topic_id = str(state.get("topic_id", ""))
+                if not topic_id:
+                    await callback_query.answer("主题数据异常")
+                    return
+
+                payload = self.handle_topic_detail_command(
+                    str(state.get("user_id", "")),
+                    "",
+                    topic_id,
+                    return_markup=True,
+                    page=new_page,
+                )
+                if not isinstance(payload, dict):
+                    await callback_query.answer(str(payload))
+                    return
+
+                # Rebuild keyboard for the new page
+                findings: List[Dict[str, Any]] = list(payload.get("findings", []))
+                current_page = int(payload.get("page", new_page))
+                total_pages = int(payload.get("total_pages", 1))
+                has_more = bool(payload.get("has_more", False))
+                new_token = self._generate_callback_token()
+                keyboard: List[List[InlineKeyboardButton]] = []
+                for i, finding_info in enumerate(findings):
+                    source_count = int(finding_info.get("source_count", 0))
+                    idx = int(finding_info.get("index", 0))
+                    label = f"#{idx} 查看原文 📎" if source_count == 0 else f"#{idx} 查看原文 📎({source_count})"
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            label,
+                            callback_data=f"topic:d:{new_token}:{i}",
+                        )
+                    ])
+                if has_more:
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            f"📄 更多 (第 {current_page + 1}/{total_pages} 页)",
+                            callback_data=f"topic:dm:{new_token}:{current_page + 1}",
+                        )
+                    ])
+                markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+
+                new_state = dict(payload.get("state_data", {}))
+                new_state.update({
+                    "kind": "topic_detail",
+                    "topic_id": topic_id,
+                    "user_id": str(state.get("user_id", "")),
+                    "findings": findings,
+                    "page": current_page,
+                })
+                self._store_callback_state(new_token, new_state)
+
+                await callback_query.message.edit_text(
+                    str(payload.get("text", "")),
+                    reply_markup=markup,
+                    parse_mode="Markdown",
+                )
+                await callback_query.answer()
+                return
+
             # topic:d:{token}:{index}  — expand finding sources (short prefix fits 64-byte limit + matches ^topic: handler)
-            if data.startswith("topic:d:"):
+            if data.startswith("topic:d:") and not data.startswith("topic:dm:"):
                 parts = data.split(":", 3)
                 if len(parts) != 4:
                     await callback_query.answer("操作已过期")
