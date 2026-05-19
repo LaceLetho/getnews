@@ -225,17 +225,37 @@ class TopicResearchScheduler:
         Returns:
             Number of topics successfully researched.
         """
+        topics = list(self.repository.list_topics(is_active=True, limit=100))
+        if not topics:
+            logger.info("没有活跃的主题需要研究")
+            return 0
+
+        total = len(topics)
+        logger.info("开始研究 %d 个活跃主题...", total)
         completed = 0
-        for topic in self.repository.list_topics(is_active=True, limit=100):
+        for idx, topic in enumerate(topics, 1):
             prompt = self.repository.get_active_topic_prompt(topic.id)
             if prompt is None:
-                logger.debug("No active prompt for topic %s, skipping", topic.id)
+                logger.info(
+                    "[%d/%d] 主题 %s（%s）没有活跃提示词，跳过",
+                    idx, total, topic.id, getattr(topic, "name", str(topic)),
+                )
                 continue
             try:
+                logger.info(
+                    "[%d/%d] 正在研究主题 %s（%s）...",
+                    idx, total, topic.id, getattr(topic, "name", str(topic)),
+                )
                 self._research_topic(topic, prompt)
                 completed += 1
             except Exception as exc:
-                logger.error("Unhandled error researching topic %s: %s", topic.id, exc)
+                logger.error(
+                    "[%d/%d] 研究主题 %s 时发生未处理异常: %s",
+                    idx, total, topic.id, exc,
+                )
+        logger.info(
+            "主题研究完成：%d/%d 个主题研究成功", completed, total,
+        )
         return completed
 
     # Backward-compatible alias
@@ -273,29 +293,46 @@ class TopicResearchScheduler:
 
         # No new messages since checkpoint → no-op run
         if not raw_items:
+            logger.info(
+                "主题 %s 没有新的原始消息（自 checkpoint cursor=%s 以来），跳过研究",
+                topic.id,
+                getattr(prompt, "prompt_version", "unknown"),
+            )
             return self._record_run(
                 run, topic, prompt, raw_items, status="success", findings=[]
             )
 
         try:
             chunks = self._chunk_messages(raw_items)
+            logger.info(
+                "主题 %s：%d 条原始消息分为 %d 个 chunk，开始 LLM 分析...",
+                topic.id, len(raw_items), len(chunks),
+            )
 
             # Merge findings across all chunks
             all_findings: List[TopicFinding] = []
-            for chunk in chunks:
+            for chunk_idx, chunk in enumerate(chunks, 1):
                 if not chunk:
                     continue
                 parsed = self._call_llm_and_parse(topic, prompt, chunk)
                 chunk_findings = self.parser.findings_to_domain(parsed, topic.id, prompt.id)
                 all_findings.extend(chunk_findings)
+                logger.debug(
+                    "主题 %s chunk %d/%d: 生成 %d 条 findings",
+                    topic.id, chunk_idx, len(chunks), len(chunk_findings),
+                )
 
             self._save_findings(topic, prompt, all_findings, raw_items)
+            logger.info(
+                "主题 %s 研究完成：%d 条原始消息 → %d 个 chunks → %d 条 findings",
+                topic.id, len(raw_items), len(chunks), len(all_findings),
+            )
             return self._record_run(
                 run, topic, prompt, raw_items, status="success", findings=all_findings
             )
         except TopicResearchValidationError as exc:
             logger.warning(
-                "Topic research validation failed for topic %s: %s", topic.id, exc
+                "主题 %s 的研究验证失败: %s", topic.id, exc,
             )
             return self._record_run(
                 run, topic, prompt, raw_items, status="failed", error=str(exc)
@@ -324,6 +361,11 @@ class TopicResearchScheduler:
         )
 
         if not raw_items:
+            logger.info(
+                "主题 %s：cursor=%s 之后没有新的原始消息",
+                topic.id,
+                cursor.isoformat() if cursor else "epoch",
+            )
             return []
 
         # Idempotency: exclude items already processed by this topic+prompt+schema
@@ -336,12 +378,22 @@ class TopicResearchScheduler:
         )
 
         if processed_ids:
-            logger.debug(
-                "Skipping %d already-processed raw items for topic %s",
-                len(processed_ids),
+            logger.info(
+                "主题 %s：获取 %d 条原始消息，其中 %d 条已处理（幂等过滤），"
+                "剩余 %d 条待分析",
                 topic.id,
+                len(all_ids),
+                len(processed_ids),
+                len(raw_items) - len(processed_ids),
             )
             raw_items = [item for item in raw_items if item.id not in processed_ids]
+        else:
+            logger.info(
+                "主题 %s：获取 %d 条新原始消息（cursor=%s）",
+                topic.id,
+                len(raw_items),
+                cursor.isoformat() if cursor else "epoch",
+            )
 
         return raw_items
 

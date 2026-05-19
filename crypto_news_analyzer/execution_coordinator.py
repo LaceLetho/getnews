@@ -2125,10 +2125,14 @@ class MainController:
                 if running_jobs:
                     stale_job = self._detect_stale_running_job(running_jobs[0])
                     if stale_job:
+                        stale_started = getattr(stale_job, "started_at", "unknown")
                         self.logger.warning(
-                            "检测到过期的 running ingestion 作业 %s（started_at=%s），自动标记为 failed",
+                            "检测到过期的 running ingestion 作业 %s（started_at=%s，"
+                            "已运行时长≈%s，超过阈值 %s h），自动标记为 failed",
                             stale_job.id,
-                            getattr(stale_job, "started_at", "unknown"),
+                            stale_started,
+                            self._format_elapsed_since(stale_started),
+                            self._INGESTION_JOB_STALE_TIMEOUT_HOURS,
                         )
                         self.ingestion_repository.update_status(
                             stale_job.id,
@@ -2158,8 +2162,13 @@ class MainController:
 
                         end_time = datetime.now()
                         duration = (end_time - start_time).total_seconds()
+                        active_started = getattr(running_jobs[0], "started_at", "unknown")
                         self.logger.info(
-                            f"检测到运行中的持久化 ingestion 作业，跳过本次触发，active_job_id={running_jobs[0].id}"
+                            "检测到运行中的持久化 ingestion 作业，跳过本次触发"
+                            "，active_job_id=%s，started_at=%s，已运行时长≈%s",
+                            running_jobs[0].id,
+                            active_started,
+                            self._format_elapsed_since(active_started),
                         )
 
                         execution_result = ExecutionResult(
@@ -2210,13 +2219,14 @@ class MainController:
 
                 if self._topic_research_scheduler is not None:
                     try:
+                        self.logger.info("开始执行 Topic Research Scheduler...")
                         completed = self._topic_research_scheduler.run_scheduled_topic_research()
                         self.logger.info(
-                            "Topic research completed for %d topics", completed
+                            "Topic research 完成，成功研究了 %d 个主题", completed
                         )
                         crawl_result["topic_research_completed"] = completed
                     except Exception as exc:
-                        self.logger.warning("Topic research failed: %s", exc)
+                        self.logger.warning("Topic research 执行失败: %s", exc)
 
             # 更新执行状态
             end_time = datetime.now()
@@ -2321,6 +2331,29 @@ class MainController:
     # considered stale (4 hours). Stale jobs are auto-recovered by marking
     # them as failed so the ingestion cycle can proceed.
     _INGESTION_JOB_STALE_TIMEOUT_HOURS = 4
+
+    @staticmethod
+    def _format_elapsed_since(started_at: Any) -> str:
+        """Format elapsed time since started_at as a human-readable string."""
+        if started_at is None:
+            return "unknown"
+        now = datetime.now()
+        if isinstance(started_at, str):
+            try:
+                started_at = datetime.fromisoformat(started_at)
+            except (ValueError, TypeError):
+                return str(started_at)
+        try:
+            elapsed = now - (started_at.replace(tzinfo=None) if started_at.tzinfo else started_at)
+            total_seconds = int(elapsed.total_seconds())
+            if total_seconds < 120:
+                return f"{total_seconds}s"
+            elif total_seconds < 7200:
+                return f"{total_seconds // 60}m"
+            else:
+                return f"{total_seconds // 3600}h {(total_seconds % 3600) // 60}m"
+        except Exception:
+            return str(started_at)
 
     def _detect_stale_running_job(self, job: Any) -> Optional[Any]:
         """Check if a running ingestion job is stale (running too long).
