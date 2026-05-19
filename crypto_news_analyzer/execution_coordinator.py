@@ -2123,43 +2123,62 @@ class MainController:
                     limit=1,
                 )
                 if running_jobs:
-                    skipped_job = IngestionJob.create(
-                        source_type=source_type, source_name=source_name
-                    )
-                    skipped_job.status = IngestionJobStatus.SKIPPED.value
-                    skipped_job.error_message = (
-                        "已存在运行中的 ingestion 作业，跳过重复触发"
-                    )
-                    skipped_job.metadata = {
-                        "trigger_type": trigger_type,
-                        "skip_reason": "persistent_running_job",
-                        "active_job_id": running_jobs[0].id,
-                    }
-                    self.ingestion_repository.save(skipped_job)
+                    stale_job = self._detect_stale_running_job(running_jobs[0])
+                    if stale_job:
+                        self.logger.warning(
+                            "检测到过期的 running ingestion 作业 %s（started_at=%s），自动标记为 failed",
+                            stale_job.id,
+                            getattr(stale_job, "started_at", "unknown"),
+                        )
+                        self.ingestion_repository.update_status(
+                            stale_job.id,
+                            IngestionJobStatus.FAILED.value,
+                        )
+                        if hasattr(stale_job, "completed_at"):
+                            stale_job.completed_at = datetime.now()
+                        stale_job.error_message = (
+                            stale_job.error_message or ""
+                        ) + " | auto-recovered: stale running job timed out"
+                        self.ingestion_repository.save(stale_job)
+                        # Fall through to start a new ingestion job
+                    else:
+                        skipped_job = IngestionJob.create(
+                            source_type=source_type, source_name=source_name
+                        )
+                        skipped_job.status = IngestionJobStatus.SKIPPED.value
+                        skipped_job.error_message = (
+                            "已存在运行中的 ingestion 作业，跳过重复触发"
+                        )
+                        skipped_job.metadata = {
+                            "trigger_type": trigger_type,
+                            "skip_reason": "persistent_running_job",
+                            "active_job_id": running_jobs[0].id,
+                        }
+                        self.ingestion_repository.save(skipped_job)
 
-                    end_time = datetime.now()
-                    duration = (end_time - start_time).total_seconds()
-                    self.logger.info(
-                        f"检测到运行中的持久化 ingestion 作业，跳过本次触发，active_job_id={running_jobs[0].id}"
-                    )
+                        end_time = datetime.now()
+                        duration = (end_time - start_time).total_seconds()
+                        self.logger.info(
+                            f"检测到运行中的持久化 ingestion 作业，跳过本次触发，active_job_id={running_jobs[0].id}"
+                        )
 
-                    execution_result = ExecutionResult(
-                        execution_id=execution_id,
-                        success=True,
-                        start_time=start_time,
-                        end_time=end_time,
-                        duration_seconds=duration,
-                        items_processed=0,
-                        categories_found={},
-                        errors=[],
-                        trigger_user=trigger_user,
-                        trigger_type=trigger_type,
-                        trigger_chat_id=None,
-                        report_sent=False,
-                    )
-                    self.execution_history.append(execution_result)
-                    self._save_execution_history()
-                    return execution_result
+                        execution_result = ExecutionResult(
+                            execution_id=execution_id,
+                            success=True,
+                            start_time=start_time,
+                            end_time=end_time,
+                            duration_seconds=duration,
+                            items_processed=0,
+                            categories_found={},
+                            errors=[],
+                            trigger_user=trigger_user,
+                            trigger_type=trigger_type,
+                            trigger_chat_id=None,
+                            report_sent=False,
+                        )
+                        self.execution_history.append(execution_result)
+                        self._save_execution_history()
+                        return execution_result
 
                 ingestion_job = IngestionJob.create(
                     source_type=source_type, source_name=source_name
@@ -2297,6 +2316,31 @@ class MainController:
             # 清理当前执行状态
             with self._execution_lock:
                 self.current_execution = None
+
+    # Maximum allowed duration for a running ingestion job before it is
+    # considered stale (4 hours). Stale jobs are auto-recovered by marking
+    # them as failed so the ingestion cycle can proceed.
+    _INGESTION_JOB_STALE_TIMEOUT_HOURS = 4
+
+    def _detect_stale_running_job(self, job: Any) -> Optional[Any]:
+        """Check if a running ingestion job is stale (running too long).
+
+        Returns the job if it is stale (should be auto-recovered), None if it is
+        still valid (caller should skip to avoid duplicate execution).
+        """
+        started_at = getattr(job, "started_at", None)
+        if started_at is None:
+            return None
+        now = datetime.now()
+        if isinstance(started_at, str):
+            try:
+                started_at = datetime.fromisoformat(started_at)
+            except (ValueError, TypeError):
+                return None
+        elapsed = now - started_at.replace(tzinfo=None) if started_at.tzinfo else now - started_at
+        if elapsed > timedelta(hours=self._INGESTION_JOB_STALE_TIMEOUT_HOURS):
+            return job
+        return None
 
     def analyze_by_time_window(
         self,
