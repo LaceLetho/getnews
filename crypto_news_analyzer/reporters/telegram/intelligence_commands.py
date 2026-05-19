@@ -10,7 +10,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, CopyTextButton
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
@@ -584,7 +584,17 @@ class IntelligenceCommandsMixin:
             token = self._generate_callback_token()
             page_num = int(payload.get("page", 1))
             total_pages = int(payload.get("total_pages", 1))
+            topic_ids: List[str] = list(payload.get("topic_ids", []))
             keyboard: List[List[InlineKeyboardButton]] = []
+            for i, tid in enumerate(topic_ids, 1):
+                keyboard.append(
+                    [
+                        InlineKeyboardButton(
+                            f"📋 复制 #{i} ID",
+                            copy_text=CopyTextButton(text=tid),
+                        ),
+                    ]
+                )
             if page_num < total_pages:
                 keyboard.append(
                     [
@@ -610,6 +620,7 @@ class IntelligenceCommandsMixin:
                     "chat_id": chat_id,
                     "user_id": user_id,
                     "sent_message_ids": [int(sent_msg.message_id)],
+                    "topic_ids": topic_ids,
                 }
             )
             self._store_callback_state(token, state_payload)
@@ -647,12 +658,11 @@ class IntelligenceCommandsMixin:
                 updated = topic.updated_at.strftime("%Y-%m-%d") if topic.updated_at else "-"
                 lines.append(
                     f"{i}. {esc(topic.name)}\n"
-                    f"   发现: {finding_count} | 最近更新: {updated}\n"
-                    f"   /topic\\_detail {esc(topic.id)}"
+                    f"   发现: {finding_count} | 最近更新: {updated}"
                 )
             total_pages = max(1, (total + page_size - 1) // page_size)
             if return_markup:
-                footer = f"\n📄 共 {total} 个主题 | 第 {page}/{total_pages} 页"
+                footer = f"\n📄 共 {total} 个主题 | 第 {page}/{total_pages} 页\n💡 点击下方按钮复制主题 ID"
                 lines.append(footer)
                 return {
                     "text": "\n".join(lines),
@@ -660,6 +670,7 @@ class IntelligenceCommandsMixin:
                     "total_pages": total_pages,
                     "total": total,
                     "state_data": {},
+                    "topic_ids": [t.id for t in topics],
                 }
             if has_more:
                 lines.append(
@@ -828,7 +839,17 @@ class IntelligenceCommandsMixin:
                         new_token = self._generate_callback_token()
                         page_num = int(payload.get("page", 1))
                         total_pages = int(payload.get("total_pages", 1))
+                        topic_ids: List[str] = list(payload.get("topic_ids", []))
                         keyboard: List[List[InlineKeyboardButton]] = []
+                        for i, tid in enumerate(topic_ids, 1):
+                            keyboard.append(
+                                [
+                                    InlineKeyboardButton(
+                                        f"📋 复制 #{i} ID",
+                                        copy_text=CopyTextButton(text=tid),
+                                    ),
+                                ]
+                            )
                         if page_num < total_pages:
                             keyboard.append(
                                 [
@@ -849,6 +870,7 @@ class IntelligenceCommandsMixin:
                                 "total": int(payload.get("total", 0)),
                                 "chat_id": chat_id,
                                 "user_id": user_id,
+                                "topic_ids": topic_ids,
                             }
                         )
                         self._store_callback_state(new_token, new_state)
