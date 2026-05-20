@@ -7,9 +7,9 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -27,6 +27,12 @@ TOPIC_FINDINGS_MERGE_SCHEMA_VERSION = "topic-findings-merge-v1"
 DEFAULT_TOPIC_MERGE_MODEL_NAME = "deepseek-v4-flash"
 DEFAULT_TOPIC_MERGE_LLM_TIMEOUT_SECONDS = 180.0
 DEFAULT_TOPIC_MERGE_CITATION_SNIPPET_MAX_CHARS = 180
+
+
+def _as_naive_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 class MergedFindingCitation(BaseModel):
@@ -164,7 +170,7 @@ class TopicFindingMergeService:
             )
             existing = self.repository.get_merge_preview(saved_id)
             if existing is not None:
-                return existing
+                return cast(MergePreview, existing)
         return preview
 
     def accept_merge_preview(
@@ -189,7 +195,7 @@ class TopicFindingMergeService:
         if preview.state != MergePreviewState.PENDING.value:
             raise MergePreviewError(f"merge preview is not pending (state={preview.state})")
 
-        if preview.expires_at <= datetime.utcnow():
+        if _as_naive_utc(preview.expires_at) <= datetime.utcnow():
             self.repository.reject_merge_preview(preview_id)
             raise MergePreviewError("merge preview has expired")
 
@@ -242,7 +248,7 @@ class TopicFindingMergeService:
 
     def get_merge_preview(self, preview_id: str) -> Optional[MergePreview]:
         """Retrieve a merge preview by ID."""
-        return self.repository.get_merge_preview(preview_id)
+        return cast(Optional[MergePreview], self.repository.get_merge_preview(preview_id))
 
     def _call_llm(
         self,

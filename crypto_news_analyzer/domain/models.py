@@ -8,7 +8,7 @@ Version: 1.0.0
 Compatibility: Backward compatible within major version
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import ClassVar, Dict, List, Optional, Any, cast
 from dataclasses import dataclass, field
@@ -119,8 +119,12 @@ def _parse_optional_datetime(value: Any) -> Optional[datetime]:
     if value is None or value == "":
         return None
     if isinstance(value, datetime):
-        return value
-    return datetime.fromisoformat(str(value))
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(str(value))
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 def _validate_json_list(value: Optional[List[str]], field_name: str) -> List[str]:

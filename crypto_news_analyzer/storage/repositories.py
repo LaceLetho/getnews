@@ -8,7 +8,7 @@ These adapters wrap the existing DataManager and CacheManager.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Tuple, Set, cast
 
 from ..domain.models import (
@@ -48,6 +48,12 @@ def _parse_optional_datetime(value: Any) -> Optional[datetime]:
     if value is None or isinstance(value, datetime):
         return value
     return datetime.fromisoformat(str(value))
+
+
+def _as_naive_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 class SQLiteAnalysisRepository(AnalysisRepository):
@@ -1336,7 +1342,9 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         if preview is None or preview.state != "pending":
             return False
         now = datetime.utcnow()
-        if preview.expires_at <= now or not self._merge_preview_sources_are_active(preview):
+        if _as_naive_utc(preview.expires_at) <= now or not self._merge_preview_sources_are_active(
+            preview
+        ):
             self._set_merge_preview_state(preview_id, "expired", None)
             return False
         return self._set_merge_preview_state(preview_id, "applied", now)

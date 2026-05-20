@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
@@ -403,6 +403,47 @@ def test_expired_merge_preview_rejected() -> None:
 
     with pytest.raises(MergePreviewError, match="expired"):
         service.accept_merge_preview(preview.id)
+
+
+def test_merge_preview_accepts_timezone_aware_expiry() -> None:
+    repo = InMemoryTopicRepository()
+    topic_id, prompt_id = _make_topic_and_prompt(repo)
+    source_ids = _make_findings(repo, topic_id, prompt_id)
+
+    service = TopicFindingMergeService(
+        repo,
+        FakeLLMClient(_valid_merge_payload()),
+    )
+    preview = asyncio.run(service.create_merge_preview(topic_id, prompt_id))
+
+    stored = repo.get_merge_preview(preview.id)
+    stored.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    merged = service.accept_merge_preview(preview.id)
+
+    assert merged.intelligence_topic_id == topic_id
+    assert repo.get_merge_preview(preview.id).state == "applied"
+    for source_id in source_ids:
+        assert (
+            repo.get_topic_finding_by_id(source_id).status
+            == TopicFindingStatus.SUPERSEDED.value
+        )
+
+
+def test_merge_preview_from_dict_normalizes_aware_datetimes_to_naive_utc() -> None:
+    preview = MergePreview.from_dict(
+        {
+            "id": "preview-1",
+            "intelligence_topic_id": "topic-1",
+            "source_finding_ids": ["finding-1", "finding-2"],
+            "preview_payload": {"summary": "test"},
+            "content_hash": "hash-1",
+            "expires_at": "2026-05-21T05:40:00+00:00",
+        }
+    )
+
+    assert preview.expires_at == datetime(2026, 5, 21, 5, 40)
+    assert preview.expires_at.tzinfo is None
 
 
 def test_reject_merge_preview() -> None:
