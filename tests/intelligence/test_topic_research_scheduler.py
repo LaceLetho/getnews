@@ -1,6 +1,8 @@
 """Topic-only scheduled research runtime tests."""
 
 import json
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set
@@ -20,6 +22,7 @@ from crypto_news_analyzer.intelligence.topic_research import (
     TopicResearchScheduler,
     TopicResearchValidationError,
 )
+from crypto_news_analyzer.storage.repositories import SQLiteIntelligenceRepository
 
 
 class FakeChatCompletions:
@@ -30,9 +33,7 @@ class FakeChatCompletions:
     def create(self, **kwargs: Any) -> SimpleNamespace:
         self.calls.append(kwargs)
         content = self.payload if isinstance(self.payload, str) else json.dumps(self.payload)
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
-        )
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
 
 
 class FakeLLMClient:
@@ -182,6 +183,66 @@ class FakeFactory:
         return self.crawler
 
 
+class _FakePostgresCursor:
+    def __init__(self, manager: "_FakePostgresDataManager"):
+        self.manager = manager
+        self._last_query = ""
+
+    def execute(self, query: str, params: Any = None) -> None:
+        self.manager.executed.append((query, params))
+        self._last_query = query
+
+    def fetchone(self):
+        if "FROM intelligence_topic_research_runs" in self._last_query:
+            return dict(self.manager.run_row)
+        if "FROM intelligence_topic_research_checkpoints" in self._last_query:
+            return dict(self.manager.checkpoint_row)
+        return None
+
+    def fetchall(self):
+        return []
+
+
+class _FakePostgresConnection:
+    def __init__(self, manager: "_FakePostgresDataManager"):
+        self.manager = manager
+
+    def cursor(self):
+        return _FakePostgresCursor(self.manager)
+
+    def commit(self) -> None:
+        return None
+
+    def rollback(self) -> None:
+        return None
+
+
+class _FakePostgresDataManager:
+    def __init__(self, run_row: Dict[str, Any], checkpoint_row: Dict[str, Any]):
+        self.backend = "postgres"
+        self._lock = threading.Lock()
+        self.run_row = run_row
+        self.checkpoint_row = checkpoint_row
+        self.executed: List[Any] = []
+
+    @contextmanager
+    def _get_connection(self):
+        yield _FakePostgresConnection(self)
+
+    def _sql(self, query: str) -> str:
+        return query.replace("?", "%s")
+
+    def _dt_out(self, value: Any) -> Any:
+        return value
+
+    def _json_load(self, value: Any, default: Any) -> Any:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
+
+
 class RawOnlyRepository:
     def __init__(self, source: DataSource):
         self.datasource_repository = FakeDatasourceRepository(source)
@@ -253,7 +314,9 @@ def test_no_entry_extractor_dependency() -> None:
         expires_at=datetime.utcnow() + timedelta(days=180),
     )
     extractor = SimpleNamespace(
-        config=SimpleNamespace(collection=SimpleNamespace(backfill_hours=24, raw_message_retention_days=180)),
+        config=SimpleNamespace(
+            collection=SimpleNamespace(backfill_hours=24, raw_message_retention_days=180)
+        ),
     )
 
     pipeline = IntelligencePipeline(
@@ -435,6 +498,75 @@ def test_no_messages() -> None:
     assert payload.get("noop", False) is True
 
 
+def test_postgres_run_update_casts_nullable_coalesce_params() -> None:
+    """Postgres needs explicit casts when nullable COALESCE parameters are None."""
+    run = TopicResearchRun.create("topic-1", status="running")
+    manager = _FakePostgresDataManager(
+        run_row=run.to_dict(),
+        checkpoint_row={
+            "intelligence_topic_id": "topic-1",
+            "prompt_version_id": None,
+            "checkpoint_cursor": None,
+            "checkpoint_payload": "{}",
+            "last_run_id": run.id,
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
+    repository = SQLiteIntelligenceRepository(manager)  # type: ignore[arg-type]
+
+    repository.update_topic_research_run(
+        run.id,
+        status="running",
+        checkpoint_cursor=None,
+        items_scanned=None,
+        findings_created=None,
+        finished_at=None,
+    )
+
+    update_query, params = next(
+        (query, params)
+        for query, params in manager.executed
+        if "UPDATE intelligence_topic_research_runs" in query
+    )
+    assert "COALESCE(CAST(%s AS TEXT), checkpoint_cursor)" in update_query
+    assert "COALESCE(CAST(%s AS INTEGER), items_scanned)" in update_query
+    assert "COALESCE(CAST(%s AS TIMESTAMPTZ), finished_at)" in update_query
+    assert params[6] is None
+
+
+def test_postgres_checkpoint_update_casts_nullable_prompt_null_check() -> None:
+    """The nullable prompt-version check must be typed for Postgres."""
+    run = TopicResearchRun.create("topic-1", status="running")
+    manager = _FakePostgresDataManager(
+        run_row=run.to_dict(),
+        checkpoint_row={
+            "intelligence_topic_id": "topic-1",
+            "prompt_version_id": None,
+            "checkpoint_cursor": "31",
+            "checkpoint_payload": "{}",
+            "last_run_id": run.id,
+            "updated_at": datetime.utcnow().isoformat(),
+        },
+    )
+    repository = SQLiteIntelligenceRepository(manager)  # type: ignore[arg-type]
+
+    repository.update_topic_checkpoint(
+        "topic-1",
+        None,
+        checkpoint_cursor=None,
+        checkpoint_payload={"noop": True},
+        last_run_id=run.id,
+    )
+
+    update_query, params = next(
+        (query, params)
+        for query, params in manager.executed
+        if "UPDATE intelligence_topic_research_checkpoints" in query
+    )
+    assert "CAST(%s AS TEXT) IS NULL" in update_query
+    assert params[6] is None
+
+
 def test_idempotent_retry() -> None:
     """Second run with same raw items produces no duplicate findings."""
     repository = FakeTopicRepository()
@@ -500,29 +632,31 @@ def test_chunking_large_input() -> None:
     chunk_payloads: List[str] = []
     for i in range(20):
         chunk_payloads.append(
-            json.dumps({
-                "schema_version": TOPIC_RESEARCH_SCHEMA_VERSION,
-                "topic_name": "BTC ETF flow",
-                "research_summary": f"Chunk analysis for item {i}.",
-                "findings": [
-                    {
-                        "finding_id": f"f-chunk-{i}",
-                        "summary": f"Finding from chunk containing item {i}",
-                        "detail": f"Detail for chunk {i}.",
-                        "confidence": 0.7,
-                        "citations": [
-                            {
-                                "message_id": f"raw-chunk-{i}",
-                                "message_snippet": "X" * 100,
-                                "source": "chat-1",
-                                "published_at": "",
-                            }
-                        ],
-                    }
-                ],
-                "messages_processed": 1,
-                "messages_relevant": 1,
-            })
+            json.dumps(
+                {
+                    "schema_version": TOPIC_RESEARCH_SCHEMA_VERSION,
+                    "topic_name": "BTC ETF flow",
+                    "research_summary": f"Chunk analysis for item {i}.",
+                    "findings": [
+                        {
+                            "finding_id": f"f-chunk-{i}",
+                            "summary": f"Finding from chunk containing item {i}",
+                            "detail": f"Detail for chunk {i}.",
+                            "confidence": 0.7,
+                            "citations": [
+                                {
+                                    "message_id": f"raw-chunk-{i}",
+                                    "message_snippet": "X" * 100,
+                                    "source": "chat-1",
+                                    "published_at": "",
+                                }
+                            ],
+                        }
+                    ],
+                    "messages_processed": 1,
+                    "messages_relevant": 1,
+                }
+            )
         )
 
     scheduler = TopicResearchScheduler(
@@ -572,9 +706,11 @@ def test_run_scheduled_topic_research_survives_topic_error() -> None:
 
     # Bad topic throws on LLM call
     class ExplodingLLM:
-        chat = SimpleNamespace(completions=SimpleNamespace(
-            create=lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))
-        ))
+        chat = SimpleNamespace(
+            completions=SimpleNamespace(
+                create=lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))
+            )
+        )
 
     scheduler = TopicResearchScheduler(repository, FakeLLMClient(_valid_payload()))
 

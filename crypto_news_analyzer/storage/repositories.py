@@ -1079,21 +1079,36 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
             return None
         now = datetime.utcnow()
         finished = finished_at or (now if status in {"success", "failed", "cancelled"} else None)
+        if self._data.backend == "postgres":
+            query = """
+                UPDATE intelligence_topic_research_runs
+                SET status = ?,
+                    checkpoint_cursor = COALESCE(CAST(? AS TEXT), checkpoint_cursor),
+                    checkpoint_payload = ?,
+                    items_scanned = COALESCE(CAST(? AS INTEGER), items_scanned),
+                    findings_created = COALESCE(CAST(? AS INTEGER), findings_created),
+                    error_message = ?,
+                    finished_at = COALESCE(CAST(? AS TIMESTAMPTZ), finished_at),
+                    updated_at = ?
+                WHERE id = ?
+                """
+        else:
+            query = """
+                UPDATE intelligence_topic_research_runs
+                SET status = ?,
+                    checkpoint_cursor = COALESCE(?, checkpoint_cursor),
+                    checkpoint_payload = ?,
+                    items_scanned = COALESCE(?, items_scanned),
+                    findings_created = COALESCE(?, findings_created),
+                    error_message = ?,
+                    finished_at = COALESCE(?, finished_at),
+                    updated_at = ?
+                WHERE id = ?
+                """
         with self._data._lock:
             with self._data._get_connection() as conn:
                 conn.cursor().execute(
-                    self._data._sql("""
-                    UPDATE intelligence_topic_research_runs
-                    SET status = ?,
-                        checkpoint_cursor = COALESCE(?, checkpoint_cursor),
-                        checkpoint_payload = ?,
-                        items_scanned = COALESCE(?, items_scanned),
-                        findings_created = COALESCE(?, findings_created),
-                        error_message = ?,
-                        finished_at = COALESCE(?, finished_at),
-                        updated_at = ?
-                    WHERE id = ?
-                    """),
+                    self._data._sql(query),
                     (
                         status,
                         checkpoint_cursor,
@@ -1181,13 +1196,30 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         if existing is not None:
             with self._data._lock:
                 with self._data._get_connection() as conn:
+                    if self._data.backend == "postgres":
+                        query = """
+                            UPDATE intelligence_topic_research_checkpoints
+                            SET checkpoint_cursor = ?, checkpoint_payload = ?,
+                                last_run_id = ?, updated_at = ?
+                            WHERE intelligence_topic_id = ?
+                              AND (
+                                  prompt_version_id = ?
+                                  OR (prompt_version_id IS NULL AND CAST(? AS TEXT) IS NULL)
+                              )
+                            """
+                    else:
+                        query = """
+                            UPDATE intelligence_topic_research_checkpoints
+                            SET checkpoint_cursor = ?, checkpoint_payload = ?,
+                                last_run_id = ?, updated_at = ?
+                            WHERE intelligence_topic_id = ?
+                              AND (
+                                  prompt_version_id = ?
+                                  OR (prompt_version_id IS NULL AND ? IS NULL)
+                              )
+                            """
                     conn.cursor().execute(
-                        self._data._sql("""
-                        UPDATE intelligence_topic_research_checkpoints
-                        SET checkpoint_cursor = ?, checkpoint_payload = ?, last_run_id = ?, updated_at = ?
-                        WHERE intelligence_topic_id = ?
-                          AND (prompt_version_id = ? OR (prompt_version_id IS NULL AND ? IS NULL))
-                        """),
+                        self._data._sql(query),
                         (
                             checkpoint_cursor,
                             self._json_value(checkpoint_payload or {}),
