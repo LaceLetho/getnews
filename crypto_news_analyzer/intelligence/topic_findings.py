@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 TOPIC_FINDINGS_MERGE_SCHEMA_VERSION = "topic-findings-merge-v1"
 DEFAULT_TOPIC_MERGE_MODEL_NAME = "deepseek-v4-flash"
 DEFAULT_TOPIC_MERGE_LLM_TIMEOUT_SECONDS = 180.0
+DEFAULT_TOPIC_MERGE_CITATION_SNIPPET_MAX_CHARS = 180
 
 
 class MergedFindingCitation(BaseModel):
@@ -274,7 +275,12 @@ class TopicFindingMergeService:
             self.model_name,
             user_payload_json,
         )
-        completions = getattr(getattr(self.llm_client, "chat", None), "completions", None)
+        request_client = self.llm_client
+        with_options = getattr(request_client, "with_options", None)
+        if callable(with_options):
+            request_client = with_options(max_retries=0)
+
+        completions = getattr(getattr(request_client, "chat", None), "completions", None)
         if completions is not None and hasattr(completions, "create"):
             kwargs: Dict[str, Any] = {
                 "messages": [
@@ -344,12 +350,72 @@ class TopicFindingMergeService:
         return timeout_seconds
 
     def _finding_payload(self, finding: TopicFinding) -> Dict[str, Any]:
+        payload = finding.finding_payload if isinstance(finding.finding_payload, dict) else {}
         return {
             "finding_id": finding.id,
-            "finding_payload": finding.finding_payload,
-            "confidence": finding.confidence,
-            "citations": finding.citations,
+            "detail": str(payload.get("detail", "") or "").strip(),
+            "confidence": payload.get("confidence", finding.confidence),
+            "citations": self._compact_citations(
+                payload.get("citations") or finding.citations,
+            ),
         }
+
+    def _compact_citations(
+        self,
+        citations: Any,
+    ) -> List[Dict[str, str]]:
+        if not isinstance(citations, list):
+            return []
+
+        compacted: List[Dict[str, str]] = []
+        seen_ids: set[str] = set()
+        for citation in citations:
+            if not isinstance(citation, dict):
+                continue
+            message_id = str(citation.get("message_id", "")).strip()
+            if message_id and message_id in seen_ids:
+                continue
+            if message_id:
+                seen_ids.add(message_id)
+            compacted.append(
+                {
+                    "message_id": message_id,
+                    "message_snippet": self._truncate_text(
+                        citation.get("message_snippet", ""),
+                        self._get_citation_snippet_max_chars(),
+                    ),
+                    "source": str(citation.get("source", "")).strip(),
+                    "published_at": str(citation.get("published_at", "")).strip(),
+                }
+            )
+        return compacted
+
+    def _get_citation_snippet_max_chars(self) -> int:
+        return self._get_positive_int_env(
+            "TOPIC_MERGE_CITATION_SNIPPET_MAX_CHARS",
+            DEFAULT_TOPIC_MERGE_CITATION_SNIPPET_MAX_CHARS,
+        )
+
+    def _get_positive_int_env(self, env_name: str, default_value: int) -> int:
+        raw_value = os.getenv(env_name, "").strip()
+        if not raw_value:
+            return default_value
+        try:
+            value = int(raw_value)
+        except ValueError:
+            logger.warning("Invalid %s=%r; using default %s", env_name, raw_value, default_value)
+            return default_value
+        if value <= 0:
+            logger.warning("%s must be positive; using default %s", env_name, default_value)
+            return default_value
+        return value
+
+    @staticmethod
+    def _truncate_text(value: Any, max_chars: int = 240) -> str:
+        text = str(value or "").strip()
+        if len(text) <= max_chars:
+            return text
+        return text[: max_chars - 3].rstrip() + "..."
 
     def _parse_merge_output(self, raw_output: str) -> TopicFindingsMergeOutput:
         try:

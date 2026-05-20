@@ -43,6 +43,11 @@ class FakeLLMClient:
     def __init__(self, payload: Any):
         self.completions = FakeChatCompletions(payload)
         self.chat = SimpleNamespace(completions=self.completions)
+        self.with_options_calls: List[Dict[str, Any]] = []
+
+    def with_options(self, **kwargs: Any) -> "FakeLLMClient":
+        self.with_options_calls.append(kwargs)
+        return self
 
 
 class InMemoryTopicRepository:
@@ -270,6 +275,18 @@ def test_merge_preview_creation() -> None:
     assert stored.source_finding_ids == preview.source_finding_ids
     assert llm_client.completions.calls[0]["model"] == "deepseek-v4-flash"
     assert llm_client.completions.calls[0]["timeout"] == 180.0
+    assert llm_client.with_options_calls == [{"max_retries": 0}]
+
+    request_payload = json.loads(llm_client.completions.calls[0]["messages"][1]["content"])
+    finding_payload = request_payload["active_findings"][0]
+    assert set(finding_payload) == {
+        "finding_id",
+        "detail",
+        "confidence",
+        "citations",
+    }
+    assert "finding_payload" not in finding_payload
+    assert "summary" not in finding_payload
 
 
 def test_merge_preview_uses_env_model_override(monkeypatch: pytest.MonkeyPatch) -> None:
