@@ -2129,6 +2129,9 @@ class DataManager:
         ]
         values = [self._dt_out(item.get(column)) for column in columns]
         assignments = ", ".join(f"{column} = excluded.{column}" for column in columns[1:])
+        conflict_target = "(id)"
+        if item.get("external_id") is not None:
+            conflict_target = "(source_type, source_id, external_id) WHERE external_id IS NOT NULL"
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -2136,12 +2139,16 @@ class DataManager:
                     self._sql(f"""
                     INSERT INTO raw_intelligence_items ({', '.join(columns)})
                     VALUES ({', '.join(['?'] * len(columns))})
-                    ON CONFLICT(id) DO UPDATE SET {assignments}
+                    ON CONFLICT {conflict_target} DO UPDATE SET {assignments}
+                    RETURNING id
                     """),
                     tuple(values),
                 )
+                row = cursor.fetchone()
                 conn.commit()
-                return str(item["id"])
+                if row is None:
+                    return str(item["id"])
+                return str(row["id"] if self.backend == "postgres" else row[0])
 
     def _serialize_raw_intelligence_item_row(self, row: Any) -> Dict[str, Any]:
         keys = [
