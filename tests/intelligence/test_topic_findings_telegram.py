@@ -76,6 +76,7 @@ def _make_callback_update(
 
 # --- Topic Create + Confirm Flow ---
 
+
 def test_topic_create_confirm_flow():
     """Full flow: /topic_create -> /topic_confirm activates a topic."""
     handler = _make_handler()
@@ -135,6 +136,7 @@ def test_topic_create_confirm_flow():
 
 # --- Topic Detail ---
 
+
 def test_topic_detail():
     """/topic_detail shows topic info, prompt, and findings."""
     handler = _make_handler()
@@ -164,6 +166,7 @@ def test_topic_detail():
 
 
 # --- Topic Merge ---
+
 
 def test_topic_merge():
     """/topic_merge creates merge preview with accept callback button."""
@@ -198,13 +201,40 @@ def test_topic_merge():
             asyncio.run(handler._handle_topic_merge_command(update, context))
 
             merge_service.create_merge_preview.assert_called_once()
+            assert update.message.reply_text.await_count == 2
             reply = update.message.reply_text.await_args
             assert reply is not None
             text = reply.args[0] if reply.args else ""
             assert "合并预览" in text or "BTC ETF" in text
 
 
+def test_topic_merge_sends_progress_before_failure():
+    """/topic_merge tells Telegram users when a long merge starts."""
+    handler = _make_handler()
+    handler.is_authorized_user = Mock(return_value=True)
+    handler._log_command_execution = Mock()
+
+    repo = Mock()
+    repo.get_active_topic_prompt.return_value = SimpleNamespace(id="prompt-001")
+
+    merge_service = Mock()
+    merge_service.create_merge_preview = AsyncMock(side_effect=TimeoutError("model timeout"))
+
+    with patch.object(handler, "_get_topic_finding_merge_service", return_value=merge_service):
+        with patch.object(handler, "_get_intelligence_repository", return_value=repo):
+            update = _make_update(text="/topic_merge topic-001")
+            context = SimpleNamespace(args=["topic-001"])
+
+            asyncio.run(handler._handle_topic_merge_command(update, context))
+
+            assert update.message.reply_text.await_count == 2
+            sent_texts = [call.args[0] for call in update.message.reply_text.await_args_list]
+            assert "正在生成合并预览" in sent_texts[0]
+            assert "合并失败: TimeoutError: model timeout" in sent_texts[1]
+
+
 # --- Topic Pause / Archive ---
+
 
 def test_topic_pause_archive():
     """/topic_pause and /topic_archive change lifecycle status."""
@@ -236,6 +266,7 @@ def test_topic_pause_archive():
 
 # --- Intel commands not registered ---
 
+
 def test_intel_commands_not_registered():
     """Verify no /intel_* commands are registered."""
     handler = _make_handler()
@@ -262,6 +293,7 @@ def test_intel_commands_not_registered():
 
 # --- Unauthorized callback ---
 
+
 def test_unauthorized_callback():
     """Topic callback queries reject unauthorized users."""
     handler = _make_handler()
@@ -277,6 +309,7 @@ def test_unauthorized_callback():
 
 
 # --- Topic revise ---
+
 
 def test_topic_revise():
     """/topic_revise updates draft prompt via LLM."""
@@ -311,6 +344,7 @@ def test_topic_revise():
 
 # --- Topic set_prompt ---
 
+
 def test_topic_set_prompt():
     """/topic_set_prompt manually replaces prompt text."""
     handler = _make_handler()
@@ -343,6 +377,7 @@ def test_topic_set_prompt():
 
 
 # --- Topic list ---
+
 
 def test_topic_list():
     """/topic_list shows paginated topic summary."""

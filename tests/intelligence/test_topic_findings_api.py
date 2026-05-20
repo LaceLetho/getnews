@@ -36,9 +36,7 @@ class FakeChatCompletions:
     def create(self, **kwargs: Any) -> SimpleNamespace:
         self.calls.append(kwargs)
         content = self.payload if isinstance(self.payload, str) else json.dumps(self.payload)
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
-        )
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
 
 
 class FakeLLMClient:
@@ -138,9 +136,7 @@ class InMemoryTopicRepository:
         limit: int = 50,
     ) -> List[MergePreview]:
         results = [
-            p
-            for p in self.previews.values()
-            if p.intelligence_topic_id == intelligence_topic_id
+            p for p in self.previews.values() if p.intelligence_topic_id == intelligence_topic_id
         ]
         if state:
             results = [p for p in results if p.state == state]
@@ -157,9 +153,7 @@ class InMemoryTopicRepository:
         offset: int = 0,
     ) -> List[TopicPrompt]:
         results = [
-            p
-            for p in self.prompts.values()
-            if p.intelligence_topic_id == intelligence_topic_id
+            p for p in self.prompts.values() if p.intelligence_topic_id == intelligence_topic_id
         ]
         if status:
             results = [p for p in results if p.status == status]
@@ -177,17 +171,13 @@ class InMemoryTopicRepository:
         offset: int = 0,
     ) -> List[TopicFinding]:
         results = [
-            f
-            for f in self.findings.values()
-            if f.intelligence_topic_id == intelligence_topic_id
+            f for f in self.findings.values() if f.intelligence_topic_id == intelligence_topic_id
         ]
         if status:
             results = [f for f in results if f.status == status]
         return results[offset : offset + limit]
 
-    def list_entries_by_topic(
-        self, topic_id: str, limit: int = 100, offset: int = 0
-    ) -> List[Any]:
+    def list_entries_by_topic(self, topic_id: str, limit: int = 100, offset: int = 0) -> List[Any]:
         return []
 
     def get_active_topic_prompt(self, topic_id: str) -> Optional[TopicPrompt]:
@@ -260,9 +250,10 @@ def test_merge_preview_creation() -> None:
     topic_id, prompt_id = _make_topic_and_prompt(repo)
     source_ids = _make_findings(repo, topic_id, prompt_id)
 
+    llm_client = FakeLLMClient(_valid_merge_payload())
     service = TopicFindingMergeService(
         repo,
-        FakeLLMClient(_valid_merge_payload()),
+        llm_client,
     )
     preview = asyncio.run(service.create_merge_preview(topic_id, prompt_id, created_by="tester"))
 
@@ -277,6 +268,36 @@ def test_merge_preview_creation() -> None:
     stored = repo.get_merge_preview(preview.id)
     assert stored is not None
     assert stored.source_finding_ids == preview.source_finding_ids
+    assert llm_client.completions.calls[0]["model"] == "deepseek-v4-flash"
+    assert llm_client.completions.calls[0]["timeout"] == 180.0
+
+
+def test_merge_preview_uses_env_model_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = InMemoryTopicRepository()
+    topic_id, prompt_id = _make_topic_and_prompt(repo)
+    _make_findings(repo, topic_id, prompt_id)
+
+    monkeypatch.setenv("TOPIC_MERGE_MODEL", "custom-merge-model")
+    llm_client = FakeLLMClient(_valid_merge_payload())
+    service = TopicFindingMergeService(repo, llm_client, model_name="deepseek-v4-pro")
+
+    asyncio.run(service.create_merge_preview(topic_id, prompt_id, created_by="tester"))
+
+    assert llm_client.completions.calls[0]["model"] == "custom-merge-model"
+
+
+def test_merge_preview_llm_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = InMemoryTopicRepository()
+    topic_id, prompt_id = _make_topic_and_prompt(repo)
+    _make_findings(repo, topic_id, prompt_id)
+
+    monkeypatch.setenv("TOPIC_MERGE_LLM_TIMEOUT_SECONDS", "45")
+    llm_client = FakeLLMClient(_valid_merge_payload())
+    service = TopicFindingMergeService(repo, llm_client)
+
+    asyncio.run(service.create_merge_preview(topic_id, prompt_id, created_by="tester"))
+
+    assert llm_client.completions.calls[0]["timeout"] == 45.0
 
 
 def test_merge_accept_archives_exact_sources() -> None:

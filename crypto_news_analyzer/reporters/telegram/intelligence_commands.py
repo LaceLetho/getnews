@@ -427,6 +427,11 @@ class IntelligenceCommandsMixin:
 
             from ...intelligence.topic_findings import MergePreviewError
 
+            await self._reply_text_with_timeout(
+                msg,
+                "🔄 正在生成合并预览，请稍候。这个操作需要调用模型，完成后会发送预览结果。",
+            )
+
             preview = await merge_service.create_merge_preview(
                 topic_id=topic_id,
                 prompt_version_id=active_prompt.id,
@@ -481,7 +486,7 @@ class IntelligenceCommandsMixin:
             self._log_command_execution("/topic_merge", user_id, username, topic_id, True, "")
         except MergePreviewError as e:
             if msg is not None:
-                await msg.reply_text(f"\u274c 合并失败: {str(e)}")
+                await self._reply_text_with_timeout(msg, f"\u274c 合并失败: {str(e)}")
         except asyncio.CancelledError:
             self.logger.warning(
                 f"/topic_merge cancelled (likely webhook timeout): topic_id={topic_id}"
@@ -493,9 +498,13 @@ class IntelligenceCommandsMixin:
             )
             try:
                 if msg is not None:
-                    await msg.reply_text(f"\u274c 合并失败: {str(e)}")
-            except Exception:
-                pass
+                    error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+                    await self._reply_text_with_timeout(
+                        msg,
+                        f"\u274c 合并失败: {error_detail}\n\n请查看服务器日志获取详细信息。",
+                    )
+            except Exception as send_error:
+                self.logger.error("发送/topic_merge失败响应失败: %s", send_error)
 
     async def _handle_topic_pause_command(self, update: Any, context: Any) -> None:
         try:

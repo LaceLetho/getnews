@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -23,6 +24,8 @@ from ..domain.models import (
 logger = logging.getLogger(__name__)
 
 TOPIC_FINDINGS_MERGE_SCHEMA_VERSION = "topic-findings-merge-v1"
+DEFAULT_TOPIC_MERGE_MODEL_NAME = "deepseek-v4-flash"
+DEFAULT_TOPIC_MERGE_LLM_TIMEOUT_SECONDS = 180.0
 
 
 class MergedFindingCitation(BaseModel):
@@ -90,7 +93,7 @@ class TopicFindingMergeService:
     ):
         self.repository = intelligence_repository
         self.llm_client = llm_client
-        self.model_name = model_name
+        self.model_name = self._get_merge_model_name(model_name)
         self.prompt_dir = prompt_dir or Path(__file__).resolve().parents[2] / "prompts"
 
     async def create_merge_preview(
@@ -254,29 +257,91 @@ class TopicFindingMergeService:
             "research_prompt": prompt.prompt_text,
             "active_findings": [self._finding_payload(f) for f in active_findings],
         }
+        user_payload_json = json.dumps(user_payload, ensure_ascii=False)
         logger.info(
             f"LLM merge call: topic_id={topic_id}, model={self.model_name}, "
-            f"system_prompt_len={len(system_prompt)}, user_payload_approx_len={len(json.dumps(user_payload, ensure_ascii=False))}"
+            f"system_prompt_len={len(system_prompt)}, user_payload_approx_len={len(user_payload_json)}"
+        )
+        logger.info(
+            "LLM merge system prompt: topic_id=%s model=%s prompt=%s",
+            topic_id,
+            self.model_name,
+            system_prompt,
+        )
+        logger.info(
+            "LLM merge user payload: topic_id=%s model=%s payload=%s",
+            topic_id,
+            self.model_name,
+            user_payload_json,
         )
         completions = getattr(getattr(self.llm_client, "chat", None), "completions", None)
         if completions is not None and hasattr(completions, "create"):
             kwargs: Dict[str, Any] = {
                 "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+                    {"role": "user", "content": user_payload_json},
                 ],
                 "response_format": {"type": "json_object"},
             }
             if self.model_name:
                 kwargs["model"] = self.model_name
+            timeout_seconds = self._get_llm_timeout_seconds()
+            kwargs["timeout"] = timeout_seconds
             logger.info(f"Sending LLM merge request: model={self.model_name}")
             response = completions.create(**kwargs)
+            raw_output = str(response.choices[0].message.content)
             logger.info(f"LLM merge response received: model={self.model_name}")
-            return str(response.choices[0].message.content)
+            logger.info(
+                "LLM merge raw response: topic_id=%s model=%s response=%s",
+                topic_id,
+                self.model_name,
+                raw_output,
+            )
+            return raw_output
         if hasattr(self.llm_client, "complete"):
             logger.info("Using llm_client.complete() for merge")
-            return str(self.llm_client.complete(system_prompt, user_payload))
+            raw_output = str(self.llm_client.complete(system_prompt, user_payload))
+            logger.info(
+                "LLM merge raw response: topic_id=%s model=%s response=%s",
+                topic_id,
+                self.model_name,
+                raw_output,
+            )
+            return raw_output
         raise TypeError("llm_client must expose chat.completions.create() or complete()")
+
+    def _get_merge_model_name(self, fallback_model_name: str) -> str:
+        configured_model = os.getenv("TOPIC_MERGE_MODEL", "").strip()
+        if configured_model:
+            return configured_model
+        if fallback_model_name and fallback_model_name != DEFAULT_TOPIC_MERGE_MODEL_NAME:
+            logger.info(
+                "Using default topic merge model %s instead of analysis model %s",
+                DEFAULT_TOPIC_MERGE_MODEL_NAME,
+                fallback_model_name,
+            )
+        return DEFAULT_TOPIC_MERGE_MODEL_NAME
+
+    def _get_llm_timeout_seconds(self) -> float:
+        raw_value = os.getenv("TOPIC_MERGE_LLM_TIMEOUT_SECONDS", "").strip()
+        if not raw_value:
+            return DEFAULT_TOPIC_MERGE_LLM_TIMEOUT_SECONDS
+        try:
+            timeout_seconds = float(raw_value)
+        except ValueError:
+            logger.warning(
+                "Invalid TOPIC_MERGE_LLM_TIMEOUT_SECONDS=%r; using default %.1fs",
+                raw_value,
+                DEFAULT_TOPIC_MERGE_LLM_TIMEOUT_SECONDS,
+            )
+            return DEFAULT_TOPIC_MERGE_LLM_TIMEOUT_SECONDS
+        if timeout_seconds <= 0:
+            logger.warning(
+                "TOPIC_MERGE_LLM_TIMEOUT_SECONDS must be positive; using default %.1fs",
+                DEFAULT_TOPIC_MERGE_LLM_TIMEOUT_SECONDS,
+            )
+            return DEFAULT_TOPIC_MERGE_LLM_TIMEOUT_SECONDS
+        return timeout_seconds
 
     def _finding_payload(self, finding: TopicFinding) -> Dict[str, Any]:
         return {
