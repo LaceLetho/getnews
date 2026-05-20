@@ -100,7 +100,6 @@ class TopicPromptRevision(BaseModel):
     version: int = Field(ge=1)
     revision_note: str
     changes_summary: List[str] = Field(default_factory=list)
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
     @field_validator("schema_version")
     @classmethod
@@ -344,11 +343,10 @@ class TopicPromptReviser(_TopicPromptLLMService):
             ) from validate_err
 
         logger.info(
-            "LLM revision validated: topic_name=%r llm_version=%s revision_note=%r confidence=%s",
+            "LLM revision validated: topic_name=%r llm_version=%s revision_note=%r",
             revision.topic_name,
             revision.version,
             revision.revision_note[:100] if revision.revision_note else "",
-            revision.confidence,
         )
         # The LLM is instructed to return expected_version, but we enforce it
         # server-side to prevent any LLM hallucination from causing duplicates.
@@ -377,7 +375,6 @@ class TopicPromptReviser(_TopicPromptLLMService):
             "topic_name": revision.topic_name,
             "revision_note": revision.revision_note,
             "changes_summary": revision.changes_summary,
-            "confidence": revision.confidence,
         }
         if sanitize_warnings:
             audit_entry["sanitize_warnings"] = sanitize_warnings

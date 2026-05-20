@@ -213,7 +213,6 @@ def _valid_merge_payload() -> Dict[str, Any]:
             }
         ],
         "findings_merged_count": 2,
-        "findings_new_count": 0,
         "findings_deduplicated_count": 0,
     }
 

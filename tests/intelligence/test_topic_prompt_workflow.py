@@ -275,7 +275,6 @@ def _revision_payload(version: int = 2) -> Dict[str, Any]:
         "version": version,
         "revision_note": "Made it clearer",
         "changes_summary": ["Clarified wording"],
-        "confidence": 0.92,
     }
 
 

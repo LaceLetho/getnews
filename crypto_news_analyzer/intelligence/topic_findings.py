@@ -65,7 +65,6 @@ class TopicFindingsMergeOutput(BaseModel):
     merge_summary: str = ""
     merged_findings: List[MergedFindingItem] = Field(default_factory=list)
     findings_merged_count: int = Field(default=0, ge=0)
-    findings_new_count: int = Field(default=0, ge=0)
     findings_deduplicated_count: int = Field(default=0, ge=0)
 
     @field_validator("schema_version")
