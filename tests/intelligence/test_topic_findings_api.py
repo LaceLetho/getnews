@@ -273,7 +273,7 @@ def test_merge_preview_creation() -> None:
     assert stored is not None
     assert stored.source_finding_ids == preview.source_finding_ids
     assert llm_client.completions.calls[0]["model"] == "deepseek-v4-flash"
-    assert llm_client.completions.calls[0]["timeout"] == 180.0
+    assert llm_client.completions.calls[0]["timeout"] == 480.0
     assert llm_client.with_options_calls == [{"max_retries": 0}]
 
     request_payload = json.loads(llm_client.completions.calls[0]["messages"][1]["content"])
@@ -423,10 +423,7 @@ def test_merge_preview_accepts_timezone_aware_expiry() -> None:
     assert merged.intelligence_topic_id == topic_id
     assert repo.get_merge_preview(preview.id).state == "applied"
     for source_id in source_ids:
-        assert (
-            repo.get_topic_finding_by_id(source_id).status
-            == TopicFindingStatus.SUPERSEDED.value
-        )
+        assert repo.get_topic_finding_by_id(source_id).status == TopicFindingStatus.SUPERSEDED.value
 
 
 def test_merge_preview_from_dict_normalizes_aware_datetimes_to_naive_utc() -> None:
