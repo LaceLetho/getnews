@@ -178,7 +178,7 @@ class TopicFindingMergeService:
         expected_topic_id: Optional[str] = None,
         operator: Optional[str] = None,
     ) -> TopicFinding:
-        """Accept a merge preview: verify validity, persist merged finding, archive sources."""
+        """Accept a merge preview: verify validity, persist merged findings, archive sources."""
         logger.info(
             f"Accepting merge preview: preview_id={preview_id}, "
             f"expected_topic_id={expected_topic_id}, operator={operator}"
@@ -208,33 +208,38 @@ class TopicFindingMergeService:
         active_prompt = self.repository.get_active_topic_prompt(preview.intelligence_topic_id)
         prompt_version_id = active_prompt.id if active_prompt else preview.id
 
-        merged_payload = self._build_merged_finding_payload(preview)
+        merged_findings = self._build_merged_findings(preview, prompt_version_id)
+        if not merged_findings:
+            raise MergePreviewError("merge preview did not produce findings")
 
-        merged_finding = TopicFinding.create(
-            intelligence_topic_id=preview.intelligence_topic_id,
-            prompt_version_id=prompt_version_id,
-            finding_payload=merged_payload,
-            content_hash=preview.content_hash,
-            confidence=merged_payload.get("confidence", 0.0),
-            citations=merged_payload.get("citations", []),
-            source_finding_ids=list(preview_source_ids),
-        )
-        self.repository.create_topic_finding(merged_finding)
+        saved_findings: List[TopicFinding] = []
+        for merged_finding in merged_findings:
+            saved_id = self.repository.create_topic_finding(merged_finding)
+            saved = self.repository.get_topic_finding_by_id(saved_id)
+            saved_findings.append(saved or merged_finding)
+
+        superseded_by_by_source: Dict[str, str] = {}
+        fallback_merged_id = saved_findings[0].id
+        for merged_finding in saved_findings:
+            for source_id in merged_finding.source_finding_ids:
+                if source_id in preview_source_ids:
+                    superseded_by_by_source[source_id] = merged_finding.id
 
         for source_id in preview.source_finding_ids:
-            self.repository.archive_finding(source_id, superseded_by_id=merged_finding.id)
+            superseded_by_id = superseded_by_by_source.get(source_id, fallback_merged_id)
+            self.repository.archive_finding(source_id, superseded_by_id=superseded_by_id)
             archive = FindingArchive.create(
                 finding_id=source_id,
                 intelligence_topic_id=preview.intelligence_topic_id,
                 archive_reason="superseded",
-                superseded_by_finding_id=merged_finding.id,
+                superseded_by_finding_id=superseded_by_id,
                 archived_by=operator,
             )
             self.repository.archive_topic_finding(archive)
 
         self._set_preview_applied(preview_id)
 
-        return merged_finding
+        return saved_findings[0]
 
     def reject_merge_preview(self, preview_id: str) -> None:
         """Reject a merge preview: mark it as cancelled."""
@@ -266,7 +271,8 @@ class TopicFindingMergeService:
         user_payload_json = json.dumps(user_payload, ensure_ascii=False)
         logger.info(
             f"LLM merge call: topic_id={topic_id}, model={self.model_name}, "
-            f"system_prompt_len={len(system_prompt)}, user_payload_approx_len={len(user_payload_json)}"
+            f"system_prompt_len={len(system_prompt)}, "
+            f"user_payload_approx_len={len(user_payload_json)}"
         )
         logger.info(
             "LLM merge system prompt: topic_id=%s model=%s prompt=%s",
@@ -432,35 +438,111 @@ class TopicFindingMergeService:
         except ValidationError as exc:
             raise MergePreviewError(f"invalid merge output structure: {exc}") from exc
 
-    def _build_merged_finding_payload(self, preview: MergePreview) -> Dict[str, Any]:
-        """Extract a single merged finding payload from the preview."""
+    def _build_merged_findings(
+        self,
+        preview: MergePreview,
+        prompt_version_id: str,
+    ) -> List[TopicFinding]:
+        """Build one active finding for each merged finding in the preview."""
+        payloads = self._build_merged_finding_payloads(preview)
+        findings: List[TopicFinding] = []
+        for index, payload in enumerate(payloads):
+            source_finding_ids = self._normalize_preview_source_ids(
+                payload.get("source_finding_ids", []),
+                fallback=preview.source_finding_ids if len(payloads) == 1 else [],
+            )
+            citations = payload.get("citations", [])
+            source_raw_item_ids = self._raw_item_ids_from_citations(citations)
+            content_hash = self._merged_finding_content_hash(preview, payload, index)
+            findings.append(
+                TopicFinding.create(
+                    intelligence_topic_id=preview.intelligence_topic_id,
+                    prompt_version_id=prompt_version_id,
+                    finding_payload=payload,
+                    content_hash=content_hash,
+                    confidence=payload.get("confidence", 0.0),
+                    citations=citations,
+                    source_raw_item_ids=source_raw_item_ids,
+                    source_finding_ids=source_finding_ids,
+                )
+            )
+        return findings
+
+    def _build_merged_finding_payloads(self, preview: MergePreview) -> List[Dict[str, Any]]:
+        """Extract merged finding payloads from the preview."""
         preview_payload = preview.preview_payload
         merged_findings = preview_payload.get("merged_findings", [])
         merge_summary = preview_payload.get("merge_summary", "")
 
         if merged_findings:
-            first = merged_findings[0]
-            return {
-                "summary": first.get("summary", merge_summary),
-                "detail": first.get("detail", ""),
-                "confidence": first.get("confidence", 0.0),
-                "citations": first.get("citations", []),
-                "source_finding_ids": first.get("source_finding_ids", []),
+            payloads: List[Dict[str, Any]] = []
+            for item in merged_findings:
+                payloads.append(
+                    {
+                        "summary": item.get("summary", merge_summary),
+                        "detail": item.get("detail", ""),
+                        "confidence": item.get("confidence", 0.0),
+                        "citations": item.get("citations", []),
+                        "source_finding_ids": item.get("source_finding_ids", []),
+                        "schema_version": preview_payload.get("schema_version", ""),
+                        "topic_name": preview_payload.get("topic_name", ""),
+                        "merge_summary": merge_summary,
+                    }
+                )
+            return payloads
+
+        return [
+            {
+                "summary": merge_summary,
+                "detail": "",
+                "confidence": 0.0,
+                "citations": [],
+                "source_finding_ids": list(preview.source_finding_ids),
                 "schema_version": preview_payload.get("schema_version", ""),
                 "topic_name": preview_payload.get("topic_name", ""),
                 "merge_summary": merge_summary,
             }
+        ]
 
-        return {
-            "summary": merge_summary,
-            "detail": "",
-            "confidence": 0.0,
-            "citations": [],
-            "source_finding_ids": list(preview.source_finding_ids),
-            "schema_version": preview_payload.get("schema_version", ""),
-            "topic_name": preview_payload.get("topic_name", ""),
-            "merge_summary": merge_summary,
-        }
+    def _merged_finding_content_hash(
+        self,
+        preview: MergePreview,
+        payload: Dict[str, Any],
+        index: int,
+    ) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                {
+                    "preview_content_hash": preview.content_hash,
+                    "index": index,
+                    "payload": payload,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+
+    def _normalize_preview_source_ids(
+        self,
+        source_finding_ids: Any,
+        fallback: List[str],
+    ) -> List[str]:
+        if not isinstance(source_finding_ids, list):
+            source_finding_ids = []
+        normalized = sorted({str(item).strip() for item in source_finding_ids if str(item).strip()})
+        return normalized or list(fallback)
+
+    def _raw_item_ids_from_citations(self, citations: Any) -> List[str]:
+        if not isinstance(citations, list):
+            return []
+        raw_item_ids: List[str] = []
+        for citation in citations:
+            if not isinstance(citation, dict):
+                continue
+            raw_item_id = str(citation.get("message_id", "")).strip()
+            if raw_item_id:
+                raw_item_ids.append(raw_item_id)
+        return sorted(set(raw_item_ids))
 
     def _set_preview_applied(self, preview_id: str) -> None:
         self.repository.accept_merge_preview(preview_id)

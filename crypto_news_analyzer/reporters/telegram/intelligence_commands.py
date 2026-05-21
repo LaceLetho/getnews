@@ -896,14 +896,6 @@ class IntelligenceCommandsMixin:
             esc = self._escape_markdown_v1
             lines: List[str] = [f"🔬 {esc(topic.name)}\n"]
 
-            active_prompt = repository.get_active_topic_prompt(topic_id)
-            if active_prompt:
-                safe_prompt = active_prompt.prompt_text.replace("```", "'''")
-                lines.append(
-                    f"*✏️ 当前提示词 (v{esc(active_prompt.prompt_version)})*\n"
-                    f"```\n{safe_prompt}\n```\n"
-                )
-
             page_size = 10
             offset = (page - 1) * page_size
             # Fetch one extra to detect if there are more pages
@@ -938,7 +930,9 @@ class IntelligenceCommandsMixin:
                     conf = getattr(finding, "confidence", 0.0) or 0.0
                     if conf > 0:
                         conf_str = f" [{conf:.0%}]"
-                    source_count = len(finding.source_raw_item_ids or [])
+                    source_count = len(finding.source_raw_item_ids or []) or len(
+                        finding.citations or []
+                    )
                     lines.append(f"#{global_i} {title}{conf_str}")
 
                     if return_markup:
@@ -952,6 +946,19 @@ class IntelligenceCommandsMixin:
                             }
                         )
                 lines.append("")
+
+            active_prompt = repository.get_active_topic_prompt(topic_id)
+            if active_prompt:
+                prompt_text = active_prompt.prompt_text.replace("```", "'''")
+                max_prompt_chars = 1200
+                truncated = len(prompt_text) > max_prompt_chars
+                safe_prompt = prompt_text[:max_prompt_chars]
+                if truncated:
+                    safe_prompt = f"{safe_prompt}\n..."
+                lines.append(
+                    f"*✏️ 当前提示词 (v{esc(active_prompt.prompt_version)})*\n"
+                    f"```\n{safe_prompt}\n```\n"
+                )
 
             if return_markup:
                 if total_pages > 1:
@@ -1196,7 +1203,7 @@ class IntelligenceCommandsMixin:
                 await callback_query.answer()
                 return
 
-            # topic:d:{token}:{index}  — expand finding sources (short prefix fits 64-byte limit + matches ^topic: handler)
+            # topic:d:{token}:{index} expands sources while fitting Telegram's 64-byte limit.
             if data.startswith("topic:d:") and not data.startswith("topic:dm:"):
                 parts = data.split(":", 3)
                 if len(parts) != 4:

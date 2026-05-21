@@ -210,7 +210,22 @@ def _valid_merge_payload() -> Dict[str, Any]:
                         "published_at": "",
                     }
                 ],
-            }
+            },
+            {
+                "finding_id": "mf-2",
+                "summary": "ETF 资金流异常伴随成交量放大",
+                "detail": "第二条合并后的详细描述",
+                "confidence": 0.75,
+                "source_finding_ids": ["finding-0"],
+                "citations": [
+                    {
+                        "message_id": "raw-0",
+                        "message_snippet": "ETF 成交量同步放大",
+                        "source": "chat-1",
+                        "published_at": "",
+                    }
+                ],
+            },
         ],
         "findings_merged_count": 2,
         "findings_deduplicated_count": 0,
@@ -331,24 +346,28 @@ def test_merge_accept_archives_exact_sources() -> None:
 
     assert merged.intelligence_topic_id == topic_id
     assert merged.status == TopicFindingStatus.ACTIVE.value
-    assert merged.source_finding_ids == source_ids
+    assert merged.source_finding_ids == ["finding-1", "finding-2"]
+    assert merged.source_raw_item_ids == ["raw-1"]
 
     for source_id in source_ids:
         archived = repo.get_topic_finding_by_id(source_id)
         assert archived is not None
         assert archived.status == TopicFindingStatus.SUPERSEDED.value
-        assert archived.superseded_by_finding_id == merged.id
+        if source_id in {"finding-1", "finding-2"}:
+            assert archived.superseded_by_finding_id == merged.id
         archive_record = repo.get_finding_archive(source_id)
         assert archive_record is not None
-        assert archive_record.superseded_by_finding_id == merged.id
 
     updated_preview = repo.get_merge_preview(preview.id)
     assert updated_preview is not None
     assert updated_preview.state == "applied"
 
     active_after = repo.list_active_findings(topic_id)
-    assert len(active_after) == 1
-    assert active_after[0].id == merged.id
+    assert len(active_after) == 2
+    assert {finding.finding_payload["summary"] for finding in active_after} == {
+        "BTC ETF 单小时净流入突然放大",
+        "ETF 资金流异常伴随成交量放大",
+    }
 
 
 def test_stale_merge_preview_rejected() -> None:

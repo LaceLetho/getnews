@@ -165,6 +165,41 @@ def test_topic_detail():
     assert "BTC ETF" in text
 
 
+def test_topic_detail_lists_findings_before_truncated_prompt():
+    handler = _make_handler()
+    handler._log_command_execution = Mock()
+    long_prompt = "研究目标：" + ("保留上下文。" * 300)
+    finding = SimpleNamespace(
+        id="finding-merged-1",
+        finding_payload={"summary": "合并后的发现"},
+        confidence=0.9,
+        source_raw_item_ids=[],
+        citations=[{"message_id": "raw-1"}],
+    )
+    repo = Mock()
+    repo.get_topic_by_id.return_value = SimpleNamespace(id="topic-001", name="BTC ETF")
+    repo.get_active_topic_prompt.return_value = SimpleNamespace(
+        prompt_version="31",
+        prompt_text=long_prompt,
+    )
+    repo.list_topic_findings.return_value = [finding]
+    repo.count_topic_findings.return_value = 1
+    handler._get_intelligence_repository = Mock(return_value=repo)
+
+    payload = handler.handle_topic_detail_command(
+        user_id="user-1",
+        username="user",
+        topic_id="topic-001",
+        return_markup=True,
+    )
+
+    text = payload["text"]
+    assert text.index("*🔍 活跃研究发现") < text.index("*✏️ 当前提示词")
+    assert "#1 合并后的发现 [90%]" in text
+    assert "..." in text
+    assert payload["findings"][0]["source_count"] == 1
+
+
 # --- Topic Merge ---
 
 
