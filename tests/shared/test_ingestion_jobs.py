@@ -195,3 +195,48 @@ def test_run_crawl_only_skips_when_persisted_running_job_exists(temp_config_file
         assert IngestionJobStatus.SKIPPED.value in statuses
     finally:
         data_manager.close()
+
+
+def test_run_crawl_only_marks_stale_running_job_failed_once(
+    temp_config_file, tmp_path: Path
+):
+    data_manager, repository = _build_ingestion_repository(tmp_path / "ingestion_stale.db")
+    try:
+        stale_job = IngestionJob.create(source_type="scheduler", source_name="crawl_only")
+        stale_job.status = IngestionJobStatus.RUNNING.value
+        stale_job.started_at = datetime.now() - timedelta(hours=5)
+        repository.save(stale_job)
+
+        controller = _build_controller_with_ingestion_repo(temp_config_file, repository)
+        controller._execute_crawling_stage = Mock(
+            return_value={
+                "success": True,
+                "content_items": [object()],
+                "crawl_status": object(),
+                "items_new": 1,
+                "errors": [],
+            }
+        )
+
+        result = controller.run_crawl_only()
+
+        assert result.success is True
+        controller._execute_crawling_stage.assert_called_once()
+
+        recovered = repository.get_by_id(stale_job.id)
+        assert recovered is not None
+        assert recovered.status == IngestionJobStatus.FAILED.value
+        assert recovered.completed_at is not None
+        assert "auto-recovered: stale running job timed out" in (
+            recovered.error_message or ""
+        )
+
+        running_jobs = repository.get_by_source(
+            source_type="scheduler",
+            source_name="crawl_only",
+            status=IngestionJobStatus.RUNNING.value,
+            limit=10,
+        )
+        assert running_jobs == []
+    finally:
+        data_manager.close()

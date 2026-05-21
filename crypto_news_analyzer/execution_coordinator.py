@@ -2134,16 +2134,17 @@ class MainController:
                             self._format_elapsed_since(stale_started),
                             self._INGESTION_JOB_STALE_TIMEOUT_HOURS,
                         )
-                        self.ingestion_repository.update_status(
-                            stale_job.id,
-                            IngestionJobStatus.FAILED.value,
-                        )
                         if hasattr(stale_job, "completed_at"):
                             stale_job.completed_at = datetime.now()
+                        stale_job.status = IngestionJobStatus.FAILED.value
                         stale_job.error_message = (
                             stale_job.error_message or ""
                         ) + " | auto-recovered: stale running job timed out"
-                        self.ingestion_repository.save(stale_job)
+                        self.ingestion_repository.update_status(
+                            stale_job.id,
+                            IngestionJobStatus.FAILED.value,
+                            error_message=stale_job.error_message,
+                        )
                         # Fall through to start a new ingestion job
                     else:
                         skipped_job = IngestionJob.create(

@@ -108,7 +108,7 @@ class EmbeddingService:
                         continue
 
                     try:
-                        logger.warning(
+                        logger.info(
                             "Embedding输入超长，尝试截断后重试: model=%s chars=%s->%s",
                             self.model,
                             len(text),
@@ -169,7 +169,7 @@ class EmbeddingService:
             return results
         except Exception as exc:
             if self._is_length_limit_error(exc):
-                logger.warning("批量Embedding包含超长内容，回退到逐条处理: %s", exc)
+                logger.info("批量Embedding包含超长内容，回退到逐条处理: %s", exc)
                 return [self.generate_for_content_item(item) for item in items]
             logger.warning(f"批量生成Embedding失败: {exc}")
             return [None for _ in items]
