@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 import logging
 import time
+from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, CopyTextButton
@@ -65,6 +66,80 @@ class IntelligenceCommandsMixin:
             "response": response,
             "expires_at": time.monotonic() + self._topic_revision_result_ttl_seconds,
         }
+
+    def _build_raw_item_source_url(self, item: Any) -> Optional[str]:
+        source_url = str(getattr(item, "source_url", "") or "").strip()
+        source_type = str(getattr(item, "source_type", "") or "").strip()
+        external_id = str(getattr(item, "external_id", "") or "").strip()
+
+        if source_url:
+            if source_type == "telegram_group" and external_id:
+                return self._build_telegram_message_url_from_source_url(source_url, external_id)
+            return source_url if self._is_valid_http_url(source_url) else None
+
+        if source_type != "telegram_group" or not external_id:
+            return None
+
+        chat_id = str(getattr(item, "chat_id", "") or getattr(item, "source_id", "") or "").strip()
+        return self._build_telegram_message_url_from_chat_id(chat_id, external_id)
+
+    def _build_telegram_message_url_from_source_url(
+        self, source_url: str, external_id: str
+    ) -> Optional[str]:
+        if not self._is_valid_http_url(source_url):
+            return None
+
+        parsed = urlparse(source_url)
+        host = (parsed.netloc or "").lower()
+        if host not in {"t.me", "telegram.me", "www.t.me", "www.telegram.me"}:
+            return source_url
+
+        parts = [part for part in parsed.path.split("/") if part]
+        if not parts:
+            return None
+
+        if parts[0] == "c":
+            if len(parts) >= 3:
+                return source_url
+            if len(parts) == 2 and parts[1].isdigit():
+                return f"https://t.me/c/{parts[1]}/{external_id}"
+            return None
+
+        username = parts[0].lstrip("@")
+        if not self._is_telegram_username(username):
+            return source_url
+        if len(parts) >= 2 and parts[1].isdigit():
+            return source_url
+        return f"https://t.me/{username}/{external_id}"
+
+    def _build_telegram_message_url_from_chat_id(
+        self, chat_id: str, external_id: str
+    ) -> Optional[str]:
+        if not chat_id:
+            return None
+
+        if chat_id.startswith("@"):
+            username = chat_id[1:]
+            if self._is_telegram_username(username):
+                return f"https://t.me/{username}/{external_id}"
+            return None
+
+        if chat_id.startswith("-100") and chat_id[4:].isdigit():
+            return f"https://t.me/c/{chat_id[4:]}/{external_id}"
+
+        if self._is_telegram_username(chat_id):
+            return f"https://t.me/{chat_id}/{external_id}"
+
+        return None
+
+    def _is_valid_http_url(self, value: str) -> bool:
+        parsed = urlparse(value)
+        return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+    def _is_telegram_username(self, value: str) -> bool:
+        if not 5 <= len(value) <= 32:
+            return False
+        return all(char.isalnum() or char == "_" for char in value)
 
     async def _reply_text_with_timeout(
         self,
@@ -1197,20 +1272,7 @@ class IntelligenceCommandsMixin:
                     if len(item.raw_text or "") > 150:
                         snippet += "..."
 
-                    # Source URL for button
-                    source_url = item.source_url
-                    if not source_url and item.source_type == "telegram_group":
-                        # Try to build a Telegram message link
-                        chat_id = item.chat_id or ""
-                        ext_id = item.external_id or ""
-                        if chat_id and ext_id:
-                            # Remove -100 prefix for public links if present
-                            clean_chat = (
-                                chat_id.replace("-100", "")
-                                if chat_id.startswith("-100")
-                                else chat_id
-                            )
-                            source_url = f"https://t.me/c/{clean_chat}/{ext_id}"
+                    source_url = self._build_raw_item_source_url(item)
 
                     lines.append(
                         f"*#{j}* [{esc(source_label)}] {esc(snippet)}\n" f"  `{published}`"

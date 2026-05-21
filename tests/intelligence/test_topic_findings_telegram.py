@@ -413,3 +413,68 @@ def test_topic_list():
     assert reply is not None
     text = str(reply.args[0])
     assert "BTC ETF" in text
+
+
+def test_topic_raw_source_url_builds_public_telegram_message_link_from_username():
+    handler = _make_handler()
+    item = SimpleNamespace(
+        source_type="telegram_group",
+        source_url=None,
+        chat_id="@gemini_upstream",
+        source_id="@gemini_upstream",
+        external_id="41",
+    )
+
+    assert handler._build_raw_item_source_url(item) == "https://t.me/gemini_upstream/41"
+
+
+def test_topic_raw_source_url_does_not_build_invalid_tme_c_link_for_username():
+    handler = _make_handler()
+    item = SimpleNamespace(
+        source_type="telegram_group",
+        source_url=None,
+        chat_id="@alpha_group",
+        source_id="@alpha_group",
+        external_id="101",
+    )
+
+    assert handler._build_raw_item_source_url(item) != "https://t.me/c/@alpha_group/101"
+
+
+def test_topic_raw_source_url_builds_private_supergroup_link_from_numeric_chat_id():
+    handler = _make_handler()
+    item = SimpleNamespace(
+        source_type="telegram_group",
+        source_url=None,
+        chat_id="-1001234567890",
+        source_id="-1001234567890",
+        external_id="101",
+    )
+
+    assert handler._build_raw_item_source_url(item) == "https://t.me/c/1234567890/101"
+
+
+def test_topic_raw_source_url_appends_message_id_to_telegram_source_base_url():
+    handler = _make_handler()
+    item = SimpleNamespace(
+        source_type="telegram_group",
+        source_url="https://t.me/gemini_upstream",
+        chat_id="",
+        source_id="",
+        external_id="41",
+    )
+
+    assert handler._build_raw_item_source_url(item) == "https://t.me/gemini_upstream/41"
+
+
+def test_topic_raw_source_url_preserves_telegram_invite_source_url():
+    handler = _make_handler()
+    item = SimpleNamespace(
+        source_type="telegram_group",
+        source_url="https://t.me/+abcdef",
+        chat_id="",
+        source_id="",
+        external_id="41",
+    )
+
+    assert handler._build_raw_item_source_url(item) == "https://t.me/+abcdef"
