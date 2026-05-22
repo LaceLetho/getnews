@@ -67,6 +67,7 @@ class TopicFindingsMergeOutput(BaseModel):
     merged_findings: List[MergedFindingItem] = Field(default_factory=list)
     findings_merged_count: int = Field(default=0, ge=0)
     findings_deduplicated_count: int = Field(default=0, ge=0)
+    merge_change_summary: Dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("schema_version")
     @classmethod
@@ -97,6 +98,7 @@ class TopicMergeResult:
     source_findings_count: int
     source_citations_count: int
     merged_citations_count: int
+    change_summary: Dict[str, Any]
 
     @property
     def merged_findings_count(self) -> int:
@@ -259,6 +261,7 @@ class TopicFindingMergeService:
             source_findings_count=len(active_findings),
             source_citations_count=source_citations_count,
             merged_citations_count=merged_citations_count,
+            change_summary=dict(parsed.merge_change_summary or {}),
         )
 
     def accept_merge_preview(

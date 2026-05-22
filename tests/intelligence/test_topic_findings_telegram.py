@@ -243,6 +243,13 @@ def test_topic_merge():
         source_findings_count=3,
         merged_findings_count=2,
         removed_citations_count=4,
+        change_summary={
+            "similar_findings_merged_count": 2,
+            "stale_findings_removed_count": 1,
+            "duplicate_citations_removed_count": 3,
+            "stale_citations_removed_count": 1,
+            "notes": "主要合并重复渠道报价",
+        },
     )
     repo = Mock()
     repo.get_active_topic_prompt.return_value = SimpleNamespace(id="prompt-001")
@@ -266,6 +273,10 @@ def test_topic_merge():
             assert "合并完成" in text
             assert "3 条 findings → 2 条 findings" in text
             assert "去除 4 条 citations" in text
+            assert "改动原因" in text
+            assert "合并类似/重复 findings: 2 条" in text
+            assert "删除过期 findings: 1 条" in text
+            assert "删除重复 citations: 3 条" in text
             assert "合并后发现ID" not in text
             assert "merged-001" not in text
 

@@ -67,6 +67,34 @@ class IntelligenceCommandsMixin:
             "expires_at": time.monotonic() + self._topic_revision_result_ttl_seconds,
         }
 
+    def _format_topic_merge_change_summary(self, change_summary: Any) -> str:
+        if not isinstance(change_summary, dict) or not change_summary:
+            return ""
+
+        items = [
+            ("合并类似/重复 findings", "similar_findings_merged_count", "条"),
+            ("删除过期 findings", "stale_findings_removed_count", "条"),
+            ("删除低价值 findings", "low_value_findings_removed_count", "条"),
+            ("删除重复 citations", "duplicate_citations_removed_count", "条"),
+            ("删除过期 citations", "stale_citations_removed_count", "条"),
+            ("删除低价值 citations", "low_value_citations_removed_count", "条"),
+            ("其他原因改动", "other_changes_count", "条"),
+        ]
+        lines: List[str] = []
+        for label, key, unit in items:
+            try:
+                count = int(change_summary.get(key, 0) or 0)
+            except (TypeError, ValueError):
+                count = 0
+            if count > 0:
+                lines.append(f"- {label}: {count} {unit}")
+
+        notes = str(change_summary.get("notes", "") or "").strip()
+        if notes:
+            lines.append(f"- 说明: {self._escape_markdown_v1(notes[:160])}")
+
+        return "\n".join(lines)
+
     def _build_raw_item_source_url(self, item: Any) -> Optional[str]:
         source_url = str(getattr(item, "source_url", "") or "").strip()
         source_type = str(getattr(item, "source_type", "") or "").strip()
@@ -518,6 +546,10 @@ class IntelligenceCommandsMixin:
             payload = merged.finding_payload if isinstance(merged.finding_payload, dict) else {}
             topic_name = esc(str(payload.get("topic_name", topic_id)))
             summary = esc(str(payload.get("summary") or payload.get("merge_summary") or "")[:500])
+            change_summary = self._format_topic_merge_change_summary(
+                getattr(merge_result, "change_summary", {})
+            )
+            change_summary_text = f"*改动原因*:\n{change_summary}\n\n" if change_summary else ""
             text = (
                 f"\u2705 *合并完成*\n\n"
                 f"*主题*: {topic_name}\n\n"
@@ -525,6 +557,7 @@ class IntelligenceCommandsMixin:
                 f"{merge_result.source_findings_count} 条 findings → "
                 f"{merge_result.merged_findings_count} 条 findings；"
                 f"去除 {merge_result.removed_citations_count} 条 citations\n\n"
+                f"{change_summary_text}"
                 f"*摘要*: {summary}"
             )
             await msg.reply_text(text, parse_mode="Markdown")

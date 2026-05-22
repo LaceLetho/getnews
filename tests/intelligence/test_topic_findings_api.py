@@ -230,6 +230,16 @@ def _valid_merge_payload() -> Dict[str, Any]:
         ],
         "findings_merged_count": 2,
         "findings_deduplicated_count": 0,
+        "merge_change_summary": {
+            "similar_findings_merged_count": 2,
+            "stale_findings_removed_count": 1,
+            "low_value_findings_removed_count": 0,
+            "duplicate_citations_removed_count": 1,
+            "stale_citations_removed_count": 0,
+            "low_value_citations_removed_count": 0,
+            "other_changes_count": 0,
+            "notes": "主要合并重复资金流线索",
+        },
     }
 
 
@@ -388,6 +398,8 @@ def test_direct_merge_archives_sources_without_persisted_preview() -> None:
     assert merge_result.source_citations_count == 3
     assert merge_result.merged_citations_count == 2
     assert merge_result.removed_citations_count == 1
+    assert merge_result.change_summary["similar_findings_merged_count"] == 2
+    assert merge_result.change_summary["stale_findings_removed_count"] == 1
     assert repo.previews == {}
 
     for source_id in source_ids:

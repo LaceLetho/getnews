@@ -19,6 +19,7 @@
 6. merged_findings 按时间新鲜度、证据强度和情报价值综合排序。
 7. 每条 merged finding 的 summary 不超过 280 个字符
 8. 如果某条 active finding 与其他 findings 无实质重叠，且 citation 仍具备时效性或持续情报价值，作为独立 merged finding 保留。
+9. 必须总结本次合并的改动原因，分别统计：合并类似/重复 findings 多少条、删除过期 findings 多少条、删除低价值/证据不足 findings 多少条、删除重复 citations 多少条、删除过期 citations 多少条、删除低价值 citations 多少条，以及其他原因改动多少条。统计写入 merge_change_summary。
 
 输出 schema：
 {
@@ -43,7 +44,17 @@
     }
   ],
   "findings_merged_count": 0,
-  "findings_deduplicated_count": 0
+  "findings_deduplicated_count": 0,
+  "merge_change_summary": {
+    "similar_findings_merged_count": 0,
+    "stale_findings_removed_count": 0,
+    "low_value_findings_removed_count": 0,
+    "duplicate_citations_removed_count": 0,
+    "stale_citations_removed_count": 0,
+    "low_value_citations_removed_count": 0,
+    "other_changes_count": 0,
+    "notes": "string"
+  }
 }
 
 字段要求：
@@ -55,5 +66,6 @@
 6. citations 必须去重，只保留代表性证据；优先保留包含具体渠道、站点、价格、联系人、操作方法、上游/下游链路、风控/封号/诈骗迹象的引用。不要保留内容完全重复、语义重复或信息量低的引用。超过 14 天的 citation 采纳度降低，除非它证明的是仍持续有效的渠道、账号、链路或长期风险模式，否则不要优先保留。
 7. findings_merged_count 是被合并（去重）的 finding 数量。
 8. findings_deduplicated_count 是去重掉的 citation 数量。
-9. 所有字段必须存在，无内容字段使用空字符串或空数组，不要使用 null。
-10. 必须输出合法 JSON 对象，不要输出 Markdown，不要包裹代码块。
+9. merge_change_summary 必须存在；所有 count 字段必须是非负整数。notes 用一句中文说明最主要的合并/删除依据，例如“主要删除过期 citation 与重复渠道报价”。
+10. 所有字段必须存在，无内容字段使用空字符串或空数组，不要使用 null。
+11. 必须输出合法 JSON 对象，不要输出 Markdown，不要包裹代码块。
