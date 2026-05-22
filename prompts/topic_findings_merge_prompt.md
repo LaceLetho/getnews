@@ -15,9 +15,10 @@
 2. 合并时以更高 confidence、更具体、更新鲜或证据更充分的版本为主，并在 detail 中补充其他来源的互补信息。
 3. 每条合并后的 finding 必须保留所有来源 finding 的 finding_id 列表（source_finding_ids）。
 4. 每条合并后的 finding 只保留信息量最大、最具代表性、最能透露有价值渠道/价格/联系人/链路/风险模式的 citations；不要保留内容完全重复或只重复同一结论的 citations。
-5. merged_findings 按时间新鲜度、证据强度和情报价值综合排序。
-6. 每条 merged finding 的 summary 不超过 280 个字符
-7. 如果某条 active finding 与其他 findings 无实质重叠，作为独立 merged finding 保留。
+5. citation 的时效性会影响采纳度：published_at 距今超过 14 天视为较久，应降低权重；越旧的 citation 越不应作为主要证据。若某条 active finding 下所有 citations 都已过期/过旧，且没有新的补充证据或持续有效的链路价值，可以删除该 finding，不输出到 merged_findings。
+6. merged_findings 按时间新鲜度、证据强度和情报价值综合排序。
+7. 每条 merged finding 的 summary 不超过 280 个字符
+8. 如果某条 active finding 与其他 findings 无实质重叠，且 citation 仍具备时效性或持续情报价值，作为独立 merged finding 保留。
 
 输出 schema：
 {
@@ -51,7 +52,7 @@
 3. detail 不超过 300 个中文字符。
 4. confidence 取 0.0 到 1.0。
 5. source_finding_ids 是来源 finding 的 ID 列表，至少包含一个 ID。
-6. citations 必须去重，只保留代表性证据；优先保留包含具体渠道、站点、价格、联系人、操作方法、上游/下游链路、风控/封号/诈骗迹象的引用。不要保留内容完全重复、语义重复或信息量低的引用。
+6. citations 必须去重，只保留代表性证据；优先保留包含具体渠道、站点、价格、联系人、操作方法、上游/下游链路、风控/封号/诈骗迹象的引用。不要保留内容完全重复、语义重复或信息量低的引用。超过 14 天的 citation 采纳度降低，除非它证明的是仍持续有效的渠道、账号、链路或长期风险模式，否则不要优先保留。
 7. findings_merged_count 是被合并（去重）的 finding 数量。
 8. findings_deduplicated_count 是去重掉的 citation 数量。
 9. 所有字段必须存在，无内容字段使用空字符串或空数组，不要使用 null。
