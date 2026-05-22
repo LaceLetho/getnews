@@ -517,12 +517,7 @@ class IntelligenceCommandsMixin:
             payload = merged.finding_payload if isinstance(merged.finding_payload, dict) else {}
             topic_name = esc(str(payload.get("topic_name", topic_id)))
             summary = esc(str(payload.get("summary") or payload.get("merge_summary") or "")[:500])
-            text = (
-                f"\u2705 *合并完成*\n\n"
-                f"*主题*: {topic_name}\n"
-                f"*合并后发现ID*: `{esc(merged.id)}`\n"
-                f"*摘要*: {summary}"
-            )
+            text = f"\u2705 *合并完成*\n\n" f"*主题*: {topic_name}\n" f"*摘要*: {summary}"
             await msg.reply_text(text, parse_mode="Markdown")
             self._log_command_execution("/topic_merge", user_id, username, topic_id, True, "")
         except MergePreviewError as e:

@@ -258,7 +258,8 @@ def test_topic_merge():
             assert reply is not None
             text = reply.args[0] if reply.args else ""
             assert "合并完成" in text
-            assert "merged-001" in text
+            assert "合并后发现ID" not in text
+            assert "merged-001" not in text
 
 
 def test_topic_merge_sends_progress_before_failure():

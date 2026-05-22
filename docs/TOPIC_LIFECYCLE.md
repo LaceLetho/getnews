@@ -151,7 +151,6 @@ Topic ID: abc123-def456
 ```
 ✅ 合并完成
 主题: Bitcoin ETF
-合并后发现ID: finding-xxx-yyy
 摘要: [合并后的综合摘要]
 ```
 
