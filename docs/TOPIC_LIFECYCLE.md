@@ -151,6 +151,9 @@ Topic ID: abc123-def456
 ```
 ✅ 合并完成
 主题: Bitcoin ETF
+
+合并统计: 12 条 findings → 4 条 findings；去除 18 条 citations
+
 摘要: [合并后的综合摘要]
 ```
 

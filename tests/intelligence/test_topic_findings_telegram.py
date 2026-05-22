@@ -238,11 +238,17 @@ def test_topic_merge():
             "merge_summary": "Merged 3 findings about ETF flows...",
         },
     )
+    fake_result = SimpleNamespace(
+        primary_finding=fake_merged,
+        source_findings_count=3,
+        merged_findings_count=2,
+        removed_citations_count=4,
+    )
     repo = Mock()
     repo.get_active_topic_prompt.return_value = SimpleNamespace(id="prompt-001")
 
     merge_service = Mock()
-    merge_service.merge_topic = AsyncMock(return_value=fake_merged)
+    merge_service.merge_topic = AsyncMock(return_value=fake_result)
 
     with patch.object(handler, "_get_topic_finding_merge_service", return_value=merge_service):
         with patch.object(handler, "_get_intelligence_repository", return_value=repo):
@@ -258,6 +264,8 @@ def test_topic_merge():
             assert reply is not None
             text = reply.args[0] if reply.args else ""
             assert "合并完成" in text
+            assert "3 条 findings → 2 条 findings" in text
+            assert "去除 4 条 citations" in text
             assert "合并后发现ID" not in text
             assert "merged-001" not in text
 

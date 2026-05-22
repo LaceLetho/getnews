@@ -23,6 +23,7 @@ from crypto_news_analyzer.domain.models import (
 )
 from crypto_news_analyzer.intelligence.topic_findings import (
     MergePreviewError,
+    TopicMergeResult,
     TopicFindingMergeService,
 )
 from crypto_news_analyzer.models import StorageConfig
@@ -376,10 +377,17 @@ def test_direct_merge_archives_sources_without_persisted_preview() -> None:
     source_ids = _make_findings(repo, topic_id, prompt_id)
 
     service = TopicFindingMergeService(repo, FakeLLMClient(_valid_merge_payload()))
-    merged = asyncio.run(service.merge_topic(topic_id, prompt_id, operator="operator-01"))
+    merge_result = asyncio.run(service.merge_topic(topic_id, prompt_id, operator="operator-01"))
+    assert isinstance(merge_result, TopicMergeResult)
+    merged = merge_result.primary_finding
 
     assert merged.intelligence_topic_id == topic_id
     assert merged.status == TopicFindingStatus.ACTIVE.value
+    assert merge_result.source_findings_count == 3
+    assert merge_result.merged_findings_count == 2
+    assert merge_result.source_citations_count == 3
+    assert merge_result.merged_citations_count == 2
+    assert merge_result.removed_citations_count == 1
     assert repo.previews == {}
 
     for source_id in source_ids:

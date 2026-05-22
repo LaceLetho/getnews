@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
@@ -85,6 +86,25 @@ class TopicFindingsMergeOutput(BaseModel):
 
 class MergePreviewError(ValueError):
     """Raised when a topic finding merge operation cannot be completed."""
+
+
+@dataclass
+class TopicMergeResult:
+    """Result metadata for a direct topic finding merge."""
+
+    primary_finding: TopicFinding
+    merged_findings: List[TopicFinding]
+    source_findings_count: int
+    source_citations_count: int
+    merged_citations_count: int
+
+    @property
+    def merged_findings_count(self) -> int:
+        return len(self.merged_findings)
+
+    @property
+    def removed_citations_count(self) -> int:
+        return max(0, self.source_citations_count - self.merged_citations_count)
 
 
 class TopicFindingMergeService:
@@ -177,7 +197,7 @@ class TopicFindingMergeService:
         topic_id: str,
         prompt_version_id: str,
         operator: Optional[str] = None,
-    ) -> TopicFinding:
+    ) -> TopicMergeResult:
         """Merge active findings immediately without a persisted approval preview."""
         logger.info(
             f"Merging topic findings directly: topic_id={topic_id}, "
@@ -187,6 +207,9 @@ class TopicFindingMergeService:
         logger.info(f"Found {len(active_findings)} active findings for topic_id={topic_id}")
         if len(active_findings) < 2:
             raise MergePreviewError("at least two active findings are required for merge")
+        source_citations_count = sum(
+            self._finding_citation_count(finding) for finding in active_findings
+        )
 
         prompt = self.repository.get_topic_prompt_by_id(prompt_version_id)
         if prompt is None:
@@ -221,11 +244,21 @@ class TopicFindingMergeService:
             expires_at=datetime.utcnow() + timedelta(hours=24),
             created_by=operator,
         )
-        return self._apply_merge_snapshot(
+        saved_findings = self._apply_merge_snapshot(
             merge_snapshot,
             prompt_version_id=prompt_version_id,
             operator=operator,
             mark_preview_applied=False,
+        )
+        merged_citations_count = sum(
+            self._finding_citation_count(finding) for finding in saved_findings
+        )
+        return TopicMergeResult(
+            primary_finding=saved_findings[0],
+            merged_findings=saved_findings,
+            source_findings_count=len(active_findings),
+            source_citations_count=source_citations_count,
+            merged_citations_count=merged_citations_count,
         )
 
     def accept_merge_preview(
@@ -264,12 +297,13 @@ class TopicFindingMergeService:
         active_prompt = self.repository.get_active_topic_prompt(preview.intelligence_topic_id)
         prompt_version_id = active_prompt.id if active_prompt else preview.id
 
-        return self._apply_merge_snapshot(
+        saved_findings = self._apply_merge_snapshot(
             preview,
             prompt_version_id=prompt_version_id,
             operator=operator,
             mark_preview_applied=True,
         )
+        return saved_findings[0]
 
     def _apply_merge_snapshot(
         self,
@@ -277,7 +311,7 @@ class TopicFindingMergeService:
         prompt_version_id: str,
         operator: Optional[str],
         mark_preview_applied: bool,
-    ) -> TopicFinding:
+    ) -> List[TopicFinding]:
         merged_findings = self._build_merged_findings(preview, prompt_version_id)
         if not merged_findings:
             raise MergePreviewError("merge preview did not produce findings")
@@ -311,7 +345,7 @@ class TopicFindingMergeService:
         if mark_preview_applied:
             self._set_preview_applied(preview.id)
 
-        return saved_findings[0]
+        return saved_findings
 
     def reject_merge_preview(self, preview_id: str) -> None:
         """Reject a merge preview: mark it as cancelled."""
@@ -442,6 +476,14 @@ class TopicFindingMergeService:
                 payload.get("citations") or finding.citations,
             ),
         }
+
+    def _finding_citation_count(self, finding: TopicFinding) -> int:
+        citations = finding.citations
+        if isinstance(citations, list):
+            return len(citations)
+        payload = finding.finding_payload if isinstance(finding.finding_payload, dict) else {}
+        payload_citations = payload.get("citations")
+        return len(payload_citations) if isinstance(payload_citations, list) else 0
 
     def _compact_citations(
         self,

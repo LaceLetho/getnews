@@ -507,17 +507,26 @@ class IntelligenceCommandsMixin:
                 "🔄 正在合并主题发现，请稍候。这个操作需要调用模型，完成后会发送合并结果。",
             )
 
-            merged = await merge_service.merge_topic(
+            merge_result = await merge_service.merge_topic(
                 topic_id=topic_id,
                 prompt_version_id=active_prompt.id,
                 operator=username,
             )
 
             esc = self._escape_markdown_v1
+            merged = merge_result.primary_finding
             payload = merged.finding_payload if isinstance(merged.finding_payload, dict) else {}
             topic_name = esc(str(payload.get("topic_name", topic_id)))
             summary = esc(str(payload.get("summary") or payload.get("merge_summary") or "")[:500])
-            text = f"\u2705 *合并完成*\n\n" f"*主题*: {topic_name}\n" f"*摘要*: {summary}"
+            text = (
+                f"\u2705 *合并完成*\n\n"
+                f"*主题*: {topic_name}\n\n"
+                f"*合并统计*: "
+                f"{merge_result.source_findings_count} 条 findings → "
+                f"{merge_result.merged_findings_count} 条 findings；"
+                f"去除 {merge_result.removed_citations_count} 条 citations\n\n"
+                f"*摘要*: {summary}"
+            )
             await msg.reply_text(text, parse_mode="Markdown")
             self._log_command_execution("/topic_merge", user_id, username, topic_id, True, "")
         except MergePreviewError as e:
