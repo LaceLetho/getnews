@@ -259,7 +259,8 @@ uv run flake8 crypto_news_analyzer/
 - `/topic_set_prompt <topic_id> <prompt>` - 手动设置主题提示词
 - `/topic_confirm <topic_id>` - 确认并激活主题
 - `/topic_list` - 查看主题列表
-- `/topic_detail <topic_id>` - 查看主题详情和研究成果
+- `/topic_findings <topic_id>` - 查看主题研究成果
+- `/topic_prompt <topic_id>` - 查看主题提示词
 - `/topic_merge <topic_id>` - 合并主题研究成果
 - `/topic_pause <topic_id>` - 暂停主题研究
 - `/topic_archive <topic_id>` - 归档主题

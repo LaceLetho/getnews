@@ -1,7 +1,7 @@
 """Intelligence domain Telegram command handlers (mixin for TelegramCommandHandler).
 
 Contains /topic_* command handlers for the intelligence topic research lifecycle:
-create, revise, set_prompt, confirm, merge, pause, archive, list, detail.
+create, revise, set_prompt, confirm, merge, pause, archive, list, findings, prompt.
 """
 
 import asyncio
@@ -787,7 +787,7 @@ class IntelligenceCommandsMixin:
         except Exception as e:
             return f"❌ 查询失败: {str(e)}"
 
-    async def _handle_topic_detail_command(self, update: Any, context: Any) -> None:
+    async def _handle_topic_findings_command(self, update: Any, context: Any) -> None:
         try:
             msg = update.effective_message or update.message
             if msg is None:
@@ -802,10 +802,10 @@ class IntelligenceCommandsMixin:
             parts = (msg.text or "").split(maxsplit=1)
             topic_id = parts[1].strip() if len(parts) > 1 else ""
             if not topic_id:
-                await msg.reply_text("用法: /topic_detail <topic_id>")
+                await msg.reply_text("用法: /topic_findings <topic_id>")
                 return
 
-            payload = self.handle_topic_detail_command(
+            payload = self.handle_topic_findings_command(
                 user_id, username, topic_id, return_markup=True
             )
             if isinstance(payload, dict):
@@ -859,7 +859,7 @@ class IntelligenceCommandsMixin:
                     state_payload = dict(payload.get("state_data", {}))
                     state_payload.update(
                         {
-                            "kind": "topic_detail",
+                            "kind": "topic_findings",
                             "topic_id": topic_id,
                             "user_id": user_id,
                             "findings": findings,
@@ -873,12 +873,40 @@ class IntelligenceCommandsMixin:
                 total = len(chunks)
                 for i, chunk in enumerate(chunks):
                     if total > 1:
-                        chunk = f"🔬 主题详情 ({i + 1}/{total})\n\n" + chunk
+                        chunk = f"🔍 主题发现 ({i + 1}/{total})\n\n" + chunk
                     await msg.reply_text(chunk, parse_mode="Markdown")
         except Exception as e:
-            self.logger.error(f"处理/topic_detail命令时发生错误: {e}")
+            self.logger.error(f"处理/topic_findings命令时发生错误: {e}")
 
-    def handle_topic_detail_command(
+    async def _handle_topic_prompt_command(self, update: Any, context: Any) -> None:
+        try:
+            msg = update.effective_message or update.message
+            if msg is None:
+                return
+            user_id = str(update.effective_user.id if update.effective_user else "unknown")
+            username = update.effective_user.username if update.effective_user else "unknown"
+
+            if not self.is_authorized_user(user_id, username):
+                await msg.reply_text("\u274c 权限拒绝")
+                return
+
+            parts = (msg.text or "").split(maxsplit=1)
+            topic_id = parts[1].strip() if len(parts) > 1 else ""
+            if not topic_id:
+                await msg.reply_text("用法: /topic_prompt <topic_id>")
+                return
+
+            response = self.handle_topic_prompt_command(user_id, username, topic_id)
+            chunks = self._split_text_for_telegram(str(response))
+            total = len(chunks)
+            for i, chunk in enumerate(chunks):
+                if total > 1:
+                    chunk = f"✏️ 主题提示词 ({i + 1}/{total})\n\n" + chunk
+                await msg.reply_text(chunk, parse_mode="Markdown")
+        except Exception as e:
+            self.logger.error(f"处理/topic_prompt命令时发生错误: {e}")
+
+    def handle_topic_findings_command(
         self,
         user_id: str,
         username: str,
@@ -894,7 +922,7 @@ class IntelligenceCommandsMixin:
             if topic is None:
                 return "❌ 主题未找到"
             esc = self._escape_markdown_v1
-            lines: List[str] = [f"🔬 {esc(topic.name)}\n"]
+            lines: List[str] = [f"🔍 {esc(topic.name)}\n"]
 
             page_size = 10
             offset = (page - 1) * page_size
@@ -947,26 +975,18 @@ class IntelligenceCommandsMixin:
                         )
                 lines.append("")
 
-            active_prompt = repository.get_active_topic_prompt(topic_id)
-            if active_prompt:
-                prompt_text = active_prompt.prompt_text.replace("```", "'''")
-                max_prompt_chars = 1200
-                truncated = len(prompt_text) > max_prompt_chars
-                safe_prompt = prompt_text[:max_prompt_chars]
-                if truncated:
-                    safe_prompt = f"{safe_prompt}\n..."
-                lines.append(
-                    f"*✏️ 当前提示词 (v{esc(active_prompt.prompt_version)})*\n"
-                    f"```\n{safe_prompt}\n```\n"
-                )
+            if not active_findings:
+                lines.append("暂无活跃研究发现\n")
+
+            if total_pages > 1:
+                lines.append(f"📄 第 {page}/{total_pages} 页")
 
             if return_markup:
-                if total_pages > 1:
-                    lines.append(
-                        f"📄 第 {page}/{total_pages} 页 | 💡 点击按钮查看原文，点击「更多」翻页"
-                    )
-                else:
-                    lines.append("💡 点击下方按钮查看每条发现的原数据来源")
+                if findings_info:
+                    if total_pages > 1:
+                        lines.append("💡 点击按钮查看原文，点击「更多」翻页")
+                    else:
+                        lines.append("💡 点击下方按钮查看每条发现的原数据来源")
                 return {
                     "text": "\n".join(lines),
                     "state_data": {},
@@ -977,7 +997,38 @@ class IntelligenceCommandsMixin:
                     "has_more": has_more,
                 }
 
-            self._log_command_execution("/topic_detail", user_id, username, topic_id, True, "")
+            self._log_command_execution("/topic_findings", user_id, username, topic_id, True, "")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"❌ 查询失败: {str(e)}"
+
+    def handle_topic_prompt_command(
+        self,
+        user_id: str,
+        username: str,
+        topic_id: str,
+    ) -> str:
+        try:
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                return "❌ 情报仓储未初始化"
+            topic = repository.get_topic_by_id(topic_id)
+            if topic is None:
+                return "❌ 主题未找到"
+            esc = self._escape_markdown_v1
+            lines: List[str] = [f"✏️ {esc(topic.name)}\n"]
+
+            active_prompt = repository.get_active_topic_prompt(topic_id)
+            if active_prompt:
+                prompt_text = active_prompt.prompt_text.replace("```", "'''")
+                lines.append(
+                    f"*✏️ 当前提示词 (v{esc(active_prompt.prompt_version)})*\n"
+                    f"```\n{prompt_text}\n```\n"
+                )
+            else:
+                lines.append("暂无激活提示词")
+
+            self._log_command_execution("/topic_prompt", user_id, username, topic_id, True, "")
             return "\n".join(lines)
         except Exception as e:
             return f"❌ 查询失败: {str(e)}"
@@ -1130,7 +1181,7 @@ class IntelligenceCommandsMixin:
 
                 state = self._get_callback_state(token)
                 if not state:
-                    await callback_query.answer("操作已过期，请重新执行 /topic_detail")
+                    await callback_query.answer("操作已过期，请重新执行 /topic_findings")
                     return
 
                 topic_id = str(state.get("topic_id", ""))
@@ -1138,7 +1189,7 @@ class IntelligenceCommandsMixin:
                     await callback_query.answer("主题数据异常")
                     return
 
-                payload = self.handle_topic_detail_command(
+                payload = self.handle_topic_findings_command(
                     str(state.get("user_id", "")),
                     "",
                     topic_id,
@@ -1155,7 +1206,7 @@ class IntelligenceCommandsMixin:
                 total_pages = int(payload.get("total_pages", 1))
                 has_more = bool(payload.get("has_more", False))
                 new_token = self._generate_callback_token()
-                keyboard: List[List[InlineKeyboardButton]] = []
+                findings_keyboard: List[List[InlineKeyboardButton]] = []
                 for i, finding_info in enumerate(findings):
                     source_count = int(finding_info.get("source_count", 0))
                     idx = int(finding_info.get("index", 0))
@@ -1164,7 +1215,7 @@ class IntelligenceCommandsMixin:
                         if source_count == 0
                         else f"#{idx} 查看原文 📎({source_count})"
                     )
-                    keyboard.append(
+                    findings_keyboard.append(
                         [
                             InlineKeyboardButton(
                                 label,
@@ -1173,7 +1224,7 @@ class IntelligenceCommandsMixin:
                         ]
                     )
                 if has_more:
-                    keyboard.append(
+                    findings_keyboard.append(
                         [
                             InlineKeyboardButton(
                                 f"📄 更多 (第 {current_page + 1}/{total_pages} 页)",
@@ -1181,12 +1232,12 @@ class IntelligenceCommandsMixin:
                             )
                         ]
                     )
-                markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+                markup = InlineKeyboardMarkup(findings_keyboard) if findings_keyboard else None
 
                 new_state = dict(payload.get("state_data", {}))
                 new_state.update(
                     {
-                        "kind": "topic_detail",
+                        "kind": "topic_findings",
                         "topic_id": topic_id,
                         "user_id": str(state.get("user_id", "")),
                         "findings": findings,
@@ -1218,7 +1269,7 @@ class IntelligenceCommandsMixin:
 
                 state = self._get_callback_state(token)
                 if not state:
-                    await callback_query.answer("操作已过期，请重新执行 /topic_detail")
+                    await callback_query.answer("操作已过期，请重新执行 /topic_findings")
                     return
 
                 stored_findings: List[Dict[str, Any]] = list(state.get("findings", []))

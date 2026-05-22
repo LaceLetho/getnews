@@ -2,7 +2,7 @@
 
 Tests the topic-only intelligence refactor Telegram surface:
 topic_create, topic_revise, topic_set_prompt, topic_confirm,
-topic_list, topic_detail, topic_merge, topic_pause, topic_archive.
+topic_list, topic_findings, topic_prompt, topic_merge, topic_pause, topic_archive.
 """
 
 import asyncio
@@ -134,11 +134,11 @@ def test_topic_create_confirm_flow():
             assert "激活" in str(reply2.args[0] if reply2.args else "")
 
 
-# --- Topic Detail ---
+# --- Topic Findings / Prompt ---
 
 
-def test_topic_detail():
-    """/topic_detail shows topic info, prompt, and findings."""
+def test_topic_findings():
+    """/topic_findings shows topic info and findings."""
     handler = _make_handler()
     handler.is_authorized_user = Mock(return_value=True)
     handler._log_command_execution = Mock()
@@ -156,19 +156,19 @@ def test_topic_detail():
         )
     )
 
-    update = _make_update(text="/topic_detail topic-001")
-    asyncio.run(handler._handle_topic_detail_command(update, Mock()))
+    update = _make_update(text="/topic_findings topic-001")
+    asyncio.run(handler._handle_topic_findings_command(update, Mock()))
 
     reply = update.message.reply_text.await_args
     assert reply is not None
     text = reply.args[0] if reply.args else ""
     assert "BTC ETF" in text
+    assert "暂无活跃研究发现" in text
 
 
-def test_topic_detail_lists_findings_before_truncated_prompt():
+def test_topic_findings_excludes_prompt():
     handler = _make_handler()
     handler._log_command_execution = Mock()
-    long_prompt = "研究目标：" + ("保留上下文。" * 300)
     finding = SimpleNamespace(
         id="finding-merged-1",
         finding_payload={"summary": "合并后的发现"},
@@ -178,15 +178,11 @@ def test_topic_detail_lists_findings_before_truncated_prompt():
     )
     repo = Mock()
     repo.get_topic_by_id.return_value = SimpleNamespace(id="topic-001", name="BTC ETF")
-    repo.get_active_topic_prompt.return_value = SimpleNamespace(
-        prompt_version="31",
-        prompt_text=long_prompt,
-    )
     repo.list_topic_findings.return_value = [finding]
     repo.count_topic_findings.return_value = 1
     handler._get_intelligence_repository = Mock(return_value=repo)
 
-    payload = handler.handle_topic_detail_command(
+    payload = handler.handle_topic_findings_command(
         user_id="user-1",
         username="user",
         topic_id="topic-001",
@@ -194,10 +190,35 @@ def test_topic_detail_lists_findings_before_truncated_prompt():
     )
 
     text = payload["text"]
-    assert text.index("*🔍 活跃研究发现") < text.index("*✏️ 当前提示词")
+    assert "*🔍 活跃研究发现" in text
     assert "#1 合并后的发现 [90%]" in text
-    assert "..." in text
+    assert "当前提示词" not in text
     assert payload["findings"][0]["source_count"] == 1
+
+
+def test_topic_prompt_excludes_findings():
+    handler = _make_handler()
+    handler._log_command_execution = Mock()
+    long_prompt = "研究目标：" + ("保留上下文。" * 300)
+    repo = Mock()
+    repo.get_topic_by_id.return_value = SimpleNamespace(id="topic-001", name="BTC ETF")
+    repo.get_active_topic_prompt.return_value = SimpleNamespace(
+        prompt_version="31",
+        prompt_text=long_prompt,
+    )
+    handler._get_intelligence_repository = Mock(return_value=repo)
+
+    text = handler.handle_topic_prompt_command(
+        user_id="user-1",
+        username="user",
+        topic_id="topic-001",
+    )
+
+    assert "BTC ETF" in text
+    assert "*✏️ 当前提示词 (v31)*" in text
+    assert long_prompt in text
+    assert "活跃研究发现" not in text
+    repo.list_topic_findings.assert_not_called()
 
 
 # --- Topic Merge ---

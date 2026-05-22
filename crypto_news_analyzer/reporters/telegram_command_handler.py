@@ -259,7 +259,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         """Register INTELLIGENCE domain Telegram commands.
 
         Intelligence commands operate on RawIntelligenceItem and IntelligenceTopic data:
-        topic creation, revision, confirmation, listing, detail, merge, pause, archive.
+        topic creation, revision, confirmation, listing, findings, prompt, merge, pause, archive.
         """
         application.add_handler(CommandHandler("topic_create", self._handle_topic_create_command))
         application.add_handler(CommandHandler("topic_revise", self._handle_topic_revise_command))
@@ -268,7 +268,10 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         )
         application.add_handler(CommandHandler("topic_confirm", self._handle_topic_confirm_command))
         application.add_handler(CommandHandler("topic_list", self._handle_topic_list_command))
-        application.add_handler(CommandHandler("topic_detail", self._handle_topic_detail_command))
+        application.add_handler(
+            CommandHandler("topic_findings", self._handle_topic_findings_command)
+        )
+        application.add_handler(CommandHandler("topic_prompt", self._handle_topic_prompt_command))
         application.add_handler(CommandHandler("topic_merge", self._handle_topic_merge_command))
         application.add_handler(CommandHandler("topic_pause", self._handle_topic_pause_command))
         application.add_handler(CommandHandler("topic_archive", self._handle_topic_archive_command))
@@ -837,7 +840,8 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             commands.append(BotCommand("topic_set_prompt", "手动设置主题提示词"))
             commands.append(BotCommand("topic_confirm", "确认并激活主题"))
             commands.append(BotCommand("topic_list", "查看主题列表"))
-            commands.append(BotCommand("topic_detail", "查看主题详情和发现"))
+            commands.append(BotCommand("topic_findings", "查看主题发现"))
+            commands.append(BotCommand("topic_prompt", "查看主题提示词"))
             commands.append(BotCommand("topic_merge", "合并主题发现"))
             commands.append(BotCommand("topic_pause", "暂停主题"))
             commands.append(BotCommand("topic_archive", "归档主题"))
@@ -921,9 +925,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         # takes too long to respond.
         with self._webhook_update_ids_lock:
             if update_id in self._webhook_update_ids_seen:
-                self.logger.warning(
-                    f"Skipping duplicate webhook update: update_id={update_id}"
-                )
+                self.logger.warning(f"Skipping duplicate webhook update: update_id={update_id}")
                 return
             self._webhook_update_ids_seen.add(update_id)
             # Keep the set bounded: purge entries older than ~30 min of
@@ -2055,7 +2057,8 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 "topic_set_prompt",
                 "topic_confirm",
                 "topic_list",
-                "topic_detail",
+                "topic_findings",
+                "topic_prompt",
                 "topic_merge",
                 "topic_pause",
                 "topic_archive",
@@ -2145,7 +2148,8 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         help_text.append("/topic_set_prompt <topic_id> <提示词> - 手动设置主题提示词\n")
         help_text.append("/topic_confirm <topic_id> - 确认并激活主题\n")
         help_text.append("/topic_list [page] - 查看主题列表\n")
-        help_text.append("/topic_detail <topic_id> - 查看主题详情和发现\n")
+        help_text.append("/topic_findings <topic_id> - 查看主题发现\n")
+        help_text.append("/topic_prompt <topic_id> - 查看主题提示词\n")
         help_text.append("/topic_merge <topic_id> - 合并主题发现\n")
         help_text.append("/topic_pause <topic_id> - 暂停主题\n")
         help_text.append("/topic_archive <topic_id> - 归档主题\n")

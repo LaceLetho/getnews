@@ -211,15 +211,25 @@ Preview ID: preview-xxx-yyy
 
 返回主题列表，包含 topic ID、名称、状态、最新 findings 摘要等。
 
-### `/topic_detail <topic_id>`
+### `/topic_findings <topic_id>`
 
-查看单个主题的完整详情。
+查看单个主题的 active findings。
 
 ```
-用法: /topic_detail <topic_id>
+用法: /topic_findings <topic_id>
 ```
 
-返回：主题信息、所有 prompt 版本历史、所有 active findings、研究运行日志摘要。
+返回：主题信息、所有 active findings，可通过按钮查看每条 finding 的原始数据来源。
+
+### `/topic_prompt <topic_id>`
+
+查看单个主题的当前激活提示词。
+
+```
+用法: /topic_prompt <topic_id>
+```
+
+返回：主题信息、当前 active prompt 的版本号和完整提示词。
 
 ### `/topic_logs <topic_id>`
 
@@ -242,14 +252,14 @@ Preview ID: preview-xxx-yyy
    → 获得 topic_id: xxxxx
 
 2. 【审查 AI 生成的提示词】
-   → /topic_detail xxxxx  查看完整提示词
+   → /topic_prompt xxxxx  查看完整提示词
    → 如果不满意: /topic_revise xxxxx 增加对 Tron 链的关注
 
 3. /topic_confirm xxxxx
    → 激活！研究自动开始
 
 4. 【等待 1-N 个采集周期后】
-   → /topic_detail xxxxx  查看有多少 findings
+   → /topic_findings xxxxx  查看有多少 findings
 
 5. /topic_merge xxxxx
    → 生成合并预览

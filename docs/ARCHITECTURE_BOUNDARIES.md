@@ -36,7 +36,7 @@ Telegram/V2EX → RawIntelligenceItem → TopicResearchScheduler → TopicFindin
 - **Primary data models:** `RawIntelligenceItem`, `IntelligenceTopic`, `TopicPrompt`, `TopicFinding`, `TopicResearchRun`
 - **Primary modules:** `intelligence/` (pipeline, topics, topic_prompts, topic_research, topic_findings, merge, search, topic_enricher)
 - **API surfaces:** `/intelligence/*` (topics CRUD, revise, confirm, merge-preview, merge-accept)
-- **Telegram commands:** `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_detail`, `/topic_merge`, `/topic_pause`, `/topic_archive`, `/topic_logs`
+- **Telegram commands:** `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_findings`, `/topic_prompt`, `/topic_merge`, `/topic_pause`, `/topic_archive`, `/topic_logs`
 
 ### Critical Boundary Rule
 
@@ -79,7 +79,7 @@ The following surfaces are **invariant** under the current boundary-refactoring 
 
 ### Telegram Commands
 - News: `/news_analyze`, `/news_market`, `/news_semantic_search`, `/news_tokens`, `/datasource_list`, `/datasource_add`, `/datasource_delete`, `/status`, `/help` — unchanged
-- Intelligence: `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_detail`, `/topic_merge`, `/topic_pause`, `/topic_archive`, `/topic_logs` — unchanged
+- Intelligence: `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_findings`, `/topic_prompt`, `/topic_merge`, `/topic_pause`, `/topic_archive`, `/topic_logs` — unchanged
 
 ### CLI Runtime Modes
 - `--mode analysis-service` — unchanged
