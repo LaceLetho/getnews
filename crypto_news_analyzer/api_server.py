@@ -50,7 +50,6 @@ from .storage.repositories import (
     PostgresSemanticSearchRepository,
     SQLiteAnalysisRepository,
 )
-from .intelligence.topic_findings import MergePreviewError
 from .domain.repositories import IntelligenceRepository
 
 if TYPE_CHECKING:
@@ -384,14 +383,6 @@ class TopicEditActiveRequest(BaseModel):
     new_prompt_text: str = Field(..., min_length=1, max_length=50000)
 
 
-class TopicCreateMergePreviewRequest(BaseModel):
-    prompt_version_id: str = Field(..., min_length=1)
-
-
-class TopicAcceptMergePreviewRequest(BaseModel):
-    preview_id: str = Field(..., min_length=1)
-
-
 class TopicPromptVersionResponse(BaseModel):
     id: str
     intelligence_topic_id: str
@@ -430,16 +421,6 @@ class TopicDetailResponse(BaseModel):
     active_findings: List[TopicFindingResponse] = Field(default_factory=list)
     citations: List[Dict[str, Any]] = Field(default_factory=list)
     merge_available: bool = False
-
-
-class MergePreviewResponse(BaseModel):
-    preview_id: str
-    topic_id: str
-    state: str
-    content_hash: str
-    expires_at: Optional[str] = None
-    preview_payload: Dict[str, Any] = Field(default_factory=dict)
-    created_at: Optional[str] = None
 
 
 class TopicLifecycleActionResponse(BaseModel):
@@ -1507,73 +1488,6 @@ def register_intelligence_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=500, detail=str(exc))
 
         return _prompt_to_response(prompt)
-
-    @app.post(
-        "/intelligence/topics/{topic_id}/merge-preview",
-        response_model=MergePreviewResponse,
-        status_code=201,
-    )
-    async def create_merge_preview(
-        topic_id: str,
-        request_body: TopicCreateMergePreviewRequest,
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-    ):
-        """Create a persisted merge preview from active findings."""
-        controller = _get_controller(req)
-        repository = _get_intelligence_repository(req)
-        service = _get_topic_finding_merge_service(controller, repository)
-
-        try:
-            preview = await service.create_merge_preview(
-                topic_id=topic_id,
-                prompt_version_id=request_body.prompt_version_id,
-                created_by="api",
-            )
-        except MergePreviewError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        except Exception as exc:
-            logger.error(f"Failed to create merge preview: {exc}")
-            raise HTTPException(status_code=500, detail=str(exc))
-
-        return MergePreviewResponse(
-            preview_id=str(preview.id),
-            topic_id=str(preview.intelligence_topic_id),
-            state=str(preview.state),
-            content_hash=str(preview.content_hash),
-            expires_at=_datetime_to_iso(preview.expires_at),
-            preview_payload=dict(getattr(preview, "preview_payload", {}) or {}),
-            created_at=_datetime_to_iso(getattr(preview, "created_at", None)),
-        )
-
-    @app.post(
-        "/intelligence/topics/{topic_id}/merge-accept",
-        response_model=TopicFindingResponse,
-    )
-    async def accept_merge_preview(
-        topic_id: str,
-        request_body: TopicAcceptMergePreviewRequest,
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-    ):
-        """Accept a merge preview: verify validity, persist merged finding, archive sources."""
-        controller = _get_controller(req)
-        repository = _get_intelligence_repository(req)
-        service = _get_topic_finding_merge_service(controller, repository)
-
-        try:
-            merged = service.accept_merge_preview(
-                preview_id=request_body.preview_id,
-                expected_topic_id=topic_id,
-                operator="api",
-            )
-        except MergePreviewError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        except Exception as exc:
-            logger.error(f"Failed to accept merge preview: {exc}")
-            raise HTTPException(status_code=500, detail=str(exc))
-
-        return _finding_to_response(merged)
 
     @app.post(
         "/intelligence/topics/{topic_id}/pause",

@@ -370,6 +370,24 @@ def test_merge_accept_archives_exact_sources() -> None:
     }
 
 
+def test_direct_merge_archives_sources_without_persisted_preview() -> None:
+    repo = InMemoryTopicRepository()
+    topic_id, prompt_id = _make_topic_and_prompt(repo)
+    source_ids = _make_findings(repo, topic_id, prompt_id)
+
+    service = TopicFindingMergeService(repo, FakeLLMClient(_valid_merge_payload()))
+    merged = asyncio.run(service.merge_topic(topic_id, prompt_id, operator="operator-01"))
+
+    assert merged.intelligence_topic_id == topic_id
+    assert merged.status == TopicFindingStatus.ACTIVE.value
+    assert repo.previews == {}
+
+    for source_id in source_ids:
+        archived = repo.get_topic_finding_by_id(source_id)
+        assert archived is not None
+        assert archived.status == TopicFindingStatus.SUPERSEDED.value
+
+
 def test_stale_merge_preview_rejected() -> None:
     repo = InMemoryTopicRepository()
     topic_id, prompt_id = _make_topic_and_prompt(repo)
@@ -608,8 +626,6 @@ def test_unauthorized_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
             ("post", "/intelligence/topics/topic-1/revise"),
             ("put", "/intelligence/topics/topic-1/prompt"),
             ("post", "/intelligence/topics/topic-1/confirm"),
-            ("post", "/intelligence/topics/topic-1/merge-preview"),
-            ("post", "/intelligence/topics/topic-1/merge-accept"),
             ("post", "/intelligence/topics/topic-1/pause"),
             ("post", "/intelligence/topics/topic-1/archive"),
             ("get", "/intelligence/topics/topic-1"),
@@ -679,98 +695,24 @@ def test_topic_detail_includes_findings(monkeypatch: pytest.MonkeyPatch) -> None
         assert data["active_findings"][0]["id"] in finding_ids
 
 
-def test_merge_preview_via_api(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_merge_preview_and_accept_api_removed(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = InMemoryTopicRepository()
     topic_id, prompt_id = _make_topic_and_prompt(repo)
-    _make_findings(repo, topic_id, prompt_id)
 
-    controller = _TopicApiFakeController(repo, _valid_merge_payload())
-    with _build_topic_test_app(monkeypatch, controller) as client:
-        resp = client.post(
-            f"/intelligence/topics/{topic_id}/merge-preview",
-            headers=_authorized(),
-            json={"prompt_version_id": prompt_id},
-        )
-        assert resp.status_code == 201, resp.text
-        data = resp.json()
-        assert data["preview_id"]
-        assert data["topic_id"] == topic_id
-        assert data["state"] == "pending"
-        assert data["expires_at"] is not None
-
-
-def test_merge_accept_via_api(monkeypatch: pytest.MonkeyPatch) -> None:
-    repo = InMemoryTopicRepository()
-    topic_id, prompt_id = _make_topic_and_prompt(repo)
-    _make_findings(repo, topic_id, prompt_id)
-
-    controller = _TopicApiFakeController(repo, _valid_merge_payload())
-    with _build_topic_test_app(monkeypatch, controller) as client:
-        preview_resp = client.post(
-            f"/intelligence/topics/{topic_id}/merge-preview",
-            headers=_authorized(),
-            json={"prompt_version_id": prompt_id},
-        )
-        preview_id = preview_resp.json()["preview_id"]
-
-        accept_resp = client.post(
-            f"/intelligence/topics/{topic_id}/merge-accept",
-            headers=_authorized(),
-            json={"preview_id": preview_id},
-        )
-        assert accept_resp.status_code == 200, accept_resp.text
-        merged = accept_resp.json()
-        assert merged["intelligence_topic_id"] == topic_id
-        assert merged["status"] == "active"
-
-
-def test_stale_merge_preview_via_api(monkeypatch: pytest.MonkeyPatch) -> None:
-    repo = InMemoryTopicRepository()
-    topic_id, prompt_id = _make_topic_and_prompt(repo)
-    _make_findings(repo, topic_id, prompt_id)
-
-    controller = _TopicApiFakeController(repo, _valid_merge_payload())
-    with _build_topic_test_app(monkeypatch, controller) as client:
-        preview_resp = client.post(
-            f"/intelligence/topics/{topic_id}/merge-preview",
-            headers=_authorized(),
-            json={"prompt_version_id": prompt_id},
-        )
-        preview_id = preview_resp.json()["preview_id"]
-
-        new_f = TopicFinding.create(
-            intelligence_topic_id=topic_id,
-            prompt_version_id=prompt_id,
-            finding_payload={"summary": "new finding", "severity": "high"},
-            content_hash="hash-new",
-            citations=[{"message_id": "raw-new", "message_snippet": "new evidence"}],
-            source_raw_item_ids=["raw-new"],
-            confidence=0.9,
-        )
-        new_f.id = "finding-new"
-        repo.create_topic_finding(new_f)
-
-        accept_resp = client.post(
-            f"/intelligence/topics/{topic_id}/merge-accept",
-            headers=_authorized(),
-            json={"preview_id": preview_id},
-        )
-        assert accept_resp.status_code == 400, accept_resp.text
-        assert "changed" in accept_resp.json()["detail"].lower()
-
-
-def test_merge_accept_missing_preview(monkeypatch: pytest.MonkeyPatch) -> None:
-    repo = InMemoryTopicRepository()
-    topic_id, _ = _make_topic_and_prompt(repo)
     controller = _TopicApiFakeController(repo)
     with _build_topic_test_app(monkeypatch, controller) as client:
-        resp = client.post(
+        preview_resp = client.post(
+            f"/intelligence/topics/{topic_id}/merge-preview",
+            headers=_authorized(),
+            json={"prompt_version_id": prompt_id},
+        )
+        accept_resp = client.post(
             f"/intelligence/topics/{topic_id}/merge-accept",
             headers=_authorized(),
-            json={"preview_id": "nonexistent-preview"},
+            json={"preview_id": "preview-001"},
         )
-        assert resp.status_code == 400
-        assert "not found" in resp.json()["detail"].lower()
+        assert preview_resp.status_code == 404
+        assert accept_resp.status_code == 404
 
 
 def test_pause_topic(monkeypatch: pytest.MonkeyPatch) -> None:

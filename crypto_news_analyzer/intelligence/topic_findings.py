@@ -1,4 +1,4 @@
-"""Topic-only finding merge preview and accept workflow services."""
+"""Topic-only finding merge workflow services."""
 
 from __future__ import annotations
 
@@ -84,11 +84,11 @@ class TopicFindingsMergeOutput(BaseModel):
 
 
 class MergePreviewError(ValueError):
-    """Raised when a merge preview operation cannot be completed."""
+    """Raised when a topic finding merge operation cannot be completed."""
 
 
 class TopicFindingMergeService:
-    """Service for creating merge previews and accepting/rejecting them."""
+    """Service for merging active topic findings."""
 
     def __init__(
         self,
@@ -172,6 +172,62 @@ class TopicFindingMergeService:
                 return cast(MergePreview, existing)
         return preview
 
+    async def merge_topic(
+        self,
+        topic_id: str,
+        prompt_version_id: str,
+        operator: Optional[str] = None,
+    ) -> TopicFinding:
+        """Merge active findings immediately without a persisted approval preview."""
+        logger.info(
+            f"Merging topic findings directly: topic_id={topic_id}, "
+            f"prompt_version_id={prompt_version_id}, operator={operator}"
+        )
+        active_findings = self.repository.list_active_findings(topic_id)
+        logger.info(f"Found {len(active_findings)} active findings for topic_id={topic_id}")
+        if len(active_findings) < 2:
+            raise MergePreviewError("at least two active findings are required for merge")
+
+        prompt = self.repository.get_topic_prompt_by_id(prompt_version_id)
+        if prompt is None:
+            raise MergePreviewError("prompt version not found")
+
+        logger.info(
+            f"Calling LLM for direct merge: topic_id={topic_id}, "
+            f"model={self.model_name}, findings_count={len(active_findings)}"
+        )
+        raw_output = await asyncio.to_thread(self._call_llm, topic_id, prompt, active_findings)
+        logger.info(f"LLM direct merge response received: {len(raw_output)} chars")
+        parsed = self._parse_merge_output(raw_output)
+
+        preview_payload = parsed.model_dump()
+        content_hash = hashlib.sha256(
+            json.dumps(
+                {
+                    "topic_id": topic_id,
+                    "prompt_version_id": prompt_version_id,
+                    "merge_output": preview_payload,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+
+        merge_snapshot = MergePreview.create(
+            intelligence_topic_id=topic_id,
+            source_finding_ids=[f.id for f in active_findings],
+            preview_payload=preview_payload,
+            content_hash=content_hash,
+            expires_at=datetime.utcnow() + timedelta(hours=24),
+            created_by=operator,
+        )
+        return self._apply_merge_snapshot(
+            merge_snapshot,
+            prompt_version_id=prompt_version_id,
+            operator=operator,
+            mark_preview_applied=False,
+        )
+
     def accept_merge_preview(
         self,
         preview_id: str,
@@ -208,6 +264,20 @@ class TopicFindingMergeService:
         active_prompt = self.repository.get_active_topic_prompt(preview.intelligence_topic_id)
         prompt_version_id = active_prompt.id if active_prompt else preview.id
 
+        return self._apply_merge_snapshot(
+            preview,
+            prompt_version_id=prompt_version_id,
+            operator=operator,
+            mark_preview_applied=True,
+        )
+
+    def _apply_merge_snapshot(
+        self,
+        preview: MergePreview,
+        prompt_version_id: str,
+        operator: Optional[str],
+        mark_preview_applied: bool,
+    ) -> TopicFinding:
         merged_findings = self._build_merged_findings(preview, prompt_version_id)
         if not merged_findings:
             raise MergePreviewError("merge preview did not produce findings")
@@ -218,6 +288,7 @@ class TopicFindingMergeService:
             saved = self.repository.get_topic_finding_by_id(saved_id)
             saved_findings.append(saved or merged_finding)
 
+        preview_source_ids = sorted(set(preview.source_finding_ids))
         superseded_by_by_source: Dict[str, str] = {}
         fallback_merged_id = saved_findings[0].id
         for merged_finding in saved_findings:
@@ -237,7 +308,8 @@ class TopicFindingMergeService:
             )
             self.repository.archive_topic_finding(archive)
 
-        self._set_preview_applied(preview_id)
+        if mark_preview_applied:
+            self._set_preview_applied(preview.id)
 
         return saved_findings[0]
 

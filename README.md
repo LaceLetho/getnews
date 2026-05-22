@@ -338,8 +338,6 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - `POST /intelligence/topics/{id}/confirm` - 确认激活
 - `GET /intelligence/topics` - 列出主题
 - `GET /intelligence/topics/{id}` - 主题详情（含提示词版本和研究成果）
-- `POST /intelligence/topics/{id}/merge-preview` - 创建合并预览
-- `POST /intelligence/topics/{id}/merge-accept` - 接受合并
 
 ### 创建分析任务
 

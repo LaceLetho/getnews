@@ -504,60 +504,26 @@ class IntelligenceCommandsMixin:
 
             await self._reply_text_with_timeout(
                 msg,
-                "🔄 正在生成合并预览，请稍候。这个操作需要调用模型，完成后会发送预览结果。",
+                "🔄 正在合并主题发现，请稍候。这个操作需要调用模型，完成后会发送合并结果。",
             )
 
-            preview = await merge_service.create_merge_preview(
+            merged = await merge_service.merge_topic(
                 topic_id=topic_id,
                 prompt_version_id=active_prompt.id,
-                created_by=username,
+                operator=username,
             )
 
             esc = self._escape_markdown_v1
-            preview_data = preview.preview_payload
-            topic_name = esc(preview_data.get("topic_name", topic_id))
-            merge_summary = esc(str(preview_data.get("merge_summary", ""))[:300])
-            findings_count = len(preview_data.get("merged_findings", []))
-            expires_at_text = (
-                preview.expires_at.strftime("%Y-%m-%d %H:%M UTC") if preview.expires_at else "N/A"
-            )
-
+            payload = merged.finding_payload if isinstance(merged.finding_payload, dict) else {}
+            topic_name = esc(str(payload.get("topic_name", topic_id)))
+            summary = esc(str(payload.get("summary") or payload.get("merge_summary") or "")[:500])
             text = (
-                f"\U0001f500 *合并预览*\n\n"
+                f"\u2705 *合并完成*\n\n"
                 f"*主题*: {topic_name}\n"
-                f"*合并发现数*: {findings_count}\n"
-                f"*摘要*: {merge_summary}\n\n"
-                f"*Preview ID*: `{esc(preview.id)}`\n"
-                f"*过期时间*: {expires_at_text}"
+                f"*合并后发现ID*: `{esc(merged.id)}`\n"
+                f"*摘要*: {summary}"
             )
-
-            if self.application is None:
-                await msg.reply_text(text, parse_mode="Markdown")
-                return
-
-            token = self._generate_callback_token()
-            self._store_callback_state(
-                token,
-                {
-                    "chat_id": chat_id,
-                    "user_id": user_id,
-                    "kind": "topic_merge",
-                    "preview_id": preview.id,
-                    "topic_id": topic_id,
-                },
-            )
-
-            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-            keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "\u2705 接受合并", callback_data=f"topic:merge:accept:{token}"
-                    )
-                ]
-            ]
-            markup = InlineKeyboardMarkup(keyboard)
-            await msg.reply_text(text, reply_markup=markup, parse_mode="Markdown")
+            await msg.reply_text(text, parse_mode="Markdown")
             self._log_command_execution("/topic_merge", user_id, username, topic_id, True, "")
         except MergePreviewError as e:
             if msg is not None:
@@ -1056,37 +1022,7 @@ class IntelligenceCommandsMixin:
 
             # topic:merge:accept:{token}
             if data.startswith("topic:merge:accept:"):
-                token = data.split(":", 3)[3]
-                state = self._get_callback_state(token)
-                if not state:
-                    await callback_query.answer("操作已过期，请重新执行命令")
-                    return
-                preview_id = state.get("preview_id", "")
-                topic_id = state.get("topic_id", "")
-                merge_service = self._get_topic_finding_merge_service()
-                if merge_service is None:
-                    await callback_query.answer("\u5408\u5e76\u670d\u52a1\u672a\u521d\u59cb\u5316")
-                    return
-                from ...intelligence.topic_findings import MergePreviewError
-
-                try:
-                    merged = merge_service.accept_merge_preview(
-                        preview_id, expected_topic_id=topic_id, operator=username
-                    )
-                    await callback_query.answer("\u5408\u5e76\u5df2\u63a5\u53d7")
-                    esc = self._escape_markdown_v1
-                    await callback_query.message.reply_text(
-                        "\u2705 *\u5408\u5e76\u5b8c\u6210*\n\n"
-                        f"*\u4e3b\u9898*: `{esc(topic_id)}`\n"
-                        f"*\u5408\u5e76\u540e\u53d1\u73b0ID*: `{esc(merged.id)}`",
-                        parse_mode="Markdown",
-                    )
-                except MergePreviewError as e:
-                    self.logger.error(
-                        f"Merge accept failed: preview_id={preview_id}, "
-                        f"topic_id={topic_id}, error={e}"
-                    )
-                    await callback_query.answer(f"\u5408\u5e76\u5931\u8d25: {str(e)}")
+                await callback_query.answer("合并确认按钮已停用，请重新执行 /topic_merge")
                 return
 
             # topic:list:p:{token}:{page}

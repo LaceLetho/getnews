@@ -11,7 +11,6 @@
 | **Topic**（主题） | 研究主题本身，如"Bitcoin ETF 资金流" | `draft` → `active` → `paused` / `archived` |
 | **Prompt**（提示词） | 指导 LLM 如何研究的指令，支持版本管理 | `draft` → `active` → `archived` |
 | **Finding**（发现） | 每次研究产出的结构化结果 | `active` / `archived` / `superseded` |
-| **Merge Preview**（合并预览） | 合并前的人工审核快照，24 小时有效 | `pending` → `applied` / `expired` / `cancelled` |
 
 **Topic 与 Prompt 的状态是独立的**：Topic 有 `lifecycle_status`（draft/active/paused/archived），Prompt 有 `status`（draft/active/archived）。研究调度器只对 **Topic `lifecycle_status=active` 且 Prompt `status=active`** 的主题执行研究。
 
@@ -145,26 +144,20 @@ Topic ID: abc123-def456
 **发生了什么：**
 1. 检查该 topic 是否有 `status=active` 的 prompt（没有则报错"未找到活跃提示词"）
 2. 调用 merge service，收集所有 active findings，由 LLM 合并
-3. 生成 **Merge Preview**（24 小时有效），显示合并摘要
-4. 返回交互按钮：**「接受合并」** 或过期自动取消
+3. 直接生成合并后的 active finding
+4. 将所有源 findings 标记为 `superseded` 并写入归档记录
 
-**合并预览示例：**
+**合并完成示例：**
 ```
-🔄 合并预览
+✅ 合并完成
 主题: Bitcoin ETF
-合并发现数: 12
-摘要: [合并后的综合摘要，最多 300 字符]
-
-Preview ID: preview-xxx-yyy
-过期时间: 2026-05-18 15:30 UTC
-
-[ 接受合并 ]
+合并后发现ID: finding-xxx-yyy
+摘要: [合并后的综合摘要]
 ```
 
-点击「接受合并」后：
-- 所有源 findings 的 status 改为 `archived`
-- 生成一条新的合并后 finding（`status=active`）
-- Merge preview 的 state 改为 `applied`
+命令完成后：
+- 所有源 findings 的 status 改为 `superseded`
+- 生成新的合并后 finding（`status=active`）
 
 ---
 
@@ -262,8 +255,7 @@ Preview ID: preview-xxx-yyy
    → /topic_findings xxxxx  查看有多少 findings
 
 5. /topic_merge xxxxx
-   → 生成合并预览
-   → 点击「接受合并」
+   → 直接完成合并
 
 6. 【研究饱和后】
    → /topic_pause xxxxx  暂停
@@ -281,10 +273,6 @@ Preview ID: preview-xxx-yyy
 ### Q: Topic 和 Prompt 的状态有什么区别？
 
 **A:** `topic.lifecycle_status` 控制主题是否参与研究调度；`prompt.status` 控制用哪条提示词来研究。两者都是 `active` 时研究才会执行。
-
-### Q: 合并预览过期了怎么办？
-
-**A:** 重新执行 `/topic_merge <topic_id>` 即可生成新的预览。
 
 ### Q: 可以修改已激活的提示词吗？
 

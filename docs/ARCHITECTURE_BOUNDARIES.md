@@ -35,7 +35,7 @@ Telegram/V2EX → RawIntelligenceItem → TopicResearchScheduler → TopicFindin
 - **Source types:** `telegram_group`, `v2ex` (all tagged with `DataSourcePurpose.INTELLIGENCE`)
 - **Primary data models:** `RawIntelligenceItem`, `IntelligenceTopic`, `TopicPrompt`, `TopicFinding`, `TopicResearchRun`
 - **Primary modules:** `intelligence/` (pipeline, topics, topic_prompts, topic_research, topic_findings, merge, search, topic_enricher)
-- **API surfaces:** `/intelligence/*` (topics CRUD, revise, confirm, merge-preview, merge-accept)
+- **API surfaces:** `/intelligence/*` (topics CRUD, revise, confirm)
 - **Telegram commands:** `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_findings`, `/topic_prompt`, `/topic_merge`, `/topic_pause`, `/topic_archive`, `/topic_logs`
 
 ### Critical Boundary Rule

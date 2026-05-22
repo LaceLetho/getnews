@@ -78,10 +78,12 @@ def test_skill_requires_frontmatter_required_sections_and_reference_links() -> N
     frontmatter, body = _split_frontmatter(_read_text(SKILL_PATH))
 
     assert frontmatter.get("name") == "smart-news"
-    assert (
-        frontmatter.get("description")
-        == "Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, semantic search, datasource management, intelligence operations, or health checks from OpenClaw."
+    expected_description = (
+        "Use when calling the Crypto News Analyzer HTTP API for async analysis jobs, "
+        "semantic search, datasource management, intelligence operations, or health checks "
+        "from OpenClaw."
     )
+    assert frontmatter.get("description") == expected_description
     assert "primaryEnv: API_KEY" in frontmatter.get("metadata", "")
     assert body.startswith("# Crypto News HTTP API Skill")
 
@@ -132,8 +134,6 @@ def test_skill_endpoint_index_lists_only_supported_live_http_routes() -> None:
         "POST /intelligence/topics/{id}/confirm",
         "GET /intelligence/topics",
         "GET /intelligence/topics/{id}",
-        "POST /intelligence/topics/{id}/merge-preview",
-        "POST /intelligence/topics/{id}/merge-accept",
         "POST /intelligence/topics/{id}/pause",
         "POST /intelligence/topics/{id}/archive",
         "GET /intelligence/topics/{id}/runs",
@@ -158,7 +158,7 @@ def test_skill_endpoint_index_lists_only_supported_live_http_routes() -> None:
         "/datasource_delete",
     ]:
         # Avoid false substring matches (e.g. "/run" inside "/runs")
-        index_lines = [l for l in endpoint_index.split("\n") if "/runs" not in l]
+        index_lines = [line for line in endpoint_index.split("\n") if "/runs" not in line]
         check_text = "\n".join(index_lines)
         assert unsupported_surface not in check_text, (
             "Unsupported surface must not be listed as a supported HTTP endpoint: "
@@ -199,7 +199,11 @@ def test_skill_quick_reference_covers_bearer_auth_and_async_workflow() -> None:
         "does **not** return the final report",
         "Workflow: `POST /analyze` -> `GET /analyze/{job_id}` -> `GET /analyze/{job_id}/result`",
         "`POST /semantic-search` creates a job",
-        "Semantic workflow: `POST /semantic-search` -> `GET /semantic-search/{job_id}` -> `GET /semantic-search/{job_id}/result`",
+        (
+            "Semantic workflow: `POST /semantic-search` -> "
+            "`GET /semantic-search/{job_id}` -> "
+            "`GET /semantic-search/{job_id}/result`"
+        ),
         "`Retry-After`",
         "PostgreSQL with pgvector",
         "`queued`",
@@ -299,8 +303,6 @@ def test_skill_intelligence_query_section_covers_current_routes_and_state() -> N
         "`POST /intelligence/topics/{topic_id}/confirm`",
         "`GET /intelligence/topics`",
         "`GET /intelligence/topics/{topic_id}`",
-        "`POST /intelligence/topics/{topic_id}/merge-preview`",
-        "`POST /intelligence/topics/{topic_id}/merge-accept`",
         "`POST /intelligence/topics/{topic_id}/pause`",
         "`POST /intelligence/topics/{topic_id}/archive`",
         "`GET /intelligence/topics/{topic_id}/runs`",
@@ -311,7 +313,7 @@ def test_skill_intelligence_query_section_covers_current_routes_and_state() -> N
         "`paused`",
         "`archived`",
         "Topics are the sole first-class intelligence objects",
-        "Merge previews expire after 24 hours",
+        "Finding merge is performed through the Telegram `/topic_merge` command",
     ]:
         assert expected in intelligence_query, f"Missing intelligence API contract: {expected}"
 
@@ -460,8 +462,6 @@ def test_intelligence_query_reference_covers_current_routes_state_and_errors() -
         "POST /intelligence/topics/{topic_id}/confirm",
         "GET /intelligence/topics",
         "GET /intelligence/topics/{topic_id}",
-        "POST /intelligence/topics/{topic_id}/merge-preview",
-        "POST /intelligence/topics/{topic_id}/merge-accept",
         "POST /intelligence/topics/{topic_id}/pause",
         "POST /intelligence/topics/{topic_id}/archive",
         "GET /intelligence/topics/{topic_id}/runs",

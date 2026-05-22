@@ -118,8 +118,6 @@ Synchronous topic workflow endpoints:
 - `POST /intelligence/topics/{topic_id}/confirm` — Confirm and activate the topic for research (requires `prompt_version_id`)
 - `GET /intelligence/topics` — List topics with pagination and `active_only` filter (default: true)
 - `GET /intelligence/topics/{topic_id}` — Get topic detail including prompt versions, active findings, citations, merge availability, and recent run logs
-- `POST /intelligence/topics/{topic_id}/merge-preview` — Create a merge preview from active findings (requires `prompt_version_id`)
-- `POST /intelligence/topics/{topic_id}/merge-accept` — Accept a merge preview (archives source findings, creates merged finding; requires `preview_id`)
 - `POST /intelligence/topics/{topic_id}/pause` — Pause topic research
 - `POST /intelligence/topics/{topic_id}/archive` — Archive a topic
 - `GET /intelligence/topics/{topic_id}/runs` — List research run logs for a specific topic (supports `run_type` filter)
@@ -127,7 +125,7 @@ Synchronous topic workflow endpoints:
 
 These endpoints are synchronous; there is no async job/poll flow. Results return immediately.
 
-Topics have lifecycle states: `draft`, `active`, `paused`, `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours. Accepting a preview archives the exact source findings bound to it; stale previews (where active findings changed) are rejected.
+Topics have lifecycle states: `draft`, `active`, `paused`, `archived`. Only `active` topics are researched by the ingestion scheduler. Finding merge is performed through the Telegram `/topic_merge` command, not through public HTTP endpoints.
 
 ## Telegram Webhook
 
@@ -156,8 +154,6 @@ Supported HTTP routes:
 - `POST /intelligence/topics/{id}/confirm` - Confirm and activate topic
 - `GET /intelligence/topics` - List topics with status filters
 - `GET /intelligence/topics/{id}` - Get topic detail with findings
-- `POST /intelligence/topics/{id}/merge-preview` - Create merge preview
-- `POST /intelligence/topics/{id}/merge-accept` - Accept merge preview
 - `POST /intelligence/topics/{id}/pause` - Pause topic
 - `POST /intelligence/topics/{id}/archive` - Archive topic
 - `GET /intelligence/topics/{id}/runs` - List per-topic research run logs

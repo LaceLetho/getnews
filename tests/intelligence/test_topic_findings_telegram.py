@@ -6,7 +6,7 @@ topic_list, topic_findings, topic_prompt, topic_merge, topic_pause, topic_archiv
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
@@ -225,43 +225,40 @@ def test_topic_prompt_excludes_findings():
 
 
 def test_topic_merge():
-    """/topic_merge creates merge preview with accept callback button."""
+    """/topic_merge directly completes the merge."""
     handler = _make_handler()
     handler.is_authorized_user = Mock(return_value=True)
     handler._log_command_execution = Mock()
-    handler._generate_callback_token = Mock(return_value="test_token")
-    handler._store_callback_state = Mock()
 
-    fake_preview = SimpleNamespace(
-        id="preview-001",
-        preview_payload={
+    fake_merged = SimpleNamespace(
+        id="merged-001",
+        finding_payload={
             "topic_name": "BTC ETF",
+            "summary": "Merged 3 findings about ETF flows...",
             "merge_summary": "Merged 3 findings about ETF flows...",
-            "merged_findings": [{"finding_id": "f1"}, {"finding_id": "f2"}],
         },
-        expires_at=datetime.utcnow() + timedelta(hours=24),
     )
     repo = Mock()
     repo.get_active_topic_prompt.return_value = SimpleNamespace(id="prompt-001")
 
     merge_service = Mock()
-    merge_service.create_merge_preview = AsyncMock(return_value=fake_preview)
+    merge_service.merge_topic = AsyncMock(return_value=fake_merged)
 
     with patch.object(handler, "_get_topic_finding_merge_service", return_value=merge_service):
         with patch.object(handler, "_get_intelligence_repository", return_value=repo):
-            # Test without application (text-only reply)
             handler.application = None
             update = _make_update(text="/topic_merge topic-001")
             context = SimpleNamespace(args=["topic-001"])
 
             asyncio.run(handler._handle_topic_merge_command(update, context))
 
-            merge_service.create_merge_preview.assert_called_once()
+            merge_service.merge_topic.assert_called_once()
             assert update.message.reply_text.await_count == 2
             reply = update.message.reply_text.await_args
             assert reply is not None
             text = reply.args[0] if reply.args else ""
-            assert "合并预览" in text or "BTC ETF" in text
+            assert "合并完成" in text
+            assert "merged-001" in text
 
 
 def test_topic_merge_sends_progress_before_failure():
@@ -274,7 +271,7 @@ def test_topic_merge_sends_progress_before_failure():
     repo.get_active_topic_prompt.return_value = SimpleNamespace(id="prompt-001")
 
     merge_service = Mock()
-    merge_service.create_merge_preview = AsyncMock(side_effect=TimeoutError("model timeout"))
+    merge_service.merge_topic = AsyncMock(side_effect=TimeoutError("model timeout"))
 
     with patch.object(handler, "_get_topic_finding_merge_service", return_value=merge_service):
         with patch.object(handler, "_get_intelligence_repository", return_value=repo):
@@ -285,7 +282,7 @@ def test_topic_merge_sends_progress_before_failure():
 
             assert update.message.reply_text.await_count == 2
             sent_texts = [call.args[0] for call in update.message.reply_text.await_args_list]
-            assert "正在生成合并预览" in sent_texts[0]
+            assert "正在合并主题发现" in sent_texts[0]
             assert "合并失败: TimeoutError: model timeout" in sent_texts[1]
 
 
