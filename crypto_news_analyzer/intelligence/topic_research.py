@@ -65,7 +65,12 @@ class TopicCitation(BaseModel):
     @classmethod
     def snippet_length(cls, value: str) -> str:
         if len(value) > 120:
-            raise ValueError("message_snippet must not exceed 120 characters")
+            logger.warning(
+                "message_snippet 超长 (%d 字符)，自动截断至 120 字符: %s...",
+                len(value),
+                value[:60],
+            )
+            return value[:120]
         return value
 
 
@@ -102,7 +107,7 @@ class TopicResearchResult(BaseModel):
     schema_version: str = TOPIC_RESEARCH_SCHEMA_VERSION
     topic_name: str
     research_summary: str = ""
-    findings: List[TopicResearchFinding] = Field(default_factory=list, max_length=10)
+    findings: List[TopicResearchFinding] = Field(default_factory=list)
     messages_processed: int = Field(default=0, ge=0)
     messages_relevant: int = Field(default=0, ge=0)
 
@@ -120,6 +125,15 @@ class TopicResearchResult(BaseModel):
         if not normalized:
             raise ValueError("topic_name cannot be empty")
         return normalized
+
+    @model_validator(mode="after")
+    def warn_findings_overflow(self) -> "TopicResearchResult":
+        if len(self.findings) > 10:
+            logger.warning(
+                "findings 超过建议数量 (%d 条，建议上限 10 条)，结果保留不做截断",
+                len(self.findings),
+            )
+        return self
 
 
 class TopicResearchParser:
