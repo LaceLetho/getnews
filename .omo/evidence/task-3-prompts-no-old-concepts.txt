@@ -1,0 +1,49 @@
+# Evidence: Task 3 - No Old Concepts in New Prompts
+# Generated: 2026-05-15
+
+## Old Concepts Being Replaced
+
+The following patterns from prompts/intelligence_extraction_prompt.md must NOT
+appear in any of the 4 new prompt files:
+
+### Channel Extraction Fields (forbidden):
+- channel_name
+- channel_urls
+- channel_handles
+- channel_domains
+- "channels" as top-level key
+
+### Slang Extraction Fields (forbidden):
+- normalized_term
+- literal_meaning
+- contextual_meaning
+- usage_quote
+- aliases_or_variants
+- detected_language
+- "slangs" as top-level key
+
+### Intelligence Categories (forbidden as analysis targets):
+- 黑话 (slang/jargon)
+- 行业黑话 (industry slang)
+- 隐蔽渠道 (hidden channels)
+- 渠道情报 (channel intelligence)
+
+## Verification Method
+
+Tests in TestNewPromptsExcludeOldCategoryLanguage class verify:
+1. No channel extraction field names in any new prompt
+2. No slang extraction field names in any new prompt
+3. No "channels" or "slangs" as top-level JSON keys
+4. Old intelligence_extraction_prompt.md still exists on disk (not deleted)
+
+## Result
+
+All 13 exclusion tests pass. None of the 4 new prompt files contain any of
+the forbidden patterns. Source/channel information is only used as citation
+context in the research and merge prompts, never as an analysis target.
+
+## Note on Old Prompt
+
+prompts/intelligence_extraction_prompt.md is left in place as required.
+It is not referenced by any new prompt file and will be fully removed
+in a later task.

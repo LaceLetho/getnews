@@ -1,0 +1,35 @@
+# Task 7 - Test Organization by Domain
+
+## Action Taken
+
+Organized tests into domain-based directory structure:
+
+```
+tests/
+├── conftest.py          # Shared fixtures (top-level)
+├── __init__.py
+├── helpers/             # Test helpers
+├── integration/         # Integration tests
+├── news/               # 11 files moved
+├── intelligence/       # 19 files moved
+└── shared/             # 43 files moved
+├── README.md           # Created with domain groupings
+```
+
+## Verification
+
+- **pytest collection**: 1113 items collected successfully
+- **test run**: 96 failed, 938 passed, 79 skipped (same as before reorganization)
+- **pre-existing failures**: The 96 failures are pre-existing and not caused by reorganization
+- **No import rewrites needed**: All tests use absolute imports from `crypto_news_analyzer`
+- **conftest.py kept at top-level**: Fixtures remain visible to all tests
+
+## Domain Mapping
+
+- **News**: test_llm_analyzer.py, test_rss_crawler.py, test_report_generator.py, test_api_server.py, test_api_server_semantic_search.py, test_telegram_command_handler_analyze.py, test_telegram_command_handler_semantic_search.py, test_telegram_report_properties.py, test_embedding_service.py, test_semantic_search_service.py, test_category_parser.py (11 files)
+- **Intelligence**: test_intelligence_*.py, test_topic_*.py, test_raw_message_retention.py (19 files)
+- **Shared**: All others including test_config_*.py, test_storage_*.py, test_cache_*.py, test_datasource_*.py, etc. (43 files)
+
+## Note
+
+The pre-existing 96 test failures are unrelated to this reorganization - they were present before the domain grouping was created.

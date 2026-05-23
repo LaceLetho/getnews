@@ -1,0 +1,147 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.2, pytest-9.0.2, pluggy-1.6.0 -- /data/workspace/getnews/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /data/workspace/getnews
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.12.1, hypothesis-6.151.9, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items / 6 deselected / 5 selected
+
+tests/test_topic_research_scheduler.py::test_active_topic_saves_findings PASSED [ 20%]
+tests/test_topic_research_scheduler.py::test_failure_does_not_advance_checkpoint PASSED [ 40%]
+tests/test_topic_research_scheduler.py::test_skips_inactive_topics PASSED [ 60%]
+tests/test_topic_research_scheduler.py::test_no_messages PASSED          [ 80%]
+tests/test_topic_research_scheduler.py::test_idempotent_retry PASSED     [100%]/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/analyzers/dynamic_classification_manager.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: line_bits (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/analyzers/intelligence_extractor.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/analyzers/llm_analyzer.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/analyzers/market_snapshot_service.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/analyzers/prompt_manager.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/analyzers/structured_output_manager.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/analyzers/token_usage_tracker.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/api_server.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/config/__init__.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/config/llm_registry.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/config/manager.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/__init__.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/bird_dependency_manager.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/bird_wrapper.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/data_source_factory.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/data_source_interface.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/plugin_system_example.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/rest_api_crawler.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/rss_crawler.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/rss_crawler_adapter.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/x_crawler.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/crawlers/x_crawler_adapter.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/datasource_payloads.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/domain/__init__.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/domain/models.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/domain/repositories.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/execution_coordinator.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/__init__.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/merge.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/pipeline.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/search.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/topic_converger.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/topic_enricher.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/topic_findings.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/topic_prompts.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/topic_research.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/intelligence/topics.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/main.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/models.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/reporters/__init__.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/reporters/report_generator.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/reporters/telegram_command_handler.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/reporters/telegram_formatter.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/reporters/telegram_sender.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/semantic_search/__init__.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/semantic_search/backfill_runner.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/semantic_search/embedding_service.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/semantic_search/report_builder.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/semantic_search/service.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/storage/__init__.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/storage/cache_manager.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/storage/data_manager.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/storage/repositories.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/utils/__init__.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/utils/conversation_cache.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/utils/errors.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/utils/logging.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+/data/workspace/getnews/.venv/lib/python3.11/site-packages/coverage/report_core.py:113: CoverageWarning: Couldn't parse '/data/workspace/getnews/crypto_news_analyzer/utils/timezone_utils.py': Couldn't use data file '/data/workspace/getnews/.coverage': no such table: tracer (couldnt-parse); see https://coverage.readthedocs.io/en/7.13.5/messages.html#warning-couldnt-parse
+  coverage._warn(msg, slug="couldnt-parse")
+
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.11.2-final-0 ________________
+
+Name                                                Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------------------
+crypto_news_analyzer/__init__.py                        2      0   100%
+crypto_news_analyzer/analyzers/__init__.py              7      7     0%   7-20
+crypto_news_analyzer/analyzers/category_parser.py     101    101     0%   7-342
+---------------------------------------------------------------------------------
+TOTAL                                                 110    108     2%
+======================= 5 passed, 6 deselected in 1.12s ========================

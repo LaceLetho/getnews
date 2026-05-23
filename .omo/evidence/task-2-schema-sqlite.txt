@@ -1,0 +1,83 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.2, pytest-9.0.2, pluggy-1.6.0 -- /data/workspace/getnews/.venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /data/workspace/getnews
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.12.1, hypothesis-6.151.9, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 26 items / 22 deselected / 4 selected
+
+tests/test_intelligence_models.py::test_topic_lifecycle_prompt_version_and_research_run_models PASSED [ 25%]
+tests/test_intelligence_models.py::test_topic_finding_citations_merge_preview_and_archive_metadata PASSED [ 50%]
+tests/test_intelligence_models.py::test_topic_only_models_do_not_reuse_legacy_entry_channel_or_slang_vocabulary PASSED [ 75%]
+tests/test_intelligence_repositories.py::test_topic_only_sqlite_schema_and_raw_topic_id_not_intelligence_fk PASSED [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.11.2-final-0 ________________
+
+Name                                                               Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------------------------------
+crypto_news_analyzer/__init__.py                                       2      0   100%
+crypto_news_analyzer/analyzers/__init__.py                             7      7     0%   7-20
+crypto_news_analyzer/analyzers/category_parser.py                    101    101     0%   7-342
+crypto_news_analyzer/analyzers/dynamic_classification_manager.py      97     97     0%   8-346
+crypto_news_analyzer/analyzers/intelligence_extractor.py             225    225     0%   3-482
+crypto_news_analyzer/analyzers/llm_analyzer.py                       478    478     0%   13-1201
+crypto_news_analyzer/analyzers/market_snapshot_service.py            324    324     0%   8-776
+crypto_news_analyzer/analyzers/prompt_manager.py                     145    145     0%   7-368
+crypto_news_analyzer/analyzers/structured_output_manager.py          700    700     0%   7-1535
+crypto_news_analyzer/analyzers/token_usage_tracker.py                 64     64     0%   7-202
+crypto_news_analyzer/api_server.py                                  1064   1064     0%   8-2100
+crypto_news_analyzer/config/__init__.py                                0      0   100%
+crypto_news_analyzer/config/llm_registry.py                          172    102    41%   31-44, 47, 67-108, 145, 149, 153, 156, 293-300, 304-316, 320-366, 374-403, 428-430, 440
+crypto_news_analyzer/config/manager.py                               263    263     0%   7-642
+crypto_news_analyzer/crawlers/__init__.py                             18     18     0%   7-27
+crypto_news_analyzer/crawlers/bird_dependency_manager.py             254    254     0%   8-565
+crypto_news_analyzer/crawlers/bird_wrapper.py                        285    285     0%   8-665
+crypto_news_analyzer/crawlers/data_source_factory.py                 148    148     0%   7-396
+crypto_news_analyzer/crawlers/data_source_interface.py                47     47     0%   7-170
+crypto_news_analyzer/crawlers/plugin_system_example.py               148    148     0%   12-349
+crypto_news_analyzer/crawlers/rest_api_crawler.py                    233    233     0%   8-512
+crypto_news_analyzer/crawlers/rss_crawler.py                         223    223     0%   10-478
+crypto_news_analyzer/crawlers/rss_crawler_adapter.py                  78     78     0%   8-230
+crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py       176    176     0%   10-311
+crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py           299    299     0%   8-521
+crypto_news_analyzer/crawlers/x_crawler.py                           233    233     0%   9-454
+crypto_news_analyzer/crawlers/x_crawler_adapter.py                   105    105     0%   8-306
+crypto_news_analyzer/datasource_payloads.py                          289    289     0%   1-514
+crypto_news_analyzer/domain/__init__.py                                4      0   100%
+crypto_news_analyzer/domain/models.py                                847    258    70%   155, 157, 163, 165, 174-176, 186, 194-197, 204-207, 211-212, 227-246, 252, 263-264, 276, 289, 348-355, 366, 378, 395, 439-458, 470, 483, 504, 574-585, 594, 604, 621, 663, 675, 705-720, 739-740, 760, 781, 829-860, 873, 886, 893-895, 931-965, 975-977, 988-999, 1003-1031, 1056, 1059, 1073, 1145, 1148, 1151, 1154, 1157, 1160, 1212, 1215, 1218, 1221, 1224, 1230, 1233, 1286, 1289, 1292, 1332, 1335, 1338, 1342, 1346, 1380, 1383, 1423-1431, 1440-1441, 1451-1458, 1462-1472, 1488-1496, 1509-1510, 1521, 1535
+crypto_news_analyzer/domain/repositories.py                          320    108    66%   63, 68, 85, 100, 120, 138, 150, 161, 177, 182, 201, 206, 216, 233, 256, 277, 296, 301, 310, 314, 318, 322, 331, 341, 345, 349, 359, 369, 375, 379, 383, 392, 398, 402, 408, 416, 420, 426, 432, 436, 440, 444, 448, 452, 456, 462, 466, 470, 476, 482, 486, 492, 498, 504, 508, 514, 526, 536, 540, 544, 550, 554, 558, 564, 568, 579, 588, 592, 596, 608, 621, 631, 635, 641, 644, 647, 655, 658, 663, 668, 673, 676, 684, 687, 696, 701, 709, 712, 715, 724, 727, 730, 739, 749, 758, 761, 764, 767, 770, 779, 782, 785, 806, 819, 829, 839, 847, 851
+crypto_news_analyzer/execution_coordinator.py                       1039   1039     0%   17-2460
+crypto_news_analyzer/intelligence/__init__.py                          4      4     0%   3-7
+crypto_news_analyzer/intelligence/merge.py                           200    200     0%   3-360
+crypto_news_analyzer/intelligence/pipeline.py                        254    254     0%   3-452
+crypto_news_analyzer/intelligence/search.py                           57     57     0%   3-133
+crypto_news_analyzer/intelligence/topic_converger.py                 370    370     0%   3-781
+crypto_news_analyzer/intelligence/topic_enricher.py                  181    181     0%   2-308
+crypto_news_analyzer/intelligence/topics.py                           88     88     0%   2-148
+crypto_news_analyzer/main.py                                         127    127     0%   1-263
+crypto_news_analyzer/models.py                                       780    426    45%   19-25, 42, 46-63, 67-71, 75-76, 81-82, 86-88, 93-101, 105, 110-111, 124, 128-135, 139-143, 147, 152, 165, 169-176, 180-184, 188, 193, 209, 213-225, 229-233, 237, 242, 260, 269-295, 301-308, 313-315, 328, 333, 355, 358, 361, 364, 368-371, 374, 378, 383, 404, 407-430, 433-438, 441-446, 449, 453, 468, 471-502, 506-507, 517-527, 543, 546-562, 566-567, 578, 605, 608-621, 625-626, 642, 665, 668-671, 675-676, 683, 701, 704-715, 719-726, 739, 764, 768-787, 791, 796, 812-816, 820, 825, 841, 845-858, 862, 867, 871, 876-877, 891, 895-905, 909, 914, 928, 932-942, 946-950, 954-958, 962-964, 969-976, 996-1001, 1005-1007, 1012-1014, 1018, 1023-1024, 1043, 1057-1060, 1083-1084, 1088-1092, 1097-1101, 1122-1125, 1130-1134, 1151-1153, 1158-1160, 1166-1167, 1172-1174, 1187-1205, 1223-1224, 1229-1230, 1235-1241, 1246-1255, 1264-1271
+crypto_news_analyzer/reporters/__init__.py                             5      5     0%   7-36
+crypto_news_analyzer/reporters/report_generator.py                   148    148     0%   7-554
+crypto_news_analyzer/reporters/telegram_command_handler.py          2319   2319     0%   17-5215
+crypto_news_analyzer/reporters/telegram_formatter.py                 201    201     0%   7-600
+crypto_news_analyzer/reporters/telegram_sender.py                    272    272     0%   7-661
+crypto_news_analyzer/semantic_search/__init__.py                       3      3     0%   3-10
+crypto_news_analyzer/semantic_search/backfill_runner.py              122    122     0%   3-247
+crypto_news_analyzer/semantic_search/embedding_service.py            108    108     0%   3-175
+crypto_news_analyzer/semantic_search/report_builder.py                21     21     0%   3-78
+crypto_news_analyzer/semantic_search/service.py                      386    386     0%   3-867
+crypto_news_analyzer/storage/__init__.py                               3      0   100%
+crypto_news_analyzer/storage/cache_manager.py                        250    216    14%   18-20, 40-64, 71-72, 76-144, 148-193, 198-231, 234-236, 242-259, 275-317, 329-378, 385-426, 438-465, 479-499, 508-576, 591-600, 604-612, 616, 620
+crypto_news_analyzer/storage/data_manager.py                        1685   1417    16%   21-23, 54-61, 75-77, 93-236, 445, 597, 758, 765, 939-973, 982, 987, 992, 998-1014, 1024, 1040, 1060-1073, 1087-1090, 1097, 1101-1102, 1106, 1118-1182, 1185-1195, 1198-1216, 1219-1224, 1227-1233, 1252-1307, 1316-1352, 1364-1382, 1394-1431, 1440-1492, 1501-1520, 1529-1565, 1578-1613, 1619-1620, 1625-1626, 1633, 1648-1672, 1684-1709, 1730-1781, 1788-1833, 1836-1863, 1872-1935, 1944-2040, 2043-2053, 2073-2098, 2114-2174, 2177-2190, 2198-2210, 2217-2230, 2238-2281, 2288-2316, 2336-2419, 2422-2435, 2443-2455, 2467-2479, 2492-2547, 2553-2559, 2562-2575, 2583-2596, 2603-2619, 2622-2631, 2638-2654, 2657-2682, 2685-2710, 2723-2730, 2734-2736, 2739-2771, 2774-2792, 2797-2808, 2813-2821, 2824-2833, 2836-2849, 2852-2859, 2862-2915, 2918-2928, 2931-2940, 2945-2957, 2962-2971, 2974-2985, 2993-3082, 3087, 3112-3118, 3121, 3133-3152, 3157-3168, 3173-3235, 3243-3269, 3278-3287, 3292-3302, 3313-3336, 3342-3352, 3361-3383, 3388-3400, 3403, 3406, 3411-3456, 3461-3510, 3513-3525, 3528-3538, 3543-3562, 3565-3587, 3592-3616, 3624-3638, 3643-3652, 3664-3687, 3699-3769, 3774-3797, 3800-3821, 3831-3851, 3862-3881, 3886-3906, 3909-3955, 3958-3968, 3971-3978, 3983-4000, 4003-4018, 4023-4040, 4045-4057, 4062-4073, 4079-4091, 4096-4145, 4148-4183, 4186-4188, 4197-4217, 4225-4237, 4245-4290, 4293-4327, 4332-4346, 4349-4365, 4380-4397, 4432-4494, 4497-4510, 4519-4538, 4541-4553, 4561-4604, 4612-4634, 4641-4666, 4675-4691, 4715-4743, 4755-4773, 4777
+crypto_news_analyzer/storage/repositories.py                         360    226    37%   43-45, 52, 55, 70-73, 81-86, 93-97, 105, 116, 126, 136, 149, 153, 169-172, 182-188, 192-193, 202, 215, 227, 237, 240, 244-251, 261-288, 292, 300-305, 308, 311, 314, 322, 335, 343, 346, 355, 364, 371, 374, 387, 401, 411, 414, 417, 420, 423, 431, 436, 455-460, 463-466, 474-479, 485, 488-510, 514-520, 523-526, 531-538, 545-546, 549-564, 569, 572, 577-580, 583-584, 587-588, 591, 594, 597, 600-601, 606, 609-610, 613, 618, 625-628, 631-632, 637, 644, 649-650, 653, 658-663, 669-672, 690-698, 707, 715-716, 719-720, 725-726, 729, 732, 737-738, 741-742, 752-759, 767, 774, 777-778, 788, 805-814, 823, 828, 833-834, 837, 840-841, 849-852, 855, 860, 865-866, 871-874, 877, 885, 888, 897-900, 905-906, 914-917, 924, 936-945, 953, 962-963, 967-968, 975, 978, 990-996
+crypto_news_analyzer/utils/__init__.py                                 0      0   100%
+crypto_news_analyzer/utils/conversation_cache.py                      73     73     0%   5-160
+crypto_news_analyzer/utils/errors.py                                 185    109    41%   30-33, 40, 47-49, 56, 63-65, 72-76, 83-86, 93-95, 102-104, 115-119, 126-129, 136-138, 145-147, 165, 169, 176-178, 181, 184-185, 192, 195, 202, 205, 212-213, 216, 219, 226-227, 230, 233, 240-248, 262-288, 296-298, 302-304, 316-340, 348, 360-381
+crypto_news_analyzer/utils/logging.py                                114     45    61%   32, 39, 44, 48-49, 53-54, 108, 114, 128-154, 163-164, 185-186, 195-196, 206-207, 216-217, 229-248, 272-273, 286-287
+crypto_news_analyzer/utils/timezone_utils.py                          32     32     0%   7-132
+------------------------------------------------------------------------------------------------
+TOTAL                                                              16736  14921    11%
+======================= 4 passed, 22 deselected in 2.98s =======================

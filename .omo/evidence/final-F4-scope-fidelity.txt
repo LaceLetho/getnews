@@ -1,0 +1,303 @@
+F4 SCOPE FIDELITY AUDIT — "Agent Boundary Refactor"
+=====================================================
+Auditor: Scope Fidelity Agent
+Date:    2026-05-17
+Plan:    .sisyphus/plans/agent-boundary-refactor.md
+Branch:  dev (1 commit ahead of main at 316b36c)
+Baseline: git diff HEAD~10..HEAD (covers topic-only-intelligence-refactor
+          + agent-boundary-refactor combined changes)
+
+NOTE: The git diff HEAD~10..HEAD includes changes from TWO plans:
+  1. topic-only-intelligence-refactor (plan d9495dc, execution dab677f)
+  2. agent-boundary-refactor (this plan, tasks 1-8)
+Where a finding relates to the OTHER plan, it is explicitly noted.
+
+─────────────────────────────────────────────────────
+GUARDRAIL 1: MUST NOT split the repository
+─────────────────────────────────────────────────────
+RESULT: PASS
+
+Evidence:
+- Single repository at /data/workspace/getnews
+- Single top-level package: crypto_news_analyzer/
+- No new Dockerfiles (only pre-existing Dockerfile, docker-entrypoint.sh)
+- No docker-compose*.yml files exist
+- No services/, queues/, deployments/ directories exist
+- Top-level structure unchanged:
+    crypto_news_analyzer/  data/  docs/  live_tests/  logs/
+    migrations/  prompts/  scripts/  skills/  test_data/  tests/
+
+─────────────────────────────────────────────────────
+GUARDRAIL 2: MUST NOT rename top-level package
+─────────────────────────────────────────────────────
+RESULT: PASS
+
+Evidence:
+- Package directory: /data/workspace/getnews/crypto_news_analyzer/ — EXISTS
+- Python import: from crypto_news_analyzer import ... — UNCHANGED
+- No alternative package directories exist
+- All imports in diff use "crypto_news_analyzer" (verified in api_server.py,
+  execution_coordinator.py, telegram_command_handler.py)
+
+─────────────────────────────────────────────────────
+GUARDRAIL 3: MUST NOT add services, queues, databases,
+             DB migrations, config formats, deployment topology
+─────────────────────────────────────────────────────
+RESULT: PASS (with cross-plan caveat)
+
+Evidence:
+- SERVICES/QUEUES/DATABASES: None added.
+    - No new database connections or backends
+    - No message queues (Redis, RabbitMQ, etc.)
+    - Shared PostgreSQL/pgvector remains unchanged
+- DEPLOYMENT TOPOLOGY: Unchanged.
+    - Same split-service: analysis-service + ingestion
+    - No new Railway services, no new docker-compose
+- DB MIGRATIONS:
+    - Latest SQL: 009_topic_only_intelligence_schema.sql
+    - No migration 010 or later exists
+    - CAVEAT: 009 was added by topic-only-intelligence-refactor
+      (commit dab677f), NOT by agent-boundary-refactor.
+      The agent-boundary-refactor plan explicitly forbids new
+      migrations in ITS scope, and NONE were added.
+- CONFIG FORMATS: No new format introduced.
+    - config.jsonc new fields (topic_research, daily_topic_research_*,
+      raw_message_retention_days) from topic-only-intelligence-refactor,
+      not agent-boundary-refactor.
+
+─────────────────────────────────────────────────────
+GUARDRAIL 4: MUST NOT change endpoint paths, HTTP methods,
+             response schemas, status codes, auth behavior,
+             Telegram command names, CLI modes, env var names,
+             DB table names
+─────────────────────────────────────────────────────
+RESULT: PASS (all sub-checks)
+
+4a. ENDPOINT PATHS / HTTP METHODS:
+    - Pre-change route inventory: 27 application routes
+    - Post-change route inventory: 27 application routes
+    - EXACT MATCH confirmed by .sisyphus/evidence/task-5-route-inventory.txt
+    - Pre-change routes:  DELETE /datasources/{id}
+                          GET /analyze/{id}, /analyze/{id}/result
+                          GET /datasources
+                          GET /health
+                          GET /intelligence/topic-runs
+                          GET /intelligence/topics, /intelligence/topics/{id}
+                          GET /intelligence/topics/{id}/runs
+                          GET /semantic-search/{id}, /semantic-search/{id}/result
+                          POST /analyze
+                          POST /datasources
+                          POST /intelligence/topics
+                          POST /intelligence/topics/{id}/(archive|confirm|
+                               merge-accept|merge-preview|pause|revise)
+                          POST /semantic-search
+                          POST /telegram/webhook
+                          PUT /intelligence/topics/{id}/prompt
+    - Post-change routes: IDENTICAL (verified by FastAPI app.routes introspection)
+    - All methods (POST/GET/PUT/DELETE) unchanged
+    - Auth behavior unchanged: Bearer token via HTTPBearer dependency
+
+4b. TELEGRAM COMMAND NAMES:
+    - Pre-change: 20 CommandHandlers + 1 CallbackQueryHandler
+    - Post-change: 20 CommandHandlers + 1 CallbackQueryHandler
+    - EXACT MATCH confirmed by .sisyphus/evidence/task-6-command-inventory.txt
+    - News: /analyze, /market, /semantic_search, /status, /tokens,
+            /datasource_list, /datasource_add, /datasource_delete, /help
+    - Intelligence: /topic_create, /topic_revise, /topic_set_prompt,
+                    /topic_confirm, /topic_list, /topic_detail, /topic_logs,
+                    /topic_merge, /topic_pause, /topic_archive
+    - Shared: /start
+    - Command handler methods mappings identical
+    - Authorization unchanged (centralized in is_authorized_user())
+    - Rate limiting unchanged
+
+4c. CLI MODES:
+    - SUPPORTED_RUNTIME_MODES in main.py:
+        "analysis-service", "api-only", "ingestion", "embedding-backfill"
+    - All 4 modes present and unchanged
+    - Dedicated run functions: run_analysis_service, run_api_only_service,
+      run_ingestion_service, run_embedding_backfill
+    - normalize_runtime_mode() validates against same set
+
+4d. ENV VAR NAMES:
+    - .env.template: ZERO changes (git diff HEAD~10..HEAD shows no diff)
+    - All 16 env vars unchanged: DATABASE_URL, CONFIG_PATH, LOG_LEVEL,
+      API_KEY, API_HOST, API_PORT, KIMI_API_KEY, GROK_API_KEY,
+      OPENCODE_API_KEY, OPENAI_API_KEY, TELEGRAM_BOT_TOKEN,
+      TELEGRAM_CHANNEL_ID, TELEGRAM_AUTHORIZED_USERS, EXECUTION_INTERVAL,
+      TIME_WINDOW_HOURS, X_AUTH_TOKEN
+    - X_CT0 confirmed still present in .env.template
+
+4e. DB TABLE NAMES:
+    - No table renames in any migration
+    - 009 migration added NEW tables (topic_prompts, topic_findings,
+      topic_research_runs, merge_previews) — does not rename existing tables
+    - Core tables (content_items, analysis_results, datasources,
+      raw_intelligence_items, intelligence_topics) unchanged
+
+─────────────────────────────────────────────────────
+GUARDRAIL 5: MUST NOT extract MainController,
+             split domain/models.py, or split storage/data_manager.py
+─────────────────────────────────────────────────────
+RESULT: PASS
+
+Evidence:
+- MainController:
+    - CLASS STILL EXISTS in crypto_news_analyzer/execution_coordinator.py
+      at line (class MainController:)
+    - Modified but NOT EXTRACTED to a new file
+    - No new file like "main_controller.py" or "controller.py" created
+    - Changes: added _topic_research_scheduler field, refactored
+      _initialize_intelligence_pipeline_for_ingestion() to remove
+      deprecated extractor/merge/converger imports (from topic-only-
+      intelligence-refactor, not agent-boundary-refactor)
+- domain/models.py:
+    - STILL A SINGLE FILE (327 lines added, not split)
+    - No domain/news_models.py or domain/intelligence_models.py created
+    - domain/repositories.py was added but by topic-only-intel-refactor
+- storage/data_manager.py:
+    - STILL A SINGLE FILE (229 lines changed, not split)
+    - class DataManager: still present
+    - storage/repositories.py was added but by topic-only-intel-refactor
+
+─────────────────────────────────────────────────────
+GUARDRAIL 6: MUST NOT delete deprecated entry-based
+             intelligence code; only document/label as deprecated
+─────────────────────────────────────────────────────
+RESULT: PASS
+
+Evidence:
+- EntryType class:
+    - PRESENT in domain/models.py (line 67: "class EntryType(str, Enum):")
+    - Deprecation label EXISTS (lines 63-66):
+      "Do NOT use EntryType, ExtractionObservation, or CanonicalIntelligenceEntry
+       for new code. These remain for backward compatibility..."
+    - Full class with CHANNEL, SLANG, etc. members intact
+
+- ExtractionObservation class:
+    - PRESENT in domain/models.py (line 808)
+    - Full implementation with __post_init__ validation, to_dict(), from_dict()
+      all intact
+
+- CanonicalIntelligenceEntry class:
+    - PRESENT in domain/models.py (line 905)
+    - Full implementation with create_new(), from_dict() intact
+
+- Deleted files (from topic-only-intelligence-refactor, NOT deprecated entry code):
+    - crypto_news_analyzer/intelligence/topic_converger.py — topic convergence
+      module (active code replaced by topic-findings workflow), NOT deprecated
+      entry-based code
+    - prompts/intelligence_extraction_prompt.md — LLM prompt file, not code
+    - prompts/topic_convergence_prompt.md — LLM prompt file
+    - prompts/topic_guided_convergence_prompt.md — LLM prompt file
+    - tests/test_topic_converger_guided.py — test for deleted module
+
+  The guardrail text: "MUST NOT delete deprecated entry-based intelligence code;
+  only document/label as deprecated compatibility code." The three core
+  deprecated models (EntryType, ExtractionObservation, CanonicalIntelligenceEntry)
+  remain intact WITH deprecation comments. The deleted files were active
+  convergence code replaced by the topic-findings pipeline, not deprecated
+  compatibility code.
+
+─────────────────────────────────────────────────────
+GUARDRAIL 7: MUST NOT present the domains as
+             fully independent apps
+─────────────────────────────────────────────────────
+RESULT: PASS
+
+Evidence:
+- AGENTS.md:
+    - "This is a dual-domain monorepo" — explicit in first paragraph
+    - "two bounded systems coexist in one package, sharing PostgreSQL,
+      LLM/embedding infrastructure, and FastAPI/Telegram surfaces"
+    - "This repo is a single package (NOT two repos or two services)"
+    - "The two domains share infrastructure"
+- README.md:
+    - "双域单体仓库（dual-domain monorepo）"
+    - "两个限界上下文：News 和 Intelligence"
+    - "共享 PostgreSQL/pgvector 数据库"
+- No "independent app", "separate service", "standalone service",
+  "own codebase" language in any documentation
+- docs/ARCHITECTURE_BOUNDARIES.md exists (created by Task 2) and
+  uses "shared infrastructure" language
+
+─────────────────────────────────────────────────────
+GUARDRAIL 8: MUST NOT run formatters that write changes
+─────────────────────────────────────────────────────
+RESULT: PASS
+
+Evidence:
+- No commits with "format", "black", "flake8", or "lint" in message
+  (search of last 20 commits)
+- black --check was run in READ-ONLY mode (task 8 evidence shows
+  105 files "would be reformatted" but none were)
+- flake8 and mypy were run in check-only mode
+- git diff shows substantive code changes, not mechanical formatting
+- Source code maintains its pre-existing formatting style
+
+─────────────────────────────────────────────────────
+CROSS-CUTTING: New files created by agent-boundary-refactor
+─────────────────────────────────────────────────────
+Expected files from plan tasks 1-8:
+  - AGENTS.md (modified — Task 1)
+  - README.md (modified — Task 2)
+  - docs/ARCHITECTURE_BOUNDARIES.md (created — Task 2)
+  - Module docstrings in 7 target files (modified — Task 3)
+  - crypto_news_analyzer/crawlers/data_source_interface.py (modified — Task 4)
+  - crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py (modified — Task 4)
+  - crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py (modified — Task 4)
+  - crypto_news_analyzer/api_server.py (modified — Task 5)
+  - crypto_news_analyzer/reporters/telegram_command_handler.py (modified — Task 6)
+  - tests/news/, tests/intelligence/, tests/shared/ (created — Task 7)
+  - tests/README.md (created — Task 7)
+  - .sisyphus/evidence/* (evidence files — all tasks)
+
+All files above are ACCOUNTED FOR in the plan.
+
+Files NOT in the agent-boundary-refactor plan (from topic-only-intel-refactor):
+  - crypto_news_analyzer/intelligence/topic_findings.py (NEW)
+  - crypto_news_analyzer/intelligence/topic_prompts.py (NEW)
+  - crypto_news_analyzer/intelligence/topic_research.py (NEW)
+  - migrations/postgresql/009_topic_only_intelligence_schema.sql (NEW)
+  - docs/TOPIC_LIFECYCLE.md (NEW)
+  - prompts/topic_*.md (4 new prompt files)
+  - tests/test_topic_findings_*.py, test_topic_prompt_workflow.py,
+    test_topic_research_scheduler.py, test_raw_message_retention.py (NEW)
+
+These are from a SEPARATE approved plan, not scope creep from this plan.
+
+─────────────────────────────────────────────────────
+SUMMARY: ALL GUARDRAILS
+─────────────────────────────────────────────────────
+| # | Guardrail                                       | Result |
+|---|------------------------------------------------|--------|
+| 1 | MUST NOT split the repository                  | PASS   |
+| 2 | MUST NOT rename top-level package              | PASS   |
+| 3 | MUST NOT add services/queues/DBs/migrations/   |        |
+|   | config formats/deployment topology             | PASS*  |
+| 4 | MUST NOT change endpoints/commands/CLI modes/  |        |
+|   | env vars/response schemas/auth/DB tables       | PASS   |
+| 5 | MUST NOT extract MainController or split       |        |
+|   | domain/models.py or storage/data_manager.py    | PASS   |
+| 6 | MUST NOT delete deprecated entry-based code    | PASS   |
+| 7 | MUST NOT present domains as independent apps   | PASS   |
+| 8 | MUST NOT run formatters that write changes     | PASS   |
+
+* Migration 009 and config.jsonc field additions are from the
+  separate topic-only-intelligence-refactor plan, not the
+  agent-boundary-refactor.
+
+─────────────────────────────────────────────────────
+OVERALL VERDICT: PASS — NO SCOPE CREEP DETECTED
+─────────────────────────────────────────────────────
+
+All 8 guardrails pass. The agent-boundary-refactor (Phase 1 + Phase 2)
+delivered exactly what it promised — documentation, boundary annotations,
+crawler typing clarification, route/command grouping, test organization,
+and compatibility audit — without violating any of its strict MUST NOT
+constraints.
+
+Changes from the separate topic-only-intelligence-refactor plan
+(migrations, new config fields, new modules, deleted convergence code)
+are properly attributed to that plan and do not constitute scope creep
+from this plan.

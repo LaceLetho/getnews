@@ -1,0 +1,63 @@
+Task 7: Implement topic prompt draft/revise/manual-confirm workflow
+====================================================================
+
+Date: 2026-05-15
+Module: crypto_news_analyzer/intelligence/topic_prompts.py
+Tests: tests/test_topic_prompt_workflow.py
+
+Implementation
+--------------
+Extended crypto_news_analyzer/intelligence/topic_prompts.py with TopicPromptWorkflowService:
+
+- create_draft_topic(theme) -> TopicPrompt
+  Creates an IntelligenceTopic in draft lifecycle status, generates a prompt draft
+  via TopicPromptGenerator + LLM, persists both to repository.
+
+- revise_prompt(topic_id, feedback) -> TopicPrompt
+  Fetches the most recent prompt for the topic, uses TopicPromptReviser + LLM to
+  create a new version with incremented version number, persists as draft.
+
+- replace_prompt_manual(topic_id, prompt_text) -> TopicPrompt
+  Creates a new draft version with manually-supplied text. Rejects empty text and
+  text exceeding max_prompt_length (default 50000 chars). Preserves prior audit_history.
+
+- confirm_prompt(topic_id, prompt_version_id) -> TopicPrompt
+  Validates the prompt is a draft and belongs to the topic. Archives any currently
+  active prompt for the topic, then activates the confirmed draft.
+
+- edit_active_prompt(topic_id, new_prompt_text) -> TopicPrompt
+  Fetches the active prompt, creates a new draft version with incremented version
+  and the new text. Original findings keep their original prompt_version_id.
+
+Tests Added
+-----------
+TestGenerateConfirm::test_generate_confirm
+  - LLM-mocked draft creation, confirm sets active, repository lookup matches.
+
+TestManualReplace::test_manual_replace
+  - Manual text saved as draft version 1, created_by tracked.
+
+TestManualReplace::test_manual_replace_rejects_empty
+  - Empty and whitespace-only text raise ValueError.
+
+TestManualReplace::test_manual_replace_rejects_oversized
+  - Text exceeding max_prompt_length raises ValueError.
+
+TestReviseFeedback::test_revise_feedback
+  - Revision creates version 2, preserves history, 2 prompts in repository.
+
+TestEditActivePromptVersion::test_edit_active_prompt_version
+  - Edit creates new draft version 2, old finding retains original prompt_version_id.
+
+Test Results
+------------
+$ .venv/bin/python -m pytest tests/test_topic_prompt_workflow.py -k 'generate_confirm or manual_replace or revise_feedback or edit_active_prompt_version' -v
+6 passed, 39 deselected in 6.58s
+
+$ .venv/bin/python -m pytest tests/test_topic_prompt_workflow.py -v
+45 passed in 6.16s
+
+Linting
+-------
+$ .venv/bin/python -m flake8 crypto_news_analyzer/intelligence/topic_prompts.py tests/test_topic_prompt_workflow.py
+(no output -- clean)

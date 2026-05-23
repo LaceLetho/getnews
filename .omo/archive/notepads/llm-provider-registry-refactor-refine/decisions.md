@@ -1,0 +1,2 @@
+- 2026-04-11: Switched `LLMAnalyzer` constructor to resolved runtime metadata objects (`ResolvedModelRuntime`) for primary, fallback, and market models; retained only internal string fields derived from resolved metadata for downstream SDK calls.
+- 2026-04-11: Content-filter fallback now prefers configured Grok runtimes from `fallback_models`, then falls back to the resolved market model if it is Grok.

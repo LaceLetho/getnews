@@ -1,0 +1,238 @@
+================================================================================
+F1 PLAN COMPLIANCE AUDIT — Agent Boundary Refactor (Phases 1+2)
+Auditor: Oracle Agent
+Date: 2026-05-17
+Plan: .sisyphus/plans/agent-boundary-refactor.md
+================================================================================
+
+RESULT: 10/10 PASS ✅
+
+================================================================================
+DELIVERABLE 1: AGENTS.md headings
+================================================================================
+STATUS: PASS ✅
+
+Evidence:
+  - File: /data/workspace/getnews/AGENTS.md
+  - Line 24: `## Dual-Domain Architecture` heading with table
+  - Line 40: `## Agent Boundary Rules` heading with 6 rules
+  - Line 7: "This is a dual-domain monorepo"
+  - Lines 14-15: Mentions ContentItem, RawIntelligenceItem, DataSourcePurpose.NEWS/INTELLIGENCE
+  - Line 15: ingestion runs BOTH news crawling AND intelligence
+  - Line 17: deprecated entry-based pipeline replaced by topic-only lifecycle
+
+================================================================================
+DELIVERABLE 2: README.md mentions dual-domain monorepo and lists intelligence/
+================================================================================
+STATUS: PASS ✅
+
+Evidence:
+  - File: /data/workspace/getnews/README.md
+  - Opening paragraph (line 3): "一个双域单体仓库（dual-domain monorepo）"
+  - Repository structure section lists:
+    ├── intelligence/     # 情报主题研究管线（同行域）
+  - Features section separates News and Intelligence as peer domains
+  - Intelligence described as News的"同行域" (peer domain), not Telegram sub-feature
+
+================================================================================
+DELIVERABLE 3: docs/ARCHITECTURE_BOUNDARIES.md exists with data flows
+================================================================================
+STATUS: PASS ✅
+
+Evidence:
+  - File: /data/workspace/getnews/docs/ARCHITECTURE_BOUNDARIES.md (137 lines)
+  - Line 16-17: News data flow:
+    RSS/X/REST -> ContentItem -> LLMAnalyzer -> ReportGenerator (Markdown)
+  - Line 32-33: Intelligence data flow:
+    Telegram/V2EX -> RawIntelligenceItem -> TopicResearchScheduler -> TopicFinding
+  - Lines 43-45: Critical boundary rule: Never mix ContentItem with RawIntelligenceItem
+  - Lines 53-67: Shared infrastructure table (PostgreSQL, config, models, storage, etc.)
+  - Lines 72-101: Compatibility Contract (invariant endpoints/commands/CLI/env/DB/config)
+  - Lines 122-137: Out of Scope (NO repo/DB/service split, NO rename, NO config change)
+
+================================================================================
+DELIVERABLE 4: Boundary comments in target modules
+================================================================================
+STATUS: PASS ✅
+
+  A. intelligence/__init__.py (line 2): "GROUP/FORUM INTELLIGENCE DOMAIN"
+     Lines 4-10: source types, models, commands, API routes with INTELLIGENCE refs
+
+  B. crawlers/data_source_interface.py (lines 6-8):
+     "SHARED CRAWLER INTERFACE — Implemented by both NEWS crawlers (ContentItem)
+     and INTELLIGENCE crawlers (RawIntelligenceItem)"
+
+  C. api_server.py (lines 1-4):
+     "SHARED INFRASTRUCTURE — Single FastAPI app hosting BOTH news routes
+     AND intelligence routes"
+     Lines 1175/1443/1814: Domain-grouped section headers
+     Lines 1925-1928: register_news_routes, register_intelligence_routes,
+     register_infrastructure_routes
+
+  D. reporters/telegram_command_handler.py (lines 16-19):
+     "SHARED INFRASTRUCTURE — Single bot handler registering BOTH news commands
+     AND intelligence commands"
+     Lines 203/216/240: Explicit NEWS/INTELLIGENCE domain command registrations
+
+  E. domain/models.py (lines 61-66):
+     "DEPRECATED — Compatibility-only models from old entry extraction pipeline.
+     The ACTIVE intelligence path is topic-only"
+
+================================================================================
+DELIVERABLE 5: CrawlItem = Union[ContentItem, RawIntelligenceItem]
+================================================================================
+STATUS: PASS ✅
+
+Evidence:
+  - File: data_source_interface.py
+  - Line 20: CrawlItem = Union[ContentItem, RawIntelligenceItem]
+  - Line 48: def crawl(...) -> Sequence[CrawlItem] (covariant Sequence, not invariant List)
+  - Lines 29-32: NEWS crawlers return ContentItem; INTELLIGENCE crawlers return RawIntelligenceItem
+  - Lines 52-53: Method docstring clarifies per-domain return types
+  - No longer implies all crawlers return only ContentItem
+
+================================================================================
+DELIVERABLE 6: HTTP route inventory matches expected paths
+================================================================================
+STATUS: PASS ✅
+
+Evidence: File api_server.py
+
+  News routes (register_news_routes, line 1178):
+    ✅ POST /analyze                           (line 1181)
+    ✅ GET  /analyze/{job_id}                  (line 1230)
+    ✅ GET  /analyze/{job_id}/result           (line 1245)
+    ✅ POST /semantic-search                   (line 1273)
+    ✅ GET  /semantic-search/{job_id}          (line 1327)
+    ✅ GET  /semantic-search/{job_id}/result   (line 1339)
+    ✅ POST /datasources                       (line 1351)
+    ✅ GET  /datasources                       (line 1379)
+    ✅ DELETE /datasources/{datasource_id}     (line 1421)
+
+  Intelligence routes (register_intelligence_routes, line 1446):
+    ✅ POST /intelligence/topics                          (line 1449)
+    ✅ POST /intelligence/topics/{topic_id}/revise         (line 1476)
+    ✅ PUT  /intelligence/topics/{topic_id}/prompt         (line 1507)
+    ✅ POST /intelligence/topics/{topic_id}/confirm        (line 1544)
+    ✅ POST /intelligence/topics/{topic_id}/merge-preview  (line 1574)
+    ✅ POST /intelligence/topics/{topic_id}/merge-accept   (line 1612)
+    ✅ POST /intelligence/topics/{topic_id}/pause          (line 1641)
+    ✅ POST /intelligence/topics/{topic_id}/archive        (line 1667)
+    ✅ GET  /intelligence/topics/{topic_id}/runs           (line 1693)
+    ✅ GET  /intelligence/topics                          (line 1719)
+    ✅ GET  /intelligence/topics/{topic_id}               (line 1756)
+    ✅ GET  /intelligence/topic-runs                      (line 1791)
+
+  Infrastructure routes (register_infrastructure_routes, line 1817):
+    ✅ GET  /health                              (line 1820)
+
+  Route registration (lines 1925-1928):
+    register_news_routes(app) / register_intelligence_routes(app) /
+    register_infrastructure_routes(app)
+
+================================================================================
+DELIVERABLE 7: Telegram command names match expected list
+================================================================================
+STATUS: PASS ✅
+
+Evidence: File telegram_command_handler.py
+
+  News domain (_register_news_commands, lines 222-238):
+    ✅ analyze, semantic_search, market, status, tokens
+    ✅ datasource_list, datasource_add, datasource_delete, help
+
+  Intelligence domain (_register_intelligence_commands, lines 246-257):
+    ✅ topic_create, topic_revise, topic_set_prompt, topic_confirm
+    ✅ topic_list, topic_detail, topic_logs, topic_merge
+    ✅ topic_pause, topic_archive
+
+  Shared: ✅ start (line 210)
+
+  Bot command menu (lines 769-790) groups with "# News domain" / "# Intelligence domain"
+  Centralized auth (is_authorized_user) and rate-limit (check_rate_limit) preserved
+
+================================================================================
+DELIVERABLE 8: CLI modes include all four expected modes
+================================================================================
+STATUS: PASS ✅
+
+Evidence:
+  - File: main.py, lines 14-19:
+    SUPPORTED_RUNTIME_MODES = (
+        "analysis-service",
+        "api-only",
+        "ingestion",
+        "embedding-backfill",
+    )
+  - Line 20: DEFAULT_RUNTIME_MODE = "analysis-service"
+  - Lines 76-89: Mode dispatch with all four branches
+  - Line 39: help text documents all four modes
+
+================================================================================
+DELIVERABLE 9: No new migration files beyond pre-existing
+================================================================================
+STATUS: PASS ✅
+
+Evidence:
+  - Migrations in /migrations/postgresql/:
+    001_init.sql, 002_datasource_schema.sql, 003_intelligence_schema.sql,
+    004_intelligence_ignore_state.sql, 004_intelligence_tracking_state.sql,
+    005_intelligence_evidence_links.sql, 006_intelligence_follow_status.sql,
+    008_intelligence_topics.sql, 009_topic_only_intelligence_schema.sql
+  - Most recent: 009 (from pre-existing commit dab677f)
+  - NO migration files >= 010 exist
+  - Git log confirms no post-refactor migration additions
+
+================================================================================
+DELIVERABLE 10: tests/news/ and tests/intelligence/ exist with domain-grouped tests
+================================================================================
+STATUS: PASS ✅
+
+Evidence:
+  - /data/workspace/getnews/tests/news/ — 12 test files:
+    test_llm_analyzer.py, test_rss_crawler.py, test_report_generator.py,
+    test_api_server.py, test_api_server_semantic_search.py,
+    test_telegram_command_handler_analyze.py,
+    test_telegram_command_handler_semantic_search.py,
+    test_telegram_report_properties.py, test_embedding_service.py,
+    test_semantic_search_service.py, test_category_parser.py
+
+  - /data/workspace/getnews/tests/intelligence/ — 19 test files:
+    test_intelligence_telegram_commands.py, test_intelligence_ttl.py,
+    test_intelligence_models.py, test_intelligence_repositories.py,
+    test_intelligence_extraction.py, test_intelligence_semantic_search.py,
+    test_intelligence_security_guardrails.py, test_intelligence_api.py,
+    test_intelligence_ingestion_runtime.py,
+    test_intelligence_datasource_payloads.py, test_intelligence_config.py,
+    test_intelligence_v2ex_collector.py, test_intelligence_telegram_collector.py,
+    test_topic_prompt_workflow.py, test_topic_research_scheduler.py,
+    test_topic_findings_telegram.py, test_topic_findings_api.py,
+    test_raw_message_retention.py, test_intelligence_merge.py
+
+  - /data/workspace/getnews/tests/shared/ — 43 shared test files
+
+  - /data/workspace/getnews/tests/README.md (107 lines):
+    Documents three-way domain grouping (News / Intelligence / Shared)
+    Title: "Test Organization by Domain"
+    Line 3: "organized by the dual-domain architecture"
+
+  - Top-level tests/ retains only conftest.py + __init__.py
+    for shared fixture visibility
+
+================================================================================
+SUMMARY: ALL 10 DELIVERABLES PASS
+================================================================================
+
+No violations found. All guardrails respected:
+  - NO repository split
+  - NO DB split / service split
+  - NO endpoint/command rename
+  - NO config format change
+  - NO deletion of deprecated code
+  - NO new migration files
+  - NO new FastAPI app
+  - NO change to auth/rate-limit behavior
+
+The refactor achieves its stated goal: AI agents can identify News vs Intelligence
+domains from AGENTS.md, README, code comments, route grouping, and test organization
+without tracing source code. Runtime behavior is preserved.

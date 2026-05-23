@@ -1,0 +1,3 @@
+2026-04-11: `uv run pytest tests/test_llm_registry.py -q` currently fails because the existing test fixture still submits `thinking_level` to `kimi-k2-thinking-turbo` and `grok-4-1-fast-reasoning`, which now correctly fail validation after the registry capability correction. Tests were not modified per task guardrails.
+2026-04-11: `uv` was not installed in the environment initially; installed it via Astral bootstrap (`/data/.local/bin/uv`) before running the required pytest command.
+2026-04-11: `"/data/.local/bin/uv" run pytest tests/` completes but the repository still has 58 unrelated failing tests, so full-suite green status could not be established from this task alone.

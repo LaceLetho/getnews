@@ -1,0 +1,41 @@
+Task 9: Implement finding merge preview and accept workflow
+Evidence Date: 2026-05-15
+
+Files created/modified:
+- crypto_news_analyzer/intelligence/topic_findings.py (new)
+- tests/test_topic_findings_api.py (replaced contract tests with implementation tests)
+
+Test Results:
+$ .venv/bin/python -m pytest tests/test_topic_findings_api.py -k 'merge_accept_archives_exact_sources or stale_merge_preview_rejected or merge_preview_creation' -v
+============================= test session starts ==============================
+platform linux -- Python 3.11.2, pytest-9.0.2, pluggy-1.6.0 -- /data/workspace/getnews/.venv/bin/python
+collecting ... collected 7 items / 4 deselected / 3 selected
+
+tests/test_topic_findings_api.py::test_merge_preview_creation PASSED     [ 33%]
+tests/test_topic_findings_api.py::test_merge_accept_archives_exact_sources PASSED [ 66%]
+tests/test_topic_findings_api.py::test_stale_merge_preview_rejected PASSED [100%]
+
+======================= 3 passed, 4 deselected in 1.95s ========================
+
+Full test suite for test_topic_findings_api.py (7 tests):
+- test_merge_preview_creation PASSED
+- test_merge_accept_archives_exact_sources PASSED
+- test_stale_merge_preview_rejected PASSED
+- test_expired_merge_preview_rejected PASSED
+- test_reject_merge_preview PASSED
+- test_accept_non_pending_preview_fails PASSED
+- test_create_preview_requires_two_findings PASSED
+
+Repository tests (task 4) also pass:
+- test_finding_create_list_archive_and_idempotent_retry PASSED
+- test_topic_run_success_advances_checkpoint_failed_run_does_not PASSED
+- test_merge_preview_accept_and_stale_rejection PASSED
+
+Implementation Summary:
+- TopicFindingMergeService with create_merge_preview(), accept_merge_preview(), reject_merge_preview(), get_merge_preview()
+- Merge preview stores: source_finding_ids, topic_id, prompt_version_id (via preview), expiry (24h), merged content, content_hash
+- Accept creates ONE merged TopicFinding, archives all source findings with superseded_by_finding_id, creates FindingArchive records
+- Accept rejects: expired preview, stale active finding set, non-pending state
+- Reject marks preview as cancelled
+- Uses prompts/topic_findings_merge_prompt.md via file read (same pattern as topic_research.py)
+- Mock LLM with fake response queue (FakeLLMClient pattern)

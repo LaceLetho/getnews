@@ -1,0 +1,43 @@
+# Task 6: Command Inventory - AFTER Refactor
+# Generated from refactored telegram_command_handler.py
+
+## All Registered Commands (20 commands + 1 callback handler)
+
+### NEWS Domain Commands (9) - via _register_news_commands()
+1. analyze -> _handle_analyze_command
+2. semantic_search -> _handle_semantic_search_command
+3. market -> _handle_market_command
+4. status -> _handle_status_command
+5. tokens -> _handle_tokens_command
+6. datasource_list -> _handle_datasource_list_command
+7. datasource_add -> _handle_datasource_add_command
+8. datasource_delete -> _handle_datasource_delete_command
+9. help -> _handle_help_command
+
+### INTELLIGENCE Domain Commands (10) - via _register_intelligence_commands()
+1. topic_create -> _handle_topic_create_command
+2. topic_revise -> _handle_topic_revise_command
+3. topic_set_prompt -> _handle_topic_set_prompt_command
+4. topic_confirm -> _handle_topic_confirm_command
+5. topic_list -> _handle_topic_list_command
+6. topic_detail -> _handle_topic_detail_command
+7. topic_logs -> _handle_topic_logs_command
+8. topic_merge -> _handle_topic_merge_command
+9. topic_pause -> _handle_topic_pause_command
+10. topic_archive -> _handle_topic_archive_command
+
+### SHARED/INFRASTRUCTURE (1 command + 1 callback) - in _build_application() directly
+1. start -> _handle_start_command
+2. CallbackQueryHandler (pattern=r"^topic:") -> _handle_topic_callback_query
+
+## COMPARISON: BEFORE vs AFTER
+- Total CommandHandler count: 20 BEFORE, 20 AFTER -> MATCH
+- Total CallbackQueryHandler count: 1 BEFORE, 1 AFTER -> MATCH
+- Command names: identical set
+- Handler methods: identical mapping
+- No aliases added or removed
+- Authorization: unchanged (still centralized in each handler via is_authorized_user())
+- Rate limiting: unchanged (check_rate_limit() called in same handlers)
+- Bot command menu (_setup_bot_commands): unchanged
+
+VERDICT: PASS - Command inventory before/after matches exactly.

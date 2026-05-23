@@ -1,0 +1,187 @@
+{
+  "active_plan": "/data/workspace/getnews/.sisyphus/plans/agent-boundary-refactor.md",
+  "started_at": "2026-05-17T10:46:54.466Z",
+  "session_ids": [
+    "ses_1ca8f17ceffek0wXFh1ysC55rE"
+  ],
+  "plan_name": "agent-boundary-refactor",
+  "session_origins": {
+    "ses_1ca8f17ceffek0wXFh1ysC55rE": "direct"
+  },
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Establish dual-domain agent guidance in `AGENTS.md`",
+      "session_id": "ses_1ca71c6a4ffeFEATZ9HHzUbWfE",
+      "agent": "Sisyphus-Junior",
+      "category": "writing",
+      "updated_at": "2026-05-17T10:57:41.556Z",
+      "started_at": "2026-05-17T10:56:54.070Z",
+      "status": "completed",
+      "ended_at": "2026-05-17T10:57:41.556Z",
+      "elapsed_ms": 47486
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "Update README and add canonical boundary documentation",
+      "session_id": "ses_1ca68b364ffezjuDl3CZbsp2kE",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "started_at": "2026-05-17T11:07:02.012Z",
+      "status": "completed",
+      "updated_at": "2026-05-17T11:08:27.558Z",
+      "ended_at": "2026-05-17T11:08:27.558Z",
+      "elapsed_ms": 85546
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Clarify crawler interface typing for news vs intelligence items",
+      "session_id": "ses_1ca5f270bffeu0jW3UGUKeq51D",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "started_at": "2026-05-17T11:14:06.755Z",
+      "status": "completed",
+      "updated_at": "2026-05-17T11:22:11.751Z",
+      "ended_at": "2026-05-17T11:22:11.751Z",
+      "elapsed_ms": 484996
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "Run compatibility audit and full verification",
+      "session_id": "ses_1ca5328eeffexHLkfUZDIqR1LR",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "started_at": "2026-05-17T11:32:29.962Z",
+      "ended_at": "2026-05-17T11:38:16.563Z",
+      "elapsed_ms": 346601,
+      "status": "completed",
+      "updated_at": "2026-05-17T11:38:16.563Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "Plan Compliance Audit — oracle",
+      "session_id": "ses_1ca5e067fffeZ9FAsd8cg0DpLZ",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "started_at": "2026-05-17T11:34:48.903Z",
+      "status": "completed",
+      "updated_at": "2026-05-17T11:40:23.557Z",
+      "ended_at": "2026-05-17T11:40:23.557Z",
+      "elapsed_ms": 334654
+    }
+  },
+  "active_work_id": "agent-boundary-refactor",
+  "updated_at": "2026-05-17T11:41:20.440Z",
+  "schema_version": 2,
+  "works": {
+    "topic-only-intelligence-refactor-legacy": {
+      "work_id": "topic-only-intelligence-refactor-legacy",
+      "active_plan": "/data/workspace/getnews/.sisyphus/plans/topic-only-intelligence-refactor.md",
+      "plan_name": "topic-only-intelligence-refactor",
+      "started_at": "2026-05-15T09:46:16.335Z",
+      "updated_at": "2026-05-16T14:27:32.382Z",
+      "session_ids": [
+        "ses_1d4f87303ffeia36DFgPjpb66Q",
+        "ses_1d44e0c43ffeL04USYPXyNl5Or"
+      ],
+      "session_origins": {
+        "ses_1d4f87303ffeia36DFgPjpb66Q": "direct",
+        "ses_1d44e0c43ffeL04USYPXyNl5Or": "direct"
+      },
+      "status": "completed",
+      "ended_at": "2026-05-16T14:27:32.382Z",
+      "elapsed_ms": 103276047
+    },
+    "agent-boundary-refactor": {
+      "work_id": "agent-boundary-refactor",
+      "active_plan": "/data/workspace/getnews/.sisyphus/plans/agent-boundary-refactor.md",
+      "plan_name": "agent-boundary-refactor",
+      "started_at": "2026-05-17T10:46:54.466Z",
+      "updated_at": "2026-05-17T11:41:20.440Z",
+      "session_ids": [
+        "ses_1ca8f17ceffek0wXFh1ysC55rE"
+      ],
+      "session_origins": {
+        "ses_1ca8f17ceffek0wXFh1ysC55rE": "direct"
+      },
+      "task_sessions": {
+        "todo:1": {
+          "task_key": "todo:1",
+          "task_label": "1",
+          "task_title": "Establish dual-domain agent guidance in `AGENTS.md`",
+          "session_id": "ses_1ca71c6a4ffeFEATZ9HHzUbWfE",
+          "agent": "Sisyphus-Junior",
+          "category": "writing",
+          "updated_at": "2026-05-17T10:57:41.556Z",
+          "started_at": "2026-05-17T10:56:54.070Z",
+          "status": "completed",
+          "ended_at": "2026-05-17T10:57:41.556Z",
+          "elapsed_ms": 47486
+        },
+        "todo:2": {
+          "task_key": "todo:2",
+          "task_label": "2",
+          "task_title": "Update README and add canonical boundary documentation",
+          "session_id": "ses_1ca68b364ffezjuDl3CZbsp2kE",
+          "agent": "Sisyphus-Junior",
+          "category": "quick",
+          "started_at": "2026-05-17T11:07:02.012Z",
+          "status": "completed",
+          "updated_at": "2026-05-17T11:08:27.558Z",
+          "ended_at": "2026-05-17T11:08:27.558Z",
+          "elapsed_ms": 85546
+        },
+        "todo:4": {
+          "task_key": "todo:4",
+          "task_label": "4",
+          "task_title": "Clarify crawler interface typing for news vs intelligence items",
+          "session_id": "ses_1ca5f270bffeu0jW3UGUKeq51D",
+          "agent": "Sisyphus-Junior",
+          "category": "quick",
+          "started_at": "2026-05-17T11:14:06.755Z",
+          "status": "completed",
+          "updated_at": "2026-05-17T11:22:11.751Z",
+          "ended_at": "2026-05-17T11:22:11.751Z",
+          "elapsed_ms": 484996
+        },
+        "todo:8": {
+          "task_key": "todo:8",
+          "task_label": "8",
+          "task_title": "Run compatibility audit and full verification",
+          "session_id": "ses_1ca5328eeffexHLkfUZDIqR1LR",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "started_at": "2026-05-17T11:32:29.962Z",
+          "ended_at": "2026-05-17T11:38:16.563Z",
+          "elapsed_ms": 346601,
+          "status": "completed",
+          "updated_at": "2026-05-17T11:38:16.563Z"
+        },
+        "final-wave:f1": {
+          "task_key": "final-wave:f1",
+          "task_label": "F1",
+          "task_title": "Plan Compliance Audit — oracle",
+          "session_id": "ses_1ca5e067fffeZ9FAsd8cg0DpLZ",
+          "agent": "Sisyphus-Junior",
+          "category": "quick",
+          "started_at": "2026-05-17T11:34:48.903Z",
+          "status": "completed",
+          "updated_at": "2026-05-17T11:40:23.557Z",
+          "ended_at": "2026-05-17T11:40:23.557Z",
+          "elapsed_ms": 334654
+        }
+      },
+      "status": "completed",
+      "ended_at": "2026-05-17T11:41:20.440Z",
+      "elapsed_ms": 3265974
+    }
+  },
+  "status": "completed",
+  "ended_at": "2026-05-17T11:41:20.440Z",
+  "elapsed_ms": 3265974
+}

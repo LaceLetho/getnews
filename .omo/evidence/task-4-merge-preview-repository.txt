@@ -1,0 +1,17 @@
+Task 4 merge preview repository evidence
+
+Commands run:
+- .venv/bin/python -m pytest tests/test_intelligence_repositories.py -k 'prompt_version or finding or checkpoint or topic_run or merge_preview' -v
+- .venv/bin/python -m pytest tests/test_intelligence_repositories.py -v
+
+Relevant results:
+- Targeted suite: 4 passed, 19 deselected in 4.95s
+- Full repository suite: 23 passed in 17.01s
+
+Covered merge/finding behavior:
+- create_topic_prompt_version and get_active_topic_prompt round-trip active prompt versions.
+- create_topic_finding is idempotent by topic/prompt/content_hash and does not duplicate active findings on retry.
+- archive_finding soft-archives findings and records intelligence_finding_archives rows.
+- create_merge_preview normalizes source_finding_ids and idempotently reuses a pending preview for the same source set.
+- accept_merge_preview applies pending non-expired previews only while all source findings remain active.
+- stale preview acceptance returns False and marks preview expired when a source finding is archived.

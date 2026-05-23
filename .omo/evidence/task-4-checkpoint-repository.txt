@@ -1,0 +1,20 @@
+Task 4 checkpoint repository evidence
+
+Commands run:
+- lsp_diagnostics(error) on crypto_news_analyzer/domain/repositories.py: no diagnostics
+- lsp_diagnostics(error) on crypto_news_analyzer/storage/repositories.py: no diagnostics
+- lsp_diagnostics(error) on tests/test_intelligence_repositories.py: no diagnostics
+- .venv/bin/python -m pytest tests/test_intelligence_repositories.py -k 'prompt_version or finding or checkpoint or topic_run or merge_preview' -v
+- .venv/bin/python -m pytest tests/test_intelligence_repositories.py -v
+
+Relevant results:
+- Targeted suite: 4 passed, 19 deselected in 4.95s
+- Full repository suite: 23 passed in 17.01s
+
+Covered checkpoint/run behavior:
+- create_topic_research_run persists per-topic prompt-version runs.
+- update_topic_research_run records success/failure, scanned count, finding count, and error details.
+- successful run checkpoint update advances checkpoint_cursor/checkpoint_payload.
+- failed run records error_message and leaves previous checkpoint unchanged.
+- get_raw_items_since retrieves raw messages ordered by collected_at.
+- mark_raw_items_processed uses idempotent conflict handling for (raw_item_id, intelligence_topic_id, prompt_version, schema_version).

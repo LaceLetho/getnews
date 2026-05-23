@@ -1,0 +1,2 @@
+- 2026-04-11: Coordinator-side LLM config validation should resolve provider/model metadata before analyzer construction so invalid registry configs fail before any OpenAI client setup.
+- 2026-04-11: `MarketSnapshotService` provider and model selection should come from `market_model_config` resolved metadata; `LLMAnalyzer` no longer needs to pass a separate `summary_model` string into the runtime service.

@@ -1,0 +1,30 @@
+Task 3 Boundary Annotations — QA Script
+=========================================
+QA Script: Python check for boundary phrases in all target files
+Date: 2026-05-17
+Result: PASS
+
+Files checked and phrases verified:
+  crypto_news_analyzer/intelligence/__init__.py
+    ✓ "GROUP/FORUM INTELLIGENCE DOMAIN", "telegram_group", "v2ex",
+      "DataSourcePurpose.INTELLIGENCE", "RawIntelligenceItem", "IntelligenceTopic",
+      "/intelligence/"
+  crypto_news_analyzer/analyzers/__init__.py
+    ✓ "NEWS DOMAIN", "crypto news analysis"
+  crypto_news_analyzer/crawlers/data_source_factory.py
+    ✓ "SHARED INFRASTRUCTURE", "NEWS", "INTELLIGENCE", "rss", "x", "rest_api",
+      "telegram_group", "v2ex", "DataSourcePurpose"
+  crypto_news_analyzer/crawlers/data_source_interface.py
+    ✓ "SHARED CRAWLER INTERFACE", "NEWS", "INTELLIGENCE", "ContentItem",
+      "RawIntelligenceItem", "rss", "x", "rest_api", "telegram_group", "v2ex"
+  crypto_news_analyzer/api_server.py
+    ✓ "SHARED INFRASTRUCTURE", "/analyze", "/semantic-search", "/datasources",
+      "/intelligence/"
+  crypto_news_analyzer/reporters/telegram_command_handler.py
+    ✓ "SHARED INFRASTRUCTURE", "/analyze", "/market", "/semantic_search",
+      "/datasource_", "/topic_"
+  crypto_news_analyzer/domain/models.py
+    ✓ "DEPRECATED", "Compatibility-only", "topic-only", "IntelligenceTopic",
+      "TopicFinding"
+
+Conclusion: All 7 target files contain required boundary phrases.

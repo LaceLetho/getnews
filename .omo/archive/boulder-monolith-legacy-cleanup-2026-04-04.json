@@ -1,0 +1,9 @@
+: ""
+# Archive boulder.json
+cp .sisyphus/boulder.json .sisyphus/archive/boulder-monolith-legacy-cleanup-2026-04-04.json
+
+# Reset boulder.json to empty state
+echo '{}' > .sisyphus/boulder.json
+
+echo "Boulder archived and reset"
+ls -la .sisyphus/archive/boulder-*
