@@ -18,9 +18,9 @@ from crypto_news_analyzer.domain.models import (
 )
 from crypto_news_analyzer.intelligence.pipeline import IntelligencePipeline
 from crypto_news_analyzer.intelligence.topic_research import (
+    DEFAULT_RAW_ITEM_LIMIT,
     TOPIC_RESEARCH_SCHEMA_VERSION,
     TopicResearchScheduler,
-    TopicResearchValidationError,
 )
 from crypto_news_analyzer.storage.repositories import SQLiteIntelligenceRepository
 
@@ -70,6 +70,8 @@ class FakeTopicRepository:
         self.findings: List[Any] = []
         self.runs: List[TopicResearchRun] = []
         self.processed_items: List[str] = []
+        self.last_cursor_time: Optional[datetime] = None
+        self.last_limit: Optional[int] = None
         self._processed_markers: Set[str] = set()
         self._custom_topics: List[IntelligenceTopic] = []
         self._custom_prompts: Dict[str, TopicPrompt] = {}
@@ -102,9 +104,19 @@ class FakeTopicRepository:
         return dict(self.checkpoint) if self.checkpoint is not None else None
 
     def get_raw_items_since(self, topic_id: str, cursor_time: Optional[datetime], limit: int):
+        self.last_cursor_time = cursor_time
+        self.last_limit = limit
         if topic_id in self._custom_raw_items:
-            return list(self._custom_raw_items.get(topic_id, []))
-        return list(self.raw_items)
+            items = list(self._custom_raw_items.get(topic_id, []))
+        else:
+            items = list(self.raw_items)
+        if cursor_time is not None:
+            items = [
+                item
+                for item in items
+                if (item.collected_at or item.created_at or datetime.min) > cursor_time
+            ]
+        return items
 
     def get_processed_topic_raw_item_ids(
         self,
@@ -483,7 +495,6 @@ def test_no_messages() -> None:
     """No messages since checkpoint produces a no-op success run without advancing checkpoint."""
     repository = FakeTopicRepository()
     repository.raw_items = []
-    original_checkpoint = dict(repository.checkpoint or {})
 
     scheduler = TopicResearchScheduler(repository, FakeLLMClient(_valid_payload()))
     run = scheduler._research_topic(repository.topic, repository.prompt)
@@ -496,6 +507,88 @@ def test_no_messages() -> None:
     assert repository.checkpoint is not None
     payload = repository.checkpoint.get("checkpoint_payload", {})
     assert payload.get("noop", False) is True
+
+
+def test_new_prompt_without_checkpoint_starts_at_activation_time() -> None:
+    """A newly confirmed prompt should not restart topic research from all historical raw items."""
+    repository = FakeTopicRepository()
+    activated_at = datetime(2026, 5, 22, 10, 25, 0)
+    repository.prompt.activated_at = activated_at
+    repository.checkpoint = None
+    repository.raw_items = [
+        RawIntelligenceItem(
+            id="raw-old",
+            source_type="telegram_group",
+            source_id="chat-1",
+            raw_text="Old backlog message.",
+            content_hash="hash-old",
+            collected_at=datetime(2026, 5, 10, 6, 48, 0),
+            created_at=datetime(2026, 5, 10, 6, 48, 0),
+            expires_at=datetime(2026, 11, 10, 6, 48, 0),
+        ),
+        RawIntelligenceItem(
+            id="raw-new",
+            source_type="telegram_group",
+            source_id="chat-1",
+            raw_text="New message after prompt activation.",
+            content_hash="hash-new",
+            collected_at=datetime(2026, 5, 22, 11, 0, 0),
+            created_at=datetime(2026, 5, 22, 11, 0, 0),
+            expires_at=datetime(2026, 11, 22, 11, 0, 0),
+        ),
+    ]
+
+    scheduler = TopicResearchScheduler(repository, FakeLLMClient(_valid_payload()))
+    raw_items = scheduler._fetch_raw_messages_since(repository.topic, repository.prompt)
+
+    assert repository.last_cursor_time == activated_at
+    assert [item.id for item in raw_items] == ["raw-new"]
+
+
+def test_scheduler_default_raw_item_limit_is_400() -> None:
+    repository = FakeTopicRepository()
+
+    scheduler = TopicResearchScheduler(repository, FakeLLMClient(_valid_payload()))
+    scheduler._fetch_raw_messages_since(repository.topic, repository.prompt)
+
+    assert scheduler.raw_item_limit == DEFAULT_RAW_ITEM_LIMIT
+    assert repository.last_limit == 400
+
+
+def test_prompt_activation_time_prevents_checkpoint_regression() -> None:
+    """A prompt-specific checkpoint older than activation should be clamped forward."""
+    repository = FakeTopicRepository()
+    activated_at = datetime(2026, 5, 22, 10, 25, 0)
+    repository.prompt.activated_at = activated_at
+    repository.checkpoint = {"checkpoint_cursor": "2026-05-10T06:48:48+00:00"}
+    repository.raw_items = [
+        RawIntelligenceItem(
+            id="raw-backlog",
+            source_type="v2ex",
+            source_id="claude",
+            raw_text="Backlog before activation.",
+            content_hash="hash-backlog",
+            collected_at=datetime(2026, 5, 10, 6, 49, 0),
+            created_at=datetime(2026, 5, 10, 6, 49, 0),
+            expires_at=datetime(2026, 11, 10, 6, 49, 0),
+        ),
+        RawIntelligenceItem(
+            id="raw-current",
+            source_type="v2ex",
+            source_id="claude",
+            raw_text="Current message after activation.",
+            content_hash="hash-current",
+            collected_at=datetime(2026, 5, 22, 12, 0, 0),
+            created_at=datetime(2026, 5, 22, 12, 0, 0),
+            expires_at=datetime(2026, 11, 22, 12, 0, 0),
+        ),
+    ]
+
+    scheduler = TopicResearchScheduler(repository, FakeLLMClient(_valid_payload()))
+    raw_items = scheduler._fetch_raw_messages_since(repository.topic, repository.prompt)
+
+    assert repository.last_cursor_time == activated_at
+    assert [item.id for item in raw_items] == ["raw-current"]
 
 
 def test_postgres_run_update_casts_nullable_coalesce_params() -> None:
@@ -693,33 +786,7 @@ def test_run_scheduled_topic_research_survives_topic_error() -> None:
         )
         repository.set_prompt(t.id, prompt)
 
-    good_item = RawIntelligenceItem(
-        id="raw-good",
-        source_type="telegram_group",
-        source_id="chat-1",
-        raw_text="Good topic message.",
-        content_hash="hash-good",
-        collected_at=datetime.utcnow(),
-        created_at=datetime.utcnow(),
-        expires_at=datetime.utcnow() + timedelta(days=180),
-    )
-
-    # Bad topic throws on LLM call
-    class ExplodingLLM:
-        chat = SimpleNamespace(
-            completions=SimpleNamespace(
-                create=lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))
-            )
-        )
-
     scheduler = TopicResearchScheduler(repository, FakeLLMClient(_valid_payload()))
-
-    # Monkey-patch: explode only for bad topic
-    original_list_topics = repository.list_topics
-
-    def selective_list(is_active=None, limit=100, offset=0):
-        # Only return good topic (bad topic's error was handled above)
-        return [good_topic]
 
     repository.set_topics([good_topic])
 

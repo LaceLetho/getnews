@@ -6,7 +6,7 @@ import hashlib
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set
 
@@ -14,16 +14,14 @@ from pydantic import BaseModel, Field, ValidationError, field_validator, model_v
 
 from ..domain.models import RawIntelligenceItem, TopicFinding, TopicResearchRun
 
-
 TOPIC_RESEARCH_SCHEMA_VERSION = "topic-research-v1"
+DEFAULT_RAW_ITEM_LIMIT = 400
 DEFAULT_MAX_CHUNK_CHARS = 50000
 
 # Wraps the stored research prompt so the LLM treats it as research direction only,
 # never as an output-format override.  This is a hard defence against topic prompts
 # that were generated / revised with their own conflicting JSON schemas.
-_WRAP_RESEARCH_PROMPT_PREFIX = (
-    "=== 研究方向开始（仅定义研究目标和内容，不定义输出格式） ===\n"
-)
+_WRAP_RESEARCH_PROMPT_PREFIX = "=== 研究方向开始（仅定义研究目标和内容，不定义输出格式） ===\n"
 _WRAP_RESEARCH_PROMPT_SUFFIX = (
     "\n=== 研究方向结束 ===\n\n"
     "重要提示：你的输出格式必须严格遵循系统提示词中定义的 JSON schema"
@@ -36,7 +34,10 @@ logger = logging.getLogger(__name__)
 
 
 SECRET_PATTERNS = (
-    re.compile(r"(?i)\b(api[_-]?key|authorization|auth[_-]?token|access[_-]?token|password|secret|cookie)\b\s*[:=]\s*\S+"),
+    re.compile(
+        r"(?i)\b(api[_-]?key|authorization|auth[_-]?token|access[_-]?token|"
+        r"password|secret|cookie)\b\s*[:=]\s*\S+"
+    ),
     re.compile(r"(?i)\b(bearer\s+[a-z0-9._\-]{16,})\b"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
     re.compile(r"(?i)\b(private[_-]?key|mnemonic|seed[_-]?phrase)\b"),
@@ -192,7 +193,9 @@ class TopicResearchParser:
         text = json.dumps(payload, ensure_ascii=False, sort_keys=True)
         for pattern in SECRET_PATTERNS:
             if pattern.search(text):
-                raise TopicResearchValidationError("Topic research output contains secret-like content")
+                raise TopicResearchValidationError(
+                    "Topic research output contains secret-like content"
+                )
 
 
 class TopicResearchScheduler:
@@ -215,7 +218,7 @@ class TopicResearchScheduler:
         model_name: str = "",
         parser: Optional[TopicResearchParser] = None,
         prompt_dir: Optional[Path] = None,
-        raw_item_limit: int = 200,
+        raw_item_limit: int = DEFAULT_RAW_ITEM_LIMIT,
         max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
     ):
         self.repository = intelligence_repository
@@ -252,23 +255,34 @@ class TopicResearchScheduler:
             if prompt is None:
                 logger.info(
                     "[%d/%d] 主题 %s（%s）没有活跃提示词，跳过",
-                    idx, total, topic.id, getattr(topic, "name", str(topic)),
+                    idx,
+                    total,
+                    topic.id,
+                    getattr(topic, "name", str(topic)),
                 )
                 continue
             try:
                 logger.info(
                     "[%d/%d] 正在研究主题 %s（%s）...",
-                    idx, total, topic.id, getattr(topic, "name", str(topic)),
+                    idx,
+                    total,
+                    topic.id,
+                    getattr(topic, "name", str(topic)),
                 )
                 self._research_topic(topic, prompt)
                 completed += 1
             except Exception as exc:
                 logger.error(
                     "[%d/%d] 研究主题 %s 时发生未处理异常: %s",
-                    idx, total, topic.id, exc,
+                    idx,
+                    total,
+                    topic.id,
+                    exc,
                 )
         logger.info(
-            "主题研究完成：%d/%d 个主题研究成功", completed, total,
+            "主题研究完成：%d/%d 个主题研究成功",
+            completed,
+            total,
         )
         return completed
 
@@ -312,15 +326,15 @@ class TopicResearchScheduler:
                 topic.id,
                 getattr(prompt, "prompt_version", "unknown"),
             )
-            return self._record_run(
-                run, topic, prompt, raw_items, status="success", findings=[]
-            )
+            return self._record_run(run, topic, prompt, raw_items, status="success", findings=[])
 
         try:
             chunks = self._chunk_messages(raw_items)
             logger.info(
                 "主题 %s：%d 条原始消息分为 %d 个 chunk，开始 LLM 分析...",
-                topic.id, len(raw_items), len(chunks),
+                topic.id,
+                len(raw_items),
+                len(chunks),
             )
 
             # Merge findings across all chunks
@@ -333,32 +347,36 @@ class TopicResearchScheduler:
                 all_findings.extend(chunk_findings)
                 logger.debug(
                     "主题 %s chunk %d/%d: 生成 %d 条 findings",
-                    topic.id, chunk_idx, len(chunks), len(chunk_findings),
+                    topic.id,
+                    chunk_idx,
+                    len(chunks),
+                    len(chunk_findings),
                 )
 
             self._save_findings(topic, prompt, all_findings, raw_items)
             logger.info(
                 "主题 %s 研究完成：%d 条原始消息 → %d 个 chunks → %d 条 findings",
-                topic.id, len(raw_items), len(chunks), len(all_findings),
+                topic.id,
+                len(raw_items),
+                len(chunks),
+                len(all_findings),
             )
             return self._record_run(
                 run, topic, prompt, raw_items, status="success", findings=all_findings
             )
         except TopicResearchValidationError as exc:
             logger.warning(
-                "主题 %s 的研究验证失败: %s", topic.id, exc,
+                "主题 %s 的研究验证失败: %s",
+                topic.id,
+                exc,
             )
-            return self._record_run(
-                run, topic, prompt, raw_items, status="failed", error=str(exc)
-            )
+            return self._record_run(run, topic, prompt, raw_items, status="failed", error=str(exc))
 
     # ------------------------------------------------------------------
     # Step 3: fetch raw messages since checkpoint with idempotency filter
     # ------------------------------------------------------------------
 
-    def _fetch_raw_messages_since(
-        self, topic: Any, prompt: Any
-    ) -> List[RawIntelligenceItem]:
+    def _fetch_raw_messages_since(self, topic: Any, prompt: Any) -> List[RawIntelligenceItem]:
         """Fetch raw messages since the topic's checkpoint cursor.
 
         Uses collected_at for cursor (not published_at).
@@ -368,10 +386,9 @@ class TopicResearchScheduler:
         combination via INSERT OR IGNORE / ON CONFLICT DO NOTHING markers.
         """
         checkpoint = self.repository.get_topic_checkpoint(topic.id, prompt.id) or {}
-        cursor = self._parse_cursor(checkpoint.get("checkpoint_cursor"))
+        cursor = self._resolve_fetch_cursor(checkpoint.get("checkpoint_cursor"), prompt)
         raw_items = list(
-            self.repository.get_raw_items_since(topic.id, cursor, self.raw_item_limit)
-            or []
+            self.repository.get_raw_items_since(topic.id, cursor, self.raw_item_limit) or []
         )
 
         if not raw_items:
@@ -393,8 +410,7 @@ class TopicResearchScheduler:
 
         if processed_ids:
             logger.info(
-                "主题 %s：获取 %d 条原始消息，其中 %d 条已处理（幂等过滤），"
-                "剩余 %d 条待分析",
+                "主题 %s：获取 %d 条原始消息，其中 %d 条已处理（幂等过滤），" "剩余 %d 条待分析",
                 topic.id,
                 len(all_ids),
                 len(processed_ids),
@@ -464,16 +480,12 @@ class TopicResearchScheduler:
         return self.parser.parse(raw_output)
 
     def _call_llm(self, topic: Any, prompt: Any, raw_items: Sequence[RawIntelligenceItem]) -> str:
-        system_prompt = (
-            self.prompt_dir / "topic_research_prompt.md"
-        ).read_text(encoding="utf-8")
+        system_prompt = (self.prompt_dir / "topic_research_prompt.md").read_text(encoding="utf-8")
         # Wrap the stored research prompt so the LLM never mistakes its contents
         # for an output-format override (defence against prompts that embed
         # their own conflicting JSON schemas).
         wrapped_prompt = (
-            _WRAP_RESEARCH_PROMPT_PREFIX
-            + prompt.prompt_text
-            + _WRAP_RESEARCH_PROMPT_SUFFIX
+            _WRAP_RESEARCH_PROMPT_PREFIX + prompt.prompt_text + _WRAP_RESEARCH_PROMPT_SUFFIX
         )
         user_payload = {
             "topic_name": getattr(topic, "name", ""),
@@ -601,21 +613,32 @@ class TopicResearchScheduler:
     # Cursor helpers
     # ------------------------------------------------------------------
 
-    def _checkpoint_cursor(
-        self, raw_items: Sequence[RawIntelligenceItem]
-    ) -> Optional[str]:
+    def _checkpoint_cursor(self, raw_items: Sequence[RawIntelligenceItem]) -> Optional[str]:
         if not raw_items:
             return datetime.utcnow().isoformat()
         latest = max(
-            (item.collected_at or item.created_at or datetime.utcnow())
-            for item in raw_items
+            (item.collected_at or item.created_at or datetime.utcnow()) for item in raw_items
         )
         return latest.isoformat()
+
+    def _resolve_fetch_cursor(
+        self, checkpoint_value: Optional[str], prompt: Any
+    ) -> Optional[datetime]:
+        cursor = self._parse_cursor(checkpoint_value)
+        activated_at = self._parse_cursor(getattr(prompt, "activated_at", None))
+        if cursor is None:
+            return activated_at
+        if activated_at is None:
+            return cursor
+        return max(cursor, activated_at)
 
     def _parse_cursor(self, value: Optional[str]) -> Optional[datetime]:
         if not value:
             return None
         try:
-            return datetime.fromisoformat(str(value))
-        except ValueError:
+            parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
+        except (TypeError, ValueError):
             return None
