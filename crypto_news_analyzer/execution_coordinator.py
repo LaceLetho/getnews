@@ -149,9 +149,7 @@ class MainController:
         self.error_manager: Optional[ErrorRecoveryManager] = None
         self.command_handler: Optional[Any] = None  # TelegramCommandHandler实例
         self.cache_manager: Optional[Any] = None  # SentMessageCacheManager实例
-        self.market_snapshot_service: Optional[Any] = (
-            None  # MarketSnapshotService实例（可选）
-        )
+        self.market_snapshot_service: Optional[Any] = None  # MarketSnapshotService实例（可选）
         self.embedding_service: Optional[Any] = None
         self.semantic_search_service: Optional[Any] = None
         self.analysis_repository: Optional[Any] = None
@@ -201,14 +199,10 @@ class MainController:
 
         return f"{normalized_source}:{normalized_recipient_id}"
 
-    def _resolve_manual_recipient_key(
-        self, chat_id: str, manual_source: str = "telegram"
-    ) -> str:
+    def _resolve_manual_recipient_key(self, chat_id: str, manual_source: str = "telegram") -> str:
         normalized_chat_id = str(chat_id).strip()
 
-        if normalized_chat_id.startswith("api:") or normalized_chat_id.startswith(
-            "telegram:"
-        ):
+        if normalized_chat_id.startswith("api:") or normalized_chat_id.startswith("telegram:"):
             return normalized_chat_id
 
         return self._normalize_manual_recipient_key(manual_source, normalized_chat_id)
@@ -280,14 +274,10 @@ class MainController:
             raise ValueError("分析仓储未初始化")
 
         if self.cache_repository is None:
-            self.logger.info(
-                f"缓存仓储未初始化，recipient_key={recipient_key}，使用空历史标题集"
-            )
+            self.logger.info(f"缓存仓储未初始化，recipient_key={recipient_key}，使用空历史标题集")
             return []
 
-        prior_success_time = self.analysis_repository.get_last_successful_analysis(
-            recipient_key
-        )
+        prior_success_time = self.analysis_repository.get_last_successful_analysis(recipient_key)
         if prior_success_time is None:
             self.logger.info(
                 f"手动分析无历史成功锚点，recipient_key={recipient_key}，使用空历史标题集"
@@ -314,9 +304,7 @@ class MainController:
             signal_name = (
                 "SIGTERM"
                 if signum == signal.SIGTERM
-                else "SIGINT"
-                if signum == signal.SIGINT
-                else f"Signal {signum}"
+                else "SIGINT" if signum == signal.SIGINT else f"Signal {signum}"
             )
             self.logger.info(f"接收到信号 {signal_name}，开始优雅关闭")
 
@@ -329,9 +317,7 @@ class MainController:
                     self.current_execution
                     and self.current_execution.status == ExecutionStatus.RUNNING
                 ):
-                    self.logger.info(
-                        f"正在取消执行: {self.current_execution.execution_id}"
-                    )
+                    self.logger.info(f"正在取消执行: {self.current_execution.execution_id}")
                     self.current_execution.status = ExecutionStatus.CANCELLED
 
             # 停止调度器
@@ -356,9 +342,7 @@ class MainController:
             self.logger.info("开始初始化系统组件")
             config_data = self._initialize_core_system_components()
             runtime_mode = (
-                os.environ.get("CRYPTO_NEWS_RUNTIME_MODE", "analysis-service")
-                .strip()
-                .lower()
+                os.environ.get("CRYPTO_NEWS_RUNTIME_MODE", "analysis-service").strip().lower()
             )
 
             # 初始化LLM分析器
@@ -366,13 +350,10 @@ class MainController:
             llm_config = validate_llm_config_payload(config_data.get("llm_config", {}))
             analysis_model_runtime = resolve_model_runtime(llm_config.model)
             fallback_model_runtimes = [
-                resolve_model_runtime(model_config)
-                for model_config in llm_config.fallback_models
+                resolve_model_runtime(model_config) for model_config in llm_config.fallback_models
             ]
             market_model_runtime = resolve_model_runtime(llm_config.market_model)
-            provider_credentials = self._resolve_provider_credentials(
-                auth_config, llm_config
-            )
+            provider_credentials = self._resolve_provider_credentials(auth_config, llm_config)
             self._validate_runtime_auth(
                 auth_config,
                 llm_config,
@@ -437,9 +418,7 @@ class MainController:
                     # 不设置command_handler，让它保持为None
             else:
                 if not telegram_command_config.enabled:
-                    self.logger.info(
-                        "Telegram命令功能未启用（telegram_commands.enabled=false）"
-                    )
+                    self.logger.info("Telegram命令功能未启用（telegram_commands.enabled=false）")
                 elif not auth_config.TELEGRAM_BOT_TOKEN:
                     self.logger.warning("Telegram Bot Token未配置，无法启用命令功能")
 
@@ -549,6 +528,7 @@ class MainController:
             raise ValueError("智能采集仓储未初始化")
 
         from .intelligence.pipeline import IntelligencePipeline
+
         intelligence_config = self.config_manager.get_intelligence_config()
         setattr(self.intelligence_repository, "datasource_repository", self.datasource_repository)
 
@@ -567,31 +547,64 @@ class MainController:
         try:
             extraction_config = getattr(intelligence_config, "extraction", None)
             if extraction_config is None:
-                self.logger.warning("Intelligence extraction config missing, skipping topic research scheduler")
+                self.logger.warning(
+                    "Intelligence extraction config missing, skipping topic research scheduler"
+                )
                 return None
 
-            provider = getattr(extraction_config, "provider", "opencode-go")
-            model_name = getattr(extraction_config, "model_name", "deepseek-v4-pro")
-            thinking_level = getattr(extraction_config, "thinking_level", None)
+            topic_research_payload: Dict[str, Any] = {}
+            if self.config_manager is not None:
+                topic_research_payload = dict(
+                    self.config_manager.config_data.get("intelligence_collection", {}).get(
+                        "topic_research", {}
+                    )
+                    or {}
+                )
+
+            if topic_research_payload.get("enabled") is False:
+                self.logger.info("Topic research scheduler disabled by configuration")
+                return None
+
+            topic_model_payload = dict(topic_research_payload.get("model") or {})
+            provider = topic_model_payload.get(
+                "provider", getattr(extraction_config, "provider", "opencode-go")
+            )
+            model_name = topic_model_payload.get(
+                "name",
+                topic_model_payload.get(
+                    "model", getattr(extraction_config, "model_name", "deepseek-v4-pro")
+                ),
+            )
+            model_options = dict(topic_model_payload.get("options") or {})
+            thinking_level = model_options.get(
+                "thinking_level", getattr(extraction_config, "thinking_level", None)
+            )
+            if thinking_level:
+                model_options["thinking_level"] = thinking_level
 
             from .config.llm_registry import ModelConfig
+
             runtime = resolve_model_runtime(
                 ModelConfig(
                     provider=provider,
                     name=model_name,
-                    options={"thinking_level": thinking_level} if thinking_level else {},
+                    options=model_options,
                 )
             )
 
             api_key = os.getenv("OPENCODE_API_KEY", "").strip()
             if not api_key:
-                self.logger.warning("OPENCODE_API_KEY not set, topic research scheduler unavailable")
+                self.logger.warning(
+                    "OPENCODE_API_KEY not set, topic research scheduler unavailable"
+                )
                 return None
 
             try:
                 from openai import OpenAI
             except ImportError:
-                self.logger.warning("openai package not installed, topic research scheduler unavailable")
+                self.logger.warning(
+                    "openai package not installed, topic research scheduler unavailable"
+                )
                 return None
 
             llm_client = OpenAI(
@@ -604,16 +617,36 @@ class MainController:
             scheduler = TopicResearchScheduler(
                 intelligence_repository=self.intelligence_repository,
                 llm_client=llm_client,
-                model_name=model_name,
+                model_name=runtime.name,
+                raw_item_limit=int(topic_research_payload.get("raw_item_limit", 400)),
+                max_chunk_chars=int(topic_research_payload.get("max_chunk_chars", 50000)),
+                temperature=getattr(extraction_config, "temperature", None),
+                max_tokens=int(getattr(extraction_config, "max_tokens", 4000)),
+                extra_body=self._build_topic_research_extra_body(runtime),
             )
             self.logger.info(
-                "TopicResearchScheduler initialized (provider=%s, model=%s)",
-                provider, model_name,
+                "TopicResearchScheduler initialized "
+                "(provider=%s, model=%s, raw_item_limit=%s, max_chunk_chars=%s)",
+                provider,
+                runtime.name,
+                scheduler.raw_item_limit,
+                scheduler.max_chunk_chars,
             )
             return scheduler
         except Exception as e:
             self.logger.warning("Failed to build topic research scheduler: %s", e)
             return None
+
+    @staticmethod
+    def _build_topic_research_extra_body(runtime: Any) -> Optional[Dict[str, Any]]:
+        options = getattr(runtime, "options", {}) or {}
+        thinking_level = options.get("thinking_level")
+        if not thinking_level:
+            return None
+        thinking_type = thinking_level
+        if runtime.provider_name == "opencode-go" and runtime.name == "deepseek-v4-pro":
+            thinking_type = "disabled" if thinking_level == "disabled" else "enabled"
+        return {"thinking": {"type": thinking_type}}
 
     def _initialize_embedding_service(self) -> None:
         if self.config_manager is None or self.data_manager is None:
@@ -646,9 +679,7 @@ class MainController:
             dimensions=semantic_search_config.embedding_dimensions,
         )
         if not service.enabled:
-            self.logger.warning(
-                "EmbeddingService初始化后不可用，新增内容将跳过增量Embedding"
-            )
+            self.logger.warning("EmbeddingService初始化后不可用，新增内容将跳过增量Embedding")
             return
 
         self.embedding_service = service
@@ -685,9 +716,7 @@ class MainController:
             content_repository=self.content_repository,
             embedding_service=self.embedding_service,
             semantic_search_config=semantic_search_config,
-            llm_config_payload=dict(
-                self.config_manager.config_data.get("llm_config", {})
-            ),
+            llm_config_payload=dict(self.config_manager.config_data.get("llm_config", {})),
             provider_credentials=provider_credentials,
         )
         self.logger.info("SemanticSearchService初始化完成")
@@ -717,9 +746,7 @@ class MainController:
 
         inserted = self.data_manager.bootstrap_datasources_if_empty(datasource_rows)
         if inserted:
-            self.logger.info(
-                f"数据源启动导入完成，导入 {len(datasource_rows)} 条配置数据"
-            )
+            self.logger.info(f"数据源启动导入完成，导入 {len(datasource_rows)} 条配置数据")
         else:
             self.logger.info("数据源存储非空，跳过启动导入")
 
@@ -736,21 +763,15 @@ class MainController:
         return TelegramCommandConfig(
             enabled=telegram_commands.get("enabled", False),
             authorized_users=telegram_commands.get("authorized_users", []),
-            execution_timeout_minutes=telegram_commands.get(
-                "execution_timeout_minutes", 30
-            ),
-            max_concurrent_executions=telegram_commands.get(
-                "max_concurrent_executions", 1
-            ),
+            execution_timeout_minutes=telegram_commands.get("execution_timeout_minutes", 30),
+            max_concurrent_executions=telegram_commands.get("max_concurrent_executions", 1),
             command_rate_limit=telegram_commands.get(
                 "command_rate_limit",
                 {"max_commands_per_hour": 10, "cooldown_seconds": 1},
             ),
         )
 
-    def validate_prerequisites(
-        self, validation_scope: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def validate_prerequisites(self, validation_scope: Optional[str] = None) -> Dict[str, Any]:
         """
         验证系统运行前提条件
 
@@ -761,9 +782,7 @@ class MainController:
             验证结果字典
         """
         normalized_scope = (
-            (validation_scope or os.environ.get("CRYPTO_NEWS_RUNTIME_MODE", ""))
-            .strip()
-            .lower()
+            (validation_scope or os.environ.get("CRYPTO_NEWS_RUNTIME_MODE", "")).strip().lower()
         )
         skip_analysis_auth_validation = normalized_scope == "ingestion"
 
@@ -772,9 +791,7 @@ class MainController:
         try:
             # 验证配置文件
             if not os.path.exists(self.config_path):
-                validation_result["errors"].append(
-                    f"配置文件不存在: {self.config_path}"
-                )
+                validation_result["errors"].append(f"配置文件不存在: {self.config_path}")
                 validation_result["valid"] = False
                 return validation_result
 
@@ -809,9 +826,7 @@ class MainController:
             if not skip_analysis_auth_validation:
                 auth_config = self.config_manager.get_auth_config()
                 try:
-                    llm_config = validate_llm_config_payload(
-                        config_data.get("llm_config", {})
-                    )
+                    llm_config = validate_llm_config_payload(config_data.get("llm_config", {}))
                     self._validate_runtime_auth(
                         auth_config,
                         llm_config,
@@ -822,12 +837,9 @@ class MainController:
                     validation_result["valid"] = False
 
                 if (normalized_scope or "analysis-service") == "analysis-service" and (
-                    not auth_config.TELEGRAM_BOT_TOKEN
-                    or not auth_config.TELEGRAM_CHANNEL_ID
+                    not auth_config.TELEGRAM_BOT_TOKEN or not auth_config.TELEGRAM_CHANNEL_ID
                 ):
-                    validation_result["warnings"].append(
-                        "Telegram配置不完整，将跳过报告发送"
-                    )
+                    validation_result["warnings"].append("Telegram配置不完整，将跳过报告发送")
 
             # 验证数据源配置
             rss_sources = self.config_manager.get_rss_sources()
@@ -840,13 +852,9 @@ class MainController:
             storage_config = self.config_manager.get_storage_config()
             if (
                 storage_config.backend == "sqlite"
-                and not self.config_manager.validate_storage_path(
-                    storage_config.database_path
-                )
+                and not self.config_manager.validate_storage_path(storage_config.database_path)
             ):
-                validation_result["errors"].append(
-                    f"存储路径无效: {storage_config.database_path}"
-                )
+                validation_result["errors"].append(f"存储路径无效: {storage_config.database_path}")
                 validation_result["valid"] = False
 
             # 验证必要目录的写权限
@@ -857,9 +865,7 @@ class MainController:
                         os.makedirs(dir_path, exist_ok=True)
                         self.logger.info(f"创建目录: {dir_path}")
                     except Exception as e:
-                        validation_result["errors"].append(
-                            f"无法创建目录 {dir_path}: {str(e)}"
-                        )
+                        validation_result["errors"].append(f"无法创建目录 {dir_path}: {str(e)}")
                         validation_result["valid"] = False
                 elif not os.access(dir_path, os.W_OK):
                     validation_result["errors"].append(f"目录不可写: {dir_path}")
@@ -905,9 +911,7 @@ class MainController:
         }
         return sorted(providers)
 
-    def _resolve_provider_credentials(
-        self, auth_config: Any, llm_config: Any
-    ) -> Dict[str, str]:
+    def _resolve_provider_credentials(self, auth_config: Any, llm_config: Any) -> Dict[str, str]:
         credentials: Dict[str, str] = {}
         for provider_name in self._required_llm_providers(llm_config):
             provider_record = get_provider_record(provider_name)
@@ -916,9 +920,7 @@ class MainController:
             ).strip()
         return credentials
 
-    def _validate_runtime_auth(
-        self, auth_config: Any, llm_config: Any, mode: str
-    ) -> None:
+    def _validate_runtime_auth(self, auth_config: Any, llm_config: Any, mode: str) -> None:
         auth_config.validate(
             mode=mode,
             required_provider_env_vars=self._required_llm_provider_env_vars(llm_config),
@@ -967,9 +969,7 @@ class MainController:
             self.logger.info(f"开始执行工作流 {execution_id}")
 
             # 验证前提条件
-            validation_result = self.validate_prerequisites(
-                validation_scope="analysis-service"
-            )
+            validation_result = self.validate_prerequisites(validation_scope="analysis-service")
             if not validation_result["valid"]:
                 raise Exception(f"前提条件验证失败: {validation_result['errors']}")
 
@@ -1007,16 +1007,12 @@ class MainController:
                 if self.current_execution:
                     self.current_execution.end_time = end_time
                     self.current_execution.status = (
-                        ExecutionStatus.COMPLETED
-                        if result["success"]
-                        else ExecutionStatus.FAILED
+                        ExecutionStatus.COMPLETED if result["success"] else ExecutionStatus.FAILED
                     )
                     self.current_execution.progress = 1.0
                     self.current_execution.current_stage = "completed"
                     if not result["success"]:
-                        self.current_execution.error_message = "; ".join(
-                            result.get("errors", [])
-                        )
+                        self.current_execution.error_message = "; ".join(result.get("errors", []))
 
             # 记录执行历史
             self.execution_history.append(execution_result)
@@ -1119,9 +1115,7 @@ class MainController:
             self._update_execution_progress(0.4, "analyzing")
             self.logger.info("开始内容分析阶段")
 
-            analysis_result = self._execute_analysis_stage(
-                content_items, is_manual=is_manual
-            )
+            analysis_result = self._execute_analysis_stage(content_items, is_manual=is_manual)
             if not analysis_result["success"]:
                 result["errors"].extend(analysis_result["errors"])
                 return result
@@ -1345,9 +1339,7 @@ class MainController:
         try:
             if preloaded_content_items is not None:
                 all_content_items = preloaded_content_items
-                self.logger.info(
-                    f"使用预加载内容项进行分析，共 {len(all_content_items)} 个"
-                )
+                self.logger.info(f"使用预加载内容项进行分析，共 {len(all_content_items)} 个")
             else:
                 time_window_hours = (
                     analysis_time_window_hours
@@ -1382,9 +1374,7 @@ class MainController:
             is_scheduled = not is_manual
             analyzer_kwargs: Dict[str, Any] = {"is_scheduled": is_scheduled}
             if is_manual:
-                analyzer_kwargs["historical_titles"] = list(
-                    manual_historical_titles or []
-                )
+                analyzer_kwargs["historical_titles"] = list(manual_historical_titles or [])
 
             analysis_results = self.llm_analyzer.analyze_content_batch(
                 all_content_items,
@@ -1436,9 +1426,7 @@ class MainController:
 
         try:
             # 获取模型信息
-            model_info = (
-                self.llm_analyzer.get_model_info() if self.llm_analyzer else None
-            )
+            model_info = self.llm_analyzer.get_model_info() if self.llm_analyzer else None
 
             # 创建分析数据对象
             analyzed_data = create_analyzed_data(
@@ -1503,9 +1491,7 @@ class MainController:
                 )
             else:
                 # 定时任务报告，发送到配置的频道
-                self.logger.info(
-                    f"发送报告到配置的频道: {self.telegram_sender.config.channel_id}"
-                )
+                self.logger.info(f"发送报告到配置的频道: {self.telegram_sender.config.channel_id}")
                 send_result = self.telegram_sender.send_report(report_content)
 
             if send_result.success:
@@ -1653,9 +1639,7 @@ class MainController:
         while not self._stop_event.is_set():
             try:
                 # 计算下次执行时间（基于上次调度时间 + 间隔）
-                next_execution = self._last_scheduled_time + timedelta(
-                    seconds=interval_seconds
-                )
+                next_execution = self._last_scheduled_time + timedelta(seconds=interval_seconds)
 
                 # 计算需要等待的时间
                 now = datetime.now()
@@ -1694,9 +1678,7 @@ class MainController:
                 self._last_scheduled_time = next_execution
 
                 if result.success:
-                    self.logger.info(
-                        f"定时执行成功，处理了 {result.items_processed} 个项目"
-                    )
+                    self.logger.info(f"定时执行成功，处理了 {result.items_processed} 个项目")
                     consecutive_failures = 0  # 重置连续失败计数
                 else:
                     consecutive_failures += 1
@@ -1706,9 +1688,7 @@ class MainController:
 
                     # 如果连续失败次数过多，增加等待时间
                     if consecutive_failures >= max_consecutive_failures:
-                        backoff_time = min(
-                            300, 60 * consecutive_failures
-                        )  # 最多等待5分钟
+                        backoff_time = min(300, 60 * consecutive_failures)  # 最多等待5分钟
                         self.logger.warning(
                             f"连续失败{consecutive_failures}次，等待{backoff_time}秒后继续"
                         )
@@ -1764,12 +1744,8 @@ class MainController:
             if os.path.exists(self._history_file):
                 with open(self._history_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.execution_history = [
-                        ExecutionResult.from_dict(item) for item in data
-                    ]
-                    self.logger.info(
-                        f"已加载 {len(self.execution_history)} 条执行历史记录"
-                    )
+                    self.execution_history = [ExecutionResult.from_dict(item) for item in data]
+                    self.logger.info(f"已加载 {len(self.execution_history)} 条执行历史记录")
             else:
                 self.logger.info("执行历史文件不存在，从空历史开始")
         except Exception as e:
@@ -1817,9 +1793,7 @@ class MainController:
         # 如果没有上次调度时间，使用当前时间估算
         return datetime.now() + timedelta(seconds=interval_seconds)
 
-    def log_execution_cycle(
-        self, start_time: datetime, end_time: datetime, status: str
-    ) -> None:
+    def log_execution_cycle(self, start_time: datetime, end_time: datetime, status: str) -> None:
         """
         记录执行周期日志
 
@@ -1840,9 +1814,7 @@ class MainController:
         self.logger.info(f"执行周期记录: {json.dumps(log_entry, ensure_ascii=False)}")
 
         # 同时输出到标准输出以确保容器日志可见
-        print(
-            f"[EXECUTION_CYCLE] {json.dumps(log_entry, ensure_ascii=False)}", flush=True
-        )
+        print(f"[EXECUTION_CYCLE] {json.dumps(log_entry, ensure_ascii=False)}", flush=True)
 
     def cleanup_resources(self) -> None:
         """清理资源"""
@@ -1868,11 +1840,7 @@ class MainController:
     def _deep_update(self, base_dict: Dict, update_dict: Dict) -> None:
         """深度更新字典"""
         for key, value in update_dict.items():
-            if (
-                key in base_dict
-                and isinstance(base_dict[key], dict)
-                and isinstance(value, dict)
-            ):
+            if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
                 self._deep_update(base_dict[key], value)
             else:
                 base_dict[key] = value
@@ -1883,9 +1851,7 @@ class MainController:
 
         status = {
             "initialized": self._initialized,
-            "scheduler_running": bool(
-                self._scheduler_thread and self._scheduler_thread.is_alive()
-            ),
+            "scheduler_running": bool(self._scheduler_thread and self._scheduler_thread.is_alive()),
             "current_execution": None,
             "execution_history_count": len(self.execution_history),
             "next_execution_time": None,
@@ -1896,9 +1862,11 @@ class MainController:
         if current_exec:
             status["current_execution"] = {
                 "execution_id": current_exec.execution_id,
-                "status": current_exec.status.value
-                if hasattr(current_exec.status, "value")
-                else str(current_exec.status),
+                "status": (
+                    current_exec.status.value
+                    if hasattr(current_exec.status, "value")
+                    else str(current_exec.status)
+                ),
                 "progress": current_exec.progress,
                 "current_stage": current_exec.current_stage,
                 "start_time": current_exec.start_time.isoformat(),
@@ -1907,15 +1875,11 @@ class MainController:
         # 下次执行时间 - 转换为UTC+8格式
         next_time = self.get_next_execution_time()
         if next_time:
-            status["next_execution_time"] = format_datetime_utc8(
-                next_time, "%Y-%m-%d %H:%M:%S"
-            )
+            status["next_execution_time"] = format_datetime_utc8(next_time, "%Y-%m-%d %H:%M:%S")
 
         return status
 
-    def trigger_manual_execution(
-        self, user_id: str = None, chat_id: str = None
-    ) -> ExecutionResult:
+    def trigger_manual_execution(self, user_id: str = None, chat_id: str = None) -> ExecutionResult:
         """
         触发手动执行
 
@@ -1938,10 +1902,7 @@ class MainController:
 
         # 检查并发限制
         with self._execution_lock:
-            if (
-                self.current_execution
-                and self.current_execution.status == ExecutionStatus.RUNNING
-            ):
+            if self.current_execution and self.current_execution.status == ExecutionStatus.RUNNING:
                 # 返回一个表示拒绝的结果
                 return ExecutionResult(
                     execution_id="rejected",
@@ -1958,9 +1919,7 @@ class MainController:
                 )
 
         # 执行工作流
-        return self.run_once(
-            trigger_type="manual", trigger_user=user_id, trigger_chat_id=chat_id
-        )
+        return self.run_once(trigger_type="manual", trigger_user=user_id, trigger_chat_id=chat_id)
 
     def get_current_execution_info(self) -> Optional[ExecutionInfo]:
         """
@@ -1982,10 +1941,7 @@ class MainController:
             是否成功取消
         """
         with self._execution_lock:
-            if (
-                self.current_execution
-                and self.current_execution.status == ExecutionStatus.RUNNING
-            ):
+            if self.current_execution and self.current_execution.status == ExecutionStatus.RUNNING:
                 self.current_execution.status = ExecutionStatus.CANCELLED
                 self.logger.info(f"取消执行: {self.current_execution.execution_id}")
                 return True
@@ -2062,9 +2018,7 @@ class MainController:
             self.logger.info(f"开始爬取阶段 {execution_id}")
 
             # 验证前提条件
-            validation_result = self.validate_prerequisites(
-                validation_scope="ingestion"
-            )
+            validation_result = self.validate_prerequisites(validation_scope="ingestion")
             if not validation_result["valid"]:
                 raise Exception(f"前提条件验证失败: {validation_result['errors']}")
 
@@ -2094,9 +2048,7 @@ class MainController:
 
                     end_time = datetime.now()
                     duration = (end_time - start_time).total_seconds()
-                    self.logger.info(
-                        "检测到内存中运行任务，已持久化跳过 ingestion 作业"
-                    )
+                    self.logger.info("检测到内存中运行任务，已持久化跳过 ingestion 作业")
 
                     execution_result = ExecutionResult(
                         execution_id=execution_id,
@@ -2151,9 +2103,7 @@ class MainController:
                             source_type=source_type, source_name=source_name
                         )
                         skipped_job.status = IngestionJobStatus.SKIPPED.value
-                        skipped_job.error_message = (
-                            "已存在运行中的 ingestion 作业，跳过重复触发"
-                        )
+                        skipped_job.error_message = "已存在运行中的 ingestion 作业，跳过重复触发"
                         skipped_job.metadata = {
                             "trigger_type": trigger_type,
                             "skip_reason": "persistent_running_job",
@@ -2222,9 +2172,7 @@ class MainController:
                     try:
                         self.logger.info("开始执行 Topic Research Scheduler...")
                         completed = self._topic_research_scheduler.run_scheduled_topic_research()
-                        self.logger.info(
-                            "Topic research 完成，成功研究了 %d 个主题", completed
-                        )
+                        self.logger.info("Topic research 完成，成功研究了 %d 个主题", completed)
                         crawl_result["topic_research_completed"] = completed
                     except Exception as exc:
                         self.logger.warning("Topic research 执行失败: %s", exc)
@@ -2476,9 +2424,7 @@ class MainController:
             result["success"] = True
             result["report_content"] = report_result["report_content"]
             result["items_processed"] = len(content_items)
-            result["final_report_messages"] = self._build_manual_report_messages(
-                categorized_items
-            )
+            result["final_report_messages"] = self._build_manual_report_messages(categorized_items)
 
             if not result["report_content"] and len(content_items) > 0:
                 error_message = "分析未生成有效报告内容"
