@@ -358,6 +358,19 @@ def test_malformed_llm_json() -> None:
     assert repository.checkpoint == original_checkpoint
 
 
+def test_empty_llm_response_records_specific_error() -> None:
+    repository = FakeTopicRepository()
+    original_checkpoint = dict(repository.checkpoint or {})
+    scheduler = TopicResearchScheduler(repository, FakeLLMClient(""))
+
+    run = scheduler.run_topic(repository.topic, repository.prompt)
+
+    assert run.status == "failed"
+    assert "Empty topic research LLM response" in str(run.error_message)
+    assert repository.findings == []
+    assert repository.checkpoint == original_checkpoint
+
+
 def test_secret_filtering() -> None:
     repository = FakeTopicRepository()
     original_checkpoint = dict(repository.checkpoint or {})
@@ -427,6 +440,17 @@ def test_failure_does_not_advance_checkpoint() -> None:
 
     # No processed items should have been marked
     assert repository.processed_items == []
+
+
+def test_scheduled_research_does_not_count_validation_failure_as_completed() -> None:
+    repository = FakeTopicRepository()
+    scheduler = TopicResearchScheduler(repository, FakeLLMClient(""))
+
+    completed = scheduler.run_scheduled_topic_research()
+
+    assert completed == 0
+    assert len(repository.runs) == 1
+    assert repository.runs[0].status == "failed"
 
 
 def test_skips_inactive_topics() -> None:
@@ -553,6 +577,27 @@ def test_scheduler_default_raw_item_limit_is_400() -> None:
 
     assert scheduler.raw_item_limit == DEFAULT_RAW_ITEM_LIMIT
     assert repository.last_limit == 400
+
+
+def test_scheduler_passes_generation_options_to_llm() -> None:
+    repository = FakeTopicRepository()
+    llm_client = FakeLLMClient(_valid_payload())
+    scheduler = TopicResearchScheduler(
+        repository,
+        llm_client,
+        model_name="deepseek-v4-pro",
+        temperature=0.2,
+        max_tokens=1234,
+        extra_body={"thinking": {"type": "enabled"}},
+    )
+
+    scheduler.run_topic(repository.topic, repository.prompt)
+
+    call = llm_client.completions.calls[0]
+    assert call["model"] == "deepseek-v4-pro"
+    assert call["temperature"] == 0.2
+    assert call["max_tokens"] == 1234
+    assert call["extra_body"] == {"thinking": {"type": "enabled"}}
 
 
 def test_prompt_activation_time_prevents_checkpoint_regression() -> None:

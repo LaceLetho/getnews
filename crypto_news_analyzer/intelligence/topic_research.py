@@ -141,6 +141,8 @@ class TopicResearchParser:
     """Validate raw topic-research LLM JSON and reject unsafe content."""
 
     def parse(self, raw_output: str | Dict[str, Any]) -> TopicResearchResult:
+        if isinstance(raw_output, str) and not raw_output.strip():
+            raise TopicResearchValidationError("Empty topic research LLM response")
         try:
             payload = dict(raw_output) if isinstance(raw_output, dict) else json.loads(raw_output)
         except (TypeError, json.JSONDecodeError) as exc:
@@ -220,6 +222,9 @@ class TopicResearchScheduler:
         prompt_dir: Optional[Path] = None,
         raw_item_limit: int = DEFAULT_RAW_ITEM_LIMIT,
         max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        extra_body: Optional[Dict[str, Any]] = None,
     ):
         self.repository = intelligence_repository
         self.llm_client = llm_client
@@ -228,6 +233,9 @@ class TopicResearchScheduler:
         self.prompt_dir = prompt_dir or Path(__file__).resolve().parents[2] / "prompts"
         self.raw_item_limit = raw_item_limit
         self.max_chunk_chars = max_chunk_chars
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.extra_body = dict(extra_body or {})
 
     # ------------------------------------------------------------------
     # Public entry points
@@ -269,8 +277,9 @@ class TopicResearchScheduler:
                     topic.id,
                     getattr(topic, "name", str(topic)),
                 )
-                self._research_topic(topic, prompt)
-                completed += 1
+                run = self._research_topic(topic, prompt)
+                if getattr(run, "status", "") == "success":
+                    completed += 1
             except Exception as exc:
                 logger.error(
                     "[%d/%d] 研究主题 %s 时发生未处理异常: %s",
@@ -503,8 +512,14 @@ class TopicResearchScheduler:
             }
             if self.model_name:
                 kwargs["model"] = self.model_name
+            if self.temperature is not None:
+                kwargs["temperature"] = self.temperature
+            if self.max_tokens is not None:
+                kwargs["max_tokens"] = self.max_tokens
+            if self.extra_body:
+                kwargs["extra_body"] = self.extra_body
             response = completions.create(**kwargs)
-            return str(response.choices[0].message.content)
+            return str(response.choices[0].message.content or "")
         if hasattr(self.llm_client, "complete"):
             return str(self.llm_client.complete(system_prompt, user_payload))
         raise TypeError("llm_client must expose chat.completions.create() or complete()")
