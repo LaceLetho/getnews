@@ -62,3 +62,6 @@ opencode.json
 .worktrees/
 .sisyphus/boulder.json
 .sisyphus/run-continuation/
+
+# CodeGraph index
+.codegraph/
