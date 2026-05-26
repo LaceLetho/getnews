@@ -13,6 +13,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from ..domain.models import IntelligenceTopic, TopicPrompt
 from ..domain.repositories import IntelligenceRepository
+from ..utils.llm_logging import (
+    is_llm_debug_logging_enabled,
+    log_llm_error,
+    log_llm_request,
+    log_llm_response,
+)
 
 PROMPT_GENERATION_SCHEMA_VERSION = "topic-prompt-generation-v1"
 PROMPT_REVISION_SCHEMA_VERSION = "topic-prompt-revision-v1"
@@ -23,7 +29,10 @@ PROMPT_REVISION_SCHEMA_VERSION = "topic-prompt-revision-v1"
 _OUTPUT_SCHEMA_INDICATORS = (
     # JSON code blocks that look like schema definitions
     (r"```json\s*\{[^`]*?\}\s*```", "json code block"),
-    (r"```\s*\{[^`]*?(?:findings|channel_or_actor|source_platform|product_type)[^`]*?\}\s*```", "output schema code block"),
+    (
+        r"```\s*\{[^`]*?(?:findings|channel_or_actor|source_platform|product_type)[^`]*?\}\s*```",
+        "output schema code block",
+    ),
     # Lines that declare output fields not in the standard topic-research-v1 schema
     (r'"channel_or_actor"\s*:', "forbidden field channel_or_actor"),
     (r'"source_platform"\s*:', "forbidden field source_platform"),
@@ -123,10 +132,13 @@ class _TopicPromptLLMService:
         llm_client: Any,
         model_name: str = "",
         prompt_dir: Optional[Path] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
         self.llm_client = llm_client
         self.model_name = model_name
         self.prompt_dir = prompt_dir or Path(__file__).resolve().parents[2] / "prompts"
+        self.config = config or {}
+        self._config_available = config is not None
 
     def _load_template(self, filename: str) -> str:
         return (self.prompt_dir / filename).read_text(encoding="utf-8")
@@ -134,6 +146,7 @@ class _TopicPromptLLMService:
     def _call_llm(self, system_prompt: str, user_payload: Dict[str, Any]) -> Dict[str, Any]:
         request_client = self.llm_client
         max_retries = _topic_prompt_llm_max_retries()
+        debug_enabled = is_llm_debug_logging_enabled(self.config, default=False)
         with_options = getattr(request_client, "with_options", None)
         if callable(with_options):
             request_client = with_options(max_retries=max_retries)
@@ -165,25 +178,58 @@ class _TopicPromptLLMService:
                 "Topic prompt LLM user payload: %s",
                 user_content[:2000],
             )
+            log_llm_request(
+                logger,
+                "Topic prompt LLM request",
+                {"max_retries": max_retries, **kwargs},
+                enabled=debug_enabled,
+            )
             try:
                 response = completions.create(**kwargs)
-            except Exception:
-                logger.exception(
-                    "Topic prompt LLM request failed. "
-                    "System prompt (full): %s\nUser payload (full): %s",
-                    system_prompt,
-                    user_content,
+            except Exception as exc:
+                log_llm_error(
+                    logger,
+                    "Topic prompt LLM request failed",
+                    exc,
+                    enabled=debug_enabled,
                 )
                 raise
             logger.info("Topic prompt LLM response received")
             content = response.choices[0].message.content
+            log_llm_response(
+                logger,
+                "Topic prompt LLM response",
+                {"response": response, "content": content},
+                enabled=debug_enabled,
+            )
             logger.debug(
                 "Topic prompt LLM raw response content (first 2000 chars): %s",
                 str(content)[:2000],
             )
         elif hasattr(self.llm_client, "complete"):
             logger.info("Topic prompt LLM using legacy complete() interface")
-            content = self.llm_client.complete(system_prompt, user_payload)
+            log_llm_request(
+                logger,
+                "Topic prompt legacy LLM request",
+                {"system_prompt": system_prompt, "user_payload": user_payload},
+                enabled=debug_enabled,
+            )
+            try:
+                content = self.llm_client.complete(system_prompt, user_payload)
+            except Exception as exc:
+                log_llm_error(
+                    logger,
+                    "Topic prompt legacy LLM request failed",
+                    exc,
+                    enabled=debug_enabled,
+                )
+                raise
+            log_llm_response(
+                logger,
+                "Topic prompt legacy LLM response",
+                content,
+                enabled=debug_enabled,
+            )
             logger.debug(
                 "Topic prompt LLM complete() raw response: %s",
                 str(content)[:2000],
@@ -201,8 +247,7 @@ class _TopicPromptLLMService:
             parsed = json.loads(raw_str)
         except json.JSONDecodeError as json_err:
             logger.error(
-                "Topic prompt LLM returned invalid JSON. "
-                "Raw content (first 2000 chars): %s",
+                "Topic prompt LLM returned invalid JSON. " "Raw content (first 2000 chars): %s",
                 raw_str[:2000],
             )
             raise ValueError(
@@ -240,10 +285,8 @@ class TopicPromptGenerator(_TopicPromptLLMService):
             {"user_theme": user_theme, "source_context": source_context or {}},
         )
         draft = TopicPromptDraft.model_validate(payload)
-        sanitized_text, sanitize_warnings = _sanitize_prompt_text(
-            draft.research_prompt_draft
-        )
-        audit_entry = {
+        sanitized_text, sanitize_warnings = _sanitize_prompt_text(draft.research_prompt_draft)
+        audit_entry: Dict[str, Any] = {
             "action": "generated",
             "topic_name": draft.topic_name,
             "topic_description": draft.topic_description,
@@ -356,9 +399,7 @@ class TopicPromptReviser(_TopicPromptLLMService):
                 revision.version,
                 expected_version,
             )
-        sanitized_text, sanitize_warnings = _sanitize_prompt_text(
-            revision.revised_prompt
-        )
+        sanitized_text, sanitize_warnings = _sanitize_prompt_text(revision.revised_prompt)
         if sanitize_warnings:
             logger.warning(
                 "Prompt revision sanitization warnings for topic %s: %s",
@@ -447,12 +488,15 @@ class TopicPromptWorkflowService:
         model_name: str = "",
         prompt_dir: Optional[Path] = None,
         max_prompt_length: int = 50000,
+        config: Optional[Dict[str, Any]] = None,
     ):
         self.repository = repository
         self.llm_client = llm_client
         self.model_name = model_name
         self.prompt_dir = prompt_dir or Path(__file__).resolve().parents[2] / "prompts"
         self.max_prompt_length = max_prompt_length
+        self.config = config or {}
+        self._config_available = config is not None
         self._generator: Optional[TopicPromptGenerator] = None
         self._reviser: Optional[TopicPromptReviser] = None
 
@@ -461,7 +505,7 @@ class TopicPromptWorkflowService:
             raise RuntimeError("llm_client is required for LLM-based operations")
         if self._generator is None:
             self._generator = TopicPromptGenerator(
-                self.llm_client, self.model_name, self.prompt_dir
+                self.llm_client, self.model_name, self.prompt_dir, config=self.config
             )
         return self._generator
 
@@ -469,7 +513,9 @@ class TopicPromptWorkflowService:
         if self.llm_client is None:
             raise RuntimeError("llm_client is required for LLM-based operations")
         if self._reviser is None:
-            self._reviser = TopicPromptReviser(self.llm_client, self.model_name, self.prompt_dir)
+            self._reviser = TopicPromptReviser(
+                self.llm_client, self.model_name, self.prompt_dir, config=self.config
+            )
         return self._reviser
 
     def create_draft_topic(
@@ -533,7 +579,8 @@ class TopicPromptWorkflowService:
         )
 
         revised = self._get_reviser().revise(
-            existing, feedback,
+            existing,
+            feedback,
             expected_version=expected_version,
             activated_by=activated_by,
         )

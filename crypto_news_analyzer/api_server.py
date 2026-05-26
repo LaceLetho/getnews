@@ -794,10 +794,17 @@ def _get_topic_prompt_workflow_service(
         runtime = llm_analyzer.analysis_model_runtime
         model_name = getattr(runtime, "model_name", "") if runtime else ""
 
+    llm_config_payload = (
+        dict(getattr(llm_analyzer, "config", {}) or {})
+        if llm_analyzer
+        else {}
+    )
+
     return TopicPromptWorkflowService(
         repository=repository,
         llm_client=llm_client,
         model_name=model_name,
+        config=llm_config_payload,
     )
 
 
@@ -814,10 +821,17 @@ def _get_topic_finding_merge_service(
         runtime = llm_analyzer.analysis_model_runtime
         model_name = getattr(runtime, "model_name", "") if runtime else ""
 
+    llm_config_payload = (
+        dict(getattr(llm_analyzer, "config", {}) or {})
+        if llm_analyzer
+        else {}
+    )
+
     return TopicFindingMergeService(
         intelligence_repository=repository,
         llm_client=llm_client,
         model_name=model_name,
+        config=llm_config_payload,
     )
 
 

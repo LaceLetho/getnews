@@ -980,5 +980,119 @@ class TestOpenCodeGoIntegration:
         ]
 
 
+class TestGatedLLMLogging:
+    """Tests for gated LLM request/response/error logging (enable_debug_logging)."""
+
+    def test_log_parse_error_raw_response_concise_when_debug_off(self, caplog):
+        manager = StructuredOutputManager(config={"enable_debug_logging": False})
+
+        with caplog.at_level("ERROR"):
+            manager._log_parse_error_raw_response("bad json here", "ParseTest")
+
+        assert "LLM parse error" in caplog.text
+        assert "raw length" in caplog.text
+        assert "LLM原始响应开始" not in caplog.text
+
+    def test_log_parse_error_raw_response_full_when_debug_on(self, caplog):
+        manager = StructuredOutputManager(
+            config={"llm_config": {"enable_debug_logging": True}}
+        )
+
+        with caplog.at_level("ERROR"):
+            manager._log_parse_error_raw_response("bad json here", "ParseTest")
+
+        assert "LLM原始响应开始" in caplog.text
+        assert "bad json here" in caplog.text
+        assert "LLM原始响应结束" in caplog.text
+
+    def test_log_parse_error_raw_response_none_input(self, caplog):
+        manager = StructuredOutputManager(
+            config={"llm_config": {"enable_debug_logging": True}}
+        )
+
+        with caplog.at_level("ERROR"):
+            manager._log_parse_error_raw_response(None, "NoneTest")
+
+        assert "(空)" in caplog.text
+
+    def test_force_with_kimi_web_search_uses_log_llm_error_on_json_decode(self):
+        manager = StructuredOutputManager(
+            config={"llm_config": {"enable_debug_logging": False}}
+        )
+
+        final_payload = "not valid json {{"
+        message = SimpleNamespace(
+            content=final_payload,
+            reasoning_content=None,
+            refusal=None,
+            tool_calls=None,
+        )
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=message)],
+            usage=None,
+        )
+        llm_client = SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(create=Mock(return_value=response))
+            )
+        )
+
+        with pytest.raises(ValueError, match="无法解析为有效 JSON"):
+            manager._force_with_kimi_web_search(
+                llm_client=llm_client,
+                messages=[{"role": "user", "content": "test"}],
+                model="kimi-k2.5",
+                temperature=0.1,
+                batch_mode=False,
+            )
+
+    def test_force_with_native_json_uses_log_llm_error_on_json_decode(self):
+        manager = StructuredOutputManager(
+            config={"llm_config": {"enable_debug_logging": False}}
+        )
+
+        message = SimpleNamespace(content="not valid json {{")
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=message)], usage=None
+        )
+        create_mock = Mock(return_value=response)
+        llm_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+        )
+
+        with pytest.raises(ValueError, match="无法解析响应为有效的JSON"):
+            manager._force_with_native_json(
+                llm_client=llm_client,
+                messages=[{"role": "user", "content": "test"}],
+                model="kimi-k2.5",
+                max_retries=1,
+                temperature=0.1,
+                batch_mode=False,
+            )
+
+    def test_force_with_instructor_logs_error_on_exception(self):
+        manager = StructuredOutputManager(
+            config={"llm_config": {"enable_debug_logging": False}}
+        )
+        llm_client = SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(
+                    create=Mock(side_effect=RuntimeError("instructor failure"))
+                )
+            )
+        )
+        manager.instructor_client = llm_client
+
+        with pytest.raises(RuntimeError, match="instructor failure"):
+            manager._force_with_instructor(
+                llm_client=llm_client,
+                messages=[{"role": "user", "content": "test"}],
+                model="gpt-4",
+                max_retries=1,
+                temperature=0.1,
+                batch_mode=False,
+            )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

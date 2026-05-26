@@ -21,6 +21,12 @@ from ..domain.models import (
     TopicFinding,
     TopicPrompt,
 )
+from ..utils.llm_logging import (
+    is_llm_debug_logging_enabled,
+    log_llm_error,
+    log_llm_request,
+    log_llm_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,11 +124,14 @@ class TopicFindingMergeService:
         llm_client: Any,
         model_name: str = "",
         prompt_dir: Optional[Path] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
         self.repository = intelligence_repository
         self.llm_client = llm_client
         self.model_name = self._get_merge_model_name(model_name)
         self.prompt_dir = prompt_dir or Path(__file__).resolve().parents[2] / "prompts"
+        self.config = config or {}
+        self._config_available = config is not None
 
     async def create_merge_preview(
         self,
@@ -378,22 +387,14 @@ class TopicFindingMergeService:
             "active_findings": [self._finding_payload(f) for f in active_findings],
         }
         user_payload_json = json.dumps(user_payload, ensure_ascii=False)
+        debug_enabled = is_llm_debug_logging_enabled(
+            self.config,
+            default=not self._config_available,
+        )
         logger.info(
             f"LLM merge call: topic_id={topic_id}, model={self.model_name}, "
             f"system_prompt_len={len(system_prompt)}, "
             f"user_payload_approx_len={len(user_payload_json)}"
-        )
-        logger.info(
-            "LLM merge system prompt: topic_id=%s model=%s prompt=%s",
-            topic_id,
-            self.model_name,
-            system_prompt,
-        )
-        logger.info(
-            "LLM merge user payload: topic_id=%s model=%s payload=%s",
-            topic_id,
-            self.model_name,
-            user_payload_json,
         )
         request_client = self.llm_client
         with_options = getattr(request_client, "with_options", None)
@@ -414,24 +415,59 @@ class TopicFindingMergeService:
             timeout_seconds = self._get_llm_timeout_seconds()
             kwargs["timeout"] = timeout_seconds
             logger.info(f"Sending LLM merge request: model={self.model_name}")
-            response = completions.create(**kwargs)
+            log_llm_request(
+                logger,
+                "LLM merge request",
+                {"topic_id": topic_id, "model": self.model_name, **kwargs},
+                enabled=debug_enabled,
+            )
+            try:
+                response = completions.create(**kwargs)
+            except Exception as exc:
+                log_llm_error(
+                    logger,
+                    "LLM merge request failed",
+                    exc,
+                    enabled=debug_enabled,
+                )
+                raise
             raw_output = str(response.choices[0].message.content)
             logger.info(f"LLM merge response received: model={self.model_name}")
-            logger.info(
-                "LLM merge raw response: topic_id=%s model=%s response=%s",
-                topic_id,
-                self.model_name,
-                raw_output,
+            log_llm_response(
+                logger,
+                "LLM merge response",
+                {"topic_id": topic_id, "model": self.model_name, "response": raw_output},
+                enabled=debug_enabled,
             )
             return raw_output
         if hasattr(self.llm_client, "complete"):
             logger.info("Using llm_client.complete() for merge")
-            raw_output = str(self.llm_client.complete(system_prompt, user_payload))
-            logger.info(
-                "LLM merge raw response: topic_id=%s model=%s response=%s",
-                topic_id,
-                self.model_name,
-                raw_output,
+            log_llm_request(
+                logger,
+                "LLM merge legacy request",
+                {
+                    "topic_id": topic_id,
+                    "model": self.model_name,
+                    "system_prompt": system_prompt,
+                    "user_payload": user_payload,
+                },
+                enabled=debug_enabled,
+            )
+            try:
+                raw_output = str(self.llm_client.complete(system_prompt, user_payload))
+            except Exception as exc:
+                log_llm_error(
+                    logger,
+                    "LLM merge legacy request failed",
+                    exc,
+                    enabled=debug_enabled,
+                )
+                raise
+            log_llm_response(
+                logger,
+                "LLM merge legacy response",
+                {"topic_id": topic_id, "model": self.model_name, "response": raw_output},
+                enabled=debug_enabled,
             )
             return raw_output
         raise TypeError("llm_client must expose chat.completions.create() or complete()")

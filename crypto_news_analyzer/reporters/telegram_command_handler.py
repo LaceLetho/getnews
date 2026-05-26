@@ -1661,10 +1661,17 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             return None
         from ..intelligence.topic_prompts import TopicPromptWorkflowService
 
+        llm_config_payload = (
+            dict(getattr(llm_analyzer, "config", {}) or {})
+            if llm_analyzer
+            else {}
+        )
+
         service = TopicPromptWorkflowService(
             repository=repository,
             llm_client=llm_client,
             model_name=model_name,
+            config=llm_config_payload,
         )
         setattr(self.execution_coordinator, "topic_prompt_workflow_service", service)
         return service
@@ -1692,10 +1699,17 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         )
         from ..intelligence.topic_findings import TopicFindingMergeService
 
+        llm_config_payload = (
+            dict(getattr(llm_analyzer, "config", {}) or {})
+            if llm_analyzer
+            else {}
+        )
+
         service = TopicFindingMergeService(
             intelligence_repository=repository,
             llm_client=llm_client,
             model_name=model_name,
+            config=llm_config_payload,
         )
         setattr(self.execution_coordinator, "topic_finding_merge_service", service)
         return service

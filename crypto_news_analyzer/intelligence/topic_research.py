@@ -13,6 +13,12 @@ from typing import Any, Dict, List, Optional, Sequence, Set
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from ..domain.models import RawIntelligenceItem, TopicFinding, TopicResearchRun
+from ..utils.llm_logging import (
+    is_llm_debug_logging_enabled,
+    log_llm_error,
+    log_llm_request,
+    log_llm_response,
+)
 
 TOPIC_RESEARCH_SCHEMA_VERSION = "topic-research-v1"
 DEFAULT_RAW_ITEM_LIMIT = 400
@@ -225,6 +231,7 @@ class TopicResearchScheduler:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         extra_body: Optional[Dict[str, Any]] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
         self.repository = intelligence_repository
         self.llm_client = llm_client
@@ -236,6 +243,8 @@ class TopicResearchScheduler:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.extra_body = dict(extra_body or {})
+        self.config = config or {}
+        self._config_available = config is not None
 
     # ------------------------------------------------------------------
     # Public entry points
@@ -501,6 +510,7 @@ class TopicResearchScheduler:
             "research_prompt": wrapped_prompt,
             "raw_messages": [self._raw_item_payload(item) for item in raw_items],
         }
+        debug_enabled = is_llm_debug_logging_enabled(self.config, default=False)
         completions = getattr(getattr(self.llm_client, "chat", None), "completions", None)
         if completions is not None and hasattr(completions, "create"):
             kwargs: Dict[str, Any] = {
@@ -518,8 +528,38 @@ class TopicResearchScheduler:
                 kwargs["max_tokens"] = self.max_tokens
             if self.extra_body:
                 kwargs["extra_body"] = self.extra_body
-            response = completions.create(**kwargs)
+            log_llm_request(
+                logger,
+                "Topic research LLM request",
+                {
+                    "topic_id": getattr(topic, "id", "unknown"),
+                    "model": self.model_name,
+                    **kwargs,
+                },
+                enabled=debug_enabled,
+            )
+            try:
+                response = completions.create(**kwargs)
+            except Exception as exc:
+                log_llm_error(
+                    logger,
+                    "Topic research LLM request failed",
+                    exc,
+                    enabled=debug_enabled,
+                )
+                raise
             content = response.choices[0].message.content
+            log_llm_response(
+                logger,
+                "Topic research LLM response",
+                {
+                    "topic_id": getattr(topic, "id", "unknown"),
+                    "model": self.model_name,
+                    "response": response,
+                    "content": content,
+                },
+                enabled=debug_enabled,
+            )
             if content is None:
                 logger.warning(
                     "LLM returned None content for topic research (model=%s, id=%s)",
@@ -540,7 +580,34 @@ class TopicResearchScheduler:
                 )
             return str(content or "")
         if hasattr(self.llm_client, "complete"):
-            return str(self.llm_client.complete(system_prompt, user_payload))
+            log_llm_request(
+                logger,
+                "Topic research legacy LLM request",
+                {
+                    "topic_id": getattr(topic, "id", "unknown"),
+                    "model": self.model_name,
+                    "system_prompt": system_prompt,
+                    "user_payload": user_payload,
+                },
+                enabled=debug_enabled,
+            )
+            try:
+                raw_output = str(self.llm_client.complete(system_prompt, user_payload))
+            except Exception as exc:
+                log_llm_error(
+                    logger,
+                    "Topic research legacy LLM request failed",
+                    exc,
+                    enabled=debug_enabled,
+                )
+                raise
+            log_llm_response(
+                logger,
+                "Topic research legacy LLM response",
+                raw_output,
+                enabled=debug_enabled,
+            )
+            return raw_output
         raise TypeError("llm_client must expose chat.completions.create() or complete()")
 
     def _raw_item_payload(self, item: RawIntelligenceItem) -> Dict[str, Any]:
@@ -666,7 +733,7 @@ class TopicResearchScheduler:
             return cursor
         return max(cursor, activated_at)
 
-    def _parse_cursor(self, value: Optional[str]) -> Optional[datetime]:
+    def _parse_cursor(self, value: Optional[str | datetime]) -> Optional[datetime]:
         if not value:
             return None
         try:

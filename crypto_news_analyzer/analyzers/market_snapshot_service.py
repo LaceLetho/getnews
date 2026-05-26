@@ -20,11 +20,19 @@ except ImportError:
 
 from crypto_news_analyzer.utils.conversation_cache import ConversationIdManager
 from ..config.llm_registry import ProviderRecord, get_provider_record
+from ..utils.llm_logging import (
+    is_llm_debug_logging_enabled,
+    llm_sdk_debug_logging,
+    log_llm_error,
+    log_llm_request,
+    log_llm_response,
+)
 
 
 @dataclass
 class MarketSnapshot:
     """市场快照数据模型"""
+
     content: str  # 市场快照内容
     timestamp: datetime  # 获取时间
     source: str  # 来源（grok, fallback, cached）
@@ -43,14 +51,14 @@ class MarketSnapshot:
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""
         data = asdict(self)
-        data['timestamp'] = self.timestamp.isoformat()
+        data["timestamp"] = self.timestamp.isoformat()
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'MarketSnapshot':
+    def from_dict(cls, data: Dict[str, Any]) -> "MarketSnapshot":
         """从字典反序列化"""
-        if isinstance(data['timestamp'], str):
-            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+        if isinstance(data["timestamp"], str):
+            data["timestamp"] = datetime.fromisoformat(data["timestamp"])
         return cls(**data)
 
     def to_json(self) -> str:
@@ -58,7 +66,7 @@ class MarketSnapshot:
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
 
     @classmethod
-    def from_json(cls, json_str: str) -> 'MarketSnapshot':
+    def from_json(cls, json_str: str) -> "MarketSnapshot":
         """从JSON字符串反序列化"""
         data = json.loads(json_str)
         return cls.from_dict(data)
@@ -67,16 +75,18 @@ class MarketSnapshot:
 class MarketSnapshotService:
     """市场快照获取服务"""
 
-    def __init__(self,
-                 provider_credentials: Optional[Dict[str, str]] = None,
-                 market_model_config: Optional[Dict[str, Any]] = None,
-                 fallback_providers: Optional[List[str]] = None,
-                 cache_ttl_minutes: int = 30,
-                 cache_dir: str = "./data/cache",
-                 mock_mode: bool = False,
-                 conversation_id: Optional[str] = None,
-                 temperature: float = 0.5,
-                 config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        provider_credentials: Optional[Dict[str, str]] = None,
+        market_model_config: Optional[Dict[str, Any]] = None,
+        fallback_providers: Optional[List[str]] = None,
+        cache_ttl_minutes: int = 30,
+        cache_dir: str = "./data/cache",
+        mock_mode: bool = False,
+        conversation_id: Optional[str] = None,
+        temperature: float = 0.5,
+        config: Optional[Dict[str, Any]] = None,
+    ):
         """
         初始化市场快照服务
 
@@ -112,29 +122,30 @@ class MarketSnapshotService:
         self.mock_mode = mock_mode
         self.temperature = temperature
         self.config = config or {}
+        self._config_available = config is not None
         self.logger = logging.getLogger(__name__)
 
         # 使用会话ID管理器获取或创建持久化的conversation_id
         conversation_id_manager = ConversationIdManager(cache_dir=cache_dir)
-        self.conversation_id = conversation_id or conversation_id_manager.get_or_create_conversation_id("market_snapshot")
+        self.conversation_id = (
+            conversation_id
+            or conversation_id_manager.get_or_create_conversation_id("market_snapshot")
+        )
 
         # API配置 - 使用OpenAI SDK调用xAI API
         self.grok_api_base = "https://api.x.ai/v1"
         self.client = None
 
-        if (
-            not mock_mode
-            and self.market_provider == "grok"
-            and self.GROK_API_KEY
-            and OpenAI
-        ):
+        if not mock_mode and self.market_provider == "grok" and self.GROK_API_KEY and OpenAI:
             try:
                 self.client = OpenAI(
                     api_key=self.GROK_API_KEY,
                     base_url=self.grok_api_base,
-                    default_headers={"x-grok-conv-id": self.conversation_id}
+                    default_headers={"x-grok-conv-id": self.conversation_id},
                 )
-                self.logger.info(f"Grok客户端已设置default_headers: x-grok-conv-id={self.conversation_id}")
+                self.logger.info(
+                    f"Grok客户端已设置default_headers: x-grok-conv-id={self.conversation_id}"
+                )
             except Exception as e:
                 self.logger.error(f"初始化OpenAI客户端失败: {e}")
                 self.client = None
@@ -147,20 +158,110 @@ class MarketSnapshotService:
         self.min_content_length = 50
         self.quality_keywords = [
             # 中文关键词
-            "市场", "价格", "趋势", "政策", "监管", "利率", "行情", "预期",
-            "比特币", "以太坊", "加密货币", "区块链", "DeFi", "NFT", "Layer2",
-            "美联储", "通胀", "经济", "投资", "交易", "波动", "上涨", "下跌",
-            "牛市", "熊市", "震荡", "突破", "支撑", "阻力", "成交量", "资金",
-            "机构", "散户", "FOMO", "恐慌", "贪婪", "情绪", "信心", "风险",
-            "合规", "ETF", "期货", "现货", "杠杆", "做多", "做空", "套利",
+            "市场",
+            "价格",
+            "趋势",
+            "政策",
+            "监管",
+            "利率",
+            "行情",
+            "预期",
+            "比特币",
+            "以太坊",
+            "加密货币",
+            "区块链",
+            "DeFi",
+            "NFT",
+            "Layer2",
+            "美联储",
+            "通胀",
+            "经济",
+            "投资",
+            "交易",
+            "波动",
+            "上涨",
+            "下跌",
+            "牛市",
+            "熊市",
+            "震荡",
+            "突破",
+            "支撑",
+            "阻力",
+            "成交量",
+            "资金",
+            "机构",
+            "散户",
+            "FOMO",
+            "恐慌",
+            "贪婪",
+            "情绪",
+            "信心",
+            "风险",
+            "合规",
+            "ETF",
+            "期货",
+            "现货",
+            "杠杆",
+            "做多",
+            "做空",
+            "套利",
             # 英文关键词
-            "market", "price", "trend", "policy", "regulation", "rate", "trading", "expectation",
-            "bitcoin", "btc", "ethereum", "eth", "crypto", "blockchain", "defi", "nft", "layer2",
-            "fed", "inflation", "economy", "investment", "trade", "volatility", "rally", "decline",
-            "bull", "bear", "consolidation", "breakout", "support", "resistance", "volume", "fund",
-            "institutional", "retail", "fomo", "fear", "greed", "sentiment", "confidence", "risk",
-            "compliance", "etf", "futures", "spot", "leverage", "long", "short", "arbitrage",
-            "inflow", "outflow", "accumulation", "distribution", "liquidity", "treasury", "yield"
+            "market",
+            "price",
+            "trend",
+            "policy",
+            "regulation",
+            "rate",
+            "trading",
+            "expectation",
+            "bitcoin",
+            "btc",
+            "ethereum",
+            "eth",
+            "crypto",
+            "blockchain",
+            "defi",
+            "nft",
+            "layer2",
+            "fed",
+            "inflation",
+            "economy",
+            "investment",
+            "trade",
+            "volatility",
+            "rally",
+            "decline",
+            "bull",
+            "bear",
+            "consolidation",
+            "breakout",
+            "support",
+            "resistance",
+            "volume",
+            "fund",
+            "institutional",
+            "retail",
+            "fomo",
+            "fear",
+            "greed",
+            "sentiment",
+            "confidence",
+            "risk",
+            "compliance",
+            "etf",
+            "futures",
+            "spot",
+            "leverage",
+            "long",
+            "short",
+            "arbitrage",
+            "inflow",
+            "outflow",
+            "accumulation",
+            "distribution",
+            "liquidity",
+            "treasury",
+            "yield",
         ]
 
         # 创建缓存目录
@@ -211,7 +312,9 @@ class MarketSnapshotService:
                     snapshot = self._get_snapshot_from_grok(prompt_template)
                     if snapshot and self.validate_snapshot_quality(snapshot.content):
                         self.cache_snapshot(snapshot)
-                        self.logger.info(f"成功从Grok获取市场快照，质量评分: {snapshot.quality_score}")
+                        self.logger.info(
+                            f"成功从Grok获取市场快照，质量评分: {snapshot.quality_score}"
+                        )
                         return snapshot
                 except Exception as e:
                     self.logger.error(f"从Grok获取市场快照失败: {e}")
@@ -260,38 +363,25 @@ class MarketSnapshotService:
             messages = [
                 {
                     "role": "system",
-                    "content": prompt_template  # 使用完整的market_summary_prompt.md作为系统提示词
+                    "content": prompt_template,  # 使用完整的market_summary_prompt.md作为系统提示词
                 },
-                {
-                    "role": "user",
-                    "content": "Generate a 24-Hour Crypto Market Snapshot"
-                }
+                {"role": "user", "content": "Generate a 24-Hour Crypto Market Snapshot"},
             ]
 
-            # 根据配置决定是否启用DEBUG日志
-            enable_debug = self.config.get("llm_config", {}).get("enable_debug_logging", False)
+            debug_enabled = is_llm_debug_logging_enabled(
+                self.config,
+                default=not self._config_available,
+            )
 
-            if enable_debug:
-                import logging as stdlib_logging
-                openai_logger = stdlib_logging.getLogger("openai")
-                httpx_logger = stdlib_logging.getLogger("httpx")
-                original_openai_level = openai_logger.level
-                original_httpx_level = httpx_logger.level
-                openai_logger.setLevel(stdlib_logging.DEBUG)
-                httpx_logger.setLevel(stdlib_logging.DEBUG)
-
-            # 打印发送给LLM的完整内容到日志
-            self.logger.info("=" * 80)
-            self.logger.info("发送给Grok的市场快照请求:")
-            self.logger.info(f"模型: {self.market_model_name}")
-            self.logger.info(f"温度: {self.temperature}")
-            self.logger.info("-" * 80)
-            self.logger.info("系统提示词:")
-            self.logger.info(messages[0]["content"])
-            self.logger.info("-" * 80)
-            self.logger.info("用户消息:")
-            self.logger.info(messages[1]["content"])
-            self.logger.info("=" * 80)
+            # 简洁摘要始终记录
+            self.logger.info(
+                "获取市场快照: model=%s, temperature=%.1f, msgs=%d, system_prompt_len=%d, user_prompt_len=%d",
+                self.market_model_name,
+                self.temperature,
+                len(messages),
+                len(messages[0]["content"]),
+                len(messages[1]["content"]),
+            )
 
             # 获取24小时之前的时间
             twenty_four_hours_ago = (datetime.now() - timedelta(hours=24)).isoformat()
@@ -310,21 +400,39 @@ class MarketSnapshotService:
 
             self.logger.info(f"启用工具: web_search, x_search (from_date: {twenty_four_hours_ago})")
 
-            # 调用 responses API，添加 x-grok-conv-id 头以提高缓存命中率
-            response = self.client.responses.create(
-                model=self.market_model_name,
-                input=messages,
-                temperature=self.temperature,
-                tools=tools,
-                tool_choice="required"
+            request_payload: Dict[str, Any] = {
+                "model": self.market_model_name,
+                "input": messages,
+                "temperature": self.temperature,
+                "tools": tools,
+                "tool_choice": "required",
+            }
+            log_llm_request(
+                self.logger,
+                "Market snapshot Grok LLM request",
+                request_payload,
+                enabled=debug_enabled,
             )
 
-            # 恢复日志级别
-            if enable_debug:
-                openai_logger.setLevel(original_openai_level)
-                httpx_logger.setLevel(original_httpx_level)
+            # 使用 SDK DEBUG 上下文管理器替换原来的手动 logger 调整
+            with llm_sdk_debug_logging(
+                self.config,
+                default=not self._config_available,
+            ):
+                response = self.client.responses.create(
+                    model=self.market_model_name,
+                    input=json.dumps(messages, ensure_ascii=False),
+                    temperature=self.temperature,
+                    tool_choice="required",
+                )
+            log_llm_response(
+                self.logger,
+                "Market snapshot Grok raw LLM response",
+                response,
+                enabled=debug_enabled,
+            )
 
-            if not response or not hasattr(response, 'output'):
+            if not response or not hasattr(response, "output"):
                 self.logger.error("Grok API返回空响应或格式错误")
                 return None
 
@@ -332,10 +440,13 @@ class MarketSnapshotService:
             content = ""
             if response.output:
                 for output_item in response.output:
-                    if hasattr(output_item, 'type') and output_item.type == 'message':
-                        if hasattr(output_item, 'content') and output_item.content:
+                    if hasattr(output_item, "type") and output_item.type == "message":
+                        if hasattr(output_item, "content") and output_item.content:
                             for content_item in output_item.content:
-                                if hasattr(content_item, 'type') and content_item.type == 'output_text':
+                                if (
+                                    hasattr(content_item, "type")
+                                    and content_item.type == "output_text"
+                                ):
                                     # 获取文本并清理超链接
                                     raw_content = content_item.text
                                     content = self._remove_hyperlinks(raw_content)
@@ -344,7 +455,12 @@ class MarketSnapshotService:
 
             if content:
                 self.logger.info(f"Grok API返回内容长度: {len(content)} 字符")
-                self.logger.info(f"Grok API返回内容: {content}")
+                log_llm_response(
+                    self.logger,
+                    "Market snapshot Grok content",
+                    content,
+                    enabled=debug_enabled,
+                )
 
                 # 计算质量评分
                 quality_score = self._calculate_quality_score(content)
@@ -360,7 +476,7 @@ class MarketSnapshotService:
                         timestamp=datetime.now(timezone.utc),
                         source="grok",
                         quality_score=quality_score,
-                        is_valid=True
+                        is_valid=True,
                     )
                 else:
                     self.logger.warning(f"Grok返回内容质量不符合要求，内容: {content}")
@@ -369,11 +485,21 @@ class MarketSnapshotService:
                 self.logger.debug(f"完整响应: {response}")
 
         except Exception as e:
-            self.logger.error(f"调用Grok API失败: {e}")
+            log_llm_error(
+                self.logger,
+                "调用Grok API失败",
+                e,
+                enabled=is_llm_debug_logging_enabled(
+                    self.config,
+                    default=not self._config_available,
+                ),
+            )
 
         return None
 
-    def _get_snapshot_from_provider(self, provider: str, prompt_template: str) -> Optional[MarketSnapshot]:
+    def _get_snapshot_from_provider(
+        self, provider: str, prompt_template: str
+    ) -> Optional[MarketSnapshot]:
         """
         从备用服务提供商获取市场快照
 
@@ -441,7 +567,7 @@ class MarketSnapshotService:
         # 结构评分 (最多0.3分)
         # 检查是否有数字、标点符号等
         has_numbers = any(char.isdigit() for char in content)
-        has_punctuation = any(char in '，。！？；：' for char in content)
+        has_punctuation = any(char in "，。！？；：" for char in content)
         structure_score = 0.1 * (has_numbers + has_punctuation) + 0.1
         score += structure_score
 
@@ -458,7 +584,7 @@ class MarketSnapshotService:
 
         try:
             if os.path.exists(cache_file):
-                with open(cache_file, 'r', encoding='utf-8') as f:
+                with open(cache_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
                 snapshot = MarketSnapshot.from_dict(data)
@@ -500,7 +626,7 @@ class MarketSnapshotService:
             # 更新时间戳为当前UTC时间
             snapshot.timestamp = datetime.now(timezone.utc)
 
-            with open(cache_file, 'w', encoding='utf-8') as f:
+            with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(snapshot.to_dict(), f, ensure_ascii=False, indent=2)
 
             self.logger.info(f"市场快照已缓存，有效期: {ttl_minutes} 分钟")
@@ -528,26 +654,26 @@ class MarketSnapshotService:
             return text
 
         # 移除Grok引用标签 <grok:render>...</grok:render>
-        text = re.sub(r'<grok:render[^>]*>.*?</grok:render>', '', text, flags=re.DOTALL)
+        text = re.sub(r"<grok:render[^>]*>.*?</grok:render>", "", text, flags=re.DOTALL)
 
         # 移除引用标记 [[1]](url), [[2]]() 等（包括有URL和空括号的情况）
-        text = re.sub(r'\[\[\d+\]\]\([^\)]*\)', '', text)
+        text = re.sub(r"\[\[\d+\]\]\([^\)]*\)", "", text)
 
         # 移除Markdown格式的链接 [text](url)，保留text部分
-        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
 
         # 移除纯URL链接（匹配到空格、标点或字符串结尾）
-        text = re.sub(r'https?://[^\s\u4e00-\u9fff\)\]]+', '', text)
+        text = re.sub(r"https?://[^\s\u4e00-\u9fff\)\]]+", "", text)
 
         # 清理多余的空格
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r"\s+", " ", text)
 
         # 在数字列表项之间添加双换行（处理 "1. xxx 2. xxx" 格式）
         # 在每个 "数字. " 前添加换行（除了第一个）
-        text = re.sub(r'\s+(\d+\.\s+)', r'\n\n\1', text)
+        text = re.sub(r"\s+(\d+\.\s+)", r"\n\n\1", text)
 
         # 清理开头的换行
-        text = text.lstrip('\n')
+        text = text.lstrip("\n")
 
         # 清理结尾的空白
         text = text.rstrip()
@@ -596,7 +722,7 @@ class MarketSnapshotService:
             timestamp=datetime.now(timezone.utc),
             source="fallback",
             quality_score=0.7,
-            is_valid=True
+            is_valid=True,
         )
 
     def _generate_mock_snapshot(self) -> MarketSnapshot:
@@ -625,7 +751,7 @@ class MarketSnapshotService:
             timestamp=datetime.now(timezone.utc),
             source="mock",
             quality_score=0.85,
-            is_valid=True
+            is_valid=True,
         )
 
     def clear_cache(self) -> bool:
@@ -659,19 +785,24 @@ class MarketSnapshotService:
         info = {
             "cache_exists": os.path.exists(cache_file),
             "cache_file": cache_file,
-            "cache_ttl_minutes": self.cache_ttl_minutes
+            "cache_ttl_minutes": self.cache_ttl_minutes,
         }
 
         if info["cache_exists"]:
             try:
                 stat = os.stat(cache_file)
                 cache_time = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
-                info.update({
-                    "cache_time": cache_time.isoformat(),
-                    "cache_age_minutes": (datetime.now(timezone.utc) - cache_time).total_seconds() / 60,
-                    "is_valid": self._is_cache_valid(cache_time),
-                    "file_size": stat.st_size
-                })
+                info.update(
+                    {
+                        "cache_time": cache_time.isoformat(),
+                        "cache_age_minutes": (
+                            datetime.now(timezone.utc) - cache_time
+                        ).total_seconds()
+                        / 60,
+                        "is_valid": self._is_cache_valid(cache_time),
+                        "file_size": stat.st_size,
+                    }
+                )
             except Exception as e:
                 info["error"] = str(e)
 
@@ -684,11 +815,11 @@ class MarketSnapshotService:
         Returns:
             连接测试结果
         """
-        result = {
+        result: Dict[str, Any] = {
             "grok_available": False,
             "grok_error": None,
             "fallback_providers": [],
-            "mock_mode": self.mock_mode
+            "mock_mode": self.mock_mode,
         }
 
         if self.mock_mode:
@@ -708,12 +839,7 @@ class MarketSnapshotService:
         try:
             response = self.client.chat.completions.create(
                 model=self.market_model_name,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": "请简单介绍一下当前的加密货币市场状况"
-                    }
-                ],
+                messages=[{"role": "user", "content": "请简单介绍一下当前的加密货币市场状况"}],
                 max_tokens=50,
                 tools=[
                     {
@@ -724,17 +850,14 @@ class MarketSnapshotService:
                             "parameters": {
                                 "type": "object",
                                 "properties": {
-                                    "query": {
-                                        "type": "string",
-                                        "description": "Search query"
-                                    }
+                                    "query": {"type": "string", "description": "Search query"}
                                 },
-                                "required": ["query"]
-                            }
-                        }
+                                "required": ["query"],
+                            },
+                        },
                     }
                 ],
-                tool_choice="auto"
+                tool_choice="auto",
             )
 
             if response.choices and len(response.choices) > 0:
@@ -757,7 +880,7 @@ class MarketSnapshotService:
         if "provider_credentials" in kwargs:
             for provider, value in kwargs["provider_credentials"].items():
                 self.provider_credentials[provider] = (value or "").strip()
-            self.GROK_API_KEY = self.provider_credentials.get("grok", "")
+            setattr(self, "GROK_API_KEY", self.provider_credentials.get("grok", ""))
 
         if "market_model_config" in kwargs:
             self.market_model_config = dict(kwargs["market_model_config"] or {})

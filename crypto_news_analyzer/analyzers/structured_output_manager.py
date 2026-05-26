@@ -6,11 +6,20 @@
 
 import json
 import logging
+from collections.abc import Callable
 from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
 from pathlib import Path
 from pydantic import BaseModel, Field, field_validator, model_validator, ValidationError
 from enum import Enum
+
+from ..utils.llm_logging import (
+    is_llm_debug_logging_enabled,
+    llm_sdk_debug_logging,
+    log_llm_error,
+    log_llm_request,
+    log_llm_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +276,7 @@ class StructuredOutputManager:
         batch_mode: bool = False,
         enable_web_search: bool = False,
         conversation_id: Optional[str] = None,
-        usage_callback: Optional[callable] = None,
+        usage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         extra_body: Optional[Dict[str, Any]] = None,
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """
@@ -369,7 +378,7 @@ class StructuredOutputManager:
         temperature: float,
         batch_mode: bool,
         conversation_id: Optional[str] = None,
-        usage_callback: Optional[callable] = None,
+        usage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """
         使用web_search工具时的特殊处理
@@ -387,21 +396,6 @@ class StructuredOutputManager:
             # responses.parse API使用input参数而不是messages
             input_text = "\n\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
 
-            # 根据配置决定是否启用DEBUG日志
-            enable_debug = self.config.get("llm_config", {}).get("enable_debug_logging", False)
-
-            if enable_debug:
-                import logging as stdlib_logging
-
-                openai_logger = stdlib_logging.getLogger("openai")
-                httpx_logger = stdlib_logging.getLogger("httpx")
-                original_openai_level = openai_logger.level
-                original_httpx_level = httpx_logger.level
-                openai_logger.setLevel(stdlib_logging.DEBUG)
-                httpx_logger.setLevel(stdlib_logging.DEBUG)
-
-            logger.info(f"调用responses.parse API，model={model}, tools=[web_search, x_search]")
-
             # 构建调用参数
             parse_params = {
                 "model": model,
@@ -414,13 +408,19 @@ class StructuredOutputManager:
                 "temperature": temperature,
             }
 
-            # 使用responses.parse API
-            response = llm_client.responses.parse(**parse_params)
+            debug_enabled = is_llm_debug_logging_enabled(self.config, default=False)
+            log_llm_request(
+                logger,
+                "Structured output web_search LLM request",
+                parse_params,
+                enabled=debug_enabled,
+            )
+            logger.info(f"调用responses.parse API，model={model}, tools=[web_search, x_search]")
 
-            # 恢复日志级别
-            if enable_debug:
-                openai_logger.setLevel(original_openai_level)
-                httpx_logger.setLevel(original_httpx_level)
+            # 使用 SDK DEBUG 上下文管理器替换原来的手动 logger 调整
+            with llm_sdk_debug_logging(self.config):
+                # 使用responses.parse API
+                response = llm_client.responses.parse(**parse_params)
 
             # 提取token使用情况
             if usage_callback and hasattr(response, "usage") and response.usage:
@@ -451,6 +451,12 @@ class StructuredOutputManager:
             # 清理结果中的 Grok 标签
             result = self._clean_result_grok_tags(result)
 
+            log_llm_response(
+                logger,
+                "Structured output web_search LLM response",
+                {"response": response, "result": result},
+                enabled=debug_enabled,
+            )
             logger.info(f"成功获取web_search结构化响应 (batch_mode={batch_mode})")
             logger.info(f"响应类型: {type(result)}")
 
@@ -459,27 +465,38 @@ class StructuredOutputManager:
         except AttributeError as e:
             logger.error(f"OpenAI客户端不支持responses.parse API: {e}")
             logger.error("请确保使用的是支持xAI扩展的OpenAI客户端版本")
+            log_llm_error(
+                logger,
+                "Structured output web_search unsupported client error",
+                e,
+                enabled=is_llm_debug_logging_enabled(self.config, default=False),
+            )
             raise
         except Exception as e:
-            logger.error(f"使用web_search失败: {e}")
+            log_llm_error(
+                logger,
+                "Structured output web_search LLM error",
+                e,
+                enabled=is_llm_debug_logging_enabled(self.config, default=False),
+            )
 
-            # 尝试获取原始响应内容用于调试
+            # 尝试获取原始响应内容用于调试（门控完整内容）
             try:
-                if "response" in locals():
-                    logger.error(f"响应对象类型: {type(response)}")
-                    logger.error(f"响应对象属性: {dir(response)}")
-
-                    # 尝试获取原始输出
-                    if hasattr(response, "output"):
-                        logger.error(f"原始output: {response.output}")
-                    if hasattr(response, "output_parsed"):
-                        logger.error(f"output_parsed: {response.output_parsed}")
-                    if hasattr(response, "text"):
-                        logger.error(f"text: {response.text}")
+                response_for_recovery = locals().get("response")
+                if response_for_recovery is not None:
+                    if is_llm_debug_logging_enabled(self.config, default=False):
+                        logger.debug("响应对象类型: %s", type(response_for_recovery))
+                        logger.debug("响应对象属性: %s", dir(response_for_recovery))
+                        if hasattr(response_for_recovery, "output"):
+                            logger.debug("原始output: %s", response_for_recovery.output)
+                        if hasattr(response_for_recovery, "output_parsed"):
+                            logger.debug("output_parsed: %s", response_for_recovery.output_parsed)
+                        if hasattr(response_for_recovery, "text"):
+                            logger.debug("text: %s", response_for_recovery.text)
 
                     # 尝试手动解析JSON
-                    raw_output = getattr(response, "output", None) or getattr(
-                        response, "text", None
+                    raw_output = getattr(response_for_recovery, "output", None) or getattr(
+                        response_for_recovery, "text", None
                     )
                     if raw_output:
                         logger.info("尝试手动修复JSON...")
@@ -488,7 +505,12 @@ class StructuredOutputManager:
                             logger.info("成功修复JSON响应")
                             return fixed_result
             except Exception as debug_error:
-                logger.error(f"调试信息提取失败: {debug_error}")
+                log_llm_error(
+                    logger,
+                    "调试信息提取失败",
+                    debug_error,
+                    enabled=is_llm_debug_logging_enabled(self.config, default=False),
+                )
 
             raise
 
@@ -500,7 +522,7 @@ class StructuredOutputManager:
         temperature: float,
         batch_mode: bool,
         conversation_id: Optional[str] = None,
-        usage_callback: Optional[callable] = None,
+        usage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """
         使用 Kimi 的 web_search 工具
@@ -533,11 +555,24 @@ class StructuredOutputManager:
                 "extra_body": {"thinking": {"type": "disabled"}},
             }
 
+            debug_enabled = is_llm_debug_logging_enabled(self.config, default=False)
+            log_llm_request(
+                logger,
+                "Kimi web_search LLM request",
+                call_params,
+                enabled=debug_enabled,
+            )
             logger.info(f"调用 Kimi chat.completions.create，model={model}, tools=[web_search]")
 
             response = llm_client.chat.completions.create(**call_params)
+            log_llm_response(
+                logger,
+                "Kimi web_search initial LLM response",
+                response,
+                enabled=debug_enabled,
+            )
 
-            extended_messages = messages.copy()
+            extended_messages: List[Dict[str, Any]] = list(messages)
             current_response = response
             final_message = None
             final_reasoning = None
@@ -569,6 +604,7 @@ class StructuredOutputManager:
 
             accumulate_usage(response)
 
+            reasoning_content = None
             for round_index in range(max_tool_rounds):
                 message = current_response.choices[0].message
 
@@ -619,13 +655,26 @@ class StructuredOutputManager:
                             }
                         )
 
-                    current_response = llm_client.chat.completions.create(
-                        model=model,
-                        messages=extended_messages,
-                        tools=tools,
-                        temperature=temperature,
-                        response_format={"type": "json_object"},
-                        extra_body={"thinking": {"type": "disabled"}},
+                    tool_round_params = {
+                        "model": model,
+                        "messages": extended_messages,
+                        "tools": tools,
+                        "temperature": temperature,
+                        "response_format": {"type": "json_object"},
+                        "extra_body": {"thinking": {"type": "disabled"}},
+                    }
+                    log_llm_request(
+                        logger,
+                        "Kimi web_search tool-round LLM request",
+                        tool_round_params,
+                        enabled=debug_enabled,
+                    )
+                    current_response = llm_client.chat.completions.create(**tool_round_params)
+                    log_llm_response(
+                        logger,
+                        "Kimi web_search tool-round LLM response",
+                        current_response,
+                        enabled=debug_enabled,
                     )
                     accumulate_usage(current_response)
                     continue
@@ -694,11 +743,20 @@ class StructuredOutputManager:
                         logger.info(
                             f"成功获取 Kimi web_search 结构化响应 (batch_mode={batch_mode})"
                         )
+                        log_llm_response(
+                            logger,
+                            "Kimi web_search parsed result",
+                            result,
+                            enabled=debug_enabled,
+                        )
                         return result
                     except json.JSONDecodeError as e:
                         logger.warning(f"Kimi 响应不是有效 JSON，尝试修复: {e}")
-                        self._log_parse_error_raw_response(
-                            candidate, f"Kimi parse candidate #{index}"
+                        log_llm_error(
+                            logger,
+                            f"Kimi parse candidate #{index} decode error",
+                            e,
+                            enabled=debug_enabled,
                         )
                         fixed_result = self.handle_malformed_response(candidate, batch_mode)
                         if fixed_result:
@@ -721,9 +779,19 @@ class StructuredOutputManager:
 
             error_msg = str(e)
             if self._is_kimi_policy_refusal(error_msg):
-                logger.error(f"Kimi 内容过滤或策略拒答触发，无法完成分析: {e}")
+                log_llm_error(
+                    logger,
+                    "Kimi 内容过滤或策略拒答触发",
+                    e,
+                    enabled=is_llm_debug_logging_enabled(self.config, default=False),
+                )
                 self._raise_kimi_content_filter_error(model=model, error_text=error_msg)
-            logger.error(f"使用 Kimi web_search 失败: {e}")
+            log_llm_error(
+                logger,
+                "使用 Kimi web_search 失败",
+                e,
+                enabled=is_llm_debug_logging_enabled(self.config, default=False),
+            )
             raise
 
     def _build_kimi_web_search_tools(self) -> List[Dict[str, Any]]:
@@ -803,7 +871,7 @@ class StructuredOutputManager:
         batch_mode: bool,
         enable_web_search: bool = False,
         conversation_id: Optional[str] = None,
-        usage_callback: Optional[callable] = None,
+        usage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """使用instructor库强制结构化输出"""
         try:
@@ -823,17 +891,45 @@ class StructuredOutputManager:
                 "temperature": temperature,
             }
 
-            # 调用instructor
-            result = self.instructor_client.chat.completions.create(**call_params)
+            debug_enabled = is_llm_debug_logging_enabled(self.config, default=False)
+            log_llm_request(
+                logger,
+                "Instructor structured output LLM request",
+                call_params,
+                enabled=debug_enabled,
+            )
 
+            create_params: Dict[str, Any] = dict(call_params)
+
+            # 使用 SDK DEBUG 上下文管理器包裹 instructor 调用
+            with llm_sdk_debug_logging(self.config):
+                create_completion = getattr(self.instructor_client.chat.completions, "create")
+                result = create_completion(**create_params)
+
+            log_llm_response(
+                logger,
+                "Instructor structured output LLM response",
+                result,
+                enabled=debug_enabled,
+            )
             logger.info(f"成功获取结构化响应 (batch_mode={batch_mode})")
             return result
 
         except ValidationError as e:
-            logger.error(f"结构化输出验证失败: {e}")
+            log_llm_error(
+                logger,
+                "结构化输出验证失败",
+                e,
+                enabled=is_llm_debug_logging_enabled(self.config, default=False),
+            )
             raise
         except Exception as e:
-            logger.error(f"使用instructor强制结构化输出失败: {e}")
+            log_llm_error(
+                logger,
+                "使用instructor强制结构化输出失败",
+                e,
+                enabled=is_llm_debug_logging_enabled(self.config, default=False),
+            )
             raise
 
     def _force_with_native_json(
@@ -846,7 +942,7 @@ class StructuredOutputManager:
         batch_mode: bool,
         enable_web_search: bool = False,
         conversation_id: Optional[str] = None,
-        usage_callback: Optional[callable] = None,
+        usage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         extra_body: Optional[Dict[str, Any]] = None,
     ) -> Union[StructuredAnalysisResult, BatchAnalysisResult]:
         """使用原生JSON模式强制结构化输出"""
@@ -867,6 +963,14 @@ class StructuredOutputManager:
 
             if extra_body:
                 call_params["extra_body"] = extra_body
+
+            debug_enabled = is_llm_debug_logging_enabled(self.config, default=False)
+            log_llm_request(
+                logger,
+                "Native JSON structured output LLM request",
+                call_params,
+                enabled=debug_enabled,
+            )
 
             # 调用LLM
             response = llm_client.chat.completions.create(**call_params)
@@ -901,19 +1005,41 @@ class StructuredOutputManager:
             else:
                 result = StructuredAnalysisResult(**parsed_data)
 
+            log_llm_response(
+                logger,
+                "Native JSON structured output LLM response",
+                {"response": response, "content": content, "result": result},
+                enabled=debug_enabled,
+            )
             logger.info(f"成功获取原生JSON结构化响应 (batch_mode={batch_mode})")
             return result
 
         except json.JSONDecodeError as e:
-            logger.error(f"JSON解析失败: {e}")
-            self._log_parse_error_raw_response(locals().get("content"), "Native JSON mode")
+            log_llm_error(
+                logger,
+                "JSON解析失败",
+                e,
+                enabled=is_llm_debug_logging_enabled(self.config, default=False),
+            )
+            raw_content = locals().get("content", "")
+            self._log_parse_error_raw_response(raw_content, "Native JSON mode")
             # 尝试恢复
-            return self._handle_malformed_json(content, batch_mode)
+            return self._handle_malformed_json(str(raw_content or ""), batch_mode)
         except ValidationError as e:
-            logger.error(f"结构化输出验证失败: {e}")
+            log_llm_error(
+                logger,
+                "结构化输出验证失败",
+                e,
+                enabled=is_llm_debug_logging_enabled(self.config, default=False),
+            )
             raise
         except Exception as e:
-            logger.error(f"使用原生JSON模式失败: {e}")
+            log_llm_error(
+                logger,
+                "使用原生JSON模式失败",
+                e,
+                enabled=is_llm_debug_logging_enabled(self.config, default=False),
+            )
             raise
 
     def _build_json_instruction(self, batch_mode: bool) -> str:
@@ -1222,13 +1348,18 @@ class StructuredOutputManager:
             return None
 
     def _log_parse_error_raw_response(self, raw_response: Any, context: str) -> None:
+        # 始终记录简洁的错误摘要
         if raw_response is None:
             response_text = "(空)"
         elif isinstance(raw_response, str):
             response_text = raw_response
         else:
             response_text = str(raw_response)
+        logger.error(f"[{context}] LLM parse error, raw length: {len(response_text)} chars")
 
+        # 仅在 debug logging 启用时输出完整原始响应
+        if not is_llm_debug_logging_enabled(self.config, default=False):
+            return
         logger.error(f"[{context}] LLM原始响应开始")
         logger.error(response_text if response_text else "(空)")
         logger.error(f"[{context}] LLM原始响应结束")

@@ -623,6 +623,7 @@ class MainController:
                 temperature=getattr(extraction_config, "temperature", None),
                 max_tokens=int(getattr(extraction_config, "max_tokens", 4000)),
                 extra_body=self._build_topic_research_extra_body(runtime),
+                config=dict(self.config_manager.config_data) if self.config_manager else None,
             )
             self.logger.info(
                 "TopicResearchScheduler initialized "
