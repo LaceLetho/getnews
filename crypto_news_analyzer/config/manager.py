@@ -20,6 +20,7 @@ from ..datasource_payloads import (
 )
 from ..domain.repositories import DataSourceRepository
 from ..models import (
+    DEFAULT_INTELLIGENCE_MAX_TOKENS,
     IntelligenceConfig,
     RSSSource,
     XSource,
@@ -558,7 +559,7 @@ class ConfigManager:
                     "provider": "opencode-go",
                     "model": "deepseek-v4-pro",
                     "thinking_level": "high",
-                    "max_tokens": 4000,
+                    "max_tokens": DEFAULT_INTELLIGENCE_MAX_TOKENS,
                 },
                 "collection": {
                     "interval_minutes": 60,

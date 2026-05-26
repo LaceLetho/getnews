@@ -45,6 +45,7 @@ from .models import (
     CrawlResult,
     AnalysisResult,
     TelegramCommandConfig,
+    DEFAULT_INTELLIGENCE_MAX_TOKENS,
 )
 from .utils.errors import ErrorRecoveryManager
 
@@ -621,7 +622,7 @@ class MainController:
                 raw_item_limit=int(topic_research_payload.get("raw_item_limit", 400)),
                 max_chunk_chars=int(topic_research_payload.get("max_chunk_chars", 50000)),
                 temperature=getattr(extraction_config, "temperature", None),
-                max_tokens=int(getattr(extraction_config, "max_tokens", 4000)),
+                max_tokens=int(getattr(extraction_config, "max_tokens", DEFAULT_INTELLIGENCE_MAX_TOKENS)),
                 extra_body=self._build_topic_research_extra_body(runtime),
                 config=dict(self.config_manager.config_data) if self.config_manager else None,
             )

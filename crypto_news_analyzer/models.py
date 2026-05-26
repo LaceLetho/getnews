@@ -453,6 +453,9 @@ class SemanticSearchConfig:
         return cls(**data)
 
 
+DEFAULT_INTELLIGENCE_MAX_TOKENS = 300000
+
+
 @dataclass
 class IntelligenceExtractionConfig:
     """Intelligence extraction model configuration."""
@@ -461,7 +464,7 @@ class IntelligenceExtractionConfig:
     model_name: str = "deepseek-v4-pro"
     thinking_level: Optional[str] = None
     temperature: Optional[float] = None
-    max_tokens: int = 4000
+    max_tokens: int = DEFAULT_INTELLIGENCE_MAX_TOKENS
     batch_size: int = 200
 
     def __post_init__(self):
@@ -509,7 +512,7 @@ class IntelligenceExtractionConfig:
             model_name=payload.get("model_name", payload.get("model", "deepseek-v4-pro")),
             thinking_level=payload.get("thinking_level"),
             temperature=payload.get("temperature"),
-            max_tokens=payload.get("max_tokens", 4000),
+            max_tokens=payload.get("max_tokens", DEFAULT_INTELLIGENCE_MAX_TOKENS),
             batch_size=payload.get("batch_size", 200),
         )
 
