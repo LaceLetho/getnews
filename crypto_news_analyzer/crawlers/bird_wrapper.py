@@ -134,7 +134,8 @@ class BirdWrapper:
         start_time = time.time()
 
         try:
-            self.logger.debug(f"执行bird命令: {' '.join(command[:3])} ... (隐藏认证参数)")
+            user_args = " ".join(args)
+            self.logger.debug("执行bird命令: %s %s", self.config.executable_path, user_args)
 
             # 执行命令
             result = subprocess.run(
@@ -285,10 +286,8 @@ class BirdWrapper:
                 max_pages = self.calculate_max_pages_for_source(source_name, source_type="x")
                 self.logger.info(f"智能速率限制: 数据源 {source_name} 使用 max_pages={max_pages}")
             elif max_pages is None:
-                # 使用配置中的默认值
                 max_pages = self.config.bird_max_page
 
-            # 确保max_pages在有效范围内
             max_pages = max(1, min(self.config.bird_max_page, max_pages))
 
             # 构建命令参数
@@ -296,6 +295,7 @@ class BirdWrapper:
                 "list-timeline",
                 list_id,
                 "--json",
+                "--all",
                 "--max-pages", str(max_pages)
             ]
 

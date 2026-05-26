@@ -436,6 +436,121 @@ class TestBirdWrapperMocked(unittest.TestCase):
     
     @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
     @patch('subprocess.run')
+    def test_fetch_list_tweets_command_contains_all_flag_with_max_pages(
+        self, mock_run, mock_manager_class
+    ):
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = '{"tweets": []}'
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            wrapper.fetch_list_tweets("1234567890", max_pages=3)
+
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args
+            full_cmd = call_args[0][0]
+
+            list_timeline_idx = full_cmd.index("list-timeline")
+            args = full_cmd[list_timeline_idx:]
+
+            self.assertIn("list-timeline", args)
+            self.assertIn("1234567890", args)
+            self.assertIn("--json", args)
+            self.assertIn("--all", args)
+            self.assertIn("--max-pages", args)
+
+            max_pages_idx = args.index("--max-pages")
+            self.assertEqual(args[max_pages_idx + 1], "3")
+
+            all_idx = args.index("--all")
+            max_pages_idx = args.index("--max-pages")
+            self.assertLess(all_idx, max_pages_idx)
+
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    @patch('subprocess.run')
+    def test_fetch_list_tweets_command_no_bare_max_pages(self, mock_run, mock_manager_class):
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = '{"tweets": []}'
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            wrapper.fetch_list_tweets("9876543210", max_pages=3)
+
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args
+            full_cmd = call_args[0][0]
+
+            list_timeline_idx = full_cmd.index("list-timeline")
+            args = full_cmd[list_timeline_idx:]
+
+            if "--max-pages" in args:
+                has_all = "--all" in args
+                has_cursor = "--cursor" in args
+                self.assertTrue(
+                    has_all or has_cursor,
+                    f"--max-pages requires --all or --cursor, but got: {args}"
+                )
+
+            expected_args = ["list-timeline", "9876543210", "--json", "--all", "--max-pages", "3"]
+            for expected in expected_args:
+                self.assertIn(expected, args, f"Missing expected arg: {expected} in {args}")
+
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    @patch('subprocess.run')
+    def test_fetch_list_tweets_verify_command_structure(self, mock_run, mock_manager_class):
+        mock_manager = MagicMock()
+        mock_status = MagicMock()
+        mock_status.available = True
+        mock_manager.check_bird_availability.return_value = mock_status
+        mock_manager_class.return_value = mock_manager
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = '{"tweets": []}'
+        mock_result.stderr = ""
+        mock_run.return_value = mock_result
+
+        list_id = "111222333444555"
+        max_pages = 3
+
+        with patch.dict(os.environ, {'X_CT0': 'test_ct0', 'X_AUTH_TOKEN': 'test_token'}):
+            wrapper = BirdWrapper(self.config)
+            wrapper.fetch_list_tweets(list_id, max_pages=max_pages)
+
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args
+            full_cmd = call_args[0][0]
+
+            list_timeline_idx = full_cmd.index("list-timeline")
+            args = full_cmd[list_timeline_idx:]
+
+            self.assertEqual(args[0], "list-timeline")
+            self.assertEqual(args[1], list_id)
+            self.assertEqual(args[2], "--json")
+            self.assertEqual(args[3], "--all")
+            self.assertEqual(args[4], "--max-pages")
+            self.assertEqual(args[5], str(max_pages))
+
+    @patch('crypto_news_analyzer.crawlers.bird_wrapper.BirdDependencyManager')
+    @patch('subprocess.run')
     def test_fetch_user_timeline(self, mock_run, mock_manager_class):
         """测试获取用户时间线"""
         # 模拟依赖管理器

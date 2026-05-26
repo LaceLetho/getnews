@@ -861,3 +861,109 @@ def test_empty_chunk_list_returns_no_findings() -> None:
     chunks = scheduler._chunk_messages(repository.raw_items)
     assert len(chunks) == 1
     assert chunks[0] == repository.raw_items
+
+
+# ---------------------------------------------------------------------------
+# Regression tests: HTTP-200 empty LLM responses and safe extra_body
+# ---------------------------------------------------------------------------
+
+
+def test_http_200_response_content_none_is_rejected_as_empty() -> None:
+    repository = FakeTopicRepository()
+    original_checkpoint = dict(repository.checkpoint or {})
+
+    class _NoneContentFakeLLMClient:
+        completions: "_NoneContentChatCompletions"
+        chat: SimpleNamespace
+
+        def __init__(self) -> None:
+            self.completions = _NoneContentChatCompletions()
+            self.chat = SimpleNamespace(completions=self.completions)
+
+    class _NoneContentChatCompletions:
+        def create(self, **kwargs: Any) -> SimpleNamespace:
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=None))]
+            )
+
+    scheduler = TopicResearchScheduler(repository, _NoneContentFakeLLMClient())
+
+    run = scheduler.run_topic(repository.topic, repository.prompt)
+
+    assert run.status == "failed"
+    assert "Empty topic research LLM response" in str(run.error_message)
+    assert repository.findings == []
+    assert repository.checkpoint == original_checkpoint
+
+
+def test_http_200_whitespace_only_response_is_rejected() -> None:
+    repository = FakeTopicRepository()
+    original_checkpoint = dict(repository.checkpoint or {})
+
+    class _WhitespaceFakeLLMClient:
+        _content: str
+        completions: "_WhitespaceChatCompletions"
+        chat: SimpleNamespace
+
+        def __init__(self, content: str) -> None:
+            self._content = content
+            self.completions = _WhitespaceChatCompletions(content)
+            self.chat = SimpleNamespace(completions=self.completions)
+
+    class _WhitespaceChatCompletions:
+        _content: str
+
+        def __init__(self, content: str) -> None:
+            self._content = content
+
+        def create(self, **kwargs: Any) -> SimpleNamespace:
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=self._content))]
+            )
+
+    for whitespace in ["   ", "\n\n", "\t  \r", "  \n  \t  "]:
+        repo = FakeTopicRepository()
+        sched = TopicResearchScheduler(repo, _WhitespaceFakeLLMClient(whitespace))
+        run = sched.run_topic(repo.topic, repo.prompt)
+
+        assert run.status == "failed", f"whitespace {whitespace!r} should have failed"
+        assert "Empty topic research LLM response" in str(run.error_message)
+        assert repo.findings == []
+        assert repo.checkpoint == original_checkpoint
+
+
+def test_checkpoint_not_advanced_on_malformed_json() -> None:
+    repository = FakeTopicRepository()
+    original_checkpoint = dict(repository.checkpoint or {})
+
+    scheduler = TopicResearchScheduler(
+        repository,
+        FakeLLMClient("not even close to json {{{{"),
+    )
+
+    run = scheduler.run_topic(repository.topic, repository.prompt)
+
+    assert run.status == "failed"
+    assert "Malformed topic research JSON" in str(run.error_message)
+    assert repository.findings == []
+    assert repository.checkpoint == original_checkpoint
+    assert repository.processed_items == []
+
+
+def test_topic_scheduler_extra_body_not_inherited_from_extraction_config() -> None:
+    repository = FakeTopicRepository()
+    llm_client = FakeLLMClient(_valid_payload())
+
+    scheduler = TopicResearchScheduler(
+        repository,
+        llm_client,
+        model_name="topic-model",
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+
+    scheduler.run_topic(repository.topic, repository.prompt)
+
+    call = llm_client.completions.calls[0]
+    assert call.get("extra_body") == {"thinking": {"type": "disabled"}}
+    assert "thinking_level" not in call.get("extra_body", {})
+    assert call["model"] == "topic-model"

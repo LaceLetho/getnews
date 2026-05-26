@@ -519,7 +519,26 @@ class TopicResearchScheduler:
             if self.extra_body:
                 kwargs["extra_body"] = self.extra_body
             response = completions.create(**kwargs)
-            return str(response.choices[0].message.content or "")
+            content = response.choices[0].message.content
+            if content is None:
+                logger.warning(
+                    "LLM returned None content for topic research (model=%s, id=%s)",
+                    self.model_name,
+                    getattr(topic, "id", "unknown"),
+                )
+            elif not str(content).strip():
+                empty_content_message = (
+                    "LLM returned empty/whitespace content for topic research"
+                    + " (model=%s, id=%s, len=%d, repr=%.200r)"
+                )
+                logger.warning(
+                    empty_content_message,
+                    self.model_name,
+                    getattr(topic, "id", "unknown"),
+                    len(str(content)),
+                    str(content),
+                )
+            return str(content or "")
         if hasattr(self.llm_client, "complete"):
             return str(self.llm_client.complete(system_prompt, user_payload))
         raise TypeError("llm_client must expose chat.completions.create() or complete()")

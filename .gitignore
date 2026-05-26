@@ -60,6 +60,7 @@ opencode.json
 
 # local workflow metadata
 .worktrees/
+.omo/run-continuation/
 .sisyphus/boulder.json
 .sisyphus/run-continuation/
 
