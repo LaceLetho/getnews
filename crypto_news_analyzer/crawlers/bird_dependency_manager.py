@@ -45,7 +45,6 @@ class BirdDependencyManager:
 
     # 支持的bird工具版本范围
     MIN_SUPPORTED_VERSION = "0.8.0"
-    MAX_SUPPORTED_VERSION = "2.0.0"
 
     # 常见的bird工具安装路径
     COMMON_PATHS = [
@@ -117,7 +116,7 @@ class BirdDependencyManager:
                     available=False,
                     version=version,
                     executable_path=executable_path,
-                    error_message=f"bird工具版本 {version} 不兼容，支持版本范围: {self.MIN_SUPPORTED_VERSION} - {self.MAX_SUPPORTED_VERSION}",
+                    error_message=f"bird工具版本 {version} 不兼容，最低支持版本: {self.MIN_SUPPORTED_VERSION}",
                     installation_instructions=self.get_installation_instructions()
                 )
                 self._cached_status = status
@@ -222,20 +221,16 @@ class BirdDependencyManager:
     def _is_version_compatible(self, version: str) -> bool:
         """检查版本兼容性"""
         try:
-            # 提取版本号
             version_match = re.search(r'(\d+\.\d+\.\d+)', version)
             if not version_match:
-                # 如果无法解析版本号，假设兼容
                 self.logger.warning(f"无法解析版本号: {version}，假设兼容")
                 return True
 
             version_str = version_match.group(1)
             version_parts = [int(x) for x in version_str.split('.')]
             min_parts = [int(x) for x in self.MIN_SUPPORTED_VERSION.split('.')]
-            max_parts = [int(x) for x in self.MAX_SUPPORTED_VERSION.split('.')]
 
-            # 比较版本号
-            return min_parts <= version_parts < max_parts
+            return min_parts <= version_parts
 
         except Exception as e:
             self.logger.warning(f"版本兼容性检查失败: {str(e)}，假设兼容")
