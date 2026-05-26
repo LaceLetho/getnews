@@ -61,8 +61,11 @@ opencode.json
 # local workflow metadata
 .worktrees/
 .omo/run-continuation/
-.sisyphus/boulder.json
-.sisyphus/run-continuation/
+.sisyphus/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
 
 # CodeGraph index
 .codegraph/
