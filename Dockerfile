@@ -39,7 +39,6 @@ RUN apt-get update && apt-get install -y \
 # 验证Node.js和npm安装
 RUN node --version && npm --version
 
-# 全局安装bird工具
 RUN npm install -g @laceletho/bird@latest
 
 # 验证bird工具安装

@@ -273,11 +273,13 @@ health_check() {
         return 1
     fi
     
-    # 检查bird工具
+    log_info "更新bird工具到最新版本..."
+    npm install -g @laceletho/bird@latest 2>/dev/null
+
     if ! bird --version 2>/dev/null; then
         log_warn "bird工具检查失败，可能需要配置认证信息"
     else
-        log_info "bird工具可用"
+        log_info "bird工具可用: $(bird --version 2>/dev/null | tr '\n' ' ')"
     fi
     
     # 检查核心模块
