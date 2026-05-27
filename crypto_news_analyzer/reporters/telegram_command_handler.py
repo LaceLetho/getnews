@@ -275,6 +275,18 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         application.add_handler(CommandHandler("topic_merge", self._handle_topic_merge_command))
         application.add_handler(CommandHandler("topic_pause", self._handle_topic_pause_command))
         application.add_handler(CommandHandler("topic_archive", self._handle_topic_archive_command))
+        application.add_handler(
+            CommandHandler("topic_sources", self._handle_topic_sources_command)
+        )
+        application.add_handler(
+            CommandHandler("topic_sources_set", self._handle_topic_sources_set_command)
+        )
+        application.add_handler(
+            CommandHandler("topic_sources_add", self._handle_topic_sources_add_command)
+        )
+        application.add_handler(
+            CommandHandler("topic_sources_remove", self._handle_topic_sources_remove_command)
+        )
 
     def _generate_callback_token(self) -> str:
         return secrets.token_urlsafe(8)[:10]
@@ -2076,6 +2088,10 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 "topic_merge",
                 "topic_pause",
                 "topic_archive",
+                "topic_sources",
+                "topic_sources_set",
+                "topic_sources_add",
+                "topic_sources_remove",
                 "news_market",
                 "status",
                 "help",
@@ -2167,6 +2183,16 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         help_text.append("/topic_merge <topic_id> - 合并主题发现\n")
         help_text.append("/topic_pause <topic_id> - 暂停主题\n")
         help_text.append("/topic_archive <topic_id> - 归档主题\n")
+        help_text.append("/topic_sources <topic_id> - 查看主题数据源关联\n")
+        help_text.append("/topic_sources_set <topic_id> <ds_id...|none> - 设置主题数据源关联\n")
+        help_text.append("/topic_sources_add <topic_id> <ds_id...> - 添加主题数据源关联\n")
+        help_text.append("/topic_sources_remove <topic_id> <ds_id...> - 移除主题数据源关联\n")
+        help_text.append(
+            "\n⚠️ 主题数据源规则:\n"
+            "• 新建主题默认不关联数据源，需显式添加\n"
+            "• 无数据源关联的主题自动跳过每日研究\n"
+            "• 关联变更从下一研究周期生效，不回溯历史\n"
+        )
 
         # Shared
         help_text.append("\n⚙️ 通用\n")

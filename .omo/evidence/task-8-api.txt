@@ -1,0 +1,55 @@
+# Evidence: Topic Association Delete Guard - API Server
+
+## Change Summary
+Modified: `crypto_news_analyzer/api_server.py`
+- Added `DataSourceTopicAssociationError` to domain models import (line 38)
+- Added exception handler for `DataSourceTopicAssociationError` in `DELETE /datasources/{id}` route (lines 1410-1413)
+
+## Implementation Details
+
+### Import addition (line 38):
+```python
+from .domain.models import (
+    ...
+    DataSourceTopicAssociationError,
+    ...
+)
+```
+
+### Exception handler in `delete_datasource` route (around line 1410):
+```python
+try:
+    deleted = repository.delete(datasource_id)
+except DataSourceInUseError as exc:
+    raise HTTPException(status_code=409, detail=str(exc))
+except DataSourceTopicAssociationError as exc:
+    raise HTTPException(
+        status_code=409,
+        detail=f"Datasource is associated with {exc.topic_count} topic(s)",
+    )
+except Exception as exc:
+    logger.error(f"Failed to delete datasource {datasource_id}: {exc}")
+    raise HTTPException(status_code=500, detail=str(exc))
+```
+
+## Behavior
+
+1. **Associated datasource** (DELETE request):
+   - Status: 409 Conflict
+   - Body: `{"detail": "Datasource is associated with X topic(s)"}`
+
+2. **Unassociated datasource**:
+   - Status: 204 No Content
+   - Body: empty
+
+3. **Non-existent datasource**:
+   - Status: 404 Not Found
+   - Body: `{"detail": "Datasource not found"}`
+
+## Test Results
+
+Test: `test_datasource_delete_returns_409_when_topic_associated`
+- Creates datasource + 2 topics with associations
+- Calls `DELETE /datasources/{id}`
+- Expected: 409 with message "Datasource is associated with 2 topic(s)"
+- Result: PASSED

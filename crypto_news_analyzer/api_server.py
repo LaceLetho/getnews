@@ -35,7 +35,9 @@ from .domain.models import (
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
     DataSourcePurpose,
+    DataSourceTopicAssociationError,
     Priority,
+    SafeDataSourceSummary,
     SemanticSearchJob,
     TopicLifecycleStatus,
 )
@@ -364,6 +366,7 @@ class IntelligenceTopicListResponse(BaseModel):
 class TopicCreateDraftRequest(BaseModel):
     theme: str = Field(..., min_length=1, max_length=500)
     source_context: Optional[Dict[str, Any]] = Field(default=None)
+    datasource_ids: Optional[List[str]] = Field(default=None)
 
 
 class TopicReviseRequest(BaseModel):
@@ -428,6 +431,21 @@ class TopicLifecycleActionResponse(BaseModel):
     topic_id: str
     lifecycle_status: str
     updated_at: Optional[str] = None
+
+
+class TopicDatasourceSetRequest(BaseModel):
+    """Request body for atomic replacement of topic datasource associations."""
+
+    datasource_ids: List[str] = Field(default_factory=list)
+
+
+class SafeDataSourceSummaryResponse(BaseModel):
+    """Safe datasource summary — excludes config_payload entirely."""
+
+    id: str
+    source_type: str
+    name: str
+    tags: List[str] = Field(default_factory=list)
 
 
 # ── Helper Functions ───────────────────────────────────────────────────
@@ -632,6 +650,34 @@ def _utcnow_iso() -> str:
 
 def _job_urls(job_id: str) -> tuple[str, str]:
     return (f"/analyze/{job_id}", f"/analyze/{job_id}/result")
+
+
+def _map_topic_datasource_error(exc: ValueError) -> HTTPException:
+    """Map ValueError from topic-datasource repo methods to HTTP status codes.
+
+    - "unknown topic"      → 404
+    - "unknown datasource" → 404
+    - "not intelligence"   → 400
+    - everything else      → 400
+    """
+    msg = str(exc)
+    if "unknown topic" in msg.lower():
+        return HTTPException(status_code=404, detail=msg)
+    if "unknown datasource" in msg.lower():
+        return HTTPException(status_code=404, detail=msg)
+    if "not intelligence" in msg.lower() or "not intelligence-purpose" in msg.lower():
+        return HTTPException(status_code=400, detail=msg)
+    return HTTPException(status_code=400, detail=msg)
+
+
+def _summary_to_response(s: SafeDataSourceSummary) -> SafeDataSourceSummaryResponse:
+    """Convert SafeDataSourceSummary to pydantic response model."""
+    return SafeDataSourceSummaryResponse(
+        id=s.id,
+        source_type=s.source_type,
+        name=s.name,
+        tags=s.tags,
+    )
 
 
 def _semantic_search_job_urls(job_id: str) -> tuple[str, str]:
@@ -1362,6 +1408,11 @@ def register_news_routes(app: FastAPI) -> None:
             deleted = repository.delete(datasource_id)
         except DataSourceInUseError as exc:
             raise HTTPException(status_code=409, detail=str(exc))
+        except DataSourceTopicAssociationError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Datasource is associated with {exc.topic_count} topic(s)",
+            )
         except Exception as exc:
             logger.error(f"Failed to delete datasource {datasource_id}: {exc}")
             raise HTTPException(status_code=500, detail=str(exc))
@@ -1388,6 +1439,14 @@ def register_intelligence_routes(app: FastAPI) -> None:
         controller = _get_controller(req)
         repository = _get_intelligence_repository(req)
         service = _get_topic_prompt_workflow_service(controller, repository)
+        datasource_ids = request_body.datasource_ids
+        if datasource_ids:
+            validator = getattr(repository, "_validate_datasource_ids_for_topic", None)
+            if callable(validator):
+                try:
+                    validator(sorted(set(datasource_ids)))
+                except ValueError as exc:
+                    raise _map_topic_datasource_error(exc)
 
         try:
             prompt = service.create_draft_topic(
@@ -1402,6 +1461,13 @@ def register_intelligence_routes(app: FastAPI) -> None:
         except Exception as exc:
             logger.error(f"Failed to create topic draft: {exc}")
             raise HTTPException(status_code=500, detail=str(exc))
+
+        topic_id = prompt.intelligence_topic_id
+        if datasource_ids:
+            try:
+                repository.add_topic_datasources(topic_id, datasource_ids)
+            except ValueError as exc:
+                raise _map_topic_datasource_error(exc)
 
         return _prompt_to_response(prompt)
 
@@ -1622,13 +1688,88 @@ def register_intelligence_routes(app: FastAPI) -> None:
             merge_available=merge_available,
         )
 
+    # ── Topic-Datasource Association Routes ──────────────────────────────
 
+    @app.get(
+        "/intelligence/topics/{topic_id}/datasources",
+        response_model=List[SafeDataSourceSummaryResponse],
+    )
+    async def get_topic_datasources(
+        topic_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Return safe datasource summaries associated with a topic."""
+        repository = _get_intelligence_repository(req)
+        try:
+            summaries = repository.get_topic_datasources(topic_id)
+        except ValueError as exc:
+            raise _map_topic_datasource_error(exc)
+        return [_summary_to_response(s) for s in summaries]
+
+    @app.put(
+        "/intelligence/topics/{topic_id}/datasources",
+        response_model=List[SafeDataSourceSummaryResponse],
+    )
+    async def set_topic_datasources(
+        topic_id: str,
+        request_body: TopicDatasourceSetRequest,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Atomically replace all datasource associations for a topic."""
+        repository = _get_intelligence_repository(req)
+        try:
+            repository.set_topic_datasources(topic_id, request_body.datasource_ids)
+            summaries = repository.get_topic_datasources(topic_id)
+        except ValueError as exc:
+            raise _map_topic_datasource_error(exc)
+        return [_summary_to_response(s) for s in summaries]
+
+    @app.post(
+        "/intelligence/topics/{topic_id}/datasources/{datasource_id}",
+        response_model=List[SafeDataSourceSummaryResponse],
+    )
+    async def add_topic_datasource(
+        topic_id: str,
+        datasource_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Idempotently add a datasource association to a topic."""
+        repository = _get_intelligence_repository(req)
+        try:
+            repository.add_topic_datasources(topic_id, [datasource_id])
+            summaries = repository.get_topic_datasources(topic_id)
+        except ValueError as exc:
+            raise _map_topic_datasource_error(exc)
+        return [_summary_to_response(s) for s in summaries]
+
+    @app.delete(
+        "/intelligence/topics/{topic_id}/datasources/{datasource_id}",
+        response_model=List[SafeDataSourceSummaryResponse],
+    )
+    async def remove_topic_datasource(
+        topic_id: str,
+        datasource_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Idempotently remove a datasource association from a topic."""
+        repository = _get_intelligence_repository(req)
+        try:
+            repository.remove_topic_datasources(topic_id, [datasource_id])
+            summaries = repository.get_topic_datasources(topic_id)
+        except ValueError as exc:
+            raise _map_topic_datasource_error(exc)
+        return [_summary_to_response(s) for s in summaries]
 # ── Background webhook processing ────────────────────────────────────────
 
 
 async def _process_webhook_update_background(
     command_handler: Any,
     payload: Dict[str, Any],
+    secret_token: Optional[str],
 ) -> None:
     """Process a Telegram webhook update in the background.
 
@@ -1637,7 +1778,7 @@ async def _process_webhook_update_background(
     Deduplication by update_id is handled inside handle_webhook_update.
     """
     try:
-        await command_handler.handle_webhook_update(payload, secret_token=None)
+        await command_handler.handle_webhook_update(payload, secret_token=secret_token)
     except PermissionError:
         logger.warning("Background webhook update rejected: permission denied")
     except RuntimeError as exc:
@@ -1695,6 +1836,7 @@ def register_infrastructure_routes(app: FastAPI) -> None:
             _process_webhook_update_background,
             command_handler,
             payload,
+            secret_token,
         )
 
         return {"ok": True}

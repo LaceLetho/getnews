@@ -1,7 +1,8 @@
 """Intelligence domain Telegram command handlers (mixin for TelegramCommandHandler).
 
 Contains /topic_* command handlers for the intelligence topic research lifecycle:
-create, revise, set_prompt, confirm, merge, pause, archive, list, findings, prompt.
+create, revise, set_prompt, confirm, merge, pause, archive, list, findings, prompt, logs,
+and datasource association: sources, sources_set, sources_add, sources_remove.
 """
 
 import asyncio
@@ -663,6 +664,383 @@ class IntelligenceCommandsMixin:
             self.logger.error(f"处理/topic_archive命令时发生错误: {e}")
             try:
                 await msg.reply_text(f"\u274c 归档失败: {str(e)}")
+            except Exception:
+                pass
+
+    async def _handle_topic_sources_command(self, update: Any, context: Any) -> None:
+        """View datasource associations for a topic: /topic_sources <topic_id>."""
+        try:
+            msg = update.effective_message or update.message
+            if msg is None:
+                return
+            user_id = str(update.effective_user.id if update.effective_user else "unknown")
+            username = update.effective_user.username if update.effective_user else "unknown"
+
+            if not self.is_authorized_user(user_id, username):
+                await msg.reply_text("\u274c 权限拒绝")
+                return
+
+            allowed, error_msg = self.check_rate_limit(user_id)
+            if not allowed:
+                await msg.reply_text(f"\u23f1\ufe0f 速率限制\n\n{error_msg}")
+                return
+
+            args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+            if not args:
+                await msg.reply_text("用法: /topic_sources <topic_id>")
+                return
+
+            topic_id = args[0]
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                await msg.reply_text("\u274c 仓储未初始化")
+                return
+
+            try:
+                datasources = repository.get_topic_datasources(topic_id)
+            except ValueError as e:
+                error_str = str(e)
+                if "topic" in error_str.lower() or "exist" in error_str.lower():
+                    await msg.reply_text(f"\u274c Topic `{topic_id}` 未找到", parse_mode="Markdown")
+                else:
+                    await msg.reply_text(f"\u274c {error_str}")
+                return
+
+            esc = self._escape_markdown_v1
+            if not datasources:
+                await msg.reply_text(
+                    f"\u26a0\ufe0f Topic `{esc(topic_id)}` 没有关联数据源\n\n"
+                    f"\u26a0\ufe0f topic has no datasources \u2014 scheduled research will skip it\n\n"
+                    f"使用 `/topic_sources_set {esc(topic_id)} <ds_id...|none>` 设置关联，"
+                    f"或 `/topic_sources_add {esc(topic_id)} <ds_id...>` 添加关联。",
+                    parse_mode="Markdown",
+                )
+                self._log_command_execution(
+                    "/topic_sources", user_id, username, topic_id, True, ""
+                )
+                return
+
+            lines: List[str] = [
+                f"\U0001f4e1 Topic `{esc(topic_id)}` 数据源关联\n",
+                f"共 {len(datasources)} 个数据源:\n",
+            ]
+            for ds in datasources:
+                tags_display = ", ".join(ds.tags[:3])
+                if len(ds.tags) > 3:
+                    tags_display += f" +{len(ds.tags) - 3}"
+                tags_line = f"`{esc(tags_display)}`" if tags_display else "无标签"
+                lines.append(
+                    f"\u2022 `{esc(ds.id)}`\n"
+                    f"  type: `{esc(ds.source_type)}` | name: {esc(ds.name)}\n"
+                    f"  tags: {tags_line}"
+                )
+
+            text = "\n".join(lines)
+            await msg.reply_text(text, parse_mode="Markdown")
+            self._log_command_execution(
+                "/topic_sources", user_id, username, topic_id, True, ""
+            )
+        except Exception as e:
+            self.logger.error(
+                f"处理/topic_sources命令时发生错误: {type(e).__name__}: {e}", exc_info=True
+            )
+            try:
+                await msg.reply_text(f"\u274c 查询失败: {str(e)}")
+            except Exception:
+                pass
+
+    async def _handle_topic_sources_set_command(self, update: Any, context: Any) -> None:
+        """Replace all datasource associations: /topic_sources_set <topic_id> <ds_id...|none>."""
+        try:
+            msg = update.effective_message or update.message
+            if msg is None:
+                return
+            user_id = str(update.effective_user.id if update.effective_user else "unknown")
+            username = update.effective_user.username if update.effective_user else "unknown"
+
+            if not self.is_authorized_user(user_id, username):
+                await msg.reply_text("\u274c 权限拒绝")
+                return
+
+            allowed, error_msg = self.check_rate_limit(user_id)
+            if not allowed:
+                await msg.reply_text(f"\u23f1\ufe0f 速率限制\n\n{error_msg}")
+                return
+
+            args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+            if len(args) < 2:
+                await msg.reply_text(
+                    "用法: /topic_sources_set <topic_id> <ds_id...|none>\n"
+                    "示例: /topic_sources_set topic-001 ds-xxx ds-yyy\n"
+                    "      /topic_sources_set topic-001 none"
+                )
+                return
+
+            topic_id = args[0]
+            ds_arg = args[1]
+
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                await msg.reply_text("\u274c 仓储未初始化")
+                return
+
+            esc = self._escape_markdown_v1
+
+            if ds_arg.lower() == "none":
+                try:
+                    repository.set_topic_datasources(topic_id, [])
+                except ValueError as e:
+                    error_str = str(e)
+                    if "topic" in error_str.lower() or "exist" in error_str.lower():
+                        await msg.reply_text(
+                            f"\u274c Topic `{esc(topic_id)}` 未找到", parse_mode="Markdown"
+                        )
+                    else:
+                        await msg.reply_text(f"\u274c {error_str}")
+                    return
+                await msg.reply_text(
+                    f"\u2705 已清除 Topic `{esc(topic_id)}` 的所有数据源关联\n\n"
+                    f"\u26a0\ufe0f topic has no datasources \u2014 scheduled research will skip it\n\n"
+                    f"使用 `/topic_sources_add {esc(topic_id)} <ds_id...>` 重新添加关联。",
+                    parse_mode="Markdown",
+                )
+                self._log_command_execution(
+                    "/topic_sources_set", user_id, username, topic_id, True, ""
+                )
+                return
+
+            ds_ids = list(dict.fromkeys(args[1:]))
+
+            try:
+                repository.set_topic_datasources(topic_id, ds_ids)
+            except ValueError as e:
+                error_str = str(e)
+                if "topic" in error_str.lower() or "exist" in error_str.lower():
+                    await msg.reply_text(
+                        f"\u274c Topic `{esc(topic_id)}` 未找到", parse_mode="Markdown"
+                    )
+                elif "unknown datasource" in error_str.lower():
+                    await msg.reply_text(
+                        f"\u274c 数据源未找到: {error_str}", parse_mode="Markdown"
+                    )
+                elif "not intelligence-purpose" in error_str.lower():
+                    await msg.reply_text(
+                        f"\u274c 数据源不是情报类型: {error_str}", parse_mode="Markdown"
+                    )
+                else:
+                    await msg.reply_text(f"\u274c {error_str}")
+                return
+
+            datasources = repository.get_topic_datasources(topic_id)
+            if not datasources:
+                await msg.reply_text(
+                    f"\u2705 Topic `{esc(topic_id)}` 数据源关联已设置\n\n"
+                    f"\u26a0\ufe0f topic has no datasources \u2014 scheduled research will skip it\n\n"
+                    f"使用 `/topic_sources_add {esc(topic_id)} <ds_id...>` 重新添加关联。",
+                    parse_mode="Markdown",
+                )
+            else:
+                lines: List[str] = [
+                    f"\u2705 Topic `{esc(topic_id)}` 数据源关联已设置\n",
+                    f"共 {len(datasources)} 个数据源:\n",
+                ]
+                for ds in datasources:
+                    tags_display = ", ".join(ds.tags[:3])
+                    if len(ds.tags) > 3:
+                        tags_display += f" +{len(ds.tags) - 3}"
+                    tags_line = f"`{esc(tags_display)}`" if tags_display else "无标签"
+                    lines.append(
+                        f"\u2022 `{esc(ds.id)}`\n"
+                        f"  type: `{esc(ds.source_type)}` | name: {esc(ds.name)}\n"
+                        f"  tags: {tags_line}"
+                    )
+                await msg.reply_text("\n".join(lines), parse_mode="Markdown")
+            self._log_command_execution(
+                "/topic_sources_set", user_id, username, topic_id, True, ""
+            )
+        except Exception as e:
+            self.logger.error(
+                f"处理/topic_sources_set命令时发生错误: {type(e).__name__}: {e}", exc_info=True
+            )
+            try:
+                await msg.reply_text(f"\u274c 设置失败: {str(e)}")
+            except Exception:
+                pass
+
+    async def _handle_topic_sources_add_command(self, update: Any, context: Any) -> None:
+        """Idempotently add datasource associations: /topic_sources_add <topic_id> <ds_id...>."""
+        try:
+            msg = update.effective_message or update.message
+            if msg is None:
+                return
+            user_id = str(update.effective_user.id if update.effective_user else "unknown")
+            username = update.effective_user.username if update.effective_user else "unknown"
+
+            if not self.is_authorized_user(user_id, username):
+                await msg.reply_text("\u274c 权限拒绝")
+                return
+
+            allowed, error_msg = self.check_rate_limit(user_id)
+            if not allowed:
+                await msg.reply_text(f"\u23f1\ufe0f 速率限制\n\n{error_msg}")
+                return
+
+            args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+            if len(args) < 2:
+                await msg.reply_text(
+                    "用法: /topic_sources_add <topic_id> <ds_id...>\n"
+                    "示例: /topic_sources_add topic-001 ds-xxx ds-yyy"
+                )
+                return
+
+            topic_id = args[0]
+            ds_ids = list(dict.fromkeys(args[1:]))
+
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                await msg.reply_text("\u274c 仓储未初始化")
+                return
+
+            esc = self._escape_markdown_v1
+            try:
+                repository.add_topic_datasources(topic_id, ds_ids)
+            except ValueError as e:
+                error_str = str(e)
+                if "topic" in error_str.lower() or "exist" in error_str.lower():
+                    await msg.reply_text(
+                        f"\u274c Topic `{esc(topic_id)}` 未找到", parse_mode="Markdown"
+                    )
+                elif "unknown datasource" in error_str.lower():
+                    await msg.reply_text(
+                        f"\u274c 数据源未找到: {error_str}", parse_mode="Markdown"
+                    )
+                elif "not intelligence-purpose" in error_str.lower():
+                    await msg.reply_text(
+                        f"\u274c 数据源不是情报类型: {error_str}", parse_mode="Markdown"
+                    )
+                else:
+                    await msg.reply_text(f"\u274c {error_str}")
+                return
+
+            datasources = repository.get_topic_datasources(topic_id)
+            if not datasources:
+                await msg.reply_text(
+                    f"\u2705 已关联数据源到 Topic `{esc(topic_id)}`\n\n"
+                    f"\u26a0\ufe0f topic has no datasources \u2014 scheduled research will skip it\n\n"
+                    f"使用 `/topic_sources_add {esc(topic_id)} <ds_id...>` 添加数据源。",
+                    parse_mode="Markdown",
+                )
+            else:
+                lines: List[str] = [
+                    f"\u2705 已关联数据源到 Topic `{esc(topic_id)}`\n",
+                    f"共 {len(datasources)} 个数据源:\n",
+                ]
+                for ds in datasources:
+                    tags_display = ", ".join(ds.tags[:3])
+                    if len(ds.tags) > 3:
+                        tags_display += f" +{len(ds.tags) - 3}"
+                    tags_line = f"`{esc(tags_display)}`" if tags_display else "无标签"
+                    lines.append(
+                        f"\u2022 `{esc(ds.id)}`\n"
+                        f"  type: `{esc(ds.source_type)}` | name: {esc(ds.name)}\n"
+                        f"  tags: {tags_line}"
+                    )
+                await msg.reply_text("\n".join(lines), parse_mode="Markdown")
+            self._log_command_execution(
+                "/topic_sources_add", user_id, username, topic_id, True, ""
+            )
+        except Exception as e:
+            self.logger.error(
+                f"处理/topic_sources_add命令时发生错误: {type(e).__name__}: {e}", exc_info=True
+            )
+            try:
+                await msg.reply_text(f"\u274c 添加失败: {str(e)}")
+            except Exception:
+                pass
+
+    async def _handle_topic_sources_remove_command(self, update: Any, context: Any) -> None:
+        """Idempotently remove datasource associations:
+        /topic_sources_remove <topic_id> <ds_id...>.
+        """
+        try:
+            msg = update.effective_message or update.message
+            if msg is None:
+                return
+            user_id = str(update.effective_user.id if update.effective_user else "unknown")
+            username = update.effective_user.username if update.effective_user else "unknown"
+
+            if not self.is_authorized_user(user_id, username):
+                await msg.reply_text("\u274c 权限拒绝")
+                return
+
+            allowed, error_msg = self.check_rate_limit(user_id)
+            if not allowed:
+                await msg.reply_text(f"\u23f1\ufe0f 速率限制\n\n{error_msg}")
+                return
+
+            args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
+            if len(args) < 2:
+                await msg.reply_text(
+                    "用法: /topic_sources_remove <topic_id> <ds_id...>\n"
+                    "示例: /topic_sources_remove topic-001 ds-xxx ds-yyy"
+                )
+                return
+
+            topic_id = args[0]
+            ds_ids = list(dict.fromkeys(args[1:]))
+
+            repository = self._get_intelligence_repository()
+            if repository is None:
+                await msg.reply_text("\u274c 仓储未初始化")
+                return
+
+            esc = self._escape_markdown_v1
+            try:
+                repository.remove_topic_datasources(topic_id, ds_ids)
+            except ValueError as e:
+                error_str = str(e)
+                if "topic" in error_str.lower() or "exist" in error_str.lower():
+                    await msg.reply_text(
+                        f"\u274c Topic `{esc(topic_id)}` 未找到", parse_mode="Markdown"
+                    )
+                else:
+                    await msg.reply_text(f"\u274c {error_str}")
+                return
+
+            datasources = repository.get_topic_datasources(topic_id)
+            if not datasources:
+                await msg.reply_text(
+                    f"\u2705 已从 Topic `{esc(topic_id)}` 取消关联\n\n"
+                    f"\u26a0\ufe0f topic has no datasources \u2014 scheduled research will skip it\n\n"
+                    f"使用 `/topic_sources_add {esc(topic_id)} <ds_id...>` 重新添加关联。",
+                    parse_mode="Markdown",
+                )
+            else:
+                lines: List[str] = [
+                    f"\u2705 已从 Topic `{esc(topic_id)}` 取消关联\n",
+                    f"剩余 {len(datasources)} 个数据源:\n",
+                ]
+                for ds in datasources:
+                    tags_display = ", ".join(ds.tags[:3])
+                    if len(ds.tags) > 3:
+                        tags_display += f" +{len(ds.tags) - 3}"
+                    tags_line = f"`{esc(tags_display)}`" if tags_display else "无标签"
+                    lines.append(
+                        f"\u2022 `{esc(ds.id)}`\n"
+                        f"  type: `{esc(ds.source_type)}` | name: {esc(ds.name)}\n"
+                        f"  tags: {tags_line}"
+                    )
+                await msg.reply_text("\n".join(lines), parse_mode="Markdown")
+            self._log_command_execution(
+                "/topic_sources_remove", user_id, username, topic_id, True, ""
+            )
+        except Exception as e:
+            self.logger.error(
+                f"处理/topic_sources_remove命令时发生错误: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
+            try:
+                await msg.reply_text(f"\u274c 移除失败: {str(e)}")
             except Exception:
                 pass
 

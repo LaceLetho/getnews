@@ -176,6 +176,15 @@ class DataSourceInUseError(ValueError):
         )
 
 
+class DataSourceTopicAssociationError(ValueError):
+    def __init__(self, datasource_id: str, topic_count: int):
+        self.datasource_id = datasource_id
+        self.topic_count = topic_count
+        super().__init__(
+            f"Datasource '{datasource_id}' is associated with {topic_count} topic(s) and must be unbound first"
+        )
+
+
 class DataSourceAlreadyExistsError(ValueError):
     def __init__(self, source_type: str, source_name: str, purpose: str):
         self.purpose = purpose
@@ -276,6 +285,63 @@ class DataSource:
             updated_at=(
                 datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else None
             ),
+        )
+
+
+@dataclass
+class SafeDataSourceSummary:
+    """Safe summary of a DataSource — excludes config_payload entirely.
+
+    Exposes only public, non-sensitive fields: id, source_type, name, tags.
+    Use this type when returning datasource metadata in API responses or
+    other public surfaces where config_payload must never leak.
+
+    Attributes:
+        id: UUID4 datasource identifier.
+        source_type: Enum value from DataSourceType (rss, x, rest_api, etc.).
+        name: Human-readable datasource name.
+        tags: Normalized, deduplicated, lowercase tag list.
+    """
+
+    id: str
+    source_type: str
+    name: str
+    tags: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if not self.id:
+            raise ValueError("id is required")
+        if not self.source_type:
+            raise ValueError("source_type is required")
+        if not self.name:
+            raise ValueError("name is required")
+        self.tags = _normalize_datasource_tags(self.tags)
+
+    @classmethod
+    def from_datasource(cls, datasource: "DataSource") -> "SafeDataSourceSummary":
+        """Factory from a full DataSource — strips config_payload."""
+        return cls(
+            id=datasource.id,
+            source_type=datasource.source_type,
+            name=datasource.name,
+            tags=list(datasource.tags),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "source_type": self.source_type,
+            "name": self.name,
+            "tags": list(self.tags),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SafeDataSourceSummary":
+        return cls(
+            id=data["id"],
+            source_type=data["source_type"],
+            name=data["name"],
+            tags=data.get("tags", []),
         )
 
 
@@ -677,6 +743,7 @@ class RawIntelligenceItem:
     edit_status: Optional[str] = None
     edit_timestamp: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    datasource_id: Optional[str] = None
 
     def __post_init__(self):
         if not self.id:
@@ -712,6 +779,7 @@ class RawIntelligenceItem:
         published_at: Optional[datetime] = None,
         edit_status: Optional[str] = None,
         edit_timestamp: Optional[datetime] = None,
+        datasource_id: Optional[str] = None,
     ) -> "RawIntelligenceItem":
         now = datetime.utcnow()
         return cls(
@@ -731,6 +799,7 @@ class RawIntelligenceItem:
             edit_status=edit_status,
             edit_timestamp=edit_timestamp,
             created_at=now,
+            datasource_id=datasource_id,
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -751,6 +820,7 @@ class RawIntelligenceItem:
             "edit_status": self.edit_status,
             "edit_timestamp": self.edit_timestamp.isoformat() if self.edit_timestamp else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "datasource_id": self.datasource_id,
         }
 
     @classmethod
@@ -772,6 +842,7 @@ class RawIntelligenceItem:
             edit_status=data.get("edit_status"),
             edit_timestamp=_parse_optional_datetime(data.get("edit_timestamp")),
             created_at=_parse_optional_datetime(data.get("created_at")),
+            datasource_id=data.get("datasource_id"),
         )
 
 

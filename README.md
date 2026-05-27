@@ -29,6 +29,7 @@
 - 🧠 **AI 主题研究管线**: 基于 LLM 的持续研究，支持创建/修订/确认主题 → 每日定时研究 → 研究成果合并与归档的完整生命周期
 - 📥 **群组消息收集**: 从 Telegram 群组和 V2EX 论坛采集原始消息（RawIntelligenceItem），与新闻域的 ContentItem 完全分离
 - 🌐 **独立 API 和命令面**: 提供 `/intelligence/*` REST 接口和 `/topic_*` Telegram 命令
+- 🔗 **主题数据源关联**: 可选择关联 Intelligence 用途的数据源到研究主题，支持查看、替换、添加、移除操作
 
 ### 共享基础设施
 
@@ -265,6 +266,21 @@ uv run flake8 crypto_news_analyzer/
 - `/topic_pause <topic_id>` - 暂停主题研究
 - `/topic_archive <topic_id>` - 归档主题
 - `/topic_logs <topic_id>` - 查看主题研究运行日志
+- `/topic_sources <topic_id>` - 查看主题数据源关联（空关联时跳过定时研究）
+- `/topic_sources_set <topic_id> <ds_id...|none>` - 替换主题数据源关联（使用 `none` 清空所有关联）
+- `/topic_sources_add <topic_id> <ds_id...>` - 幂等添加主题数据源关联
+- `/topic_sources_remove <topic_id> <ds_id...>` - 幂等移除主题数据源关联
+
+### 主题数据源关联规则
+
+主题与数据源的关联遵循以下行为：
+
+- **新建主题默认空关联**：通过 `/topic_create` 或 `POST /intelligence/topics` 创建的主题在激活前不关联任何数据源。激活后如需关联，需显式调用 `/topic_sources_add` 或 `POST /intelligence/topics/{id}/datasources/{datasource_id}`。
+- **空关联跳过定时研究**：若主题已激活但未关联任何数据源，每日定时研究调度器会跳过该主题，不消耗 LLM token。
+- **关联变更不自动回填**：添加或移除数据源关联不会影响已完成的研究运行记录；变更仅从下一次定时研究周期开始生效。
+- **仅可关联 Intelligence 用途的数据源**：News 用途的数据源无法关联到 Intelligence 主题。创建数据源时请使用 `"purpose":"intelligence"`。
+
+详细 API 接口见下方 HTTP API 章节的「情报主题 API」部分。
 
 ### 多用户授权机制
 
@@ -338,6 +354,10 @@ TELEGRAM_AUTHORIZED_USERS=5844680524,@wingperp,@mcfangpy,@Huazero,@long0short
 - `POST /intelligence/topics/{id}/confirm` - 确认激活
 - `GET /intelligence/topics` - 列出主题
 - `GET /intelligence/topics/{id}` - 主题详情（含提示词版本和研究成果）
+- `GET /intelligence/topics/{id}/datasources` - 查看主题数据源关联列表
+- `PUT /intelligence/topics/{id}/datasources` - 替换主题数据源关联（请求体: `{"datasource_ids": ["ds-xxx", "ds-yyy"]}`）
+- `POST /intelligence/topics/{id}/datasources/{datasource_id}` - 幂等添加主题数据源关联（路径参数）
+- `DELETE /intelligence/topics/{id}/datasources/{datasource_id}` - 幂等移除主题数据源关联（路径参数）
 
 ### 创建分析任务
 

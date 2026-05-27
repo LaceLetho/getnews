@@ -1,0 +1,99 @@
+================================================================================
+F4: SCOPE FIDELITY CHECK — FINAL VERDICT
+================================================================================
+Date: 2026-05-27
+Plan: topic-datasource-associations (11 tasks)
+Verdict: APPROVE ✅
+================================================================================
+
+1. FILE-BY-FILE TRACE AGAINST PLAN TASKS
+--------------------------------------------------------------------------------
+File                                    Plan Task(s)     Verdict
+────                                    ────────────     ───────
+.omo/boulder.json                       (tracking)       ✓ Infrastructure
+README.md                               T11              ✓ Docs/help
+api_server.py                           T6, T8           ✓ API routes + delete guard
+domain/models.py                        T2, T3           ✓ Contracts + SafeDataSourceSummary
+domain/repositories.py                  T2               ✓ Repository ABC contracts
+intelligence/pipeline.py                T3               ✓ Datasource ID persistence
+intelligence/topic_research.py          T5               ✓ Scoped scheduler
+reporters/telegram/datasource_commands.py T8              ✓ Delete guard (where handler lives)
+reporters/telegram/intelligence_commands.py T7, T11       ✓ TG commands + help
+reporters/telegram_command_handler.py   T7, T8, T11       ✓ Registration + guard + help
+storage/data_manager.py                 T3               ✓ Column list update (implementation detail)
+storage/intelligence_schema.py          T1               ✓ Schema init (where schema lives)
+storage/repositories.py                 T1, T3, T4, T8    ✓ Core implementation
+tests/intelligence/test_topic_research_scheduler.py T5, T9 ✓ Scheduler tests
+tests/news/test_api_server.py           T8               ✓ Delete guard HTTP tests
+tests/shared/test_datasource_repository.py T8, T9         ✓ Repo guard tests
+tests/shared/test_telegram_command_handler_datasource.py T8 ✓ TG guard tests
+
+Untracked files (expected deliverables, not yet committed per plan):
+tests/intelligence/test_topic_datasource_api.py               T6, T10
+tests/intelligence/test_topic_datasource_collector.py         T3
+tests/intelligence/test_topic_datasource_models.py            T2
+tests/intelligence/test_topic_datasource_repository.py        T4, T9
+tests/intelligence/test_topic_datasource_schema.py            T1
+tests/intelligence/test_topic_datasource_telegram.py          T7, T10
+
+2. MANDATORY GUARDRAIL CHECKS
+--------------------------------------------------------------------------------
+Guardrail                                       Status  Evidence
+────────                                        ──────  ────────
+No News-domain ContentItem changes              ✅ PASS  diff empty for analyzers/, crawlers/, report_generator.py
+No /analyze behavior changes                    ✅ PASS  No changes to semantic_search/, api_server analyze routes
+No RSS/X crawler changes                        ✅ PASS  git diff HEAD -- crawlers/ → empty
+No legacy intelligence extraction touched       ✅ PASS  git diff HEAD -- intelligence_extraction/ → empty
+No legacy intelligence_aliases touched          ✅ PASS  git diff HEAD -- intelligence_aliases/ → empty
+No canonical entries touched                    ✅ PASS  No entry_* files modified
+No new dependencies added                       ✅ PASS  No changes to pyproject.toml, setup.py, Pipfile, requirements.txt
+No config changes beyond plan                   ✅ PASS  No changes to config.jsonc, .env, .env.template
+No admin UI, tags, or scheduler rewrites        ✅ PASS  Changes scoped to topic association CRUD only
+No config_payload secrets exposed               ✅ PASS  SafeDataSourceSummary strips config_payload
+No Python-side filtering (SQL before LIMIT)     ✅ PASS  Filter clause: datasource_id IN (...) in SQL
+No per-datasource checkpoints                   ✅ PASS  Topic-level cursor preserved
+No cascade-delete on datasource                 ✅ PASS  FK ON DELETE RESTRICT in migration + app guard
+News datasources blocked from topic links       ✅ PASS  Purpose validation in repository set/add
+No automatic checkpoint backfill/auto-reset     ✅ PASS  Checkpoint unchanged on association change
+No new files outside plan (except tests)        ✅ PASS  Only 6 untracked Intelligence test files
+No deleted files                                ✅ PASS  git diff --name-status shows no deletions
+
+3. MINOR PLAN-DOC DEVIATIONS (NON-BLOCKING)
+--------------------------------------------------------------------------------
+3 files modified that were NOT in the explicit plan file lists per task,
+but are the natural implementation locations:
+
+  a) datasource_commands.py — The /datasource_delete handler lives here, so T8's
+     delete guard had to add error handling in this file. The plan's T8 commit
+     section lists telegram_command_handler.py but the actual command logic is
+     in this mixin class.
+
+  b) storage/data_manager.py — The RawIntelligenceItem save/load code lives here
+     with hardcoded column lists. Adding datasource_id to those lists was a
+     necessary implementation detail of T3 (persist datasource_id).
+
+  c) storage/intelligence_schema.py — The intelligence table schema initialization
+     lives in this module (called from repositories.py). Adding the join table
+     and column was the correct place for T1's schema changes.
+
+  All three are minimal, single-purpose additions directly traceable to plan tasks.
+
+4. MIGRATION FILE VALIDATION
+--------------------------------------------------------------------------------
+  migrations/postgresql/011_topic_datasource_association.sql (64 lines):
+  ✅ CREATE TABLE IF NOT EXISTS — idempotent
+  ✅ ALTER TABLE ADD COLUMN IF NOT EXISTS — idempotent
+  ✅ ON DELETE CASCADE for topic FK, ON DELETE RESTRICT for datasource FK
+  ✅ Backfill uses CROSS JOIN with WHERE purpose = 'intelligence'
+  ✅ ON CONFLICT DO NOTHING — idempotent backfill
+  ✅ Best-effort raw item datasource_id backfill — NULL-safe, unmappable rows stay NULL
+
+5. FINAL VERDICT
+--------------------------------------------------------------------------------
+APPROVE ✅ — All 17 modified files and 6 untracked test files are directly
+traceable to the 11 tasks in the topic-datasource-associations plan. The three
+minor implementation-location deviations are fully explained and non-blocking.
+No scope creep, no scope regression, no silent side effects on unrelated code.
+All must-NOT-guardrails are satisfied.
+
+================================================================================

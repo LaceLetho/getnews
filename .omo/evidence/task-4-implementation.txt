@@ -1,0 +1,64 @@
+Task 4 — Association Repository Methods — COMPLETED
+
+## Files Modified
+- crypto_news_analyzer/storage/repositories.py — SQLiteIntelligenceRepository: 5 new methods + 2 validation helpers + updated get_raw_items_since
+
+## Files Created
+- tests/intelligence/test_topic_datasource_repository.py — 29 tests covering CRUD, validation, atomicity, SQL-before-LIMIT
+
+## Implementation Summary
+
+### Import Added
+- SafeDataSourceSummary added to domain.models imports
+
+### get_raw_items_since (updated)
+- datasource_ids parameter now applied as SQL WHERE clause filter before ORDER BY + LIMIT
+- When datasource_ids is None: preserves all existing backward-compatible behavior
+- Empty list treated same as None (no-op, no valid SQL for IN ())
+- Uses parameterized placeholders for SQL injection safety
+
+### Validation Helpers (new)
+- _validate_topic_exists(topic_id): checks topic exists, raises ValueError("unknown topic: ...") if not
+- _validate_datasource_ids_for_topic(datasource_ids): checks all IDs exist (404) and have purpose='intelligence' (400), identifies first offending ID
+
+### get_topic_datasource_ids(topic_id) -> List[str]
+- Validates topic exists
+- SELECT datasource_id FROM intelligence_topic_datasources WHERE topic_id=? ORDER BY datasource_id
+- Returns empty list for no associations
+- Deterministic ordering (alphabetical by datasource_id)
+
+### set_topic_datasources(topic_id, datasource_ids) -> None
+- Validates topic exists first
+- Deduplicates input list
+- Validates all datasource IDs exist + purpose='intelligence'
+- Atomic all-or-nothing: validation runs BEFORE any DELETE/INSERT, no partial updates
+- Under lock: DELETE all existing rows, INSERT new rows
+- Empty [] removes all associations (DELETE with no INSERT)
+
+### add_topic_datasources(topic_id, datasource_ids) -> None
+- Validates topic exists first
+- Deduplicates input
+- Validates all datasource IDs (same as set)
+- INSERT OR IGNORE (SQLite) / ON CONFLICT DO NOTHING (PostgreSQL) for idempotency
+- Already-present IDs silently skipped
+
+### remove_topic_datasources(topic_id, datasource_ids) -> None
+- Validates topic exists only (NOT datasource IDs — unknown IDs silently skipped per contract)
+- Deduplicates input
+- DELETE WHERE topic_id=? AND datasource_id IN (...)
+- No validation of datasource IDs (unknown ones simply match no rows)
+
+### get_topic_datasources(topic_id) -> List[SafeDataSourceSummary]
+- Validates topic exists
+- JOIN intelligence_topic_datasources with datasources table
+- Separate query for tags from datasource_tags table
+- Returns SafeDataSourceSummary objects (never exposes config_payload)
+- Handles both SQLite (row[0]) and PostgreSQL (row["column"]) column access
+
+## Test Coverage (29 tests, all passing)
+- get_topic_datasource_ids: empty, deterministic order, unknown topic error (3)
+- set_topic_datasources: add/replace, clear, unknown topic, unknown datasource, non-intelligence purpose, atomic no-partial-update (6)
+- add_topic_datasources: idempotent add+skip, deduplicate, validation, unknown topic, empty noop (5)
+- remove_topic_datasources: remove, unknown silently skipped, empty noop, deduplicate, unknown topic (5)
+- get_topic_datasources: safe summaries with tags, excludes config_payload, empty, unknown topic (4)
+- get_raw_items_since: None backward compat, filter by datasource_ids, SQL-before-LIMIT, empty list no filter, no cursor_time, multiple datasource_ids (6)

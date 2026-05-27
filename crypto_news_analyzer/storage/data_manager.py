@@ -2126,6 +2126,7 @@ class DataManager:
             "edit_status",
             "edit_timestamp",
             "created_at",
+            "datasource_id",
         ]
         values = [self._dt_out(item.get(column)) for column in columns]
         assignments = ", ".join(f"{column} = excluded.{column}" for column in columns[1:])
@@ -2168,6 +2169,7 @@ class DataManager:
             "edit_status",
             "edit_timestamp",
             "created_at",
+            "datasource_id",
         ]
         return {key: self._dt_out(row[key]) for key in keys}
 

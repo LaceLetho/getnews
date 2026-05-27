@@ -69,6 +69,12 @@ def initialize_intelligence_tables(
             PRIMARY KEY (source_type, source_id)
         )
     """)
+
+    # ── 011: topic–datasource association & raw item back-reference ──────────
+    _initialize_topic_datasource_schema(
+        cursor, backend, datetime_type
+    )
+
     if backend == "postgres":
         cursor.execute("DROP INDEX IF EXISTS idx_intelligence_raw_items_dedupe")
     else:
@@ -117,8 +123,98 @@ def initialize_intelligence_tables(
             "CREATE INDEX IF NOT EXISTS idx_intelligence_topics_lifecycle_status "
             "ON intelligence_topics (lifecycle_status, updated_at DESC)"
         ),
+        (
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_datasource_id "
+            "ON raw_intelligence_items (datasource_id)"
+        ),
     ]:
         cursor.execute(statement)
+
+
+def _initialize_topic_datasource_schema(
+    cursor: Any,
+    backend: str,
+    datetime_type: str,
+) -> None:
+    """Create topic–datasource M:N join table and add datasource_id column to raw items."""
+    # PostgreSQL ADD COLUMN supports IF NOT EXISTS; SQLite requires PRAGMA check
+    if backend == "postgres":
+        cursor.execute(
+            "ALTER TABLE raw_intelligence_items "
+            "ADD COLUMN IF NOT EXISTS datasource_id TEXT"
+        )
+    else:
+        cursor.execute("PRAGMA table_info(raw_intelligence_items)")
+        if "datasource_id" not in {row[1] for row in cursor.fetchall()}:
+            cursor.execute(
+                "ALTER TABLE raw_intelligence_items ADD COLUMN datasource_id TEXT"
+            )
+
+    cursor.execute(f"""
+        CREATE TABLE IF NOT EXISTS intelligence_topic_datasources (
+            topic_id      TEXT NOT NULL,
+            datasource_id TEXT NOT NULL,
+            created_at    {datetime_type} DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (topic_id, datasource_id),
+            FOREIGN KEY (topic_id)      REFERENCES intelligence_topics (id) ON DELETE CASCADE,
+            FOREIGN KEY (datasource_id) REFERENCES datasources (id)         ON DELETE RESTRICT
+        )
+    """)
+
+    # ── Backfill: link every existing topic to every intelligence datasource ─
+    if backend == "postgres":
+        cursor.execute("""
+            INSERT INTO intelligence_topic_datasources (topic_id, datasource_id)
+            SELECT t.id, d.id
+            FROM intelligence_topics t
+            CROSS JOIN datasources d
+            WHERE d.purpose = 'intelligence'
+            ON CONFLICT (topic_id, datasource_id) DO NOTHING
+        """)
+    else:
+        cursor.execute("""
+            INSERT OR IGNORE INTO intelligence_topic_datasources (topic_id, datasource_id)
+            SELECT t.id, d.id
+            FROM intelligence_topics t
+            CROSS JOIN datasources d
+            WHERE d.purpose = 'intelligence'
+        """)
+
+    # ── Backfill: best-effort raw_intelligence_items.datasource_id ─
+    # Matches items by source_type + source_id (direct or chat_id in config_payload)
+    # SQLite uses json_extract instead of PostgreSQL ->> operator
+    if backend == "sqlite":
+        cursor.execute("""
+            UPDATE raw_intelligence_items
+            SET datasource_id = (
+                SELECT d.id
+                FROM datasources d
+                WHERE d.purpose = 'intelligence'
+                  AND d.source_type = raw_intelligence_items.source_type
+                  AND (
+                      raw_intelligence_items.source_id = d.id
+                      OR raw_intelligence_items.source_id = json_extract(d.config_payload, '$.chat_id')
+                  )
+                LIMIT 1
+            )
+            WHERE datasource_id IS NULL
+        """)
+    else:
+        cursor.execute("""
+            UPDATE raw_intelligence_items
+            SET datasource_id = d.id
+            FROM datasources d
+            WHERE raw_intelligence_items.datasource_id IS NULL
+              AND raw_intelligence_items.source_type = d.source_type
+              AND d.purpose = 'intelligence'
+              AND (
+                  raw_intelligence_items.source_id = d.id
+                  OR (
+                      d.config_payload ->> 'chat_id' IS NOT NULL
+                      AND raw_intelligence_items.source_id = (d.config_payload ->> 'chat_id')::TEXT
+                  )
+              )
+        """)
 
 
 def _initialize_topic_only_tables(

@@ -1,0 +1,67 @@
+# Evidence: Topic Association Delete Guard - Repository
+
+## Change Summary
+Modified: `crypto_news_analyzer/storage/repositories.py`
+- Added topic association check in `SQLiteDataSourceRepository.delete()` (lines 577-605)
+- Added `_count_topic_associations()` helper method (lines 607-620)
+
+## Implementation Details
+
+### `SQLiteDataSourceRepository.delete()` modified:
+
+```python
+def delete(self, datasource_id: str) -> bool:
+    datasource = self.get_by_id(datasource_id)
+    if datasource is None:
+        return False
+
+    active_job_ids = self._data.get_active_ingestion_job_ids_for_source(...)
+    if active_job_ids:
+        raise DataSourceInUseError(...)
+
+    # Guard: block deletion if datasource is associated with any topic
+    topic_count = self._count_topic_associations(datasource_id)
+    if topic_count > 0:
+        raise DataSourceTopicAssociationError(
+            datasource_id=datasource_id,
+            topic_count=topic_count,
+        )
+
+    return self._data.delete_datasource(datasource_id)
+
+def _count_topic_associations(self, datasource_id: str) -> int:
+    """Return number of topics that reference this datasource."""
+    with self._data._get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            self._data._sql(
+                "SELECT COUNT(*) FROM intelligence_topic_datasources WHERE datasource_id = ?"
+            ),
+            (datasource_id,),
+        )
+        row = cursor.fetchone()
+        if self._data.backend == "postgres":
+            return int(row["count"]) if (row and row["count"] is not None) else 0
+        else:
+            return int(row[0]) if (row and row[0] is not None) else 0
+```
+
+## Behavior
+
+1. **Associated datasource**: Raises `DataSourceTopicAssociationError` with topic_count
+2. **Unassociated datasource**: Deletes successfully, returns `True`
+3. **Non-existent datasource**: Returns `False` (no error raised)
+
+## Test Results
+
+Test: `test_datasource_repository_delete_guard_blocks_topic_association`
+- Creates datasource + topic + association
+- Calls `repository.delete(datasource.id)`
+- Expected: `DataSourceTopicAssociationError` raised
+- Result: PASSED
+
+Test: `test_datasource_repository_delete_allows_unassociated_datasource`
+- Creates unassociated datasource
+- Calls `repository.delete(datasource.id)`
+- Expected: Returns `True`, datasource is gone
+- Result: PASSED

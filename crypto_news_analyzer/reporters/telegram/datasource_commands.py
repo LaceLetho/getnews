@@ -19,6 +19,7 @@ from ...datasource_payloads import (
 from ...domain.models import (
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
+    DataSourceTopicAssociationError,
 )
 
 logger = logging.getLogger(__name__)
@@ -401,6 +402,30 @@ class DatasourceCommandsMixin:
                     chat_type=chat_type,
                     chat_id=chat_id,
                     outcome="datasource delete blocked by active ingestion job",
+                )
+                await update.message.reply_text(response)
+                self._log_command_execution(
+                    "/datasource_delete",
+                    user_id,
+                    username,
+                    None,
+                    False,
+                    response,
+                )
+                return
+            except DataSourceTopicAssociationError as exc:
+                response = (
+                    "⚠️ 删除冲突\n\n"
+                    f"数据源 ID {datasource_id} 当前不能删除，因为已关联到 {exc.topic_count} 个主题。\n"
+                    "请先使用 /topic_sources_remove 解除关联。"
+                )
+                self._log_expected_command_outcome(
+                    command="/datasource_delete",
+                    user_id=user_id,
+                    username=username,
+                    chat_type=chat_type,
+                    chat_id=chat_id,
+                    outcome="datasource delete blocked by topic association",
                 )
                 await update.message.reply_text(response)
                 self._log_command_execution(

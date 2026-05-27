@@ -1,0 +1,52 @@
+TASK 6: Topic Datasource API - Evidence
+=========================================
+
+Date: 2026-05-27
+Status: COMPLETE
+
+## Files Modified
+- crypto_news_analyzer/api_server.py (modified)
+
+## Files Created
+- tests/intelligence/test_topic_datasource_api.py (new)
+
+## Changes Summary
+
+### 1. api_server.py - Import
+- Added SafeDataSourceSummary to domain.models import
+
+### 2. api_server.py - Pydantic Models
+- Updated TopicCreateDraftRequest: added optional `datasource_ids: Optional[List[str]]`
+- Added TopicDatasourceSetRequest: body for PUT endpoint
+- Added SafeDataSourceSummaryResponse: safe response model (id, source_type, name, tags)
+
+### 3. api_server.py - Helper Functions
+- Added _map_topic_datasource_error(exc): maps ValueError to 404/400 HTTPException
+  - "unknown topic" → 404
+  - "unknown datasource" → 404
+  - "not intelligence" → 400
+- Added _summary_to_response(s): converts SafeDataSourceSummary to Pydantic response
+
+### 4. api_server.py - Updated POST /intelligence/topics
+- After topic creation, if datasource_ids is provided and non-empty, calls repository.add_topic_datasources()
+- Errors caught via _map_topic_datasource_error
+
+### 5. api_server.py - New Routes (inside register_intelligence_routes)
+- GET  /intelligence/topics/{topic_id}/datasources → List[SafeDataSourceSummaryResponse]
+- PUT  /intelligence/topics/{topic_id}/datasources → List[SafeDataSourceSummaryResponse] (atomic replace)
+- POST /intelligence/topics/{topic_id}/datasources/{datasource_id} → List[SafeDataSourceSummaryResponse] (idempotent add)
+- DELETE /intelligence/topics/{topic_id}/datasources/{datasource_id} → List[SafeDataSourceSummaryResponse] (idempotent remove)
+
+All require Bearer auth. All return safe summaries (no config_payload).
+
+### 6. tests/intelligence/test_topic_datasource_api.py - 24 tests
+- Authorization: test_unauthorized_rejected
+- GET: test_get_datasources_empty, test_get_datasources_unknown_topic_404, test_get_datasources_with_associations
+- PUT: test_put_set_datasources, test_put_set_datasources_empty_clears_all, test_put_set_datasources_unknown_topic_404, test_put_set_datasources_unknown_ds_404, test_put_set_datasources_news_ds_400
+- POST add: test_post_add_datasource, test_post_add_datasource_idempotent, test_post_add_datasource_unknown_topic_404, test_post_add_datasource_unknown_ds_404, test_post_add_datasource_news_ds_400
+- DELETE: test_delete_remove_datasource, test_delete_remove_datasource_idempotent, test_delete_remove_datasource_unknown_topic_404, test_delete_remove_unknown_datasource_noop
+- Create + datasource_ids: test_create_topic_with_datasource_ids, test_create_topic_without_datasource_ids, test_create_topic_with_empty_datasource_ids, test_create_topic_with_invalid_datasource_id, test_create_topic_with_news_datasource_id
+- Safety: test_responses_never_expose_config_payload
+
+## Test Results
+24 passed in 4.18s

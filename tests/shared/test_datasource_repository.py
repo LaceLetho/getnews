@@ -10,7 +10,7 @@ from crypto_news_analyzer.datasource_payloads import (
     runtime_source_from_record,
     validate_datasource_create_payload,
 )
-from crypto_news_analyzer.domain.models import DataSource, DataSourceInUseError, IngestionJob
+from crypto_news_analyzer.domain.models import DataSource, DataSourceInUseError, DataSourceTopicAssociationError, IngestionJob
 from crypto_news_analyzer.models import RESTAPISource, RSSSource, StorageConfig, XSource
 from crypto_news_analyzer.storage.data_manager import DataManager
 from crypto_news_analyzer.storage.repositories import (
@@ -232,6 +232,65 @@ def test_datasource_repository_delete_guard_ignores_non_active_or_non_matching_j
                 metadata=job.metadata,
             )
 
+        assert repository.delete(datasource.id) is True
+        assert repository.get_by_id(datasource.id) is None
+    finally:
+        data_manager.close()
+
+
+def test_datasource_repository_delete_guard_blocks_topic_association(tmp_path: Path):
+    data_manager, repository = _build_repository(tmp_path / "datasource_repository_topic_guard.db")
+
+    try:
+        datasource = repository.save(
+            DataSource.create(
+                name="TelegramGroup",
+                source_type="telegram_group",
+                purpose="intelligence",
+            )
+        )
+        topic_id = data_manager.upsert_intelligence_topic(
+            {
+                "id": "topic-abc-123",
+                "name": "Test Topic",
+                "is_active": True,
+                "lifecycle_status": "active",
+                "created_at": "2026-03-01T00:00:00+00:00",
+                "updated_at": "2026-03-01T00:00:00+00:00",
+            }
+        )
+        with data_manager._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                data_manager._sql(
+                    "INSERT INTO intelligence_topic_datasources (topic_id, datasource_id, created_at) VALUES (?, ?, ?)"
+                ),
+                (topic_id, datasource.id, "2026-03-01T00:00:00+00:00"),
+            )
+            conn.commit()
+
+        with pytest.raises(DataSourceTopicAssociationError) as exc_info:
+            repository.delete(datasource.id)
+
+        error = exc_info.value
+        assert error.datasource_id == datasource.id
+        assert error.topic_count == 1
+        assert repository.get_by_id(datasource.id) is not None
+    finally:
+        data_manager.close()
+
+
+def test_datasource_repository_delete_allows_unassociated_datasource(tmp_path: Path):
+    data_manager, repository = _build_repository(tmp_path / "datasource_repository_unassociated.db")
+
+    try:
+        datasource = repository.save(
+            DataSource.create(
+                name="UnassociatedFeed",
+                source_type="rss",
+                purpose="news",
+            )
+        )
         assert repository.delete(datasource.id) is True
         assert repository.get_by_id(datasource.id) is None
     finally:

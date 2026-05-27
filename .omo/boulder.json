@@ -1,82 +1,21 @@
 {
-  "active_plan": "/data/workspace/getnews/.sisyphus/plans/agent-boundary-refactor.md",
-  "started_at": "2026-05-17T10:46:54.466Z",
+  "active_plan": "/data/workspace/getnews/.omo/plans/topic-datasource-associations.md",
+  "started_at": "2026-05-27T11:55:55.511Z",
   "session_ids": [
-    "ses_1ca8f17ceffek0wXFh1ysC55rE"
+    "ses_196b56ec7ffeOBmAj5tyXz5ICO",
+    "ses_196b42d21ffecA8p9PMWFOj52F",
+    "ses_196b4055dffeiFqdBmN7fCqLnC",
+    "ses_196b3e31dffe62VXWAdesVzhFK"
   ],
-  "plan_name": "agent-boundary-refactor",
+  "plan_name": "topic-datasource-associations",
   "session_origins": {
-    "ses_1ca8f17ceffek0wXFh1ysC55rE": "direct"
+    "ses_196b56ec7ffeOBmAj5tyXz5ICO": "direct",
+    "ses_196b42d21ffecA8p9PMWFOj52F": "appended",
+    "ses_196b4055dffeiFqdBmN7fCqLnC": "appended",
+    "ses_196b3e31dffe62VXWAdesVzhFK": "appended"
   },
-  "task_sessions": {
-    "todo:1": {
-      "task_key": "todo:1",
-      "task_label": "1",
-      "task_title": "Establish dual-domain agent guidance in `AGENTS.md`",
-      "session_id": "ses_1ca71c6a4ffeFEATZ9HHzUbWfE",
-      "agent": "Sisyphus-Junior",
-      "category": "writing",
-      "updated_at": "2026-05-17T10:57:41.556Z",
-      "started_at": "2026-05-17T10:56:54.070Z",
-      "status": "completed",
-      "ended_at": "2026-05-17T10:57:41.556Z",
-      "elapsed_ms": 47486
-    },
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "Update README and add canonical boundary documentation",
-      "session_id": "ses_1ca68b364ffezjuDl3CZbsp2kE",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "started_at": "2026-05-17T11:07:02.012Z",
-      "status": "completed",
-      "updated_at": "2026-05-17T11:08:27.558Z",
-      "ended_at": "2026-05-17T11:08:27.558Z",
-      "elapsed_ms": 85546
-    },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "Clarify crawler interface typing for news vs intelligence items",
-      "session_id": "ses_1ca5f270bffeu0jW3UGUKeq51D",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "started_at": "2026-05-17T11:14:06.755Z",
-      "status": "completed",
-      "updated_at": "2026-05-17T11:22:11.751Z",
-      "ended_at": "2026-05-17T11:22:11.751Z",
-      "elapsed_ms": 484996
-    },
-    "todo:8": {
-      "task_key": "todo:8",
-      "task_label": "8",
-      "task_title": "Run compatibility audit and full verification",
-      "session_id": "ses_1ca5328eeffexHLkfUZDIqR1LR",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "started_at": "2026-05-17T11:32:29.962Z",
-      "ended_at": "2026-05-17T11:38:16.563Z",
-      "elapsed_ms": 346601,
-      "status": "completed",
-      "updated_at": "2026-05-17T11:38:16.563Z"
-    },
-    "final-wave:f1": {
-      "task_key": "final-wave:f1",
-      "task_label": "F1",
-      "task_title": "Plan Compliance Audit — oracle",
-      "session_id": "ses_1ca5e067fffeZ9FAsd8cg0DpLZ",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "started_at": "2026-05-17T11:34:48.903Z",
-      "status": "completed",
-      "updated_at": "2026-05-17T11:40:23.557Z",
-      "ended_at": "2026-05-17T11:40:23.557Z",
-      "elapsed_ms": 334654
-    }
-  },
-  "active_work_id": "agent-boundary-refactor",
-  "updated_at": "2026-05-17T11:41:20.440Z",
+  "active_work_id": "topic-datasource-associations",
+  "updated_at": "2026-05-27T16:05:40.058Z",
   "schema_version": 2,
   "works": {
     "topic-only-intelligence-refactor-legacy": {
@@ -109,79 +48,192 @@
       "session_origins": {
         "ses_1ca8f17ceffek0wXFh1ysC55rE": "direct"
       },
+      "status": "completed",
+      "ended_at": "2026-05-17T11:41:20.440Z",
+      "elapsed_ms": 3265974
+    },
+    "topic-datasource-associations": {
+      "work_id": "topic-datasource-associations",
+      "active_plan": "/data/workspace/getnews/.omo/plans/topic-datasource-associations.md",
+      "plan_name": "topic-datasource-associations",
+      "started_at": "2026-05-27T11:55:55.511Z",
+      "updated_at": "2026-05-27T16:05:40.058Z",
+      "session_ids": [
+        "ses_196b56ec7ffeOBmAj5tyXz5ICO",
+        "ses_196b42d21ffecA8p9PMWFOj52F",
+        "ses_196b4055dffeiFqdBmN7fCqLnC",
+        "ses_196b3e31dffe62VXWAdesVzhFK"
+      ],
+      "session_origins": {
+        "ses_196b56ec7ffeOBmAj5tyXz5ICO": "direct",
+        "ses_196b42d21ffecA8p9PMWFOj52F": "appended",
+        "ses_196b4055dffeiFqdBmN7fCqLnC": "appended",
+        "ses_196b3e31dffe62VXWAdesVzhFK": "appended"
+      },
       "task_sessions": {
         "todo:1": {
           "task_key": "todo:1",
           "task_label": "1",
-          "task_title": "Establish dual-domain agent guidance in `AGENTS.md`",
-          "session_id": "ses_1ca71c6a4ffeFEATZ9HHzUbWfE",
-          "agent": "Sisyphus-Junior",
-          "category": "writing",
-          "updated_at": "2026-05-17T10:57:41.556Z",
-          "started_at": "2026-05-17T10:56:54.070Z",
+          "task_title": "SQLite/bootstrap backfill DML added to `intelligence_schema.py`",
+          "session_id": "ses_195d41700ffe0lZcnAkDY5ddPX",
+          "agent": "oracle",
+          "started_at": "2026-05-27T12:00:08.995Z",
+          "ended_at": "2026-05-27T16:04:01.846Z",
+          "elapsed_ms": 14632851,
           "status": "completed",
-          "ended_at": "2026-05-17T10:57:41.556Z",
-          "elapsed_ms": 47486
+          "updated_at": "2026-05-27T16:04:01.846Z"
         },
-        "todo:2": {
-          "task_key": "todo:2",
-          "task_label": "2",
-          "task_title": "Update README and add canonical boundary documentation",
-          "session_id": "ses_1ca68b364ffezjuDl3CZbsp2kE",
+        "todo:3": {
+          "task_key": "todo:3",
+          "task_label": "3",
+          "task_title": "Persist datasource_id on newly collected raw intelligence items",
+          "session_id": "ses_196a8c6ddffehSXkZ8UE1L3uKN",
           "agent": "Sisyphus-Junior",
-          "category": "quick",
-          "started_at": "2026-05-17T11:07:02.012Z",
+          "category": "unspecified-high",
+          "updated_at": "2026-05-27T12:15:32.698Z",
+          "started_at": "2026-05-27T12:15:14.635Z",
           "status": "completed",
-          "updated_at": "2026-05-17T11:08:27.558Z",
-          "ended_at": "2026-05-17T11:08:27.558Z",
-          "elapsed_ms": 85546
+          "ended_at": "2026-05-27T12:15:32.698Z",
+          "elapsed_ms": 18063
         },
         "todo:4": {
           "task_key": "todo:4",
           "task_label": "4",
-          "task_title": "Clarify crawler interface typing for news vs intelligence items",
-          "session_id": "ses_1ca5f270bffeu0jW3UGUKeq51D",
-          "agent": "Sisyphus-Junior",
-          "category": "quick",
-          "started_at": "2026-05-17T11:14:06.755Z",
-          "status": "completed",
-          "updated_at": "2026-05-17T11:22:11.751Z",
-          "ended_at": "2026-05-17T11:22:11.751Z",
-          "elapsed_ms": 484996
-        },
-        "todo:8": {
-          "task_key": "todo:8",
-          "task_label": "8",
-          "task_title": "Run compatibility audit and full verification",
-          "session_id": "ses_1ca5328eeffexHLkfUZDIqR1LR",
+          "task_title": "Implement association repository methods and scoped raw item SQL",
+          "session_id": "ses_196a2d030ffe2qc41etoaEhavT",
           "agent": "Sisyphus-Junior",
           "category": "unspecified-high",
-          "started_at": "2026-05-17T11:32:29.962Z",
-          "ended_at": "2026-05-17T11:38:16.563Z",
-          "elapsed_ms": 346601,
+          "updated_at": "2026-05-27T12:23:56.836Z",
+          "started_at": "2026-05-27T12:23:45.855Z",
           "status": "completed",
-          "updated_at": "2026-05-17T11:38:16.563Z"
+          "ended_at": "2026-05-27T12:23:56.836Z",
+          "elapsed_ms": 10981
+        },
+        "todo:6": {
+          "task_key": "todo:6",
+          "task_label": "6",
+          "task_title": "Add HTTP API for topic datasource associations",
+          "session_id": "ses_1967852c0ffe1UTQIhd0d5Xscc",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-05-27T13:10:12.531Z",
+          "started_at": "2026-05-27T13:10:12.531Z",
+          "status": "completed",
+          "ended_at": "2026-05-27T13:10:12.531Z",
+          "elapsed_ms": 0
+        },
+        "todo:11": {
+          "task_key": "todo:11",
+          "task_label": "11",
+          "task_title": "Update user-facing command/API help text and internal guidance",
+          "session_id": "ses_195e54048ffeK8cyG4XMGFQcQW",
+          "agent": "Sisyphus-Junior",
+          "category": "writing",
+          "updated_at": "2026-05-27T15:45:46.880Z",
+          "started_at": "2026-05-27T15:45:39.044Z",
+          "status": "completed",
+          "ended_at": "2026-05-27T15:45:46.880Z",
+          "elapsed_ms": 7836
         },
         "final-wave:f1": {
           "task_key": "final-wave:f1",
           "task_label": "F1",
           "task_title": "Plan Compliance Audit — oracle",
-          "session_id": "ses_1ca5e067fffeZ9FAsd8cg0DpLZ",
+          "session_id": "ses_195d63e55ffeZrCFk3m6i36R8s",
           "agent": "Sisyphus-Junior",
           "category": "quick",
-          "started_at": "2026-05-17T11:34:48.903Z",
+          "started_at": "2026-05-27T15:57:22.286Z",
           "status": "completed",
-          "updated_at": "2026-05-17T11:40:23.557Z",
-          "ended_at": "2026-05-17T11:40:23.557Z",
-          "elapsed_ms": 334654
+          "updated_at": "2026-05-27T16:04:48.015Z",
+          "ended_at": "2026-05-27T16:04:48.015Z",
+          "elapsed_ms": 445729
         }
       },
       "status": "completed",
-      "ended_at": "2026-05-17T11:41:20.440Z",
-      "elapsed_ms": 3265974
+      "ended_at": "2026-05-27T16:05:40.058Z",
+      "elapsed_ms": 14984547
     }
   },
   "status": "completed",
-  "ended_at": "2026-05-17T11:41:20.440Z",
-  "elapsed_ms": 3265974
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "SQLite/bootstrap backfill DML added to `intelligence_schema.py`",
+      "session_id": "ses_195d41700ffe0lZcnAkDY5ddPX",
+      "agent": "oracle",
+      "started_at": "2026-05-27T12:00:08.995Z",
+      "ended_at": "2026-05-27T16:04:01.846Z",
+      "elapsed_ms": 14632851,
+      "status": "completed",
+      "updated_at": "2026-05-27T16:04:01.846Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "Persist datasource_id on newly collected raw intelligence items",
+      "session_id": "ses_196a8c6ddffehSXkZ8UE1L3uKN",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-27T12:15:32.698Z",
+      "started_at": "2026-05-27T12:15:14.635Z",
+      "status": "completed",
+      "ended_at": "2026-05-27T12:15:32.698Z",
+      "elapsed_ms": 18063
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Implement association repository methods and scoped raw item SQL",
+      "session_id": "ses_196a2d030ffe2qc41etoaEhavT",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-27T12:23:56.836Z",
+      "started_at": "2026-05-27T12:23:45.855Z",
+      "status": "completed",
+      "ended_at": "2026-05-27T12:23:56.836Z",
+      "elapsed_ms": 10981
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "Add HTTP API for topic datasource associations",
+      "session_id": "ses_1967852c0ffe1UTQIhd0d5Xscc",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-27T13:10:12.531Z",
+      "started_at": "2026-05-27T13:10:12.531Z",
+      "status": "completed",
+      "ended_at": "2026-05-27T13:10:12.531Z",
+      "elapsed_ms": 0
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "Update user-facing command/API help text and internal guidance",
+      "session_id": "ses_195e54048ffeK8cyG4XMGFQcQW",
+      "agent": "Sisyphus-Junior",
+      "category": "writing",
+      "updated_at": "2026-05-27T15:45:46.880Z",
+      "started_at": "2026-05-27T15:45:39.044Z",
+      "status": "completed",
+      "ended_at": "2026-05-27T15:45:46.880Z",
+      "elapsed_ms": 7836
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "Plan Compliance Audit — oracle",
+      "session_id": "ses_195d63e55ffeZrCFk3m6i36R8s",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "started_at": "2026-05-27T15:57:22.286Z",
+      "status": "completed",
+      "updated_at": "2026-05-27T16:04:48.015Z",
+      "ended_at": "2026-05-27T16:04:48.015Z",
+      "elapsed_ms": 445729
+    }
+  },
+  "ended_at": "2026-05-27T16:05:40.058Z",
+  "elapsed_ms": 14984547
 }

@@ -1,0 +1,68 @@
+# Evidence: Topic Association Delete Guard - Telegram Command
+
+## Change Summary
+Modified: `crypto_news_analyzer/reporters/telegram/datasource_commands.py`
+- Added `DataSourceTopicAssociationError` to imports (line 22)
+- Added exception handler for `DataSourceTopicAssociationError` in `_handle_datasource_delete_command()` (lines 415-441)
+
+## Implementation Details
+
+### Import addition (line 22):
+```python
+from ...domain.models import (
+    DataSourceAlreadyExistsError,
+    DataSourceInUseError,
+    DataSourceTopicAssociationError,
+)
+```
+
+### Exception handler in `_handle_datasource_delete_command()`:
+```python
+try:
+    deleted = self.execution_coordinator.datasource_repository.delete(datasource_id)
+except DataSourceInUseError as exc:
+    # ... existing handling for active ingestion jobs ...
+except DataSourceTopicAssociationError as exc:
+    response = (
+        "⚠️ 删除冲突\n\n"
+        f"数据源 ID {datasource_id} 当前不能删除，因为已关联到 {exc.topic_count} 个主题。\n"
+        "请先使用 /topic_sources_remove 解除关联。"
+    )
+    self._log_expected_command_outcome(
+        command="/datasource_delete",
+        user_id=user_id,
+        username=username,
+        chat_type=chat_type,
+        chat_id=chat_id,
+        outcome="datasource delete blocked by topic association",
+    )
+    await update.message.reply_text(response)
+    self._log_command_execution(
+        "/datasource_delete",
+        user_id,
+        username,
+        None,
+        False,
+        response,
+    )
+    return
+```
+
+## Behavior
+
+1. **Associated datasource** (`/datasource_delete <id>`):
+   - Reply: "⚠️ 删除冲突\n\n数据源 ID {id} 当前不能删除，因为已关联到 {count} 个主题。\n请先使用 /topic_sources_remove 解除关联。"
+
+2. **Unassociated datasource**:
+   - Reply: "✅ 数据源删除成功\n\n已删除数据源 ID: {id}"
+
+3. **Non-existent datasource**:
+   - Reply: "❌ 未找到数据源\n\n未找到 ID 为 {id} 的数据源。"
+
+## Test Results
+
+Test: `test_datasource_delete_returns_topic_association_conflict`
+- Creates datasource stub that raises `DataSourceTopicAssociationError(topic_count=2)`
+- Calls `await handler._handle_datasource_delete_command(update, context)`
+- Expected: reply_text called with conflict message including topic count
+- Result: PASSED

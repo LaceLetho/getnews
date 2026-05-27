@@ -13,6 +13,7 @@ from crypto_news_analyzer.domain.models import (
     DataSource,
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
+    DataSourceTopicAssociationError,
 )
 from crypto_news_analyzer.models import TelegramCommandConfig
 from crypto_news_analyzer.reporters.telegram_command_handler import TelegramCommandHandler
@@ -186,6 +187,7 @@ def test_datasource_registration_build_application_includes_all_datasource_comma
         "crypto_news_analyzer.reporters.telegram_command_handler.Application.builder",
         return_value=builder,
     ):
+        application.add_error_handler = Mock()
         handler._build_application(use_updater=False)
 
     registered_commands = {
@@ -454,6 +456,38 @@ async def test_datasource_delete_returns_conflict_when_active_ingestion_job_exis
         "⚠️ 删除冲突\n\n"
         "数据源 ID ds-123 当前不能删除，因为匹配的入库任务仍处于活跃状态。\n"
         "活跃任务: job-1, job-2"
+    )
+
+
+@pytest.mark.asyncio
+async def test_datasource_delete_returns_topic_association_conflict() -> None:
+    handler = _create_handler()
+    repository = _DataSourceRepositoryStub(
+        [
+            DataSource(
+                id="ds-456",
+                purpose="intelligence",
+                source_type="telegram_group",
+                name="TradingGroup",
+                config_payload={"chat_id": "-1001234567890"},
+            )
+        ],
+        delete_error=DataSourceTopicAssociationError(
+            datasource_id="ds-456",
+            topic_count=2,
+        ),
+    )
+    handler.execution_coordinator.datasource_repository = repository
+    update, message = _create_mock_update("123456789", "tester", "private", "123456789")
+    context = Mock(spec=ContextTypes.DEFAULT_TYPE)
+    context.args = ["ds-456"]
+
+    await handler._handle_datasource_delete_command(update, context)
+
+    message.reply_text.assert_called_once_with(
+        "⚠️ 删除冲突\n\n"
+        "数据源 ID ds-456 当前不能删除，因为已关联到 2 个主题。\n"
+        "请先使用 /topic_sources_remove 解除关联。"
     )
 
 

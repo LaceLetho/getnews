@@ -1,0 +1,56 @@
+Task 11: Update user-facing help text and README.md for topic datasource association
+
+Date: 2026-05-27
+
+## Changes Made
+
+### 1. intelligence_commands.py (line 3-5)
+Updated module docstring to list all topic_* command handlers, including the 4 new
+datasource association commands:
+  - sources, sources_set, sources_add, sources_remove
+Also added "logs" which was previously missing.
+
+Before: "create, revise, set_prompt, confirm, merge, pause, archive, list, findings, prompt."
+After:  "create, revise, set_prompt, confirm, merge, pause, archive, list, findings,
+         prompt, logs, and datasource association: sources, sources_set, sources_add,
+         sources_remove."
+
+### 2. telegram_command_handler.py (lines 2190-2198)
+Added /topic_logs to the help text (was missing from Intelligence section despite
+being implemented) and added a behavioral rules block after the topic commands:
+
+  ⚠️ 主题数据源规则:
+  • 新建主题默认不关联数据源，需显式添加
+  • 无数据源关联的主题自动跳过每日研究
+  • 关联变更从下一研究周期生效，不回溯历史
+
+## Already Present (Verified No Changes Needed)
+
+### README.md
+- Telegram commands section (lines 269-272): lists all 4 topic_sources* commands
+- Behavioral rules section (lines 274-283): documents all three key rules
+  - 新建主题默认空关联
+  - 空关联跳过定时研究
+  - 关联变更不自动回填
+  - 仅可关联 Intelligence 用途的数据源
+- HTTP API section (lines 357-360): lists all 4 datasource endpoints
+  - GET /intelligence/topics/{id}/datasources
+  - PUT /intelligence/topics/{id}/datasources
+  - POST /intelligence/topics/{id}/datasources
+  - DELETE /intelligence/topics/{id}/datasources
+- Feature description (line 32): mentions datasource association
+
+### intelligence_commands.py usage text
+Each handler has usage text with examples:
+  - _handle_topic_sources_command (line 689): "用法: /topic_sources <topic_id>"
+  - _handle_topic_sources_set_command (line 771): full usage with example
+  - _handle_topic_sources_add_command (line 871): full usage with example
+  - _handle_topic_sources_remove_command (line 947): full usage with example
+
+### telegram_command_handler.py help text
+- All 4 topic_sources* commands were already listed (lines 2186-2189)
+
+## Verification
+- LSP diagnostics: no new errors introduced (only pre-existing type warnings from mixin pattern)
+- All three key rules documented in both README and Telegram /help
+- Dual-domain boundary maintained: no News datasource associations documented in Intelligence context

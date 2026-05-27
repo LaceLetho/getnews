@@ -20,6 +20,7 @@ from .models import (
     IntelligenceTopic,
     MergePreview,
     RawIntelligenceItem,
+    SafeDataSourceSummary,
     SemanticSearchJob,
     TopicFinding,
     TopicPrompt,
@@ -565,9 +566,122 @@ class IntelligenceRepository(ABC):
         return len(raw_item_ids)
 
     def get_raw_items_since(
-        self, topic_id: str, cursor_time: Optional[datetime], limit: int
+        self,
+        topic_id: str,
+        cursor_time: Optional[datetime],
+        limit: int,
+        datasource_ids: Optional[List[str]] = None,
     ) -> List[RawIntelligenceItem]:
+        """Return raw items for a topic since a cursor, optionally filtered by datasource.
+
+        Args:
+            topic_id: The IntelligenceTopic ID to fetch items for.
+            cursor_time: Return items published/collected after this time (None = no lower bound).
+            limit: Maximum number of items to return.
+            datasource_ids: If provided, only return items from these datasource IDs.
+                None (default) preserves backward compatibility — all items are returned.
+
+        Note: Topic-level checkpoint semantics are preserved — this does NOT introduce
+        per-datasource checkpoint management.
+        """
         return []
+
+    # --- Topic-Datasource Association Contracts ---
+
+    def get_topic_datasource_ids(self, topic_id: str) -> List[str]:
+        """Return the datasource IDs currently associated with a topic.
+
+        Args:
+            topic_id: IntelligenceTopic ID (UUID4 string).
+
+        Returns:
+            List of datasource ID strings. Empty list if topic has no associations.
+
+        Raises:
+            ValueError: If topic_id does not correspond to an existing topic (404-style).
+        """
+        raise NotImplementedError(
+            "topic-datasource associations are not implemented by this repository"
+        )
+
+    def set_topic_datasources(self, topic_id: str, datasource_ids: List[str]) -> None:
+        """Atomically replace all datasource associations for a topic.
+
+        This is an all-or-nothing operation: if ANY datasource ID is invalid
+        (unknown OR non-intelligence purpose), the entire operation fails and
+        no associations are changed.
+
+        Args:
+            topic_id: IntelligenceTopic ID (UUID4 string).
+            datasource_ids: Full list of datasource IDs to associate. Duplicates are
+                silently deduplicated/normalized. An empty list removes all associations.
+
+        Raises:
+            ValueError: If topic_id does not correspond to an existing topic (404-style).
+            ValueError: If any datasource ID is unknown (404-style) or has a non-intelligence
+                purpose (400-style). The error message identifies the first offending ID.
+        """
+        raise NotImplementedError(
+            "topic-datasource associations are not implemented by this repository"
+        )
+
+    def add_topic_datasources(self, topic_id: str, datasource_ids: List[str]) -> None:
+        """Idempotently add datasource associations to a topic.
+
+        Already-present datasource IDs are silently skipped (no-op).
+        Duplicates in the input list are deduplicated before processing.
+
+        Args:
+            topic_id: IntelligenceTopic ID (UUID4 string).
+            datasource_ids: List of datasource IDs to add.
+
+        Raises:
+            ValueError: If topic_id does not correspond to an existing topic (404-style).
+            ValueError: If any datasource ID is unknown (404-style) or has a non-intelligence
+                purpose (400-style). Valid IDs that are already associated succeed silently.
+        """
+        raise NotImplementedError(
+            "topic-datasource associations are not implemented by this repository"
+        )
+
+    def remove_topic_datasources(self, topic_id: str, datasource_ids: List[str]) -> None:
+        """Idempotently remove datasource associations from a topic.
+
+        Already-missing datasource IDs are silently skipped (no-op).
+        Duplicates in the input list are deduplicated before processing.
+
+        Args:
+            topic_id: IntelligenceTopic ID (UUID4 string).
+            datasource_ids: List of datasource IDs to remove.
+
+        Raises:
+            ValueError: If topic_id does not correspond to an existing topic (404-style).
+            Unknown datasource IDs are silently skipped (they cannot be associated
+            if they don't exist). Non-intelligence datasource IDs that somehow
+            became associated are removed without error.
+        """
+        raise NotImplementedError(
+            "topic-datasource associations are not implemented by this repository"
+        )
+
+    def get_topic_datasources(self, topic_id: str) -> List[SafeDataSourceSummary]:
+        """Return safe datasource summaries for all datasources associated with a topic.
+
+        Each returned summary exposes only public fields (id, source_type, name, tags).
+        config_payload is NEVER included.
+
+        Args:
+            topic_id: IntelligenceTopic ID (UUID4 string).
+
+        Returns:
+            List of SafeDataSourceSummary objects. Empty list if topic has no associations.
+
+        Raises:
+            ValueError: If topic_id does not correspond to an existing topic (404-style).
+        """
+        raise NotImplementedError(
+            "topic-datasource associations are not implemented by this repository"
+        )
 
     def get_processed_topic_raw_item_ids(
         self,

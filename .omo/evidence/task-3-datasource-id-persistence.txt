@@ -1,0 +1,90 @@
+# Task 3: Persist datasource_id on newly-collected raw intelligence items
+
+## Files Modified
+
+### 1. `crypto_news_analyzer/domain/models.py` (RawIntelligenceItem)
+
+**Added `datasource_id` field:**
+- Line ~737: `datasource_id: Optional[str] = None` — nullable field on dataclass
+- `create()` factory: `datasource_id` parameter added (default None), passed to cls() constructor
+- `to_dict()`: `"datasource_id": self.datasource_id` included in serialized dict
+- `from_dict()`: `datasource_id=data.get("datasource_id")` picks up from DB rows (absent key → None, backward compat)
+
+**Backward compatibility preserved:**
+- Default `None` means existing code creating items without datasource_id continues to work
+- `from_dict()` uses `.get()` so legacy rows without the key return `None`
+- Source type/source ID/external ID fields unchanged
+
+### 2. `crypto_news_analyzer/intelligence/pipeline.py`
+
+**`_crawler_config()` (line ~129):**
+- Added `payload["datasource_id"] = datasource.id` — passes datasource ID through config to crawlers for awareness
+
+**`_run_source()` (line ~73):**
+- After `items = list(crawler.crawl(config_payload) or [])`, adds loop:
+  ```python
+  for item in items:
+      if item.datasource_id is None:
+          item.datasource_id = datasource.id
+  ```
+- Sets datasource_id on every item produced by a DB DataSource
+- `if item.datasource_id is None` guard prevents overwriting if crawler already set it
+- Items created without DB datasource context (datasource_id remains None) handled correctly
+
+### 3. `crypto_news_analyzer/storage/data_manager.py`
+
+**`upsert_raw_intelligence_item()` columns list:**
+- Added `"datasource_id"` to the INSERT column list
+- The column already exists in the DB schema (Task 1 migration 011)
+- ON CONFLICT DO UPDATE covers datasource_id naturally
+
+**`_serialize_raw_intelligence_item_row()` keys list:**
+- Added `"datasource_id"` to the deserialization key list
+- SELECT * queries automatically include the column
+
+### 4. `tests/intelligence/test_topic_datasource_schema.py` (helper)
+
+**`_seed_raw_item()` helper:**
+- Updated to include `datasource_id` column in INSERT and value tuple
+- Prevents test failures when the helper seed doesn't include the new column
+
+## New Test File
+
+### `tests/intelligence/test_topic_datasource_collector.py` (6 tests)
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_raw_item_roundtrip_preserves_datasource_id` | to_dict/from_dict round-trip with datasource_id set |
+| `test_raw_item_roundtrip_preserves_none_datasource_id` | to_dict/from_dict with datasource_id=None (legacy) |
+| `test_save_raw_item_persists_datasource_id` | save_raw_item writes datasource_id to DB |
+| `test_save_raw_item_handles_none_datasource_id` | save_raw_item handles None (legacy compatibility) |
+| `test_save_raw_item_dedup_preserves_datasource_id` | ON CONFLICT DO UPDATE overwrites datasource_id correctly |
+| `test_from_dict_with_legacy_row_missing_datasource_id` | from_dict accepts dict without datasource_id key (backward compat) |
+
+## Test Results
+
+```
+tests/intelligence/test_topic_datasource_collector.py::test_raw_item_roundtrip_preserves_datasource_id PASSED
+tests/intelligence/test_topic_datasource_collector.py::test_raw_item_roundtrip_preserves_none_datasource_id PASSED
+tests/intelligence/test_topic_datasource_collector.py::test_save_raw_item_persists_datasource_id PASSED
+tests/intelligence/test_topic_datasource_collector.py::test_save_raw_item_handles_none_datasource_id PASSED
+tests/intelligence/test_topic_datasource_collector.py::test_save_raw_item_dedup_preserves_datasource_id PASSED
+tests/intelligence/test_topic_datasource_collector.py::test_from_dict_with_legacy_row_missing_datasource_id PASSED
+
+Full intelligence test suite: 173 passed, 26 skipped, 0 failed
+```
+
+## Checklist
+
+- [x] RawIntelligenceItem has datasource_id field (Optional[str], default None)
+- [x] to_dict() and from_dict() include datasource_id
+- [x] Pipeline._crawler_config() passes datasource_id through config
+- [x] Pipeline._run_source() sets datasource_id on every crawled item from a DB DataSource
+- [x] Storage upsert_raw_intelligence_item includes datasource_id in INSERT columns
+- [x] Storage _serialize_raw_intelligence_item_row includes datasource_id in keys
+- [x] Existing source_type/source_id behavior unchanged (legacy compatibility)
+- [x] Items without DB datasource context keep datasource_id=NULL
+- [x] No coupling between ContentItem/News crawlers and intelligence datasource IDs
+- [x] Dedup behavior (source_type, source_id, external_id) unchanged
+- [x] No crawler interface changes for News domain
+- [x] Tests pass: 173 passed, 0 failed

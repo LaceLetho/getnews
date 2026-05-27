@@ -1,0 +1,22 @@
+Task 1 - Topic Datasource Association Schema
+
+## Files Created
+- migrations/postgresql/011_topic_datasource_association.sql (new)
+- tests/intelligence/test_topic_datasource_schema.py (new)
+
+## Files Modified
+- crypto_news_analyzer/storage/intelligence_schema.py
+
+## Test Results
+All 9 new tests pass:
+  - test_schema_creates_intelligence_topic_datasources_table
+  - test_schema_adds_datasource_id_column_to_raw_items
+  - test_schema_creates_datasource_id_index
+  - test_backfill_links_all_topics_to_intelligence_datasources
+  - test_backfill_is_idempotent
+  - test_mappable_raw_item_gets_datasource_id
+  - test_unmappable_raw_item_stays_null
+  - test_news_datasource_not_used_for_raw_item_matching
+  - test_datasource_id_column_nullable
+
+Existing intelligence tests (8 tests) continue to pass.

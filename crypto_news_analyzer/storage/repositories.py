@@ -16,12 +16,14 @@ from ..domain.models import (
     DataSource,
     DataSourceAlreadyExistsError,
     DataSourceInUseError,
+    DataSourceTopicAssociationError,
     IngestionJob,
     IntelligenceCrawlCheckpoint,
     IntelligenceTopic,
     FindingArchive,
     MergePreview,
     RawIntelligenceItem,
+    SafeDataSourceSummary,
     SemanticSearchJob,
     TopicFinding,
     TopicPrompt,
@@ -572,7 +574,31 @@ class SQLiteDataSourceRepository(DataSourceRepository):
                 active_job_ids=active_job_ids,
             )
 
+        # Guard: block deletion if datasource is associated with any topic
+        topic_count = self._count_topic_associations(datasource_id)
+        if topic_count > 0:
+            raise DataSourceTopicAssociationError(
+                datasource_id=datasource_id,
+                topic_count=topic_count,
+            )
+
         return self._data.delete_datasource(datasource_id)
+
+    def _count_topic_associations(self, datasource_id: str) -> int:
+        """Return number of topics that reference this datasource."""
+        with self._data._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._data._sql(
+                    "SELECT COUNT(*) FROM intelligence_topic_datasources WHERE datasource_id = ?"
+                ),
+                (datasource_id,),
+            )
+            row = cursor.fetchone()
+            if self._data.backend == "postgres":
+                return int(row["count"]) if (row and row["count"] is not None) else 0
+            else:
+                return int(row[0]) if (row and row[0] is not None) else 0
 
 
 class SQLiteIntelligenceRepository(IntelligenceRepository):
@@ -1006,10 +1032,23 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
             }
 
     def get_raw_items_since(
-        self, topic_id: str, cursor_time: Optional[datetime], limit: int
+        self,
+        topic_id: str,
+        cursor_time: Optional[datetime],
+        limit: int,
+        datasource_ids: Optional[List[str]] = None,
     ) -> List[RawIntelligenceItem]:
-        filters = ["collected_at > ?"] if cursor_time is not None else []
-        params: List[Any] = [cursor_time.isoformat()] if cursor_time is not None else []
+        filters: List[str] = []
+        params: List[Any] = []
+        if datasource_ids == []:
+            return []
+        if cursor_time is not None:
+            filters.append("collected_at > ?")
+            params.append(cursor_time.isoformat())
+        if datasource_ids:
+            placeholders = ", ".join(["?"] * len(datasource_ids))
+            filters.append(f"datasource_id IN ({placeholders})")
+            params.extend(datasource_ids)
         with self._data._get_connection() as conn:
             cursor = conn.cursor()
             where = f"WHERE {' AND '.join(filters)}" if filters else ""
@@ -1026,6 +1065,218 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
                 RawIntelligenceItem.from_dict(self._data._serialize_raw_intelligence_item_row(row))
                 for row in cursor.fetchall()
             ]
+
+    # ── Topic–Datasource Association Methods ────────────────────────────────
+
+    def _validate_topic_exists(self, topic_id: str) -> None:
+        """Validate topic exists. Raises ValueError if not found."""
+        topic = self.get_topic_by_id(topic_id)
+        if topic is None:
+            raise ValueError(f"unknown topic: {topic_id}")
+
+    def _validate_datasource_ids_for_topic(self, datasource_ids: List[str]) -> None:
+        """Validate all datasource IDs exist and have purpose='intelligence'.
+
+        Raises ValueError identifying the first invalid datasource ID:
+        - 404-style if unknown
+        - 400-style if non-intelligence purpose
+        """
+        if not datasource_ids:
+            return
+        placeholders = ", ".join(["?"] * len(datasource_ids))
+        with self._data._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._data._sql(f"""
+                SELECT id, purpose FROM datasources WHERE id IN ({placeholders})
+                """),
+                tuple(datasource_ids),
+            )
+            rows = cursor.fetchall()
+        existing_ids: Dict[str, str] = {}
+        for row in rows:
+            ds_id = str(row["id"] if self._data.backend == "postgres" else row[0])
+            purpose = str(row["purpose"] if self._data.backend == "postgres" else row[1])
+            existing_ids[ds_id] = purpose
+        # Check for unknown IDs
+        unknown = set(datasource_ids) - set(existing_ids.keys())
+        if unknown:
+            first_unknown = sorted(unknown)[0]
+            raise ValueError(f"unknown datasource: {first_unknown}")
+        # Check for non-intelligence purpose
+        for ds_id in datasource_ids:
+            if existing_ids.get(ds_id) != "intelligence":
+                raise ValueError(f"datasource is not intelligence-purpose: {ds_id}")
+
+    def get_topic_datasource_ids(self, topic_id: str) -> List[str]:
+        """Return datasource IDs associated with a topic in deterministic order.
+
+        Raises ValueError if topic does not exist.
+        """
+        self._validate_topic_exists(topic_id)
+        with self._data._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._data._sql(
+                    "SELECT datasource_id FROM intelligence_topic_datasources "
+                    "WHERE topic_id = ? ORDER BY datasource_id"
+                ),
+                (topic_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            str(row["datasource_id"] if self._data.backend == "postgres" else row[0])
+            for row in rows
+        ]
+
+    def set_topic_datasources(self, topic_id: str, datasource_ids: List[str]) -> None:
+        """Atomically replace all datasource associations for a topic.
+
+        All-or-nothing: if any datasource ID is invalid, no changes are made.
+        An empty list removes all associations.
+        """
+        self._validate_topic_exists(topic_id)
+        normalized = sorted(set(datasource_ids)) if datasource_ids else []
+        if normalized:
+            self._validate_datasource_ids_for_topic(normalized)
+        with self._data._lock:
+            with self._data._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._data._sql(
+                        "DELETE FROM intelligence_topic_datasources WHERE topic_id = ?"
+                    ),
+                    (topic_id,),
+                )
+                if normalized:
+                    now = datetime.utcnow().isoformat()
+                    for ds_id in normalized:
+                        cursor.execute(
+                            self._data._sql(
+                                "INSERT INTO intelligence_topic_datasources "
+                                "(topic_id, datasource_id, created_at) VALUES (?, ?, ?)"
+                            ),
+                            (topic_id, ds_id, now),
+                        )
+                conn.commit()
+
+    def add_topic_datasources(self, topic_id: str, datasource_ids: List[str]) -> None:
+        """Idempotently add datasource associations to a topic.
+
+        Already-present datasource IDs are silently skipped.
+        Duplicates in input are deduplicated.
+        """
+        self._validate_topic_exists(topic_id)
+        normalized = sorted(set(datasource_ids)) if datasource_ids else []
+        if not normalized:
+            return
+        self._validate_datasource_ids_for_topic(normalized)
+        now = datetime.utcnow().isoformat()
+        if self._data.backend == "postgres":
+            insert_sql = (
+                "INSERT INTO intelligence_topic_datasources "
+                "(topic_id, datasource_id, created_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(topic_id, datasource_id) DO NOTHING"
+            )
+        else:
+            insert_sql = (
+                "INSERT OR IGNORE INTO intelligence_topic_datasources "
+                "(topic_id, datasource_id, created_at) VALUES (?, ?, ?)"
+            )
+        with self._data._lock:
+            with self._data._get_connection() as conn:
+                cursor = conn.cursor()
+                for ds_id in normalized:
+                    cursor.execute(
+                        self._data._sql(insert_sql),
+                        (topic_id, ds_id, now),
+                    )
+                conn.commit()
+
+    def remove_topic_datasources(self, topic_id: str, datasource_ids: List[str]) -> None:
+        """Idempotently remove datasource associations from a topic.
+
+        Already-missing datasource IDs are silently skipped.
+        Unknown datasource IDs are silently skipped.
+        """
+        self._validate_topic_exists(topic_id)
+        normalized = sorted(set(datasource_ids)) if datasource_ids else []
+        if not normalized:
+            return
+        placeholders = ", ".join(["?"] * len(normalized))
+        with self._data._lock:
+            with self._data._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._data._sql(f"""
+                    DELETE FROM intelligence_topic_datasources
+                    WHERE topic_id = ? AND datasource_id IN ({placeholders})
+                    """),
+                    (topic_id, *normalized),
+                )
+                conn.commit()
+
+    def get_topic_datasources(self, topic_id: str) -> List[SafeDataSourceSummary]:
+        """Return SafeDataSourceSummary for all datasources associated with a topic.
+
+        config_payload is never exposed.
+        Raises ValueError if topic does not exist.
+        """
+        self._validate_topic_exists(topic_id)
+        with self._data._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._data._sql("""
+                SELECT d.id, d.source_type, d.name
+                FROM intelligence_topic_datasources itd
+                JOIN datasources d ON itd.datasource_id = d.id
+                WHERE itd.topic_id = ?
+                ORDER BY d.id
+                """),
+                (topic_id,),
+            )
+            rows = cursor.fetchall()
+        if not rows:
+            return []
+        ds_ids = [
+            str(row["id"] if self._data.backend == "postgres" else row[0])
+            for row in rows
+        ]
+        placeholders = ", ".join(["?"] * len(ds_ids))
+        with self._data._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._data._sql(f"""
+                SELECT datasource_id, tag FROM datasource_tags
+                WHERE datasource_id IN ({placeholders})
+                ORDER BY datasource_id, tag
+                """),
+                tuple(ds_ids),
+            )
+            tag_rows = cursor.fetchall()
+        tags_by_id: Dict[str, List[str]] = {}
+        for row in tag_rows:
+            ds_id = str(
+                row["datasource_id"] if self._data.backend == "postgres" else row[0]
+            )
+            tag = str(row["tag"] if self._data.backend == "postgres" else row[1])
+            tags_by_id.setdefault(ds_id, []).append(tag)
+        results: List[SafeDataSourceSummary] = []
+        for row in rows:
+            ds_id = str(row["id"] if self._data.backend == "postgres" else row[0])
+            source_type = str(
+                row["source_type"] if self._data.backend == "postgres" else row[1]
+            )
+            name = str(row["name"] if self._data.backend == "postgres" else row[2])
+            results.append(
+                SafeDataSourceSummary(
+                    id=ds_id,
+                    source_type=source_type,
+                    name=name,
+                    tags=tags_by_id.get(ds_id, []),
+                )
+            )
+        return results
 
     def create_topic_research_run(self, run: TopicResearchRun) -> str:
         return self.save_topic_research_run(run)

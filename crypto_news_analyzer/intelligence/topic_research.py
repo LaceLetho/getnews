@@ -278,6 +278,14 @@ class TopicResearchScheduler:
                     getattr(topic, "name", str(topic)),
                 )
                 continue
+            datasource_ids = self.repository.get_topic_datasource_ids(topic.id)
+            if not datasource_ids:
+                logger.info(
+                    "skipping topic %s: no datasource associations",
+                    topic.id,
+                )
+                continue
+
             try:
                 logger.info(
                     "[%d/%d] 正在研究主题 %s（%s）...",
@@ -286,7 +294,7 @@ class TopicResearchScheduler:
                     topic.id,
                     getattr(topic, "name", str(topic)),
                 )
-                run = self._research_topic(topic, prompt)
+                run = self._research_topic(topic, prompt, datasource_ids=datasource_ids)
                 if getattr(run, "status", "") == "success":
                     completed += 1
             except Exception as exc:
@@ -320,13 +328,18 @@ class TopicResearchScheduler:
     # Step 2: per-topic orchestration
     # ------------------------------------------------------------------
 
-    def _research_topic(self, topic: Any, prompt: Any) -> TopicResearchRun:
+    def _research_topic(
+        self,
+        topic: Any,
+        prompt: Any,
+        datasource_ids: Optional[List[str]] = None,
+    ) -> TopicResearchRun:
         """Research a single topic: fetch messages, chunk, call LLM, save findings, record run.
 
         On TopicResearchValidationError: the run is marked failed, checkpoint is NOT advanced.
         On any other LLM/network error: the exception propagates up.
         """
-        raw_items = self._fetch_raw_messages_since(topic, prompt)
+        raw_items = self._fetch_raw_messages_since(topic, prompt, datasource_ids=datasource_ids)
 
         run = TopicResearchRun.create(
             intelligence_topic_id=topic.id,
@@ -394,7 +407,12 @@ class TopicResearchScheduler:
     # Step 3: fetch raw messages since checkpoint with idempotency filter
     # ------------------------------------------------------------------
 
-    def _fetch_raw_messages_since(self, topic: Any, prompt: Any) -> List[RawIntelligenceItem]:
+    def _fetch_raw_messages_since(
+        self,
+        topic: Any,
+        prompt: Any,
+        datasource_ids: Optional[List[str]] = None,
+    ) -> List[RawIntelligenceItem]:
         """Fetch raw messages since the topic's checkpoint cursor.
 
         Uses collected_at for cursor (not published_at).
@@ -406,7 +424,10 @@ class TopicResearchScheduler:
         checkpoint = self.repository.get_topic_checkpoint(topic.id, prompt.id) or {}
         cursor = self._resolve_fetch_cursor(checkpoint.get("checkpoint_cursor"), prompt)
         raw_items = list(
-            self.repository.get_raw_items_since(topic.id, cursor, self.raw_item_limit) or []
+            self.repository.get_raw_items_since(
+                topic.id, cursor, self.raw_item_limit, datasource_ids=datasource_ids
+            )
+            or []
         )
 
         if not raw_items:

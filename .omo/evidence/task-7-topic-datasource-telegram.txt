@@ -1,0 +1,87 @@
+TASK 7: Telegram Topic-Datasource Association Commands
+========================================================
+
+## Changes Made
+
+### 1. crypto_news_analyzer/reporters/telegram/intelligence_commands.py
+Added 4 new command handlers to IntelligenceCommandsMixin:
+
+- `_handle_topic_sources_command` — /topic_sources <topic_id>
+  - Views all datasource associations for a topic
+  - Displays ID, source_type, name, tags (no secrets)
+  - Warns "topic has no datasources — scheduled research will skip it" when empty
+  - Catches ValueError for unknown topic → "Topic {id} 未找到"
+
+- `_handle_topic_sources_set_command` — /topic_sources_set <topic_id> <ds_id...|none>
+  - "none" → clears all associations with confirmation
+  - Normal case → replaces all associations (all-or-nothing via repository)
+  - Error handling: unknown topic, unknown datasource, non-intelligence datasource
+  - Deduplicates input IDs
+
+- `_handle_topic_sources_add_command` — /topic_sources_add <topic_id> <ds_id...>
+  - Idempotent add (already-present IDs silently skipped by repository)
+  - Error handling: unknown topic, unknown datasource, non-intelligence datasource
+  - Deduplicates input IDs
+
+- `_handle_topic_sources_remove_command` — /topic_sources_remove <topic_id> <ds_id...>
+  - Idempotent remove (already-absent IDs silently skipped by repository)
+  - Error handling: unknown topic
+  - Deduplicates input IDs
+
+All handlers include: auth check, rate limit, args validation, logging.
+
+### 2. crypto_news_analyzer/reporters/telegram_command_handler.py
+- Registered 4 new CommandHandler entries in `_register_intelligence_commands()`
+- Added `topic_sources`, `topic_sources_set`, `topic_sources_add`, `topic_sources_remove` to permission defaults
+- Added help text entries in `handle_help_command()` under "情报研究" section
+
+### 3. tests/intelligence/test_topic_datasource_telegram.py
+New test file with 24 tests:
+
+/topic_sources (view):
+- test_topic_sources_no_args_shows_usage
+- test_topic_sources_topic_not_found
+- test_topic_sources_empty_warns_skip_research
+- test_topic_sources_shows_datasources
+- test_topic_sources_truncates_many_tags
+- test_topic_sources_unauthorized
+
+/topic_sources_set:
+- test_topic_sources_set_no_args_shows_usage
+- test_topic_sources_set_none_clears_all
+- test_topic_sources_set_replaces_ids
+- test_topic_sources_set_deduplicates_ids
+- test_topic_sources_set_topic_not_found
+- test_topic_sources_set_unknown_datasource
+- test_topic_sources_set_non_intelligence_datasource
+
+/topic_sources_add:
+- test_topic_sources_add_no_args_shows_usage
+- test_topic_sources_add_ids
+- test_topic_sources_add_topic_not_found
+- test_topic_sources_add_unknown_datasource
+- test_topic_sources_add_non_intelligence_datasource
+
+/topic_sources_remove:
+- test_topic_sources_remove_no_args_shows_usage
+- test_topic_sources_remove_ids
+- test_topic_sources_remove_topic_not_found
+
+Auth/Rate-limit/Help:
+- test_topic_sources_set_unauthorized
+- test_topic_sources_set_rate_limited
+- test_help_includes_topic_sources_commands
+
+## Test Results
+24 passed, 0 failed
+
+## Verification
+- Reads: datasource IDs only (not names) ✓
+- /topic_sources_set <topic_id> none → clears with confirmation ✓
+- Unknown topic → "未找到" ✓
+- Unknown datasource → identifies first bad ID ✓
+- Non-intelligence datasource → "不是情报类型" ✓
+- No config_payload or secrets printed ✓
+- /topic_create does not bind datasources ✓
+- All handlers have auth + rate-limit ✓
+- Commands registered in help/command list ✓

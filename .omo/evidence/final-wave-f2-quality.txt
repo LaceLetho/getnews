@@ -1,0 +1,181 @@
+======================================================================
+FINAL VERIFICATION F2: CODE QUALITY REVIEW
+======================================================================
+Date: 2026-05-27
+Reviewer: Sisyphus-Junior
+Verdict: APPROVE
+
+======================================================================
+1. TEST COVERAGE ADEQUACY
+======================================================================
+
+Changed files: 15 files (10 source, 5 test)
+New test files: 6 untracked test files
+New test functions: 107 (all pass)
+
+Test breakdown by file:
+  - test_topic_datasource_repository.py: 29 tests
+  - test_topic_datasource_models.py: 15 tests
+  - test_topic_datasource_api.py: 24 tests
+  - test_topic_datasource_schema.py: 9 tests
+  - test_topic_datasource_collector.py: 6 tests
+  - test_topic_datasource_telegram.py: 24 tests
+
+Additional tests in existing files:
+  - test_api_server.py: test_datasource_delete_returns_409_when_topic_associated
+  - test_datasource_repository.py: delete_guard_blocks_topic_association, delete_allows_unassociated
+  - test_telegram_command_handler_datasource.py: test_datasource_delete_returns_topic_association_conflict
+  - test_topic_research_scheduler.py: FakeTopicRepository updated for datasource_ids
+
+All tests are substantive and behavior-verifying:
+  - Repository tests: CRUD operations, error conditions, atomicity, dedup, ordering
+  - Model tests: validation (empty id/name/source_type), serialization round-trip,
+    config_payload exclusion, tag normalization, backward compat
+  - API tests: HTTP status codes (200/400/404), response structure, error mapping
+  - Schema tests: table/column/index creation, backfill idempotency, nullable column
+  - Collector tests: datasource_id persistence, dedup behavior, legacy row compat
+  - Telegram tests: command flow, error message formatting
+
+No trivial pass-through tests found. All tests assert actual behavior.
+
+======================================================================
+2. ERROR HANDLING
+======================================================================
+
+api_server.py: _map_topic_datasource_error() maps ValueError to HTTP:
+
+  ValueError Pattern                      | HTTP Status
+  ----------------------------------------|------------
+  "unknown topic"                         | 404
+  "unknown datasource"                    | 404
+  "not intelligence" / "not intelligence-purpose" | 400
+  everything else                         | 400
+
+Coverage verified against repository error messages:
+  - _validate_topic_exists → "unknown topic: {id}" ✓
+  - _validate_datasource_ids_for_topic → "unknown datasource: {id}" ✓
+  - _validate_datasource_ids_for_topic → "datasource is not intelligence-purpose: {id}" ✓
+
+All new API routes (GET/PUT/POST/DELETE /intelligence/topics/{id}/datasources)
+catch ValueError and map via _map_topic_datasource_error().
+
+DELETE /datasources/{id}: Now catches DataSourceTopicAssociationError → 409 with
+message including topic count. Same pattern applied in Telegram
+/datasource_delete handler.
+
+Telegram commands (topic_sources/set/add/remove): follow established pattern of
+outer try/except(Exception, exc_info=True) → user-facing error reply, with
+inner except/except Exception: pass for best-effort error message delivery.
+This is identical to how existing /topic_* commands handle errors.
+
+======================================================================
+3. SQL INJECTION RISKS
+======================================================================
+
+All SQL queries use parameterized placeholders (?), no f-string interpolation:
+
+  storage/repositories.py:
+    - _count_topic_associations: "WHERE datasource_id = ?"   → parameterized
+    - _validate_datasource_ids_for_topic: "WHERE id IN (?,?,...)" → parameterized
+    - get_topic_datasource_ids: "WHERE topic_id = ?"         → parameterized
+    - set_topic_datasources: DELETE with ?/INSERT with ?     → parameterized
+    - add_topic_datasources: INSERT with ?,?,?               → parameterized
+    - remove_topic_datasources: DELETE with ? IN (?,?,...)   → parameterized
+    - get_topic_datasources: JOIN with ?                     → parameterized
+    - get_raw_items_since: optional "datasource_id IN (?,...)" → parameterized
+
+  intelligence_schema.py:
+    - ALTER TABLE / CREATE TABLE: schema DDL only, no user input
+
+  migration SQL (011_topic_datasource_association.sql):
+    - DDL only, no runtime input processing
+
+Confirmed: zero f-string in cursor.execute() calls across all changed files.
+
+======================================================================
+4. BACKWARD COMPATIBILITY
+======================================================================
+
+Existing test suite: 281 passed, 1 failed, 26 skipped
+
+The single failure (test_telegram_webhook_endpoint_passes_update_to_handler)
+is PRE-EXISTING — confirmed by git stash and re-run on clean codebase.
+
+API backward compatibility:
+  - get_raw_items_since(): Added optional datasource_ids parameter with
+    default None. Existing callers pass exactly the same positional args.
+  - TopicCreateDraftRequest: Added optional datasource_ids field.
+  - RawIntelligenceItem: Added optional datasource_id field (NULLable).
+  - get_topic_datasource_ids(): New method on IntelligenceRepository ABC
+    with default NotImplementedError — subclasses not implementing it
+    raise NotImplementedError, matching existing contract pattern.
+
+Database schema:
+  - ALTER TABLE ADD COLUMN IF NOT EXISTS — safe for both SQLite and Postgres
+  - CREATE TABLE IF NOT EXISTS — idempotent
+  - All new columns are NULLable
+
+======================================================================
+5. CODE ORGANIZATION & PATTERNS
+======================================================================
+
+Follows existing patterns:
+  - api_server.py: Route registration via register_intelligence_routes(),
+    same pattern as existing /intelligence/* routes.
+  - domain/repositories.py: Abstract methods with NotImplementedError,
+    same pattern as existing get_raw_items_since() override chain.
+  - storage/repositories.py: Lock-based concurrency via self._data._lock,
+    same pattern as existing repository operations.
+  - storage/intelligence_schema.py: Schema initialization via
+    _initialize_* helper, same decomposition as existing schema code.
+  - intelligence/pipeline.py: datasource_id injection in crawl and save,
+    minimal change following existing flow patterns.
+  - telegram_command_handler.py: CommandHandler registration in app setup,
+    same pattern as existing /topic_* command registration.
+  - reporters/telegram/datasource_commands.py: Error catch in delete
+    handler, same multi-except pattern as existing DataSourceInUseError.
+  - reporters/telegram/intelligence_commands.py: New mixin methods follow
+    same structure: auth check, rate limit, repository operations,
+    error→user message mapping, outer exception handler.
+
+No module boundary violations:
+  - News models (ContentItem) never mixed with Intelligence models
+  - DataSourceTopicAssociationError: used only for datasource delete guard
+  - SafeDataSourceSummary: used only for topic-datasource API responses
+
+======================================================================
+6. MINOR OBSERVATIONS (non-blocking)
+======================================================================
+
+A. Validation-before-lock race in set_topic_datasources/add_topic_datasources:
+   datasource validation occurs before lock acquisition. A datasource
+   could be deleted by another thread between validation and lock.
+   Mitigated by DB-level FOREIGN KEY ON DELETE RESTRICT constraint.
+   Probability: extremely low. Acceptable for current usage patterns.
+
+B. No SQLite-specific migration SQL file (only PostgreSQL 011.sql exists).
+   The Python-level initialize_intelligence_tables handles both backends
+   correctly via IF NOT EXISTS / PRAGMA checks.
+
+C. set_topic_datasources is not truly atomic in the ACID sense:
+   validation outside the lock + DELETE/INSERT inside the lock means
+   validation can be stale. The test "atomic_no_partial_update" validates
+   against invalid IDs but not against race conditions. For production
+   correctness, consider moving validation inside the lock or using
+   SAVEPOINT/transaction-level validation.
+
+======================================================================
+7. SUMMARY
+======================================================================
+
+| Dimension                  | Status  | Notes                                      |
+|----------------------------|---------|--------------------------------------------|
+| Test coverage              | PASS    | 107 new tests, all substantive             |
+| Error handling             | PASS    | ValueError→HTTP mapping complete           |
+| SQL injection              | PASS    | Zero f-string SQL, all parameterized       |
+| Backward compatibility     | PASS    | Pre-existing failure only, API is additive |
+| Code patterns              | PASS    | Follows existing conventions               |
+| No TODO/FIXME in prod code | PASS    | Clean                                      |
+| LSP diagnostics            | PASS    | Zero errors on changed files               |
+
+VERDICT: APPROVE

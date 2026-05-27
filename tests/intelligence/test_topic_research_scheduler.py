@@ -62,6 +62,7 @@ class FakeTopicRepository:
                 collected_at=datetime.utcnow(),
                 created_at=datetime.utcnow(),
                 expires_at=datetime.utcnow() + timedelta(days=180),
+                datasource_id="default-ds",
             )
         ]
         self.checkpoint: Optional[Dict[str, Any]] = {
@@ -76,6 +77,7 @@ class FakeTopicRepository:
         self._custom_topics: List[IntelligenceTopic] = []
         self._custom_prompts: Dict[str, TopicPrompt] = {}
         self._custom_raw_items: Dict[str, List[RawIntelligenceItem]] = {}
+        self._custom_datasource_ids: Dict[str, List[str]] = {}
 
     def set_topics(self, topics: List[IntelligenceTopic]) -> None:
         self._custom_topics = list(topics)
@@ -85,6 +87,20 @@ class FakeTopicRepository:
 
     def set_raw_items_for(self, topic_id: str, items: List[RawIntelligenceItem]) -> None:
         self._custom_raw_items[topic_id] = list(items)
+
+    def set_datasource_ids_for(self, topic_id: str, datasource_ids: List[str]) -> None:
+        self._custom_datasource_ids[topic_id] = list(datasource_ids)
+
+    def get_topic_datasource_ids(self, topic_id: str) -> List[str]:
+        if topic_id in self._custom_datasource_ids:
+            return list(self._custom_datasource_ids[topic_id])
+        # Default: single associated datasource matching each raw item's source_id
+        # This preserves backward compatibility for tests that don't set up associations.
+        if topic_id == self.topic.id:
+            raw_items = self._custom_raw_items.get(topic_id, self.raw_items)
+            if raw_items:
+                return list({raw.datasource_id or raw.source_id or "default-ds" for raw in raw_items})
+        return ["default-ds"]
 
     def list_topics(self, is_active: Optional[bool] = None, limit: int = 100, offset: int = 0):
         if self._custom_topics:
@@ -103,7 +119,7 @@ class FakeTopicRepository:
     def get_topic_checkpoint(self, topic_id: str, prompt_version_id: Optional[str]):
         return dict(self.checkpoint) if self.checkpoint is not None else None
 
-    def get_raw_items_since(self, topic_id: str, cursor_time: Optional[datetime], limit: int):
+    def get_raw_items_since(self, topic_id: str, cursor_time: Optional[datetime], limit: int, datasource_ids=None):
         self.last_cursor_time = cursor_time
         self.last_limit = limit
         if topic_id in self._custom_raw_items:
@@ -116,6 +132,8 @@ class FakeTopicRepository:
                 for item in items
                 if (item.collected_at or item.created_at or datetime.min) > cursor_time
             ]
+        if datasource_ids:
+            items = [item for item in items if item.datasource_id in datasource_ids]
         return items
 
     def get_processed_topic_raw_item_ids(

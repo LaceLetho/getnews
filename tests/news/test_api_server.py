@@ -7,7 +7,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from crypto_news_analyzer import api_server
-from crypto_news_analyzer.domain.models import AnalysisRequest, DataSource, IngestionJob
+from crypto_news_analyzer.domain.models import (
+    AnalysisRequest,
+    DataSource,
+    IngestionJob,
+)
 from crypto_news_analyzer.models import StorageConfig
 from crypto_news_analyzer.storage.data_manager import DataManager
 from crypto_news_analyzer.storage.repositories import (
@@ -186,6 +190,9 @@ class _FakeCommandHandler:
 
     async def shutdown_webhook(self) -> None:
         self.shutdown_webhook_called = True
+
+    def get_webhook_secret_token(self) -> str:
+        return "expected-secret"
 
     async def handle_webhook_update(
         self,
@@ -949,6 +956,69 @@ def test_datasource_delete_returns_conflict_when_active_ingestion_job_exists(
     assert response.json() == {
         "detail": "Cannot delete datasource 'rss:CoinDesk' while matching ingestion jobs are active"
     }
+    assert repo.get_by_id(datasource.id) is not None
+
+
+def test_datasource_delete_returns_409_when_topic_associated(
+    monkeypatch: pytest.MonkeyPatch,
+    db_datasource_repository,
+):
+    repo = cast(SQLiteDataSourceRepository, db_datasource_repository["repo"])
+    data_manager = cast(DataManager, db_datasource_repository["manager"])
+    datasource = repo.save(
+        DataSource.create(
+            name="TradingGroup",
+            source_type="telegram_group",
+            purpose="intelligence",
+            config_payload={"chat_id": "-1001234567890"},
+        )
+    )
+    topic_id = data_manager.upsert_intelligence_topic(
+        {
+            "id": "topic-api-123",
+            "name": "API Test Topic",
+            "is_active": True,
+            "lifecycle_status": "active",
+            "created_at": "2026-03-01T00:00:00+00:00",
+            "updated_at": "2026-03-01T00:00:00+00:00",
+        }
+    )
+    topic_id_2 = data_manager.upsert_intelligence_topic(
+        {
+            "id": "topic-api-456",
+            "name": "API Test Topic 2",
+            "is_active": True,
+            "lifecycle_status": "active",
+            "created_at": "2026-03-01T00:00:00+00:00",
+            "updated_at": "2026-03-01T00:00:00+00:00",
+        }
+    )
+    with data_manager._get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            data_manager._sql(
+                "INSERT INTO intelligence_topic_datasources (topic_id, datasource_id, created_at) VALUES (?, ?, ?)"
+            ),
+            (topic_id, datasource.id, "2026-03-01T00:00:00+00:00"),
+        )
+        cursor.execute(
+            data_manager._sql(
+                "INSERT INTO intelligence_topic_datasources (topic_id, datasource_id, created_at) VALUES (?, ?, ?)"
+            ),
+            (topic_id_2, datasource.id, "2026-03-01T00:00:00+00:00"),
+        )
+        conn.commit()
+
+    app = _build_test_app(monkeypatch, _FakeController(datasource_repository=repo))
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/datasources/{datasource.id}",
+            headers=_authorized_headers(),
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Datasource is associated with 2 topic(s)"}
     assert repo.get_by_id(datasource.id) is not None
 
 

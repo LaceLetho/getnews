@@ -83,6 +83,9 @@ class IntelligencePipeline:
             repository=self.intelligence_repository,
         )
         items = list(crawler.crawl(config_payload) or [])
+        for item in items:
+            if item.datasource_id is None:
+                item.datasource_id = datasource.id
         new_items = self._save_new_items(items)
         self._save_success_checkpoint(datasource, source_id, items)
 
@@ -130,6 +133,7 @@ class IntelligencePipeline:
         payload = dict(datasource.config_payload or {})
         payload.setdefault("id", datasource.id)
         payload.setdefault("name", datasource.name)
+        payload["datasource_id"] = datasource.id
         return payload
 
     def _save_new_items(self, items: Sequence[RawIntelligenceItem]) -> List[RawIntelligenceItem]:

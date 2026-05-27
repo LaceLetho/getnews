@@ -1,0 +1,54 @@
+Wave 1 — Task 2: Topic-Datasource Association Contracts
+========================================================
+
+## Files Modified
+
+### 1. crypto_news_analyzer/domain/models.py
+- Added `SafeDataSourceSummary` dataclass (line ~282) after `DataSource`
+  - Fields: id, source_type, name, tags
+  - Explicitly excludes config_payload
+  - Factory method `from_datasource(datasource)` strips config_payload from DataSource
+  - to_dict / from_dict round-trip, validation for required fields
+  - Tags normalized via `_normalize_datasource_tags()`
+
+### 2. crypto_news_analyzer/domain/repositories.py
+- Added `SafeDataSourceSummary` to imports
+- Updated `get_raw_items_since()` signature:
+  - Added optional `datasource_ids: Optional[List[str]] = None` parameter
+  - None default preserves backward compatibility
+- Added 5 new methods to `IntelligenceRepository` ABC:
+  - `get_topic_datasource_ids(topic_id) -> List[str]`
+  - `set_topic_datasources(topic_id, datasource_ids) -> None`
+  - `add_topic_datasources(topic_id, datasource_ids) -> None`
+  - `remove_topic_datasources(topic_id, datasource_ids) -> None`
+  - `get_topic_datasources(topic_id) -> List[SafeDataSourceSummary]`
+- All 5 methods raise `NotImplementedError("topic-datasource associations are not implemented by this repository")`
+  - Pattern matches existing `save_topic`, `save_topic_prompt`, etc.
+- Docstrings document:
+  - Unknown topic → ValueError (404-style)
+  - Unknown datasource → ValueError (404-style)
+  - Non-intelligence datasource → ValueError (400-style)
+  - Duplicate IDs normalised/deduped silently
+  - set_topic_datasources fails atomically (all-or-nothing)
+
+### 3. crypto_news_analyzer/storage/repositories.py
+- Updated `SQLiteIntelligenceRepository.get_raw_items_since()` signature:
+  - Added optional `datasource_ids: Optional[List[str]] = None` parameter
+  - Maintains backward compatibility (default=None, unused in body)
+
+### 4. tests/intelligence/test_topic_research_scheduler.py
+- Updated mock `get_raw_items_since()` signature:
+  - Added `datasource_ids=None` parameter
+
+## New Test File
+- `tests/intelligence/test_topic_datasource_models.py` — 15 tests
+  - 3 import/cyclic tests
+  - 7 SafeDataSourceSummary tests (exclusion, round-trip, validation, tags)
+  - 2 enum value tests
+  - 3 repository contract tests (NotImplementedError, default behavior, instantiation)
+
+## Verification Results
+- All 15 new tests PASS
+- Existing tests PASS (34 tests across 3 related test files, no regressions)
+- Acyclic imports verified: `from crypto_news_analyzer.domain.repositories import IntelligenceRepository` + `from crypto_news_analyzer.domain.models import DataSourcePurpose` — OK
+- LSP diagnostics: no new errors introduced
