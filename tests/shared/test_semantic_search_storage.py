@@ -534,6 +534,13 @@ def test_unified_vector_search_returns_news_and_intelligence(monkeypatch):
         per_subquery_limit=50,
     )
 
+    union_sql, union_params = next(
+        (entry for entry in executed if "UNION ALL" in entry[0]),
+        ("", ()),
+    )
+    assert union_sql.count("%s") == len(union_params)
+    assert union_sql.count("%s") == 13
+
     assert len(hits) == 2
     assert hits[0].source_domain == "intelligence"
     assert hits[0].similarity == 0.95
@@ -714,6 +721,37 @@ def test_unified_search_excludes_mismatched_embedding_model(monkeypatch):
         (query for query, _ in executed if "UNION ALL" in query), ""
     )
     assert "embedding_model = %s" in union_sql
+
+
+def test_unified_keyword_search_sql_placeholder_count_matches_params(monkeypatch):
+    executed: list[tuple[str, Any]] = []
+    fake_psycopg = _FakePsycopg(executed, fetchall_resolver=lambda _q, _p: [])
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
+
+    manager = DataManager(
+        StorageConfig(
+            backend="postgres",
+            database_url="postgresql://user:pass@localhost:5432/db",
+            pgvector_dimensions=3,
+        )
+    )
+
+    hits = manager.unified_semantic_search_keywords(
+        keyword_queries=["btc", "etf"],
+        since_time=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+        max_hours=24,
+        limit=10,
+        per_subquery_limit=50,
+    )
+
+    assert hits == []
+    union_sql, union_params = next(
+        (entry for entry in executed if "UNION ALL" in entry[0]),
+        ("", ()),
+    )
+    assert union_sql.count("%s") == len(union_params)
+    assert union_sql.count("%s") == 27
 
 
 def test_unified_search_rejects_sqlite_unsupported(monkeypatch):

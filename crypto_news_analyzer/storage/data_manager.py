@@ -1571,11 +1571,13 @@ class DataManager:
             embedding_model,
             time_start,
             time_end,
+            query_vector,
             bounded_per_limit,
             query_vector,
             embedding_model,
             time_start,
             time_end,
+            query_vector,
             bounded_per_limit,
             bounded_outer_limit,
         ]
@@ -1689,7 +1691,10 @@ class DataManager:
         intel_score_clauses: List[str] = []
         intel_filter_clauses: List[str] = []
 
-        params: List[Any] = []
+        content_score_params: List[Any] = []
+        content_filter_params: List[Any] = []
+        intel_score_params: List[Any] = []
+        intel_filter_params: List[Any] = []
 
         for query in normalized_queries:
             like_term = f"%{query}%"
@@ -1698,11 +1703,11 @@ class DataManager:
                 CASE WHEN lower(content) LIKE ? THEN 4 ELSE 0 END +
                 CASE WHEN lower(source_name) LIKE ? THEN 2 ELSE 0 END
                 """)
-            params.extend([like_term, like_term, like_term])
+            content_score_params.extend([like_term, like_term, like_term])
             content_filter_clauses.append(
                 "(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(source_name) LIKE ?)"
             )
-            params.extend([like_term, like_term, like_term])
+            content_filter_params.extend([like_term, like_term, like_term])
 
         for query in normalized_queries:
             like_term = f"%{query}%"
@@ -1710,21 +1715,30 @@ class DataManager:
                 CASE WHEN lower(source_type) LIKE ? THEN 4 ELSE 0 END +
                 CASE WHEN lower(raw_text) LIKE ? THEN 16 ELSE 0 END
                 """)
-            params.extend([like_term, like_term])
+            intel_score_params.extend([like_term, like_term])
             intel_filter_clauses.append(
                 "(lower(source_type) LIKE ? OR lower(raw_text) LIKE ?)"
             )
-            params.extend([like_term, like_term])
+            intel_filter_params.extend([like_term, like_term])
 
         content_score_expr = " + ".join(content_score_clauses)
         content_filter_expr = " OR ".join(content_filter_clauses)
         intel_score_expr = " + ".join(intel_score_clauses)
         intel_filter_expr = " OR ".join(intel_filter_clauses)
 
-        params.extend([time_start, time_end])
-        params.extend([time_start, time_end])
-        params.append(bounded_per_limit)
-        params.append(bounded_outer_limit)
+        params: List[Any] = [
+            *content_score_params,
+            time_start,
+            time_end,
+            *content_filter_params,
+            bounded_per_limit,
+            *intel_score_params,
+            time_start,
+            time_end,
+            *intel_filter_params,
+            bounded_per_limit,
+            bounded_outer_limit,
+        ]
 
         sql = self._sql(f"""
         (SELECT
@@ -1810,6 +1824,7 @@ class DataManager:
                     published_at=published_at,
                     collected_at=collected_at,
                     similarity=float(score_val),
+                    matched_subqueries=[],
                 )
             )
         return hits
