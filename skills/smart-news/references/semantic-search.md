@@ -45,10 +45,6 @@ The response body includes:
 - `success`
 - `job_id`
 - `status`
-- `query`
-- `normalized_intent`
-- `matched_count`
-- `retained_count`
 - `time_window_hours`
 - `status_url`
 - `result_url`
@@ -59,6 +55,8 @@ Response headers include:
 - `Retry-After`
 
 Job IDs use the prefix `semantic_search_job_`.
+
+`query`, `normalized_intent`, `matched_count`, and `retained_count` are only available on the status and result endpoints — they are `0` or empty at acceptance time and are therefore excluded from the 202 response.
 
 ## Job Status Contract
 

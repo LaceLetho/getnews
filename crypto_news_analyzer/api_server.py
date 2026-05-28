@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 import re
 import uuid
 from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, cast
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit, urlparse
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, Response, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -197,10 +197,6 @@ class SemanticSearchAcceptedResponse(BaseModel):
     success: bool
     job_id: str
     status: str
-    query: str
-    normalized_intent: str
-    matched_count: int
-    retained_count: int
     time_window_hours: int
     status_url: str
     result_url: str
@@ -419,11 +415,19 @@ class TopicFindingResponse(BaseModel):
 
 class TopicDetailResponse(BaseModel):
     topic: Dict[str, Any]
-    prompt_versions: List[TopicPromptVersionResponse] = Field(default_factory=list)
-    current_prompt: Optional[TopicPromptVersionResponse] = None
-    active_findings: List[TopicFindingResponse] = Field(default_factory=list)
-    citations: List[Dict[str, Any]] = Field(default_factory=list)
     merge_available: bool = False
+
+
+class TopicFindingsListResponse(BaseModel):
+    findings: List[TopicFindingResponse] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 10
+
+
+class TopicPromptsResponse(BaseModel):
+    current_prompt: Optional[TopicPromptVersionResponse] = None
+    prompt_versions: List[TopicPromptVersionResponse] = Field(default_factory=list)
 
 
 class TopicLifecycleActionResponse(BaseModel):
@@ -505,6 +509,55 @@ def _build_source_display(raw_item: Any) -> str:
             return f"{source_type} ({source_url})"
 
     return source_type or "未知"
+
+
+def _build_source_url_from_raw_item(item: Any) -> Optional[str]:
+    source_url = str(getattr(item, "source_url", "") or "").strip()
+    source_type = str(getattr(item, "source_type", "") or "").strip()
+    external_id = str(getattr(item, "external_id", "") or "").strip()
+    chat_id = str(getattr(item, "chat_id", "") or "").strip()
+    source_id = str(getattr(item, "source_id", "") or "").strip()
+
+    if source_url:
+        if source_type == "telegram_group" and external_id:
+            try:
+                parsed = urlparse(source_url)
+                host = (parsed.netloc or "").lower()
+                if host in {"t.me", "telegram.me", "www.t.me", "www.telegram.me"}:
+                    parts = [p for p in parsed.path.split("/") if p]
+                    if parts:
+                        if parts[0] == "c":
+                            if len(parts) >= 3:
+                                return source_url
+                            if len(parts) == 2 and parts[1].isdigit():
+                                return f"https://t.me/c/{parts[1]}/{external_id}"
+                            return None
+                        username = parts[0].lstrip("@")
+                        if len(parts) >= 2 and parts[1].isdigit():
+                            return source_url
+                        return f"https://t.me/{username}/{external_id}"
+            except Exception:
+                pass
+        try:
+            parsed = urlparse(source_url)
+            if parsed.scheme in {"http", "https"} and parsed.netloc:
+                return source_url
+        except Exception:
+            pass
+
+    if source_type == "telegram_group" and external_id:
+        target_id = chat_id or source_id
+        if target_id:
+            if target_id.startswith("@"):
+                username = target_id[1:]
+                if 5 <= len(username) <= 32 and all(c.isalnum() or c == "_" for c in username):
+                    return f"https://t.me/{username}/{external_id}"
+            elif target_id.startswith("-100") and target_id[4:].isdigit():
+                return f"https://t.me/c/{target_id[4:]}/{external_id}"
+            elif 5 <= len(target_id) <= 32 and all(c.isalnum() or c == "_" for c in target_id):
+                return f"https://t.me/{target_id}/{external_id}"
+
+    return source_url if source_url else None
 
 
 def _is_expired(expires_at: Optional[datetime], now: Optional[datetime] = None) -> bool:
@@ -900,14 +953,24 @@ def _prompt_to_response(prompt: Any) -> TopicPromptVersionResponse:
     )
 
 
-def _finding_to_response(finding: Any) -> TopicFindingResponse:
+def _finding_to_response(
+    finding: Any, raw_item_url_map: Optional[dict[str, str]] = None
+) -> TopicFindingResponse:
+    citations = list(getattr(finding, "citations", []) or [])
+    url_map = raw_item_url_map or {}
+    enriched: list[dict[str, Any]] = []
+    for citation in citations:
+        cit = dict(citation) if isinstance(citation, dict) else {}
+        raw_id = cit.get("message_id", "")
+        cit["source_url"] = url_map.get(str(raw_id), "")
+        enriched.append(cit)
     return TopicFindingResponse(
         id=str(getattr(finding, "id", "")),
         intelligence_topic_id=str(getattr(finding, "intelligence_topic_id", "")),
         prompt_version_id=str(getattr(finding, "prompt_version_id", "")),
         finding_payload=dict(getattr(finding, "finding_payload", {}) or {}),
         confidence=float(getattr(finding, "confidence", 0.0)),
-        citations=list(getattr(finding, "citations", []) or []),
+        citations=enriched,
         source_finding_ids=list(getattr(finding, "source_finding_ids", []) or []),
         status=str(getattr(finding, "status", "active")),
         found_at=_datetime_to_iso(getattr(finding, "found_at", None)),
@@ -1293,10 +1356,6 @@ def register_news_routes(app: FastAPI) -> None:
             success=True,
             job_id=job.job_id,
             status=job.status,
-            query=job.query,
-            normalized_intent=job.normalized_intent,
-            matched_count=job.matched_count,
-            retained_count=job.retained_count,
             time_window_hours=job.time_window_hours,
             status_url=status_url,
             result_url=result_url,
@@ -1661,6 +1720,75 @@ def register_intelligence_routes(app: FastAPI) -> None:
         req: Request,
         _: Annotated[str, Depends(verify_api_key)],
     ):
+        """Return topic metadata and merge availability."""
+        repository = _get_intelligence_repository(req)
+        topic = repository.get_topic_by_id(topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        previews = repository.list_merge_previews(topic_id, state="pending", limit=1)
+        merge_available = len(previews) > 0
+
+        return TopicDetailResponse(
+            topic=_topic_to_dict(topic),
+            merge_available=merge_available,
+        )
+
+    @app.get(
+        "/intelligence/topics/{topic_id}/findings",
+        response_model=TopicFindingsListResponse,
+    )
+    async def get_topic_findings(
+        topic_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+        page: int = 1,
+        page_size: int = 10,
+    ):
+        """Return paginated active findings with enriched source URLs."""
+        repository = _get_intelligence_repository(req)
+        topic = repository.get_topic_by_id(topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        offset = max(0, page - 1) * max(1, page_size)
+        active_findings = repository.list_topic_findings(
+            topic_id, status="active", limit=page_size, offset=offset
+        )
+        total = 0
+        if hasattr(repository, "count_topic_findings"):
+            total = repository.count_topic_findings(topic_id, status="active")
+
+        raw_item_ids: set[str] = set()
+        for finding in active_findings:
+            for rid in (getattr(finding, "source_raw_item_ids", []) or []):
+                raw_item_ids.add(str(rid))
+
+        raw_item_url_map: dict[str, str] = {}
+        if raw_item_ids and hasattr(repository, "get_raw_items_by_ids"):
+            raw_items = repository.get_raw_items_by_ids(list(raw_item_ids))
+            for item in raw_items:
+                url = _build_source_url_from_raw_item(item)
+                if url:
+                    raw_item_url_map[str(item.id)] = url
+
+        return TopicFindingsListResponse(
+            findings=[_finding_to_response(f, raw_item_url_map) for f in active_findings],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+
+    @app.get(
+        "/intelligence/topics/{topic_id}/prompts",
+        response_model=TopicPromptsResponse,
+    )
+    async def get_topic_prompts(
+        topic_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Return prompt versions and current active prompt."""
         repository = _get_intelligence_repository(req)
         topic = repository.get_topic_by_id(topic_id)
         if topic is None:
@@ -1668,24 +1796,10 @@ def register_intelligence_routes(app: FastAPI) -> None:
 
         prompt_versions = repository.list_topic_prompts(topic_id, limit=50, offset=0)
         current_prompt = repository.get_active_topic_prompt(topic_id)
-        active_findings = repository.list_active_findings(topic_id)
 
-        all_citations: list[dict[str, Any]] = []
-        for finding in active_findings:
-            for citation in getattr(finding, "citations", []) or []:
-                if citation not in all_citations:
-                    all_citations.append(dict(citation))
-
-        previews = repository.list_merge_previews(topic_id, state="pending", limit=1)
-        merge_available = len(previews) > 0
-
-        return TopicDetailResponse(
-            topic=_topic_to_dict(topic),
+        return TopicPromptsResponse(
             prompt_versions=[_prompt_to_response(p) for p in prompt_versions],
             current_prompt=_prompt_to_response(current_prompt) if current_prompt else None,
-            active_findings=[_finding_to_response(f) for f in active_findings],
-            citations=all_citations,
-            merge_available=merge_available,
         )
 
     # ── Topic-Datasource Association Routes ──────────────────────────────

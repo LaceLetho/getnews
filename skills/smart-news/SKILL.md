@@ -118,11 +118,11 @@ Synchronous topic workflow endpoints:
 - `PUT /intelligence/topics/{topic_id}/prompt` — Manually set/replace the prompt text (context-aware: edits active prompt if one exists, otherwise creates draft revision)
 - `POST /intelligence/topics/{topic_id}/confirm` — Confirm and activate the topic for research (requires `prompt_version_id`)
 - `GET /intelligence/topics` — List topics with pagination and `active_only` filter (default: true)
-- `GET /intelligence/topics/{topic_id}` — Get topic detail including prompt versions, active findings, citations, merge availability, and recent run logs
+- `GET /intelligence/topics/{topic_id}` — Get topic metadata and merge availability
+- `GET /intelligence/topics/{topic_id}/findings` — Get paginated active findings with citations and source URLs
+- `GET /intelligence/topics/{topic_id}/prompts` — Get prompt versions and current active prompt
 - `POST /intelligence/topics/{topic_id}/pause` — Pause topic research
 - `POST /intelligence/topics/{topic_id}/archive` — Archive a topic
-- `GET /intelligence/topics/{topic_id}/runs` — List research run logs for a specific topic (supports `run_type` filter)
-- `GET /intelligence/topic-runs` — List topic research run logs across all topics with optional filters (`topic_id`, `run_type`)
 
 These endpoints are synchronous; there is no async job/poll flow. Results return immediately.
 
@@ -154,11 +154,11 @@ Supported HTTP routes:
 - `PUT /intelligence/topics/{id}/prompt` - Manually set topic prompt
 - `POST /intelligence/topics/{id}/confirm` - Confirm and activate topic
 - `GET /intelligence/topics` - List topics with status filters
-- `GET /intelligence/topics/{id}` - Get topic detail with findings
+- `GET /intelligence/topics/{id}` - Get topic metadata and merge availability
+- `GET /intelligence/topics/{id}/findings` - Get paginated findings with citations
+- `GET /intelligence/topics/{id}/prompts` - Get prompt versions and active prompt
 - `POST /intelligence/topics/{id}/pause` - Pause topic
 - `POST /intelligence/topics/{id}/archive` - Archive topic
-- `GET /intelligence/topics/{id}/runs` - List per-topic research run logs
-- `GET /intelligence/topic-runs` - List global topic research run logs
 - `GET /intelligence/topics/{id}/datasources` - List datasource associations for a topic
 - `PUT /intelligence/topics/{id}/datasources` - Replace all datasource associations atomically
 - `POST /intelligence/topics/{id}/datasources/{datasource_id}` - Add a datasource association (idempotent)

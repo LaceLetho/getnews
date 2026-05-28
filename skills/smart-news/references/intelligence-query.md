@@ -171,10 +171,7 @@ List intelligence topics with pagination and filtering.
     {
       "id": "topic-uuid",
       "name": "Stablecoin Settlement Channels",
-      "description": "Research on stablecoin payment channels",
-      "enriched_summary": "LLM-generated deep-dive summary of findings",
       "finding_count": 5,
-      "enriched_at": "2026-05-18T06:00:00+00:00",
       "updated_at": "2026-05-18T06:30:00+00:00"
     }
   ],
@@ -195,7 +192,7 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 
 ## GET /intelligence/topics/{topic_id}
 
-Get full detail for a single topic including prompt versions, active findings, citations, merge availability, and recent run logs.
+Get topic metadata and merge availability. Findings and prompts are available via separate endpoints below.
 
 ### Response (200)
 
@@ -204,73 +201,10 @@ Get full detail for a single topic including prompt versions, active findings, c
   "topic": {
     "id": "topic-uuid",
     "name": "Stablecoin Settlement Channels",
-    "description": "Research on stablecoin payment channels",
-    "enriched_summary": "LLM-generated summary",
-    "source_channels": [],
-    "methods": null,
-    "vulnerabilities": null,
-    "latest_findings": [],
     "is_active": true,
-    "enriched_at": "2026-05-18T06:00:00+00:00",
     "updated_at": "2026-05-18T06:30:00+00:00"
   },
-  "prompt_versions": [
-    {
-      "id": "prompt-uuid",
-      "intelligence_topic_id": "topic-uuid",
-      "prompt_version": "v1.0",
-      "prompt_text": "Research prompt text...",
-      "schema_version": "v1.0",
-      "status": "active",
-      "created_by": "api",
-      "activated_by": "api",
-      "activation_notes": "Ready for daily research",
-      "created_at": "2026-05-18T10:00:00+00:00",
-      "activated_at": "2026-05-18T10:05:00+00:00",
-      "archived_at": null,
-      "updated_at": "2026-05-18T10:05:00+00:00",
-      "audit_history": []
-    }
-  ],
-  "current_prompt": { /* same shape as above, the active prompt */ },
-  "active_findings": [
-    {
-      "id": "finding-uuid",
-      "intelligence_topic_id": "topic-uuid",
-      "prompt_version_id": "prompt-uuid",
-      "finding_payload": { /* LLM-generated structured finding */ },
-      "confidence": 0.92,
-      "citations": [
-        {
-          "raw_item_id": "raw-uuid",
-          "source_type": "telegram_group",
-          "source_url": "https://t.me/example/123",
-          "published_at": "2026-05-18T05:00:00+00:00"
-        }
-      ],
-      "source_finding_ids": [],
-      "status": "active",
-      "found_at": "2026-05-18T06:00:00+00:00",
-      "created_at": "2026-05-18T06:00:00+00:00",
-      "updated_at": "2026-05-18T06:00:00+00:00"
-    }
-  ],
-  "citations": [ /* deduplicated list of all citations across active findings */ ],
-  "merge_available": false,
-  "recent_logs": [
-    {
-      "id": "log-uuid",
-      "run_type": "topic_research",
-      "status": "success",
-      "topic_id": "topic-uuid",
-      "entry_id": null,
-      "message": null,
-      "details": {},
-      "started_at": "2026-05-18T06:00:00+00:00",
-      "finished_at": "2026-05-18T06:00:01+00:00",
-      "created_at": "2026-05-18T06:00:01+00:00"
-    }
-  ]
+  "merge_available": false
 }
 ```
 
@@ -281,6 +215,96 @@ Returns `404` if the topic ID does not exist.
 ```bash
 curl -H "Authorization: Bearer ${API_KEY}" \
   "https://news.tradao.xyz/intelligence/topics/topic-uuid"
+```
+
+---
+
+## GET /intelligence/topics/{topic_id}/findings
+
+Return paginated active findings with citations. Each citation includes a `source_url` (resolved from raw items when available) for direct linking to original messages.
+
+### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `page` | integer | No | 1 | Page number (1-based) |
+| `page_size` | integer | No | 10 | Items per page |
+
+### Response (200)
+
+```json
+{
+  "findings": [
+    {
+      "id": "finding-uuid",
+      "intelligence_topic_id": "topic-uuid",
+      "prompt_version_id": "prompt-uuid",
+      "finding_payload": { /* LLM-generated structured finding */ },
+      "confidence": 0.92,
+      "citations": [
+        {
+          "message_id": "raw-uuid",
+          "message_snippet": "Original message text excerpt...",
+          "source": "telegram_group",
+          "published_at": "2026-05-18T05:00:00+00:00",
+          "source_url": "https://t.me/channel/123"
+        }
+      ],
+      "source_finding_ids": [],
+      "status": "active",
+      "found_at": "2026-05-18T06:00:00+00:00",
+      "created_at": "2026-05-18T06:00:00+00:00",
+      "updated_at": "2026-05-18T06:00:00+00:00"
+    }
+  ],
+  "total": 5,
+  "page": 1,
+  "page_size": 10
+}
+```
+
+### Example
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topics/topic-uuid/findings?page=1&page_size=10"
+```
+
+---
+
+## GET /intelligence/topics/{topic_id}/prompts
+
+Return all prompt versions and the currently active prompt for a topic.
+
+### Response (200)
+
+```json
+{
+  "current_prompt": {
+    "id": "prompt-uuid",
+    "intelligence_topic_id": "topic-uuid",
+    "prompt_version": "v1.0",
+    "prompt_text": "Research prompt text...",
+    "schema_version": "v1.0",
+    "status": "active",
+    "created_by": "api",
+    "activated_by": "api",
+    "activation_notes": "Ready for daily research",
+    "created_at": "2026-05-18T10:00:00+00:00",
+    "activated_at": "2026-05-18T10:05:00+00:00",
+    "archived_at": null,
+    "updated_at": "2026-05-18T10:05:00+00:00",
+    "audit_history": []
+  },
+  "prompt_versions": [ /* all versions, same shape as current_prompt */ ]
+}
+```
+
+### Example
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topics/topic-uuid/prompts"
 ```
 
 ---
@@ -334,195 +358,6 @@ Returns `404` if the topic ID does not exist.
 curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/archive" \
   -H "Authorization: Bearer ${API_KEY}"
 ```
-
----
-
-## GET /intelligence/topics/{topic_id}/runs
-
-List research run logs for a specific topic.
-
-### Query Parameters
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `run_type` | string | No | all types | Filter by run type |
-| `page` | integer | No | 1 | Page number |
-| `page_size` | integer | No | 20 | Items per page |
-
-### Response (200)
-
-```json
-{
-  "items": [
-    {
-      "id": "log-uuid",
-      "run_type": "topic_research",
-      "status": "success",
-      "topic_id": "topic-uuid",
-      "entry_id": null,
-      "message": null,
-      "details": {},
-      "started_at": "2026-05-18T06:00:00+00:00",
-      "finished_at": "2026-05-18T06:00:01+00:00",
-      "created_at": "2026-05-18T06:00:01+00:00"
-    }
-  ],
-  "page": 1,
-  "page_size": 20
-}
-```
-
-### Example
-
-```bash
-curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/topics/topic-uuid/runs?page=1&page_size=10"
-```
-
----
-
-## GET /intelligence/topic-runs
-
-List topic research run logs across all topics with optional filters.
-
-### Query Parameters
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `topic_id` | string | No | all topics | Filter by topic |
-| `run_type` | string | No | all types | Filter by run type |
-| `page` | integer | No | 1 | Page number |
-| `page_size` | integer | No | 20 | Items per page |
-
-### Response
-
-Same shape as `GET /intelligence/topics/{topic_id}/runs`.
-
-### Example
-
-```bash
-curl -H "Authorization: Bearer ${API_KEY}" \
-  "https://news.tradao.xyz/intelligence/topic-runs?run_type=topic_research&page=1&page_size=10"
-```
-
----
-
-## Topic-Datasource Association API
-
-Manage which Intelligence datasources feed each topic's scheduled research. Only datasources with `purpose = "intelligence"` can be associated. All association changes are atomic and validated in one transaction.
-
-### GET /intelligence/topics/{topic_id}/datasources
-
-List all datasource associations for a topic. Returns safe summaries with no `config_payload`.
-
-**Status Codes:**
-
-| Code | Meaning |
-|------|---------|
-| `200` | Association list returned |
-| `401` | Missing or invalid Bearer token |
-| `404` | Topic not found |
-
-**Response (200)**
-
-Returns `List[SafeDataSourceSummaryResponse]`:
-
-```json
-[
-  {
-    "id": "ds-uuid",
-    "source_type": "telegram_group",
-    "name": "Crypto Alpha",
-    "tags": ["alpha", "signals"]
-  }
-]
-```
-
-Returns `[]` if the topic has no associations.
-
-### PUT /intelligence/topics/{topic_id}/datasources
-
-Atomically replace all datasource associations for a topic. `PUT []` clears all associations.
-
-**Request Body:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `datasource_ids` | string[] | Yes | List of datasource IDs. Empty array clears all associations. |
-
-**Status Codes:**
-
-| Code | Meaning |
-|------|---------|
-| `200` | Associations replaced, returns updated list |
-| `400` | Non-intelligence datasource ID supplied (no partial update) |
-| `401` | Missing or invalid Bearer token |
-| `404` | Unknown topic or unknown datasource ID |
-
-**Example:**
-
-```bash
-curl -X PUT "https://news.tradao.xyz/intelligence/topics/topic-uuid/datasources" \
-  -H "Authorization: Bearer ${API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"datasource_ids": ["ds-uuid-1", "ds-uuid-2"]}'
-```
-
-To clear all associations:
-
-```bash
-curl -X PUT "https://news.tradao.xyz/intelligence/topics/topic-uuid/datasources" \
-  -H "Authorization: Bearer ${API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"datasource_ids": []}'
-```
-
-### POST /intelligence/topics/{topic_id}/datasources/{datasource_id}
-
-Idempotently add a datasource association. No-op if already associated.
-
-**Status Codes:**
-
-| Code | Meaning |
-|------|---------|
-| `200` | Association added (or already present), returns updated list |
-| `400` | Non-intelligence datasource ID supplied |
-| `401` | Missing or invalid Bearer token |
-| `404` | Unknown topic or unknown datasource ID |
-
-**Example:**
-
-```bash
-curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/datasources/ds-uuid" \
-  -H "Authorization: Bearer ${API_KEY}"
-```
-
-### DELETE /intelligence/topics/{topic_id}/datasources/{datasource_id}
-
-Idempotently remove a datasource association. No-op if already absent.
-
-**Status Codes:**
-
-| Code | Meaning |
-|------|---------|
-| `200` | Association removed (or already absent), returns updated list |
-| `401` | Missing or invalid Bearer token |
-| `404` | Unknown topic |
-
-**Example:**
-
-```bash
-curl -X DELETE "https://news.tradao.xyz/intelligence/topics/topic-uuid/datasources/ds-uuid" \
-  -H "Authorization: Bearer ${API_KEY}"
-```
-
-### Association Behavior Notes
-
-- **New topics default empty**: created via `POST /intelligence/topics` (with or without optional `datasource_ids`) have no associations unless explicitly specified.
-- **Empty association skips research**: active topics with no associations are skipped by the daily scheduler — no LLM call, no checkpoint advance.
-- **No automatic backfill**: adding or removing associations does not retroactively affect completed research runs. Changes take effect on the next scheduled cycle.
-- **Only Intelligence datasources**: linking a `news` datasource returns `400` with no partial update.
-- **Datasource deletion guarded**: deleting a datasource associated with any topic returns `409 Conflict`.
 
 ---
 

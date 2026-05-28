@@ -709,10 +709,24 @@ def test_topic_detail_includes_findings(monkeypatch: pytest.MonkeyPatch) -> None
         assert resp.status_code == 200, resp.text
         data = resp.json()
         assert data["topic"]["id"] == topic_id
-        assert len(data["prompt_versions"]) > 0
-        assert data["current_prompt"] is not None
-        assert len(data["active_findings"]) == len(finding_ids)
-        assert data["active_findings"][0]["id"] in finding_ids
+        assert isinstance(data["merge_available"], bool)
+
+        findings_resp = client.get(
+            f"/intelligence/topics/{topic_id}/findings", headers=_authorized()
+        )
+        assert findings_resp.status_code == 200, findings_resp.text
+        findings_data = findings_resp.json()
+        assert len(findings_data["findings"]) == len(finding_ids)
+        assert findings_data["findings"][0]["id"] in finding_ids
+        assert findings_data["findings"][0]["citations"][0]["source_url"] == ""
+
+        prompts_resp = client.get(
+            f"/intelligence/topics/{topic_id}/prompts", headers=_authorized()
+        )
+        assert prompts_resp.status_code == 200, prompts_resp.text
+        prompts_data = prompts_resp.json()
+        assert len(prompts_data["prompt_versions"]) > 0
+        assert prompts_data["current_prompt"] is not None
 
 
 def test_merge_preview_and_accept_api_removed(monkeypatch: pytest.MonkeyPatch) -> None:
