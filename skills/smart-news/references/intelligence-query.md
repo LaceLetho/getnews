@@ -28,6 +28,7 @@ Create a new intelligence topic with an LLM-generated draft prompt.
 |-------|------|----------|-------------|
 | `theme` | string | Yes | 1–500 characters |
 | `source_context` | object | No | Optional context for prompt generation |
+| `datasource_ids` | string[] | No | Optional list of datasource IDs to associate. Omitted = no associations. |
 
 ### Status Codes
 
@@ -406,6 +407,125 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 
 ---
 
+## Topic-Datasource Association API
+
+Manage which Intelligence datasources feed each topic's scheduled research. Only datasources with `purpose = "intelligence"` can be associated. All association changes are atomic and validated in one transaction.
+
+### GET /intelligence/topics/{topic_id}/datasources
+
+List all datasource associations for a topic. Returns safe summaries with no `config_payload`.
+
+**Status Codes:**
+
+| Code | Meaning |
+|------|---------|
+| `200` | Association list returned |
+| `401` | Missing or invalid Bearer token |
+| `404` | Topic not found |
+
+**Response (200)**
+
+Returns `List[SafeDataSourceSummaryResponse]`:
+
+```json
+[
+  {
+    "id": "ds-uuid",
+    "source_type": "telegram_group",
+    "name": "Crypto Alpha",
+    "tags": ["alpha", "signals"]
+  }
+]
+```
+
+Returns `[]` if the topic has no associations.
+
+### PUT /intelligence/topics/{topic_id}/datasources
+
+Atomically replace all datasource associations for a topic. `PUT []` clears all associations.
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `datasource_ids` | string[] | Yes | List of datasource IDs. Empty array clears all associations. |
+
+**Status Codes:**
+
+| Code | Meaning |
+|------|---------|
+| `200` | Associations replaced, returns updated list |
+| `400` | Non-intelligence datasource ID supplied (no partial update) |
+| `401` | Missing or invalid Bearer token |
+| `404` | Unknown topic or unknown datasource ID |
+
+**Example:**
+
+```bash
+curl -X PUT "https://news.tradao.xyz/intelligence/topics/topic-uuid/datasources" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"datasource_ids": ["ds-uuid-1", "ds-uuid-2"]}'
+```
+
+To clear all associations:
+
+```bash
+curl -X PUT "https://news.tradao.xyz/intelligence/topics/topic-uuid/datasources" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"datasource_ids": []}'
+```
+
+### POST /intelligence/topics/{topic_id}/datasources/{datasource_id}
+
+Idempotently add a datasource association. No-op if already associated.
+
+**Status Codes:**
+
+| Code | Meaning |
+|------|---------|
+| `200` | Association added (or already present), returns updated list |
+| `400` | Non-intelligence datasource ID supplied |
+| `401` | Missing or invalid Bearer token |
+| `404` | Unknown topic or unknown datasource ID |
+
+**Example:**
+
+```bash
+curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/datasources/ds-uuid" \
+  -H "Authorization: Bearer ${API_KEY}"
+```
+
+### DELETE /intelligence/topics/{topic_id}/datasources/{datasource_id}
+
+Idempotently remove a datasource association. No-op if already absent.
+
+**Status Codes:**
+
+| Code | Meaning |
+|------|---------|
+| `200` | Association removed (or already absent), returns updated list |
+| `401` | Missing or invalid Bearer token |
+| `404` | Unknown topic |
+
+**Example:**
+
+```bash
+curl -X DELETE "https://news.tradao.xyz/intelligence/topics/topic-uuid/datasources/ds-uuid" \
+  -H "Authorization: Bearer ${API_KEY}"
+```
+
+### Association Behavior Notes
+
+- **New topics default empty**: created via `POST /intelligence/topics` (with or without optional `datasource_ids`) have no associations unless explicitly specified.
+- **Empty association skips research**: active topics with no associations are skipped by the daily scheduler — no LLM call, no checkpoint advance.
+- **No automatic backfill**: adding or removing associations does not retroactively affect completed research runs. Changes take effect on the next scheduled cycle.
+- **Only Intelligence datasources**: linking a `news` datasource returns `400` with no partial update.
+- **Datasource deletion guarded**: deleting a datasource associated with any topic returns `409 Conflict`.
+
+---
+
 ## Status Codes
 
 | Status | Meaning |
@@ -434,6 +554,8 @@ Canonical sources for this reference:
 1. `crypto_news_analyzer/api_server.py` — route definitions and response models
 2. `crypto_news_analyzer/intelligence/topic_prompts.py` — prompt workflow service
 3. `crypto_news_analyzer/intelligence/topic_findings.py` — findings and merge service
-4. `crypto_news_analyzer/domain/models.py` — `TopicLifecycleStatus` enum
+4. `crypto_news_analyzer/domain/models.py` — `TopicLifecycleStatus` enum and `SafeDataSourceSummary`
+5. `crypto_news_analyzer/domain/repositories.py` — `IntelligenceRepository` datasource association contract
+6. `tests/intelligence/test_topic_datasource_api.py` — association API contract tests
 
 When sources disagree, trust code over prose.

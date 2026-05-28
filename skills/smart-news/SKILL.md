@@ -19,6 +19,7 @@ Typical triggers:
 - Poll an API job until it finishes and then fetch the final result
 - Create, list, or delete datasources through the HTTP API
 - Query and manage intelligence topics through the topic-first API (create, revise, confirm, merge, detail, list, pause, archive)
+- View and manage topic-datasource associations (get, set, add, remove) to scope topic research
 - List intelligence topic research run logs per-topic or globally
 - Check service health before or after an API workflow
 
@@ -158,6 +159,10 @@ Supported HTTP routes:
 - `POST /intelligence/topics/{id}/archive` - Archive topic
 - `GET /intelligence/topics/{id}/runs` - List per-topic research run logs
 - `GET /intelligence/topic-runs` - List global topic research run logs
+- `GET /intelligence/topics/{id}/datasources` - List datasource associations for a topic
+- `PUT /intelligence/topics/{id}/datasources` - Replace all datasource associations atomically
+- `POST /intelligence/topics/{id}/datasources/{datasource_id}` - Add a datasource association (idempotent)
+- `DELETE /intelligence/topics/{id}/datasources/{datasource_id}` - Remove a datasource association (idempotent)
 
 ## Non-Goals
 
@@ -172,6 +177,6 @@ These surfaces exist but are intentionally excluded from this API-focused skill.
 
 ## Updating
 
-Keep this skill aligned with the live HTTP routes in `api_server.py`, the AI Analyze API Guide at `docs/AI_ANALYZE_API_GUIDE.md`, and the semantic search guide at `docs/SEMANTIC_SEARCH_API_GUIDE.md`.
+Keep this skill aligned with the live HTTP routes in `api_server.py`, the AI Analyze API Guide at `docs/AI_ANALYZE_API_GUIDE.md`, the semantic search guide at `docs/SEMANTIC_SEARCH_API_GUIDE.md`, and the domain repository contracts in `domain/repositories.py`.
 
 When documentation disagrees with implementation, trust the code and tests over prose docs. Source precedence: code first, then reference files, then guides.

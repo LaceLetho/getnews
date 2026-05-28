@@ -197,7 +197,17 @@ If there are ingestion jobs for this datasource (matched by `source_type:source_
 }
 ```
 
-To delete a datasource with active jobs, either wait for the jobs to complete or cancel them first.
+**Topic-Datasource Associations:**
+If the datasource is associated with any intelligence topic via `intelligence_topic_datasources`, the delete operation is rejected. All associations must be removed first.
+
+**Error response:**
+```json
+{
+  "detail": "Datasource 'ds-uuid' is associated with 3 topic(s) and must be unbound first"
+}
+```
+
+To delete a datasource with topic associations, either use the topic datasource API to remove the associations, or clear all associations for each topic before deleting the datasource.
 
 ## Intelligence Datasource Types
 
@@ -300,6 +310,7 @@ Collects topics and replies from V2EX nodes using the official API.
 | 404 | Datasource not found | "Datasource not found" |
 | 409 | Duplicate datasource | "Datasource 'type:name' already exists" |
 | 409 | Datasource in use | "Cannot delete datasource 'type:name' while matching ingestion jobs are active" |
+| 409 | Datasource associated with topics | "Datasource 'id' is associated with N topic(s) and must be unbound first" |
 | 422 | Invalid payload structure | Pydantic validation error details |
 | 422 | Invalid semantic payload | e.g., "x.type must be one of: list, timeline" |
 | 422 | Tag limit exceeded | "tags cannot contain more than 16 unique values" |
