@@ -80,6 +80,13 @@ def initialize_intelligence_tables(
     else:
         cursor.execute("DROP INDEX IF EXISTS idx_intelligence_raw_items_dedupe")
 
+    # ── 012: embedding columns on raw_intelligence_items ─────────────────
+    if backend == "postgres":
+        for col in ["embedding vector(1536)", "embedding_model TEXT", "embedding_updated_at TIMESTAMPTZ"]:
+            cursor.execute(
+                f"ALTER TABLE raw_intelligence_items ADD COLUMN IF NOT EXISTS {col}"
+            )
+
     for statement in [
         (
             "CREATE INDEX IF NOT EXISTS idx_intelligence_raw_items_source "
@@ -129,6 +136,18 @@ def initialize_intelligence_tables(
         ),
     ]:
         cursor.execute(statement)
+
+    if backend == "postgres":
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_content_embedding_hnsw "
+            "ON content_items USING hnsw (embedding vector_cosine_ops) "
+            "WHERE embedding IS NOT NULL"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_intelligence_embedding_hnsw "
+            "ON raw_intelligence_items USING hnsw (embedding vector_cosine_ops) "
+            "WHERE embedding IS NOT NULL"
+        )
 
 
 def _initialize_topic_datasource_schema(

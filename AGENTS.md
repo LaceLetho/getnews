@@ -6,8 +6,10 @@ Guidance for AI coding agents working on the Cryptocurrency News Analyzer projec
 
 This is a **dual-domain monorepo** (`crypto_news_analyzer`). Two bounded systems coexist in one package, sharing PostgreSQL, LLM/embedding infrastructure, and FastAPI/Telegram surfaces:
 
-1. **News** — RSS/X/REST crawling, LLM analysis of ContentItem, structured reports, semantic search
+1. **News** — RSS/X/REST crawling, LLM analysis of ContentItem, structured reports
 2. **Intelligence** — Telegram/V2EX group/forum collection, topic-driven research over RawIntelligenceItem, AI prompt lifecycle (create/revise/confirm/research/merge/archive)
+
+Shared: unified semantic search across both ContentItem and RawIntelligenceItem via pgvector HNSW.
 
 Current Phase 1 state:
 
@@ -30,8 +32,8 @@ This repo is a single package (NOT two repos or two services). The two domains s
 | Purpose | Crawl crypto news, produce structured analysis reports | Collect group/forum messages, drive topic research with AI |
 | Primary Data Models | ContentItem, AnalysisResult | RawIntelligenceItem, IntelligenceTopic, TopicPrompt, TopicFinding |
 | Source Types | rss, x, rest_api (DataSourcePurpose.NEWS) | telegram_group, v2ex (DataSourcePurpose.INTELLIGENCE) |
-| API Surfaces | /analyze, /semantic-search, /datasources | /intelligence/* |
-| Telegram Commands | /news_analyze, /news_market, /news_semantic_search, /news_tokens, /datasource_* | /topic_* |
+| API Surfaces | /analyze, /semantic-search (unified, cross-domain), /datasources | /intelligence/* |
+| Telegram Commands | /news_analyze, /news_market, /semantic_search (canonical), /news_semantic_search (alias), /news_tokens, /datasource_* | /topic_* |
 | Primary Modules | analyzers/, reporters/, semantic_search/ | intelligence/ (pipeline, topic_research, prompts, findings) |
 | Shared Infrastructure | execution_coordinator.py, storage/, config/, models.py, domain/, utils/, PostgreSQL, pgvector, LLM/embedding providers | |
 
@@ -43,15 +45,17 @@ AI agents MUST observe the following rules when working on this codebase:
 
 1. **Never mix ContentItem with RawIntelligenceItem.** These live in different domains. ContentItem belongs to the News domain (crawled from RSS/X/REST). RawIntelligenceItem belongs to the Intelligence domain (collected from Telegram/V2EX). Do not pass one where the other is expected, and do not write code that couples them.
 
-2. **News commands are for ContentItem analysis.** The `/news_analyze`, `/news_market`, `/news_semantic_search`, `/news_tokens` Telegram commands and their HTTP equivalents operate on ContentItem data. They produce AnalysisResult and Markdown reports.
+2. **News commands are for ContentItem analysis.** The `/news_analyze`, `/news_market`, `/news_tokens` Telegram commands and their HTTP equivalents operate on ContentItem data. They produce AnalysisResult and Markdown reports.
 
-3. **Intelligence commands are for topic research.** The `/topic_*` Telegram commands and `/intelligence/*` HTTP endpoints operate on RawIntelligenceItem, IntelligenceTopic, TopicPrompt, and TopicFinding. They drive a prompt lifecycle: create, revise, confirm, research, merge, archive.
+3. **Semantic search is unified across both domains.** `/semantic_search` (canonical) and `/news_semantic_search` (deprecated alias) retrieve from both `content_items` and `raw_intelligence_items` via UNION ALL, returning `UnifiedSemanticSearchHit` DTOs. The HTTP `/semantic-search` endpoint returns a `source_breakdown` with per-domain hit counts. Do NOT pass `RawIntelligenceItem` into News analyzers — the DTO is a shared contract, not a domain model mix. The domain boundary between ContentItem and RawIntelligenceItem remains in place for all analysis pipelines.
 
-4. **The `ingestion` runtime mode runs BOTH domains.** When the system is started with `--mode ingestion`, it runs the news crawling loop AND the intelligence collection loop AND the daily topic research scheduler. These are parallel concerns, not alternatives.
+4. **Intelligence commands are for topic research.** The `/topic_*` Telegram commands and `/intelligence/*` HTTP endpoints operate on RawIntelligenceItem, IntelligenceTopic, TopicPrompt, and TopicFinding. They drive a prompt lifecycle: create, revise, confirm, research, merge, archive.
 
-5. **Deprecated entry-based intelligence is compatibility-only.** EntryType, ExtractionObservation, and CanonicalIntelligenceEntry belong to the old entry extraction pipeline. These models remain in the codebase for backward compatibility with deprecated modules but are NOT wired into the active runtime. The active intelligence path is topic-only, managed through IntelligenceTopic, TopicPrompt, TopicFinding, and TopicResearchRun.
+5. **The `ingestion` runtime mode runs BOTH domains.** When the system is started with `--mode ingestion`, it runs the news crawling loop AND the intelligence collection loop AND the daily topic research scheduler. These are parallel concerns, not alternatives.
 
-6. **Do NOT recommend legacy api-server as primary runtime.** The `api-server` mode is deprecated. Always direct users to `analysis-service`, `api-only`, or `ingestion`.
+6. **Deprecated entry-based intelligence is compatibility-only.** EntryType, ExtractionObservation, and CanonicalIntelligenceEntry belong to the old entry extraction pipeline. These models remain in the codebase for backward compatibility with deprecated modules but are NOT wired into the active runtime. The active intelligence path is topic-only, managed through IntelligenceTopic, TopicPrompt, TopicFinding, and TopicResearchRun.
+
+7. **Do NOT recommend legacy api-server as primary runtime.** The `api-server` mode is deprecated. Always direct users to `analysis-service`, `api-only`, or `ingestion`.
 
 ## Build/Lint/Test Commands
 

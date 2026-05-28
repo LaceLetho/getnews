@@ -361,6 +361,54 @@ curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/archive" \
 
 ---
 
+## GET /intelligence/topics/{topic_id}/runs
+
+Get paginated research run logs for a specific topic. Each run includes the prompt version used, execution status, findings count, and timestamps.
+
+### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `page` | integer | No | 1 | Page number (1-based) |
+| `page_size` | integer | No | 10 | Items per page |
+
+### Response (200)
+
+Returns paginated list of `TopicResearchRun` objects.
+
+### Example
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topics/topic-uuid/runs?page=1&page_size=10"
+```
+
+---
+
+## GET /intelligence/topic-runs
+
+Get paginated research run logs across all topics. Useful for monitoring overall research activity.
+
+### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `page` | integer | No | 1 | Page number (1-based) |
+| `page_size` | integer | No | 10 | Items per page |
+
+### Response (200)
+
+Returns paginated list of `TopicResearchRun` objects across all topics.
+
+### Example
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topic-runs?page=1&page_size=10"
+```
+
+---
+
 ## Status Codes
 
 | Status | Meaning |

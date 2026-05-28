@@ -15,7 +15,7 @@ Use this skill when you need to call `https://news.tradao.xyz` or a compatible p
 Typical triggers:
 
 - Run asynchronous crypto news analysis over a time window
-- Run asynchronous semantic search for a freeform topic query
+- Run asynchronous unified semantic search (News + Intelligence) for a freeform topic query
 - Poll an API job until it finishes and then fetch the final result
 - Create, list, or delete datasources through the HTTP API
 - Query and manage intelligence topics through the topic-first API (create, revise, confirm, merge, detail, list, pause, archive)
@@ -37,7 +37,7 @@ Jobs move through these states: `queued`, `running`, `completed`, `failed`.
 
 Semantic workflow: `POST /semantic-search` -> `GET /semantic-search/{job_id}` -> `GET /semantic-search/{job_id}/result`
 
-Semantic search requires PostgreSQL with pgvector. SQLite runtime is unsupported.
+Unified semantic search retrieves from both `content_items` and `raw_intelligence_items` via PostgreSQL with pgvector HNSW indexes (`embedding vector(1536)`). SQLite runtime is unsupported.
 
 For detailed guides, see:
 
@@ -76,6 +76,8 @@ Poll the status endpoint until the job reaches `completed` or `failed`. Do not e
 
 ## Semantic Search
 
+Unified semantic search retrieves from both News (`content_items`) and Intelligence (`raw_intelligence_items`) domains via UNION ALL over pgvector HNSW indexes. The response includes a `source_breakdown` with per-domain `matched_count` and `retained_count`. Each hit carries a `source_domain` discriminator (`"news"` or `"intelligence"`).
+
 Create a semantic search job by posting to `/semantic-search` with `hours`, `query`, and `user_id`. The server responds with `202 Accepted`, a `job_id`, `status_url`, and `result_url`. Semantic search job IDs start with `semantic_search_job_`.
 
 Poll the status endpoint until the job reaches `completed` or `failed`, then fetch the report from the result URL. Use the `status` field as the source of truth for lifecycle state; `success` becomes `true` only when the job is completed successfully.
@@ -90,12 +92,13 @@ Request rules:
 Operational constraints:
 
 - Semantic search is PostgreSQL-only and returns `503` when the backend does not support pgvector
+- Both `content_items` and `raw_intelligence_items` tables have `embedding vector(1536)` columns with HNSW indexes (`idx_content_embedding_hnsw` and `idx_intelligence_embedding_hnsw`)
 - The API uses vector similarity over stored content embeddings and may combine that with keyword retrieval
 - Query decomposition is capped at 4 subqueries
-- Final retained results are capped at 200 unique items
+- Final retained results are capped at 200 unique items per domain before merging
 - Embedding generation requires `OPENAI_API_KEY`; query planning and report synthesis require `KIMI_API_KEY` or `GROK_API_KEY`
 
-The result body returns a Markdown report with `query`, `normalized_intent`, `matched_count`, `retained_count`, `time_window_hours`, and `report`.
+The result body returns a Markdown report with `query`, `normalized_intent`, `matched_count`, `retained_count`, `time_window_hours`, `source_breakdown`, and `report`.
 
 ## Datasource Management
 
@@ -123,6 +126,8 @@ Synchronous topic workflow endpoints:
 - `GET /intelligence/topics/{topic_id}/prompts` — Get prompt versions and current active prompt
 - `POST /intelligence/topics/{topic_id}/pause` — Pause topic research
 - `POST /intelligence/topics/{topic_id}/archive` — Archive a topic
+- `GET /intelligence/topics/{topic_id}/runs` — List topic research run logs
+- `GET /intelligence/topic-runs` — List all topic research runs globally
 
 These endpoints are synchronous; there is no async job/poll flow. Results return immediately.
 
@@ -163,6 +168,8 @@ Supported HTTP routes:
 - `PUT /intelligence/topics/{id}/datasources` - Replace all datasource associations atomically
 - `POST /intelligence/topics/{id}/datasources/{datasource_id}` - Add a datasource association (idempotent)
 - `DELETE /intelligence/topics/{id}/datasources/{datasource_id}` - Remove a datasource association (idempotent)
+- `GET /intelligence/topics/{id}/runs` - List topic research run logs
+- `GET /intelligence/topic-runs` - List all topic research runs globally
 
 ## Non-Goals
 

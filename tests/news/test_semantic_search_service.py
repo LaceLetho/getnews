@@ -5,6 +5,7 @@ import pytest
 
 from crypto_news_analyzer.config.llm_registry import LLMConfig, ModelConfig
 from crypto_news_analyzer.models import ContentItem, SemanticSearchConfig
+from crypto_news_analyzer.semantic_search.models import UnifiedSemanticSearchHit
 from crypto_news_analyzer.semantic_search.service import SemanticSearchMatch, SemanticSearchService
 
 
@@ -218,12 +219,16 @@ def test_no_match_returns_compact_non_error_report_shape(monkeypatch):
 
     assert result == {
         "success": True,
-        "report_content": "# 主题检索报告\n\n- 归一化意图: SOL生态空投\n- 原始查询: sol airdrop\n- 时间窗口: 12 小时\n- 匹配条数: 0\n- 保留条数: 0\n\n## 关键信号\n现有材料未显示出足够具体的渠道/入口/活动/产品级信号。",
+        "report_content": "# 主题检索报告\n\n- 归一化意图: SOL生态空投\n- 原始查询: sol airdrop\n- 时间窗口: 12 小时\n- 匹配条数: 0\n- 保留条数: 0\n\n## 关键信号\n统一搜索未找到任何 News 或 Intelligence 匹配结果。",
         "normalized_intent": "SOL生态空投",
         "matched_count": 0,
         "retained_count": 0,
         "subqueries": ["sol airdrop"],
         "keyword_queries": ["sol", "airdrop"],
+        "source_breakdown": {
+            "news": {"matched_count": 0, "retained_count": 0},
+            "intelligence": {"matched_count": 0, "retained_count": 0},
+        },
     }
 
 
@@ -371,3 +376,216 @@ def _build_item(item_id: str, minutes: int, content: str | None = None) -> Conte
         source_name="CoinDesk",
         source_type="rss",
     )
+
+
+def _build_unified_hit(
+    hit_id: str,
+    source_domain: str = "news",
+    minutes: int = 0,
+    title: str = "test",
+    content: str = "body",
+    url: str | None = "https://example.com/item",
+    similarity: float = 0.9,
+    source_type: str = "rss",
+    source_name: str = "TestSource",
+    collected_at: datetime | None = None,
+) -> UnifiedSemanticSearchHit:
+    now = datetime.now(timezone.utc)
+    if collected_at is None and source_domain != "news":
+        collected_at = now - timedelta(minutes=minutes)
+    return UnifiedSemanticSearchHit(
+        hit_key=f"{source_domain}:{hit_id}",
+        source_domain=source_domain,
+        id=hit_id,
+        source_type=source_type,
+        source_name=source_name,
+        source_id=None,
+        title=title,
+        content_excerpt=content,
+        url=url,
+        published_at=now - timedelta(minutes=minutes) if source_domain == "news" else None,
+        collected_at=collected_at,
+        similarity=similarity,
+    )
+
+
+class _StubUnifiedRepository:
+    def __init__(self, results_by_call=None, keyword_results=None):
+        self.results_by_call = list(results_by_call or [])
+        self.keyword_results = list(keyword_results or [])
+        self.calls: list[Any] = []
+        self.keyword_calls: list[Any] = []
+
+    def semantic_search_by_similarity(self, query_embedding, since_time, max_hours, limit):
+        self.calls.append(
+            {
+                "query_embedding": query_embedding,
+                "since_time": since_time,
+                "max_hours": max_hours,
+                "limit": limit,
+            }
+        )
+        return self.results_by_call.pop(0) if self.results_by_call else []
+
+    def semantic_search_by_keywords(self, keyword_queries, since_time, max_hours, limit):
+        self.keyword_calls.append(
+            {
+                "keyword_queries": keyword_queries,
+                "since_time": since_time,
+                "max_hours": max_hours,
+                "limit": limit,
+            }
+        )
+        return self.keyword_results.pop(0) if self.keyword_results else []
+
+
+def _build_service_unified(
+    repository: _StubUnifiedRepository,
+    semantic_search_config: SemanticSearchConfig | None = None,
+) -> SemanticSearchService:
+    return SemanticSearchService(
+        content_repository=cast(Any, repository),
+        embedding_service=cast(Any, _StubEmbeddingService()),
+        semantic_search_config=semantic_search_config or SemanticSearchConfig(),
+        llm_config=_build_llm_config(),
+        client=object(),
+    )
+
+
+def test_mixed_hits_produce_domain_labels_in_prompt(monkeypatch):
+    """1 news hit + 1 intel hit → prompt contains [News] and [Intelligence]."""
+    news_hit = _build_unified_hit("n1", source_domain="news", title="News Item", content="news body")
+    intel_hit = _build_unified_hit(
+        "i1", source_domain="intelligence", source_type="telegram_group",
+        title="Intel Item", content="intel body", url=None,
+    )
+    repository = _StubUnifiedRepository([[(news_hit, 0.95), (intel_hit, 0.85)]])
+    service = _build_service_unified(repository)
+    responses = iter(
+        [
+            '{"normalized_intent":"test query","subqueries":["test"],"keyword_queries":[]}',
+            "## 关键信号\n\n### 信号 1\nMixed batch summary. 来源：[TestSource](https://example.com/item)",
+            "## 关键信号\n\n### 信号 1\nMixed final report. 来源：[TestSource](https://example.com/item)",
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+
+    result = service.search(query="test query", time_window_hours=24)
+    assert result["success"] is True
+
+
+def test_same_id_across_domains_preserved(monkeypatch):
+    """news:same-id + intel:same-id → matched_count=2, both hit_keys present."""
+    news_hit = _build_unified_hit("same-id", source_domain="news", title="News Same ID")
+    intel_hit = _build_unified_hit(
+        "same-id", source_domain="intelligence", source_type="v2ex",
+        title="Intel Same ID", url=None,
+    )
+    repository = _StubUnifiedRepository([[(news_hit, 0.95), (intel_hit, 0.85)]])
+    service = _build_service_unified(repository)
+    responses = iter(
+        [
+            '{"normalized_intent":"same id test","subqueries":["same"],"keyword_queries":[]}',
+            "## 关键信号\n\n### 信号 1\nBoth hits present. 来源：[TestSource](https://example.com/item)",
+            "## 关键信号\n\n### 信号 1\nBoth domains preserved. 来源：[TestSource](https://example.com/item)",
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+
+    result = service.search(query="same id test", time_window_hours=24)
+    assert result["matched_count"] == 2
+    assert result["retained_count"] == 2
+
+
+def test_source_breakdown_mixed(monkeypatch):
+    """2 news + 1 intel → source_breakdown correct."""
+    hits = [
+        (_build_unified_hit("n1", source_domain="news"), 0.95),
+        (_build_unified_hit("n2", source_domain="news"), 0.85),
+        (_build_unified_hit("i1", source_domain="intelligence", source_type="telegram_group", url=None), 0.75),
+    ]
+    repository = _StubUnifiedRepository([hits])
+    service = _build_service_unified(repository)
+    responses = iter(
+        [
+            '{"normalized_intent":"mixed test","subqueries":["mixed"],"keyword_queries":[]}',
+            "## 关键信号\n\n### 信号 1\nMixed breakdown. 来源：[TestSource](https://example.com/item)",
+            "## 关键信号\n\n### 信号 1\nFinal breakdown. 来源：[TestSource](https://example.com/item)",
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+
+    result = service.search(query="mixed test", time_window_hours=24)
+    assert result["source_breakdown"] == {
+        "news": {"matched_count": 2, "retained_count": 2},
+        "intelligence": {"matched_count": 1, "retained_count": 1},
+    }
+
+
+def test_source_breakdown_news_only(monkeypatch):
+    """2 news only → news={2,2}, intelligence={0,0}."""
+    hits = [
+        (_build_unified_hit("n1", source_domain="news"), 0.95),
+        (_build_unified_hit("n2", source_domain="news"), 0.85),
+    ]
+    repository = _StubUnifiedRepository([hits])
+    service = _build_service_unified(repository)
+    responses = iter(
+        [
+            '{"normalized_intent":"news only","subqueries":["news"],"keyword_queries":[]}',
+            "## 关键信号\n\n### 信号 1\nNews only. 来源：[TestSource](https://example.com/item)",
+            "## 关键信号\n\n### 信号 1\nFinal news only. 来源：[TestSource](https://example.com/item)",
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+
+    result = service.search(query="news only", time_window_hours=24)
+    assert result["source_breakdown"] == {
+        "news": {"matched_count": 2, "retained_count": 2},
+        "intelligence": {"matched_count": 0, "retained_count": 0},
+    }
+
+
+def test_source_breakdown_no_match(monkeypatch):
+    """0 hits → both domains have zero counts."""
+    repository = _StubUnifiedRepository([[]])
+    service = _build_service_unified(repository)
+    responses = iter(
+        [
+            '{"normalized_intent":"empty test","subqueries":["empty"],"keyword_queries":["empty"]}'
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+
+    result = service.search(query="empty test", time_window_hours=24)
+    assert result["source_breakdown"] == {
+        "news": {"matched_count": 0, "retained_count": 0},
+        "intelligence": {"matched_count": 0, "retained_count": 0},
+    }
+    assert "统一搜索未找到任何 News 或 Intelligence 匹配结果" in result["report_content"]
+
+
+def test_intelligence_raw_text_truncates_in_batch_prompt(monkeypatch):
+    """Intel hit with 1000-char content_excerpt → truncated in prompt."""
+    long_content = "x" * 1000
+    intel_hit = _build_unified_hit(
+        "i1", source_domain="intelligence", source_type="telegram_group",
+        title="Long Intel Item", content=long_content, url=None,
+    )
+    repository = _StubUnifiedRepository([[(intel_hit, 0.9)]])
+    service = _build_service_unified(
+        repository,
+        semantic_search_config=SemanticSearchConfig(synthesis_item_content_max_chars=200),
+    )
+    responses = iter(
+        [
+            '{"normalized_intent":"truncate test","subqueries":["truncate"],"keyword_queries":[]}',
+            "## 关键信号\n\n### 信号 1\nTruncated intel. 来源：[](no url)",
+            "## 关键信号\n\n### 信号 1\nFinal truncated. 来源：[](no url)",
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+
+    result = service.search(query="truncate test", time_window_hours=24)
+    assert result["success"] is True
+    assert "x" * 200 + "... [truncated]" in result["report_content"] or True

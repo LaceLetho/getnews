@@ -5,6 +5,8 @@
 负责SQLite数据库的管理，包括数据存储、去重、时间过滤和清理机制。
 """
 
+from __future__ import annotations
+
 import sqlite3
 import os
 import json
@@ -1235,6 +1237,108 @@ class DataManager:
                 conn.commit()
                 return updated
 
+    def get_raw_intelligence_items_missing_embeddings(
+        self,
+        limit: int,
+        exclude_ids: Optional[List[str]] = None,
+        intelligence_days: int = 7,
+    ) -> List[Dict[str, Any]]:
+        """Fetch raw_intelligence_items with NULL embedding, within N days, with non-empty raw_text.
+
+        Args:
+            limit: Maximum number of rows to return.
+            exclude_ids: IDs to exclude from results (e.g. previously failed rows).
+            intelligence_days: Only include rows with collected_at within this many days.
+
+        Returns:
+            List of dicts with id, raw_text, collected_at, source_type.
+        """
+        self._ensure_semantic_search_supported("intelligence embedding fetch")
+
+        bounded_limit = max(1, limit)
+        excluded_ids = [cid for cid in (exclude_ids or []) if cid]
+
+        cutoff = datetime.utcnow() - timedelta(days=intelligence_days)
+
+        exclusion_sql = ""
+        params: List[Any] = [cutoff]
+        if excluded_ids:
+            placeholders = ", ".join("?" for _ in excluded_ids)
+            exclusion_sql = f" AND id NOT IN ({placeholders})"
+            params.extend(excluded_ids)
+        params.append(bounded_limit)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                self._sql("""
+                SELECT id, raw_text, collected_at, source_type
+                FROM raw_intelligence_items
+                WHERE embedding IS NULL
+                  AND collected_at >= ?
+                  AND raw_text IS NOT NULL
+                  AND TRIM(raw_text) != ''
+                {exclusion_sql}
+                ORDER BY collected_at DESC
+                LIMIT ?
+                """.format(exclusion_sql=exclusion_sql)),
+                tuple(params),
+            )
+            rows: List[Dict[str, Any]] = []
+            for row in cursor.fetchall():
+                rows.append(
+                    {
+                        "id": row["id"],
+                        "raw_text": row["raw_text"],
+                        "collected_at": row["collected_at"],
+                        "source_type": row["source_type"],
+                    }
+                )
+            return rows
+
+    def update_raw_intelligence_item_embedding(
+        self, content_id: str, embedding: List[float], model: str
+    ) -> bool:
+        """Persist embedding for a raw_intelligence_items row (idempotent: only if NULL).
+
+        Args:
+            content_id: The row id.
+            embedding: Embedding vector.
+            model: Embedding model name.
+
+        Returns:
+            True if a row was updated, False otherwise.
+        """
+        self._ensure_semantic_search_supported("intelligence embedding persistence")
+
+        if not embedding:
+            raise ValueError("embedding cannot be empty")
+        if not model or not model.strip():
+            raise ValueError("model cannot be empty")
+
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    self._sql("""
+                    UPDATE raw_intelligence_items
+                    SET embedding = CAST(? AS vector),
+                        embedding_model = ?,
+                        embedding_updated_at = ?
+                    WHERE id = ?
+                      AND embedding IS NULL
+                    """),
+                    (
+                        self._pgvector_literal(embedding),
+                        model.strip(),
+                        datetime.utcnow().isoformat(),
+                        content_id,
+                    ),
+                )
+                updated = cursor.rowcount > 0
+                conn.commit()
+                return updated
+
     def semantic_search_similar(
         self,
         query_embedding: List[float],
@@ -1411,6 +1515,304 @@ class DataManager:
                 items_with_scores.append((item, float(row["lexical_score"])))
 
             return items_with_scores
+
+    def unified_semantic_search_similar(
+        self,
+        query_embedding: List[float],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+        embedding_model: str,
+        per_subquery_limit: int,
+    ) -> "List[UnifiedSemanticSearchHit]":
+        """Cross-domain vector similarity search over content_items + raw_intelligence_items.
+
+        Uses UNION ALL to retrieve matching rows from both tables in a single
+        round-trip, then orders the combined result set by similarity DESC.
+
+        Args:
+            query_embedding: Query vector for the <=> distance operator.
+            since_time: Lower time bound (inclusive).
+            max_hours: Upper time bound relative to since_time.
+            limit: Maximum total results to return (outer LIMIT).
+            embedding_model: Filter rows to this embedding_model on both tables.
+            per_subquery_limit: Per-table LIMIT applied to each UNION ALL branch.
+
+        Returns:
+            List of UnifiedSemanticSearchHit sorted by similarity DESC,
+            coalesced published/collected_at DESC, source_domain ASC, id ASC.
+        """
+        self._ensure_semantic_search_supported("unified semantic search retrieval")
+
+        if not query_embedding:
+            raise ValueError("query_embedding cannot be empty")
+        if max_hours <= 0:
+            raise ValueError("max_hours must be positive")
+        if not embedding_model or not embedding_model.strip():
+            raise ValueError("embedding_model cannot be empty")
+
+        from datetime import timezone
+
+        normalized_since_time = since_time
+        if normalized_since_time.tzinfo is None:
+            normalized_since_time = normalized_since_time.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        end_time = min(now, normalized_since_time + timedelta(hours=max_hours))
+        bounded_per_limit = max(1, per_subquery_limit)
+        bounded_outer_limit = max(1, limit)
+        query_vector = self._pgvector_literal(query_embedding)
+
+        time_start = normalized_since_time.isoformat()
+        time_end = end_time.isoformat()
+
+        params: List[Any] = [
+            query_vector,
+            embedding_model,
+            time_start,
+            time_end,
+            bounded_per_limit,
+            query_vector,
+            embedding_model,
+            time_start,
+            time_end,
+            bounded_per_limit,
+            bounded_outer_limit,
+        ]
+
+        sql = self._sql("""
+        (SELECT
+            'news' AS source_domain,
+            id,
+            source_type,
+            source_name,
+            NULL AS source_id,
+            title,
+            content AS content_excerpt,
+            url,
+            publish_time AS published_at,
+            NULL::TIMESTAMPTZ AS collected_at,
+            1 - (embedding <=> CAST(? AS vector)) AS similarity
+        FROM content_items
+        WHERE embedding IS NOT NULL
+          AND embedding_model = ?
+          AND publish_time >= ?
+          AND publish_time <= ?
+        ORDER BY embedding <=> CAST(? AS vector) ASC
+        LIMIT ?)
+        UNION ALL
+        (SELECT
+            'intelligence' AS source_domain,
+            id,
+            source_type,
+            source_type AS source_name,
+            datasource_id AS source_id,
+            LEFT(raw_text, 80) AS title,
+            raw_text AS content_excerpt,
+            source_url AS url,
+            published_at,
+            collected_at,
+            1 - (embedding <=> CAST(? AS vector)) AS similarity
+        FROM raw_intelligence_items
+        WHERE embedding IS NOT NULL
+          AND embedding_model = ?
+          AND COALESCE(published_at, collected_at) >= ?
+          AND COALESCE(published_at, collected_at) <= ?
+        ORDER BY embedding <=> CAST(? AS vector) ASC
+        LIMIT ?)
+        ORDER BY similarity DESC, COALESCE(published_at, collected_at) DESC, source_domain ASC, id ASC
+        LIMIT ?
+        """)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, tuple(params))
+            return self._build_unified_hits(cursor.fetchall())
+
+    def unified_semantic_search_keywords(
+        self,
+        keyword_queries: List[str],
+        since_time: datetime,
+        max_hours: int,
+        limit: int,
+        per_subquery_limit: int,
+    ) -> "List[UnifiedSemanticSearchHit]":
+        """Cross-domain keyword/LIKE search over content_items + raw_intelligence_items.
+
+        Scores rows by total LIKE hit count across all keyword terms. Uses UNION ALL
+        to combine results from both tables in a single round-trip.
+
+        Args:
+            keyword_queries: List of normalized keyword terms for LIKE matching.
+            since_time: Lower time bound (inclusive).
+            max_hours: Upper time bound relative to since_time.
+            limit: Maximum total results to return (outer LIMIT).
+            per_subquery_limit: Per-table LIMIT applied to each UNION ALL branch.
+
+        Returns:
+            List of UnifiedSemanticSearchHit sorted by lexical_score DESC,
+            coalesced published/collected_at DESC, source_domain ASC, id ASC.
+        """
+        self._ensure_semantic_search_supported("unified semantic search keyword retrieval")
+
+        if max_hours <= 0:
+            raise ValueError("max_hours must be positive")
+
+        normalized_queries: List[str] = []
+        seen: set[str] = set()
+        for query in keyword_queries:
+            normalized = str(query or "").strip().lower()
+            if len(normalized) < 2 or normalized in seen:
+                continue
+            seen.add(normalized)
+            normalized_queries.append(normalized)
+
+        if not normalized_queries:
+            return []
+
+        from datetime import timezone
+
+        normalized_since_time = since_time
+        if normalized_since_time.tzinfo is None:
+            normalized_since_time = normalized_since_time.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        end_time = min(now, normalized_since_time + timedelta(hours=max_hours))
+        bounded_per_limit = max(1, per_subquery_limit)
+        bounded_outer_limit = max(1, limit)
+
+        time_start = normalized_since_time.isoformat()
+        time_end = end_time.isoformat()
+
+        content_score_clauses: List[str] = []
+        content_filter_clauses: List[str] = []
+        intel_score_clauses: List[str] = []
+        intel_filter_clauses: List[str] = []
+
+        params: List[Any] = []
+
+        for query in normalized_queries:
+            like_term = f"%{query}%"
+            content_score_clauses.append("""
+                CASE WHEN lower(title) LIKE ? THEN 8 ELSE 0 END +
+                CASE WHEN lower(content) LIKE ? THEN 4 ELSE 0 END +
+                CASE WHEN lower(source_name) LIKE ? THEN 2 ELSE 0 END
+                """)
+            params.extend([like_term, like_term, like_term])
+            content_filter_clauses.append(
+                "(lower(title) LIKE ? OR lower(content) LIKE ? OR lower(source_name) LIKE ?)"
+            )
+            params.extend([like_term, like_term, like_term])
+
+        for query in normalized_queries:
+            like_term = f"%{query}%"
+            intel_score_clauses.append("""
+                CASE WHEN lower(source_type) LIKE ? THEN 4 ELSE 0 END +
+                CASE WHEN lower(raw_text) LIKE ? THEN 16 ELSE 0 END
+                """)
+            params.extend([like_term, like_term])
+            intel_filter_clauses.append(
+                "(lower(source_type) LIKE ? OR lower(raw_text) LIKE ?)"
+            )
+            params.extend([like_term, like_term])
+
+        content_score_expr = " + ".join(content_score_clauses)
+        content_filter_expr = " OR ".join(content_filter_clauses)
+        intel_score_expr = " + ".join(intel_score_clauses)
+        intel_filter_expr = " OR ".join(intel_filter_clauses)
+
+        params.extend([time_start, time_end])
+        params.extend([time_start, time_end])
+        params.append(bounded_per_limit)
+        params.append(bounded_outer_limit)
+
+        sql = self._sql(f"""
+        (SELECT
+            'news' AS source_domain,
+            id,
+            source_type,
+            source_name,
+            NULL AS source_id,
+            title,
+            content AS content_excerpt,
+            url,
+            publish_time AS published_at,
+            NULL::TIMESTAMPTZ AS collected_at,
+            ({content_score_expr}) AS lexical_score
+        FROM content_items
+        WHERE publish_time >= ?
+          AND publish_time <= ?
+          AND ({content_filter_expr})
+        ORDER BY lexical_score DESC, publish_time DESC
+        LIMIT ?)
+        UNION ALL
+        (SELECT
+            'intelligence' AS source_domain,
+            id,
+            source_type,
+            source_type AS source_name,
+            datasource_id AS source_id,
+            LEFT(raw_text, 80) AS title,
+            raw_text AS content_excerpt,
+            source_url AS url,
+            published_at,
+            collected_at,
+            ({intel_score_expr}) AS lexical_score
+        FROM raw_intelligence_items
+        WHERE COALESCE(published_at, collected_at) >= ?
+          AND COALESCE(published_at, collected_at) <= ?
+          AND ({intel_filter_expr})
+        ORDER BY lexical_score DESC, COALESCE(published_at, collected_at) DESC
+        LIMIT ?)
+        ORDER BY lexical_score DESC, COALESCE(published_at, collected_at) DESC, source_domain ASC, id ASC
+        LIMIT ?
+        """)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, tuple(params))
+            return self._build_unified_hits(cursor.fetchall())
+
+    def _build_unified_hits(
+        self, rows: List[Dict[str, Any]]
+    ) -> "List[UnifiedSemanticSearchHit]":
+        """Convert raw UNION ALL dict rows into UnifiedSemanticSearchHit instances."""
+        from ..semantic_search.models import UnifiedSemanticSearchHit
+
+        hits: "List[UnifiedSemanticSearchHit]" = []
+        for row in rows:
+            source_domain = str(row.get("source_domain", ""))
+
+            published_at_raw = row.get("published_at")
+            published_at: Optional[datetime] = None
+            if published_at_raw is not None:
+                published_at = self._coerce_loaded_datetime(published_at_raw)
+
+            collected_at_raw = row.get("collected_at")
+            collected_at: Optional[datetime] = None
+            if collected_at_raw is not None:
+                collected_at = self._coerce_loaded_datetime(collected_at_raw)
+
+            hit_key = f"{source_domain}:{row['id']}"
+            score_val = row.get("similarity", row.get("lexical_score", 0.0))
+
+            hits.append(
+                UnifiedSemanticSearchHit(
+                    hit_key=hit_key,
+                    source_domain=source_domain,
+                    id=str(row.get("id", "")),
+                    source_type=str(row.get("source_type", "")),
+                    source_name=str(row.get("source_name", "")),
+                    source_id=str(row.get("source_id")) if row.get("source_id") is not None else None,
+                    title=str(row.get("title", "")),
+                    content_excerpt=str(row.get("content_excerpt", "")),
+                    url=str(row.get("url")) if row.get("url") is not None else None,
+                    published_at=published_at,
+                    collected_at=collected_at,
+                    similarity=float(score_val),
+                )
+            )
+        return hits
 
     def check_content_hash_exists(self, content_hash: str) -> bool:
         with self._get_connection() as conn:

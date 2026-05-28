@@ -14,6 +14,8 @@ Requests without a valid token receive HTTP 401.
 
 ## Overview
 
+Unified semantic search retrieves from both News (`content_items`) and Intelligence (`raw_intelligence_items`) domains via UNION ALL over pgvector HNSW indexes (`idx_content_embedding_hnsw` and `idx_intelligence_embedding_hnsw`). Both tables use `embedding vector(1536)` columns. Each hit carries a `source_domain` discriminator; the response includes a `source_breakdown` with per-domain `matched_count` and `retained_count`.
+
 Semantic search is asynchronous and follows the same three-step pattern as `/analyze`:
 
 1. **Create**: `POST /semantic-search` with `hours`, `query`, and `user_id`
@@ -56,7 +58,7 @@ Response headers include:
 
 Job IDs use the prefix `semantic_search_job_`.
 
-`query`, `normalized_intent`, `matched_count`, and `retained_count` are only available on the status and result endpoints — they are `0` or empty at acceptance time and are therefore excluded from the 202 response.
+`query`, `normalized_intent`, `matched_count`, `retained_count`, and `source_breakdown` are only available on the status and result endpoints — they are `0`, empty, or `null` at acceptance time and are therefore excluded from the 202 response.
 
 ## Job Status Contract
 
@@ -77,6 +79,7 @@ GET /semantic-search/{job_id}
 | `normalized_intent` | string | LLM-normalized search intent |
 | `matched_count` | integer | Total matched items before final retention |
 | `retained_count` | integer | Final retained items used for synthesis |
+| `source_breakdown` | object | Per-domain hit counts: `{"news": {"matched_count": N, "retained_count": M}, "intelligence": {"matched_count": N, "retained_count": M}}` |
 | `time_window_hours` | integer | Search time window after server caps |
 | `created_at` | string (ISO 8601) | Job creation timestamp |
 | `started_at` | string (ISO 8601) or null | When execution began |
@@ -105,6 +108,7 @@ GET /semantic-search/{job_id}/result
 | `normalized_intent` | string | LLM-normalized search intent |
 | `matched_count` | integer | Total matched items |
 | `retained_count` | integer | Final retained items |
+| `source_breakdown` | object | Per-domain hit counts: `{"news": {"matched_count": N, "retained_count": M}, "intelligence": {"matched_count": N, "retained_count": M}}` |
 | `report` | string | Markdown semantic search report |
 | `time_window_hours` | integer | Search time window |
 | `error` | string or null | Error text when failed |
@@ -134,16 +138,17 @@ The live service currently returns the headings in Chinese (`# 主题检索报�
 ## Limits and Dependencies
 
 - Requires PostgreSQL with pgvector; SQLite is unsupported
+- Both `content_items` and `raw_intelligence_items` tables require `embedding vector(1536)` columns with HNSW indexes (`idx_content_embedding_hnsw`, `idx_intelligence_embedding_hnsw`) for performance
 - Query length is capped at 300 characters
 - Query decomposition is capped at 4 subqueries
-- Final retained results are capped at 200 unique items
+- Final retained results are capped at 200 unique items per domain before merging
 - `OPENAI_API_KEY` is required for embedding generation
 - `KIMI_API_KEY` or `GROK_API_KEY` is required for query planning and report synthesis
 
 ## Telegram and Backfill Notes
 
-- Telegram command: `/semantic_search <hours> <topic>`
-- Historical embedding backfill command:
+- Telegram command: `/semantic_search <hours> <topic>` (canonical); `/news_semantic_search` is a deprecated alias
+- Historical embedding backfill for News content:
 
 ```bash
 uv run python -m crypto_news_analyzer.main --mode embedding-backfill --config ./config.jsonc --batch-size 100
@@ -151,15 +156,24 @@ uv run python -m crypto_news_analyzer.main --mode embedding-backfill --config ./
 
 Optional: add `--limit 1000` to process only part of the backlog.
 
+- To also backfill Intelligence embeddings:
+
+```bash
+uv run python -m crypto_news_analyzer.main --mode embedding-backfill --include-intelligence --intelligence-days 7 --config ./config.jsonc --batch-size 100
+```
+
 ## Updating
 
 Canonical sources for this reference:
 
 1. `crypto_news_analyzer/api_server.py`
 2. `crypto_news_analyzer/models.py`
-3. `crypto_news_analyzer/domain/models.py`
-4. `docs/SEMANTIC_SEARCH_API_GUIDE.md`
-5. `tests/test_api_server_semantic_search.py`
-6. `tests/test_semantic_search_contracts.py`
+3. `crypto_news_analyzer/semantic_search/models.py` (UnifiedSemanticSearchHit DTO, source_breakdown contracts)
+4. `crypto_news_analyzer/domain/models.py`
+5. `docs/SEMANTIC_SEARCH_API_GUIDE.md`
+6. `migrations/postgresql/012_intelligence_embedding_schema.sql` (HNSW index creation)
+7. `tests/test_api_server_semantic_search.py`
+8. `tests/test_semantic_search_contracts.py`
+9. `tests/shared/test_openclaw_skill_smart_news.py`
 
 When sources disagree, trust code and tests over prose.

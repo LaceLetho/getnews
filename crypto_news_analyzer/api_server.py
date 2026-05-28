@@ -65,7 +65,7 @@ TELEGRAM_WEBHOOK_SECRET_HEADER = "x-telegram-bot-api-secret-token"
 SEMANTIC_SEARCH_ROUTE_PATH = "/semantic-search"
 SEMANTIC_SEARCH_JOB_STATUS_PATH = "/semantic-search/{job_id}"
 SEMANTIC_SEARCH_JOB_RESULT_PATH = "/semantic-search/{job_id}/result"
-SEMANTIC_SEARCH_TELEGRAM_COMMAND = "/news_semantic_search <hours> <topic>"
+SEMANTIC_SEARCH_TELEGRAM_COMMAND = "/semantic_search <hours> <topic>"
 
 
 # ── Application State ──────────────────────────────────────────────────
@@ -229,6 +229,7 @@ class SemanticSearchJobResultResponse(BaseModel):
     report: str
     time_window_hours: int
     error: Optional[str] = None
+    source_breakdown: Optional[Dict[str, Dict[str, int]]] = None
 
 
 class AnalyzeJobRecord(BaseModel):
@@ -285,6 +286,7 @@ class SemanticSearchJobRecord(BaseModel):
     completed_at: Optional[str] = None
     report: str = ""
     error: Optional[str] = None
+    source_breakdown: Optional[Dict[str, Dict[str, int]]] = None
 
     def to_status_response(self) -> SemanticSearchJobStatusResponse:
         return SemanticSearchJobStatusResponse(
@@ -315,6 +317,7 @@ class SemanticSearchJobRecord(BaseModel):
             report=self.report,
             time_window_hours=self.time_window_hours,
             error=self.error,
+            source_breakdown=self.source_breakdown,
         )
 
 
@@ -851,6 +854,7 @@ def _semantic_search_request_to_job_record(
         completed_at=_datetime_to_iso(job.completed_at),
         report=str(result.get("report_content", "")),
         error=error_message,
+        source_breakdown=result.get("source_breakdown"),
     )
 
 
@@ -1074,6 +1078,7 @@ def _run_semantic_search_job(job_id: str, state: AppState) -> None:
             "retained_count": job.retained_count,
             "subqueries": list(result.get("subqueries") or []),
             "keyword_queries": list(result.get("keyword_queries") or []),
+            "source_breakdown": dict(result.get("source_breakdown") or {}),
             "errors": [],
         }
         job.error_message = None

@@ -238,6 +238,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         market snapshots, system status, token stats, and datasource management.
         """
         application.add_handler(CommandHandler("news_analyze", self._handle_analyze_command))
+        application.add_handler(CommandHandler("semantic_search", self._handle_semantic_search_command))
         application.add_handler(
             CommandHandler("news_semantic_search", self._handle_semantic_search_command)
         )
@@ -837,7 +838,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             commands.append(BotCommand("news_analyze", "分析消息，可指定小时数如/news_analyze 24"))
             commands.append(
                 BotCommand(
-                    "news_semantic_search", "语义搜索，如/news_semantic_search 24 BTC adoption"
+                    "semantic_search", "语义搜索，如/semantic_search 24 BTC adoption"
                 )
             )
             commands.append(BotCommand("news_market", "获取当前市场现状快照"))
@@ -1124,8 +1125,8 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
 
             if len(args) < 2:
                 await message.reply_text(
-                    "❌ 参数错误\n\n用法: /news_semantic_search <hours> <topic>\n"
-                    "示例: /news_semantic_search 24 BTC adoption"
+                    "❌ 参数错误\n\n用法: /semantic_search <hours> <topic>\n"
+                    "示例: /semantic_search 24 BTC adoption"
                 )
                 return
 
@@ -1133,15 +1134,15 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 hours = int(args[0])
             except (TypeError, ValueError):
                 await message.reply_text(
-                    "❌ 参数错误\n\n请输入有效的小时数，例如：/news_semantic_search 24 BTC adoption"
+                    "❌ 参数错误\n\n请输入有效的小时数，例如：/semantic_search 24 BTC adoption"
                 )
                 return
 
             topic = " ".join(args[1:]).strip()
             if hours <= 0 or not topic:
                 await message.reply_text(
-                    "❌ 参数错误\n\n用法: /news_semantic_search <hours> <topic>\n"
-                    "示例: /news_semantic_search 24 BTC adoption"
+                    "❌ 参数错误\n\n用法: /semantic_search <hours> <topic>\n"
+                    "示例: /semantic_search 24 BTC adoption"
                 )
                 return
 
@@ -2081,7 +2082,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         if not user_permissions:
             user_permissions = [
                 "news_analyze",
-                "news_semantic_search",
+                "semantic_search",
                 "topic_create",
                 "topic_revise",
                 "topic_set_prompt",
@@ -2113,10 +2114,11 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 "不传参数时自动估算时间窗口，支持例如 /news_analyze 24。\n"
             )
 
-        if "news_semantic_search" in user_permissions or not user_permissions:
+        if "semantic_search" in user_permissions or "news_semantic_search" in user_permissions or not user_permissions:
             help_text.append(
-                "/news_semantic_search <hours> <topic> - 按时间窗口执行语义搜索\n"
-                "hours 为必填参数，例如 /news_semantic_search 24 BTC adoption。\n"
+                "/semantic_search <hours> <topic> - 按时间窗口执行语义搜索\n"
+                "hours 为必填参数，例如 /semantic_search 24 BTC adoption。\n"
+                "(/news_semantic_search 为别名，已废弃)\n"
             )
 
         if "news_market" in user_permissions:

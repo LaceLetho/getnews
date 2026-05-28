@@ -181,6 +181,7 @@ def _make_job(
     retained_count: int = 0,
     report: str = "",
     error_message: Optional[str] = None,
+    source_breakdown: Optional[dict[str, dict[str, int]]] = None,
 ) -> SemanticSearchJob:
     created_at = datetime.fromisoformat("2026-03-26T00:00:00+00:00")
     started_at = datetime.fromisoformat("2026-03-26T00:00:05+00:00") if status != "queued" else None
@@ -190,11 +191,13 @@ def _make_job(
         else None
     )
     errors = [error_message] if error_message else []
-    result = {
+    result: dict[str, object] = {
         "success": status == "completed",
         "report_content": report,
         "errors": errors,
     }
+    if source_breakdown is not None:
+        result["source_breakdown"] = source_breakdown
     return SemanticSearchJob(
         id=job_id,
         recipient_key="api:operator_01",
@@ -363,6 +366,7 @@ def test_semantic_search_result_endpoint_returns_success_and_failure_payloads(
         "report": report,
         "time_window_hours": 6,
         "error": error_message,
+        "source_breakdown": None,
     }
 
 
@@ -379,6 +383,10 @@ def test_run_semantic_search_job_persists_completed_lifecycle(
             "retained_count": 6,
             "subqueries": ["btc etf flows", "bitcoin etf inflows"],
             "keyword_queries": ["btc etf", "inflows"],
+            "source_breakdown": {
+                "news": {"matched_count": 8, "retained_count": 4},
+                "intelligence": {"matched_count": 4, "retained_count": 2},
+            },
         }
     )
     app = _build_test_app(monkeypatch, controller)
@@ -419,6 +427,10 @@ def test_run_semantic_search_job_persists_completed_lifecycle(
         "report": "# Semantic report",
         "time_window_hours": 4,
         "error": None,
+        "source_breakdown": {
+            "news": {"matched_count": 8, "retained_count": 4},
+            "intelligence": {"matched_count": 4, "retained_count": 2},
+        },
     }
 
 
@@ -465,6 +477,7 @@ def test_run_semantic_search_job_persists_failed_lifecycle(
         "report": "",
         "time_window_hours": 1,
         "error": "planner exploded",
+        "source_breakdown": None,
     }
 
 

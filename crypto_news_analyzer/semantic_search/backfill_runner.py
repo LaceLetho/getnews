@@ -28,6 +28,13 @@ class EmbeddingBackfillReport:
     rows_skipped: int = 0
     rows_failed: int = 0
 
+    # Intelligence-specific counters
+    batches_intelligence_processed: int = 0
+    rows_intelligence_examined: int = 0
+    rows_intelligence_embedded: int = 0
+    rows_intelligence_skipped: int = 0
+    rows_intelligence_failed: int = 0
+
 
 class EmbeddingBackfillRunner:
     """Backfills missing embeddings in bounded batches."""
@@ -38,17 +45,21 @@ class EmbeddingBackfillRunner:
         embedding_service: EmbeddingService,
         batch_size: int = 100,
         limit: Optional[int] = None,
+        intelligence_days: Optional[int] = None,
         logger_: Optional[logging.Logger] = None,
     ):
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
         if limit is not None and limit <= 0:
             raise ValueError("limit must be positive when provided")
+        if intelligence_days is not None and intelligence_days <= 0:
+            raise ValueError("intelligence_days must be positive when provided")
 
         self.data_manager: DataManager = data_manager
         self.embedding_service: EmbeddingService = embedding_service
         self.batch_size: int = batch_size
         self.limit: Optional[int] = limit
+        self.intelligence_days: Optional[int] = intelligence_days
         self.logger: logging.Logger = logger_ or logger
 
         if self.data_manager.backend != "postgres":
@@ -64,6 +75,7 @@ class EmbeddingBackfillRunner:
         report = EmbeddingBackfillReport()
         failed_ids: set[str] = set()
 
+        # --- Content items backfill ---
         while True:
             remaining = (
                 None if self.limit is None else self.limit - report.rows_examined
@@ -110,6 +122,65 @@ class EmbeddingBackfillRunner:
             report.rows_skipped,
             report.rows_failed,
         )
+
+        # --- Intelligence items backfill ---
+        if self.intelligence_days is not None:
+            intel_failed_ids: set[str] = set()
+
+            while True:
+                remaining = (
+                    None if self.limit is None
+                    else self.limit - report.rows_intelligence_examined
+                )
+                if remaining is not None and remaining <= 0:
+                    break
+
+                fetch_limit = (
+                    self.batch_size
+                    if remaining is None
+                    else min(self.batch_size, remaining)
+                )
+                batch = self.data_manager.get_raw_intelligence_items_missing_embeddings(
+                    limit=fetch_limit,
+                    exclude_ids=list(intel_failed_ids),
+                    intelligence_days=self.intelligence_days,
+                )
+                if not batch:
+                    break
+
+                report.batches_intelligence_processed += 1
+                report.rows_intelligence_examined += len(batch)
+                (
+                    embedded_count,
+                    skipped_count,
+                    failed_count,
+                    failed_batch_ids,
+                ) = self._process_intelligence_batch(batch)
+                report.rows_intelligence_embedded += embedded_count
+                report.rows_intelligence_skipped += skipped_count
+                report.rows_intelligence_failed += failed_count
+                intel_failed_ids.update(failed_batch_ids)
+
+                self.logger.info(
+                    "Intelligence embedding backfill batch complete: batch=%s selected=%s "
+                    "embedded=%s skipped=%s failed=%s",
+                    report.batches_intelligence_processed,
+                    len(batch),
+                    embedded_count,
+                    skipped_count,
+                    failed_count,
+                )
+
+            self.logger.info(
+                "Intelligence embedding backfill finished: batches=%s examined=%s "
+                "embedded=%s skipped=%s failed=%s",
+                report.batches_intelligence_processed,
+                report.rows_intelligence_examined,
+                report.rows_intelligence_embedded,
+                report.rows_intelligence_skipped,
+                report.rows_intelligence_failed,
+            )
+
         return report
 
     def _process_batch(
@@ -214,11 +285,78 @@ class EmbeddingBackfillRunner:
 
         return updated_count
 
+    def _process_intelligence_batch(
+        self,
+        batch: list[dict[str, Any]],
+    ) -> tuple[int, int, int, list[str]]:
+        updates: list[tuple[str, list[float]]] = []
+        failed_count = 0
+        failed_ids: list[str] = []
+
+        for item in batch:
+            item_id = str(item["id"])
+            raw_text = str(item.get("raw_text") or "")
+            if not raw_text.strip():
+                failed_count += 1
+                failed_ids.append(item_id)
+                continue
+
+            try:
+                embedding = self.embedding_service.generate_embedding(raw_text)
+            except Exception as exc:
+                self.logger.warning(
+                    "Intelligence item %s embedding generation failed: %s",
+                    item_id,
+                    exc,
+                )
+                embedding = None
+
+            if embedding is None:
+                self.logger.warning(
+                    "Intelligence item %s embedding generation returned None",
+                    item_id,
+                )
+                failed_count += 1
+                failed_ids.append(item_id)
+                continue
+
+            updates.append((item_id, embedding))
+
+        updated_count = self._persist_intelligence_batch(updates)
+        skipped_count = max(0, len(updates) - updated_count)
+        return updated_count, skipped_count, failed_count, failed_ids
+
+    def _persist_intelligence_batch(
+        self, updates: Sequence[tuple[str, list[float]]]
+    ) -> int:
+        if not updates:
+            return 0
+
+        updated_count = 0
+        for content_id, embedding in updates:
+            try:
+                ok = self.data_manager.update_raw_intelligence_item_embedding(
+                    content_id=content_id,
+                    embedding=list(embedding),
+                    model=self.embedding_service.model,
+                )
+                if ok:
+                    updated_count += 1
+            except Exception as exc:
+                self.logger.warning(
+                    "Failed to persist intelligence embedding for %s: %s",
+                    content_id,
+                    exc,
+                )
+
+        return updated_count
+
 
 def run_embedding_backfill_once(
     config_path: str = "./config.jsonc",
     batch_size: int = 100,
     limit: Optional[int] = None,
+    intelligence_days: Optional[int] = None,
 ) -> EmbeddingBackfillReport:
     """Build dependencies from config and execute one bounded backfill run."""
 
@@ -241,6 +379,7 @@ def run_embedding_backfill_once(
             embedding_service=embedding_service,
             batch_size=batch_size,
             limit=limit,
+            intelligence_days=intelligence_days,
         )
         return runner.run()
     finally:

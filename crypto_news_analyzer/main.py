@@ -55,6 +55,18 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help="embedding-backfill模式下最多处理的缺失Embedding文章数量",
     )
+    parser.add_argument(
+        "--include-intelligence",
+        action="store_true",
+        default=False,
+        help="embedding-backfill模式下同时回填raw_intelligence_items的Embedding",
+    )
+    parser.add_argument(
+        "--intelligence-days",
+        type=int,
+        default=7,
+        help="embedding-backfill模式下只回填N天内收集的intelligence记录（默认7天）",
+    )
     return parser
 
 
@@ -86,6 +98,9 @@ def main():
                 args.config,
                 batch_size=args.batch_size,
                 limit=args.limit,
+                intelligence_days=(
+                    args.intelligence_days if args.include_intelligence else None
+                ),
             )
         else:
             logger.error(f"不支持的运行模式: {args.mode}")
@@ -234,13 +249,15 @@ def run_embedding_backfill(
     config_path: str = "./config.jsonc",
     batch_size: int = 100,
     limit: Optional[int] = None,
+    intelligence_days: Optional[int] = None,
 ) -> int:
     """运行一次性历史Embedding回填任务。"""
     logger = logging.getLogger(__name__)
     logger.info(
-        "启动历史Embedding回填模式，batch_size=%s limit=%s",
+        "启动历史Embedding回填模式，batch_size=%s limit=%s intelligence_days=%s",
         batch_size,
         limit,
+        intelligence_days,
     )
 
     try:
@@ -249,6 +266,7 @@ def run_embedding_backfill(
             config_path=config_path,
             batch_size=batch_size,
             limit=limit,
+            intelligence_days=intelligence_days,
         )
         return 0
     except UnsupportedBackendError as exc:

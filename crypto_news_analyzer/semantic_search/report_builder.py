@@ -63,6 +63,23 @@ class SemanticSearchReportBuilder:
             no_match=True,
         )
 
+    def build_no_match_unified(
+        self,
+        *,
+        normalized_intent: str,
+        original_query: str,
+        time_window_hours: int,
+    ) -> str:
+        return self.build(
+            normalized_intent=normalized_intent,
+            original_query=original_query,
+            time_window_hours=time_window_hours,
+            matched_count=0,
+            retained_count=0,
+            signal_blocks=["统一搜索未找到任何 News 或 Intelligence 匹配结果。"],
+            no_match=True,
+        )
+
     def _build_signal_blocks(self, blocks: Sequence[str], fallback: str) -> List[str]:
         normalized = [block.strip() for block in blocks if block and block.strip()]
         if normalized:

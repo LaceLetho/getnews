@@ -19,8 +19,8 @@ RSS/X/REST → ContentItem → LLMAnalyzer → ReportGenerator (Markdown)
 - **Source types:** `rss`, `x`, `rest_api` (all tagged with `DataSourcePurpose.NEWS`)
 - **Primary data models:** `ContentItem`, `AnalysisResult`
 - **Primary modules:** `analyzers/`, `reporters/`, `semantic_search/`, `crawlers/`
-- **API surfaces:** `POST /analyze`, `POST /semantic-search`, `GET/POST/DELETE /datasources`
-- **Telegram commands:** `/news_analyze`, `/news_market`, `/news_semantic_search`, `/news_tokens`, `/datasource_*`
+- **API surfaces:** `POST /analyze`, `POST /semantic-search` (unified, searches both `content_items` and `raw_intelligence_items`), `GET/POST/DELETE /datasources`
+- **Telegram commands:** `/news_analyze`, `/news_market`, `/semantic_search` (canonical, unified), `/news_semantic_search` (deprecated alias), `/news_tokens`, `/datasource_*`
 
 ### Intelligence Domain
 
@@ -42,7 +42,15 @@ Telegram/V2EX → RawIntelligenceItem → TopicResearchScheduler → TopicFindin
 
 **Never mix `ContentItem` with `RawIntelligenceItem`.** These models belong to different domains. Do not pass one where the other is expected. Do not couple their pipelines. Do not write code that cross-references them.
 
+**Unified semantic search is the explicit exception.** The `/semantic-search` HTTP endpoint and `/semantic_search` Telegram command retrieve from both `content_items` and `raw_intelligence_items` via UNION ALL, returning `UnifiedSemanticSearchHit` DTOs with a `source_domain` discriminator. This DTO is a shared read contract, not a domain model mix. Domain models (ContentItem, RawIntelligenceItem) remain separate and their analysis pipelines must never cross.
+
 The `ingestion` runtime mode runs both domains' collection loops and the Intelligence daily topic research scheduler. They execute as parallel concerns, not as alternatives or sub-components of each other.
+
+### Unified Semantic Search Exception
+
+Semantic search is the **one explicit cross-domain exception** where both domains are queried together. The `POST /semantic-search` HTTP endpoint and `/semantic_search` Telegram command retrieve hits from both `content_items` (News) and `raw_intelligence_items` (Intelligence) via UNION ALL over pgvector HNSW indexes (`idx_content_embedding_hnsw` and `idx_intelligence_embedding_hnsw`). Results are returned as `UnifiedSemanticSearchHit` DTOs — a shared contract that includes `source_type` to distinguish domains. The HTTP response also includes a `source_breakdown` field with per-domain matched and retained counts.
+
+This cross-domain retrieval is **read-only and DTO-mediated**. It does NOT couple the domain models, does NOT allow passing a `RawIntelligenceItem` into News analyzers, and does NOT allow passing a `ContentItem` into Intelligence topic research. The bounded contexts remain separate; the DTO is a view contract, not a domain model mix.
 
 ### Legacy Note
 
@@ -72,13 +80,13 @@ The following surfaces are **invariant** under the current boundary-refactoring 
 
 ### HTTP Endpoints
 - `POST /analyze`, `GET /analyze/{job_id}`, `GET /analyze/{job_id}/result` — unchanged
-- `POST /semantic-search`, `GET /semantic-search/{job_id}`, `GET /semantic-search/{job_id}/result` — unchanged
+- `POST /semantic-search`, `GET /semantic-search/{job_id}`, `GET /semantic-search/{job_id}/result` — now searches both `content_items` AND `raw_intelligence_items` via UNION ALL; response includes `source_breakdown` with per-domain hit counts
 - `GET/POST/DELETE /datasources` — unchanged
 - `POST /intelligence/topics`, `GET /intelligence/topics`, `GET /intelligence/topics/{id}`, etc. — unchanged
 - `GET /health` — unchanged
 
 ### Telegram Commands
-- News: `/news_analyze`, `/news_market`, `/news_semantic_search`, `/news_tokens`, `/datasource_list`, `/datasource_add`, `/datasource_delete`, `/status`, `/help` — unchanged
+- News: `/news_analyze`, `/news_market`, `/semantic_search` (canonical, unified cross-domain), `/news_semantic_search` (deprecated alias), `/news_tokens`, `/datasource_list`, `/datasource_add`, `/datasource_delete`, `/status`, `/help` — unchanged
 - Intelligence: `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_findings`, `/topic_prompt`, `/topic_merge`, `/topic_pause`, `/topic_archive`, `/topic_logs` — unchanged
 
 ### CLI Runtime Modes
@@ -127,7 +135,7 @@ The following refactors are explicitly **out of scope**. This means: no repo spl
 - **Database split:** Both domains continue to share one PostgreSQL + pgvector database. No per-domain database.
 - **Service split:** The two Railway services (`crypto-news-analysis`, `crypto-news-ingestion`) remain as-is. No per-domain service (e.g., no separate `crypto-news-intelligence` service).
 - **Endpoint renames or removals:** No URL path changes, no command renames, no API surface restructuring.
-- **Telegram command renames:** News commands use `/news_` prefix (`/news_analyze`, `/news_market`, `/news_semantic_search`, `/news_tokens`). Intelligence commands use `/topic_` prefix. No further renames.
+- **Telegram command renames:** News commands use `/news_` prefix (`/news_analyze`, `/news_market`, `/news_tokens`). `/semantic_search` is the canonical cross-domain search command; `/news_semantic_search` remains as a deprecated alias. Intelligence commands use `/topic_` prefix. No further renames.
 - **Config format changes:** `config.jsonc` structure remains as-is. No new top-level keys or format migration.
 - **MainController extraction:** `execution_coordinator.py` remains the shared orchestrator. No extraction into per-domain controllers.
 - **Shared module splits:** `storage/`, `models.py`, `domain/`, `utils/` remain shared. No per-domain fork of these.

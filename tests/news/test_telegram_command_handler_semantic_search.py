@@ -268,7 +268,7 @@ def test_initialize_webhook_caches_running_event_loop():
 
 def test_handle_webhook_update_processes_update_directly():
     handler: Any = _make_handler()
-    fake_update = object()
+    fake_update = SimpleNamespace(update_id=123, message=None, channel_post=None)
     fake_application = SimpleNamespace(
         bot=object(),
         process_update=AsyncMock(),

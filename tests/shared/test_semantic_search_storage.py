@@ -7,6 +7,7 @@ import pytest
 
 from crypto_news_analyzer.domain.models import SemanticSearchJob
 from crypto_news_analyzer.models import ContentItem, StorageConfig
+from crypto_news_analyzer.semantic_search.models import UnifiedSemanticSearchHit
 from crypto_news_analyzer.storage.data_manager import DataManager
 from crypto_news_analyzer.storage.repositories import (
     PostgresContentRepository,
@@ -158,7 +159,43 @@ def test_postgres_semantic_search_schema_bootstrap_matches_migration(monkeypatch
     assert "ivfflat" not in migration_sql.lower()
     assert "hnsw" not in migration_sql.lower()
     assert "ivfflat" not in runtime_sql.lower()
-    assert "hnsw" not in runtime_sql.lower()
+
+
+def test_intelligence_embedding_schema_bootstrap_matches_migration(monkeypatch):
+    migration_sql = Path(
+        "migrations/postgresql/012_intelligence_embedding_schema.sql"
+    ).read_text(encoding="utf-8")
+    executed: list[tuple[str, Any]] = []
+    fake_psycopg = _FakePsycopg(executed)
+
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
+
+    _ = DataManager(
+        StorageConfig(
+            backend="postgres",
+            database_url="postgresql://user:pass@localhost:5432/db",
+            pgvector_dimensions=1536,
+        )
+    )
+
+    runtime_sql = "\n".join(query for query, _ in executed)
+
+    for required_fragment in [
+        "ADD COLUMN IF NOT EXISTS embedding",
+        "ADD COLUMN IF NOT EXISTS embedding_model TEXT",
+        "ADD COLUMN IF NOT EXISTS embedding_updated_at TIMESTAMPTZ",
+        "idx_content_embedding_hnsw",
+        "idx_intelligence_embedding_hnsw",
+        "USING hnsw (embedding vector_cosine_ops)",
+        "WHERE embedding IS NOT NULL",
+    ]:
+        assert required_fragment in migration_sql, (
+            f"Migration missing: {required_fragment}"
+        )
+        assert required_fragment in runtime_sql, (
+            f"Runtime bootstrap missing: {required_fragment}"
+        )
 
 
 def test_semantic_search_job_round_trip_uses_dedicated_table(tmp_path):
@@ -432,3 +469,286 @@ def _build_content_item(content_id: str, url: str) -> ContentItem:
         source_name="CoinDesk",
         source_type="rss",
     )
+
+
+# ---------------------------------------------------------------------------
+# Unified search tests
+# ---------------------------------------------------------------------------
+
+
+def test_unified_vector_search_returns_news_and_intelligence(monkeypatch):
+    """Unified vector search: one news row + one intel row → both returned sorted by similarity DESC."""
+    executed: list[tuple[str, Any]] = []
+    since_time = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+
+    def _fetchall_resolver(query: str, _params: Any) -> list[Any]:
+        if "UNION ALL" not in query:
+            return []
+        return [
+            {
+                "source_domain": "intelligence",
+                "id": "intel-1",
+                "source_type": "telegram_group",
+                "source_name": "telegram_group",
+                "source_id": "ds-abc",
+                "title": "Telegram msg about BTC",
+                "content_excerpt": "BTC ETF discussion in the group.",
+                "url": "https://t.me/group/123",
+                "published_at": "2026-01-01T12:30:00+00:00",
+                "collected_at": "2026-01-01T12:35:00+00:00",
+                "similarity": 0.95,
+            },
+            {
+                "source_domain": "news",
+                "id": "news-1",
+                "source_type": "rss",
+                "source_name": "CoinDesk",
+                "source_id": None,
+                "title": "BTC ETF inflows accelerate",
+                "content_excerpt": "Institutional demand remained strong.",
+                "url": "https://example.com/btc-etf",
+                "published_at": "2026-01-01T12:15:00+00:00",
+                "collected_at": None,
+                "similarity": 0.85,
+            },
+        ]
+
+    fake_psycopg = _FakePsycopg(executed, fetchall_resolver=_fetchall_resolver)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
+
+    manager = DataManager(
+        StorageConfig(
+            backend="postgres",
+            database_url="postgresql://user:pass@localhost:5432/db",
+            pgvector_dimensions=3,
+        )
+    )
+
+    hits = manager.unified_semantic_search_similar(
+        query_embedding=[0.1, 0.2, 0.3],
+        since_time=since_time,
+        max_hours=24,
+        limit=10,
+        embedding_model="text-embedding-3-small",
+        per_subquery_limit=50,
+    )
+
+    assert len(hits) == 2
+    assert hits[0].source_domain == "intelligence"
+    assert hits[0].similarity == 0.95
+    assert hits[0].id == "intel-1"
+    assert hits[0].source_id == "ds-abc"
+    assert hits[1].source_domain == "news"
+    assert hits[1].similarity == 0.85
+    assert hits[1].id == "news-1"
+    assert hits[1].source_id is None
+    assert hits[1].url == "https://example.com/btc-etf"
+
+
+def test_unified_search_single_empty_domain(monkeypatch):
+    """Unified vector search: only intelligence rows returned, no news → returns intel hits without error."""
+    executed: list[tuple[str, Any]] = []
+    since_time = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+
+    def _fetchall_resolver(query: str, _params: Any) -> list[Any]:
+        if "UNION ALL" not in query:
+            return []
+        return [
+            {
+                "source_domain": "intelligence",
+                "id": "intel-2",
+                "source_type": "v2ex",
+                "source_name": "v2ex",
+                "source_id": "ds-xyz",
+                "title": "V2EX discussion on DeFi",
+                "content_excerpt": "DeFi yield strategies discussed.",
+                "url": "https://v2ex.com/t/123",
+                "published_at": "2026-01-01T10:00:00+00:00",
+                "collected_at": "2026-01-01T10:05:00+00:00",
+                "similarity": 0.78,
+            },
+        ]
+
+    fake_psycopg = _FakePsycopg(executed, fetchall_resolver=_fetchall_resolver)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
+
+    manager = DataManager(
+        StorageConfig(
+            backend="postgres",
+            database_url="postgresql://user:pass@localhost:5432/db",
+            pgvector_dimensions=3,
+        )
+    )
+
+    hits = manager.unified_semantic_search_similar(
+        query_embedding=[0.1, 0.2, 0.3],
+        since_time=since_time,
+        max_hours=24,
+        limit=10,
+        embedding_model="text-embedding-3-small",
+        per_subquery_limit=50,
+    )
+
+    assert len(hits) == 1
+    assert hits[0].source_domain == "intelligence"
+    assert hits[0].id == "intel-2"
+
+
+def test_unified_search_same_id_preserved_by_hit_key(monkeypatch):
+    """Both domains have row with id='same' → hit_keys are 'news:same' and 'intelligence:same'."""
+    executed: list[tuple[str, Any]] = []
+    since_time = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+
+    def _fetchall_resolver(query: str, _params: Any) -> list[Any]:
+        if "UNION ALL" not in query:
+            return []
+        return [
+            {
+                "source_domain": "news",
+                "id": "same",
+                "source_type": "rss",
+                "source_name": "CoinDesk",
+                "source_id": None,
+                "title": "News item same id",
+                "content_excerpt": "News content.",
+                "url": "https://example.com/news-same",
+                "published_at": "2026-01-01T12:00:00+00:00",
+                "collected_at": None,
+                "similarity": 0.88,
+            },
+            {
+                "source_domain": "intelligence",
+                "id": "same",
+                "source_type": "telegram_group",
+                "source_name": "telegram_group",
+                "source_id": "ds-same",
+                "title": "Intel item same id",
+                "content_excerpt": "Intel content.",
+                "url": "https://t.me/group/same",
+                "published_at": "2026-01-01T12:05:00+00:00",
+                "collected_at": "2026-01-01T12:06:00+00:00",
+                "similarity": 0.77,
+            },
+        ]
+
+    fake_psycopg = _FakePsycopg(executed, fetchall_resolver=_fetchall_resolver)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
+
+    manager = DataManager(
+        StorageConfig(
+            backend="postgres",
+            database_url="postgresql://user:pass@localhost:5432/db",
+            pgvector_dimensions=3,
+        )
+    )
+
+    hits = manager.unified_semantic_search_similar(
+        query_embedding=[0.1, 0.2, 0.3],
+        since_time=since_time,
+        max_hours=24,
+        limit=10,
+        embedding_model="text-embedding-3-small",
+        per_subquery_limit=50,
+    )
+
+    assert len(hits) == 2
+    hit_keys = {hit.hit_key for hit in hits}
+    assert hit_keys == {"news:same", "intelligence:same"}
+    assert hits[0].id == hits[1].id == "same"
+
+
+def test_unified_search_excludes_mismatched_embedding_model(monkeypatch):
+    """Rows with non-matching embedding_model are excluded from results."""
+    executed: list[tuple[str, Any]] = []
+    since_time = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+
+    def _fetchall_resolver(query: str, _params: Any) -> list[Any]:
+        if "UNION ALL" not in query:
+            return []
+        return [
+            {
+                "source_domain": "news",
+                "id": "news-match",
+                "source_type": "rss",
+                "source_name": "CoinDesk",
+                "source_id": None,
+                "title": "Matching model item",
+                "content_excerpt": "This one matches.",
+                "url": "https://example.com/match",
+                "published_at": "2026-01-01T12:00:00+00:00",
+                "collected_at": None,
+                "similarity": 0.91,
+            },
+        ]
+
+    fake_psycopg = _FakePsycopg(executed, fetchall_resolver=_fetchall_resolver)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
+
+    manager = DataManager(
+        StorageConfig(
+            backend="postgres",
+            database_url="postgresql://user:pass@localhost:5432/db",
+            pgvector_dimensions=3,
+        )
+    )
+
+    hits = manager.unified_semantic_search_similar(
+        query_embedding=[0.1, 0.2, 0.3],
+        since_time=since_time,
+        max_hours=24,
+        limit=10,
+        embedding_model="text-embedding-3-small",
+        per_subquery_limit=50,
+    )
+
+    # The resolver only returns 1 row; we verify the SQL includes the model filter
+    assert len(hits) == 1
+    assert hits[0].id == "news-match"
+
+    # Verify embedding_model was passed in the query params
+    union_sql = next(
+        (query for query, _ in executed if "UNION ALL" in query), ""
+    )
+    assert "embedding_model = %s" in union_sql
+
+
+def test_unified_search_rejects_sqlite_unsupported(monkeypatch):
+    """Unified search raises UnsupportedBackendError on SQLite backend."""
+    from crypto_news_analyzer.utils.errors import UnsupportedBackendError
+
+    executed: list[tuple[str, Any]] = []
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.psycopg", None)
+    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", None)
+
+    from crypto_news_analyzer.storage.data_manager import DataManager as DM
+    manager = DM.__new__(DM)
+    manager.backend = "sqlite"
+
+    with pytest.raises(UnsupportedBackendError) as exc:
+        manager.unified_semantic_search_similar(
+            query_embedding=[0.1, 0.2, 0.3],
+            since_time=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+            max_hours=24,
+            limit=10,
+            embedding_model="text-embedding-3-small",
+            per_subquery_limit=50,
+        )
+
+    assert exc.value.details["backend"] == "sqlite"
+    assert exc.value.details["feature"] == "unified semantic search retrieval"
+
+    with pytest.raises(UnsupportedBackendError) as exc2:
+        manager.unified_semantic_search_keywords(
+            keyword_queries=["btc", "etf"],
+            since_time=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+            max_hours=24,
+            limit=10,
+            per_subquery_limit=50,
+        )
+
+    assert exc2.value.details["backend"] == "sqlite"
+    assert exc2.value.details["feature"] == "unified semantic search keyword retrieval"

@@ -25,6 +25,7 @@ from crypto_news_analyzer.config.llm_registry import (
 from crypto_news_analyzer.domain.repositories import ContentRepository
 from crypto_news_analyzer.models import ContentItem, SemanticSearchConfig
 from crypto_news_analyzer.semantic_search.embedding_service import EmbeddingService
+from crypto_news_analyzer.semantic_search.models import UnifiedSemanticSearchHit
 
 if TYPE_CHECKING:
     from crypto_news_analyzer.semantic_search.report_builder import (
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class SemanticSearchMatch:
-    item: ContentItem
+    item: Any  # ContentItem | UnifiedSemanticSearchHit
     best_similarity: float
     matched_subqueries: List[str] = field(default_factory=list)
 
@@ -55,6 +56,7 @@ class SemanticSearchService:
         report_builder: Optional["SemanticSearchReportBuilder"] = None,
         query_planner_prompt_path: str = "./prompts/semantic_search_query_planner.md",
         report_prompt_path: str = "./prompts/semantic_search_report.md",
+        data_manager: Optional[Any] = None,
     ):
         self.content_repository = content_repository
         self.embedding_service = embedding_service
@@ -79,6 +81,7 @@ class SemanticSearchService:
             report_builder = SemanticSearchReportBuilder()
         self.report_builder = report_builder
         self.logger = logging.getLogger(__name__)
+        self.data_manager = data_manager
         self.client = client
         if self.client is None:
             api_key = self.provider_credentials.get(
@@ -157,8 +160,13 @@ class SemanticSearchService:
         ]
         retained_count = len(retained_matches)
 
+        source_breakdown = self._compute_source_breakdown(
+            ranked_matches=ranked_matches,
+            retained_matches=retained_matches,
+        )
+
         if not retained_matches:
-            report_content = self.report_builder.build_no_match(
+            report_content = self.report_builder.build_no_match_unified(
                 normalized_intent=normalized_intent,
                 original_query=validated_query,
                 time_window_hours=time_window_hours,
@@ -171,6 +179,7 @@ class SemanticSearchService:
                 "retained_count": 0,
                 "subqueries": subqueries,
                 "keyword_queries": planned_keyword_queries,
+                "source_breakdown": source_breakdown,
             }
 
         batch_summaries = self._summarize_in_batches(
@@ -196,6 +205,36 @@ class SemanticSearchService:
             "retained_count": retained_count,
             "subqueries": subqueries,
             "keyword_queries": planned_keyword_queries,
+            "source_breakdown": source_breakdown,
+        }
+
+    def _compute_source_breakdown(
+        self,
+        *,
+        ranked_matches: Sequence[SemanticSearchMatch],
+        retained_matches: Sequence[SemanticSearchMatch],
+    ) -> Dict[str, Dict[str, int]]:
+        matched_news = 0
+        matched_intel = 0
+        for match in ranked_matches:
+            domain = getattr(match.item, "source_domain", "news")
+            if domain == "intelligence":
+                matched_intel += 1
+            else:
+                matched_news += 1
+
+        retained_news = 0
+        retained_intel = 0
+        for match in retained_matches:
+            domain = getattr(match.item, "source_domain", "news")
+            if domain == "intelligence":
+                retained_intel += 1
+            else:
+                retained_news += 1
+
+        return {
+            "news": {"matched_count": matched_news, "retained_count": retained_news},
+            "intelligence": {"matched_count": matched_intel, "retained_count": retained_intel},
         }
 
     def _validate_request(self, *, query: str, time_window_hours: int) -> str:
@@ -301,27 +340,54 @@ class SemanticSearchService:
                 self.logger.warning("子查询Embedding生成失败，跳过: %s", subquery)
                 continue
 
-            rows = self.content_repository.semantic_search_by_similarity(
-                query_embedding=embedding,
-                since_time=since_time,
-                max_hours=max_hours,
-                limit=self.semantic_search_config.per_subquery_limit,
-            )
-            for item, similarity in rows:
-                existing = merged.get(item.id)
-                if existing is None:
-                    merged[item.id] = SemanticSearchMatch(
-                        item=item,
-                        best_similarity=float(similarity),
-                        matched_subqueries=[subquery],
-                    )
-                    continue
-
-                existing.best_similarity = max(
-                    existing.best_similarity, float(similarity)
+            if self.data_manager is not None:
+                hits = self.data_manager.unified_semantic_search_similar(
+                    query_embedding=embedding,
+                    since_time=since_time,
+                    max_hours=max_hours,
+                    limit=self.semantic_search_config.per_subquery_limit,
+                    embedding_model=self.semantic_search_config.embedding_model,
+                    per_subquery_limit=self.semantic_search_config.per_subquery_limit,
                 )
-                if subquery not in existing.matched_subqueries:
-                    existing.matched_subqueries.append(subquery)
+                for hit in hits:
+                    merge_key = hit.hit_key
+                    existing = merged.get(merge_key)
+                    if existing is None:
+                        merged[merge_key] = SemanticSearchMatch(
+                            item=hit,
+                            best_similarity=hit.similarity,
+                            matched_subqueries=[subquery],
+                        )
+                        continue
+
+                    existing.best_similarity = max(
+                        existing.best_similarity, hit.similarity
+                    )
+                    if subquery not in existing.matched_subqueries:
+                        existing.matched_subqueries.append(subquery)
+            else:
+                rows = self.content_repository.semantic_search_by_similarity(
+                    query_embedding=embedding,
+                    since_time=since_time,
+                    max_hours=max_hours,
+                    limit=self.semantic_search_config.per_subquery_limit,
+                )
+                for item, similarity in rows:
+                    merge_key = item.hit_key if hasattr(item, "hit_key") else item.id
+                    existing = merged.get(merge_key)
+                    if existing is None:
+                        merged[merge_key] = SemanticSearchMatch(
+                            item=item,
+                            best_similarity=float(similarity),
+                            matched_subqueries=[subquery],
+                        )
+                        continue
+
+                    existing.best_similarity = max(
+                        existing.best_similarity, float(similarity)
+                    )
+                    if subquery not in existing.matched_subqueries:
+                        existing.matched_subqueries.append(subquery)
 
         if self.semantic_search_config.keyword_search_enabled:
             keyword_queries = self._build_keyword_queries(
@@ -331,32 +397,63 @@ class SemanticSearchService:
                 planned_keyword_queries=planned_keyword_queries,
             )
             if keyword_queries:
-                rows = self.content_repository.semantic_search_by_keywords(
-                    keyword_queries=keyword_queries,
-                    since_time=since_time,
-                    max_hours=max_hours,
-                    limit=self.semantic_search_config.keyword_search_limit,
-                )
-                for item, raw_score in rows:
-                    keyword_score = self._normalize_keyword_score(raw_score)
-                    existing = merged.get(item.id)
-                    if existing is None:
-                        merged[item.id] = SemanticSearchMatch(
-                            item=item,
-                            best_similarity=keyword_score,
-                            matched_subqueries=[
-                                f"keyword:{keyword}" for keyword in keyword_queries[:6]
-                            ],
-                        )
-                        continue
-
-                    existing.best_similarity = max(
-                        existing.best_similarity, keyword_score
+                if self.data_manager is not None:
+                    hits = self.data_manager.unified_semantic_search_keywords(
+                        keyword_queries=keyword_queries,
+                        since_time=since_time,
+                        max_hours=max_hours,
+                        limit=self.semantic_search_config.keyword_search_limit,
+                        per_subquery_limit=self.semantic_search_config.per_subquery_limit,
                     )
-                    for keyword in keyword_queries[:6]:
-                        keyword_marker = f"keyword:{keyword}"
-                        if keyword_marker not in existing.matched_subqueries:
-                            existing.matched_subqueries.append(keyword_marker)
+                    for hit in hits:
+                        keyword_score = self._normalize_keyword_score(hit.similarity)
+                        merge_key = hit.hit_key
+                        existing = merged.get(merge_key)
+                        if existing is None:
+                            merged[merge_key] = SemanticSearchMatch(
+                                item=hit,
+                                best_similarity=keyword_score,
+                                matched_subqueries=[
+                                    f"keyword:{keyword}" for keyword in keyword_queries[:6]
+                                ],
+                            )
+                            continue
+
+                        existing.best_similarity = max(
+                            existing.best_similarity, keyword_score
+                        )
+                        for keyword in keyword_queries[:6]:
+                            keyword_marker = f"keyword:{keyword}"
+                            if keyword_marker not in existing.matched_subqueries:
+                                existing.matched_subqueries.append(keyword_marker)
+                else:
+                    rows = self.content_repository.semantic_search_by_keywords(
+                        keyword_queries=keyword_queries,
+                        since_time=since_time,
+                        max_hours=max_hours,
+                        limit=self.semantic_search_config.keyword_search_limit,
+                    )
+                    for item, raw_score in rows:
+                        keyword_score = self._normalize_keyword_score(raw_score)
+                        merge_key = item.hit_key if hasattr(item, "hit_key") else item.id
+                        existing = merged.get(merge_key)
+                        if existing is None:
+                            merged[merge_key] = SemanticSearchMatch(
+                                item=item,
+                                best_similarity=keyword_score,
+                                matched_subqueries=[
+                                    f"keyword:{keyword}" for keyword in keyword_queries[:6]
+                                ],
+                            )
+                            continue
+
+                        existing.best_similarity = max(
+                            existing.best_similarity, keyword_score
+                        )
+                        for keyword in keyword_queries[:6]:
+                            keyword_marker = f"keyword:{keyword}"
+                            if keyword_marker not in existing.matched_subqueries:
+                                existing.matched_subqueries.append(keyword_marker)
 
         return merged
 
@@ -483,7 +580,18 @@ class SemanticSearchService:
         self, matches: Dict[str, SemanticSearchMatch]
     ) -> List[SemanticSearchMatch]:
         def _publish_time(match: SemanticSearchMatch) -> datetime:
-            publish_time = match.item.publish_time
+            item = match.item
+            publish_time = (
+                item.published_at
+                if hasattr(item, "published_at")
+                else item.publish_time
+            )
+            if publish_time is None:
+                # Intelligence items may lack published_at; use collected_at as fallback
+                if hasattr(item, "collected_at") and item.collected_at is not None:
+                    publish_time = item.collected_at
+                else:
+                    return datetime.min.replace(tzinfo=timezone.utc)
             if publish_time.tzinfo is None:
                 return publish_time.replace(tzinfo=timezone.utc)
             return publish_time.astimezone(timezone.utc)
@@ -594,18 +702,56 @@ class SemanticSearchService:
             "",
         ]
         for index, match in enumerate(batch, start=1):
-            lines.extend(
-                [
-                    f"[{index}] 标题: {match.item.title}",
-                    f"[{index}] 内容: {self._truncate_prompt_field(match.item.content)}",
-                    f"[{index}] 来源: {match.item.source_name} | {match.item.url}",
-                    f"[{index}] 发布时间: {match.item.publish_time.isoformat()}",
-                    f"[{index}] 相似度: {match.best_similarity:.4f}",
-                    f"[{index}] 命中子查询: {', '.join(match.matched_subqueries)}",
-                    "",
-                ]
-            )
+            item = match.item
+            if hasattr(item, "source_domain"):
+                lines.extend(
+                    self._build_unified_batch_item_lines(
+                        index, match, item
+                    )
+                )
+            else:
+                lines.extend(
+                    self._build_legacy_batch_item_lines(index, match)
+                )
         return "\n".join(lines).strip()
+
+    def _build_unified_batch_item_lines(
+        self, index: int, match: SemanticSearchMatch, item: Any
+    ) -> List[str]:
+        domain_label = (
+            "[News]"
+            if item.source_domain == "news"
+            else "[Intelligence]"
+        )
+        title = item.title or "无标题"
+        excerpt = self._truncate_prompt_field(item.content_excerpt)
+        publish_time = item.published_at or item.collected_at
+        time_str = publish_time.isoformat() if publish_time else "无时间"
+        if item.source_domain == "news":
+            source_line = f"{item.source_name} | {title} | {item.url or 'no url'}"
+        else:
+            source_line = f"{item.source_type} | {title} | {item.url or 'no url'}"
+        return [
+            f"[{index}] {domain_label} {source_line}",
+            f"[{index}] 内容: {excerpt}",
+            f"[{index}] 发布时间: {time_str}",
+            f"[{index}] 相似度: {match.best_similarity:.4f}",
+            f"[{index}] 命中子查询: {', '.join(match.matched_subqueries)}",
+            "",
+        ]
+
+    def _build_legacy_batch_item_lines(
+        self, index: int, match: SemanticSearchMatch
+    ) -> List[str]:
+        return [
+            f"[{index}] 标题: {match.item.title}",
+            f"[{index}] 内容: {self._truncate_prompt_field(match.item.content)}",
+            f"[{index}] 来源: {match.item.source_name} | {match.item.url}",
+            f"[{index}] 发布时间: {match.item.publish_time.isoformat()}",
+            f"[{index}] 相似度: {match.best_similarity:.4f}",
+            f"[{index}] 命中子查询: {', '.join(match.matched_subqueries)}",
+            "",
+        ]
 
     def _truncate_prompt_field(self, value: str) -> str:
         normalized = str(value or "").strip()
@@ -628,10 +774,16 @@ class SemanticSearchService:
     ) -> str:
         source_lines = []
         for index, match in enumerate(retained_matches, start=1):
+            item = match.item
+            if hasattr(item, "source_domain"):
+                publish_time = item.published_at or item.collected_at
+                time_str = publish_time.isoformat() if publish_time else "无时间"
+            else:
+                time_str = item.publish_time.isoformat()
             source_lines.append(
                 (
-                    f"[S{index}] {match.item.source_name} | {match.item.title} | "
-                    f"{match.item.url} | {match.item.publish_time.isoformat()} | score={match.best_similarity:.4f}"
+                    f"[S{index}] {item.source_name} | {item.title} | "
+                    f"{item.url or 'no url'} | {time_str} | score={match.best_similarity:.4f}"
                 )
             )
         return (
@@ -710,10 +862,15 @@ class SemanticSearchService:
     def _build_fallback_batch_summary(
         self, batch: Sequence[SemanticSearchMatch]
     ) -> str:
-        return "\n".join(
-            f"- {match.item.title} [{match.item.source_name}] ({match.item.url})"
-            for match in batch[:5]
-        )
+        lines = []
+        for match in batch[:5]:
+            item = match.item
+            url = getattr(item, "url", None)
+            url_text = url if url else "no url"
+            lines.append(
+                f"- {item.title} [{item.source_name}] ({url_text})"
+            )
+        return "\n".join(lines)
 
     def _build_fallback_final_summary(
         self, retained_matches: Sequence[SemanticSearchMatch]
@@ -721,14 +878,22 @@ class SemanticSearchService:
         top_matches = list(retained_matches[:5])
         signal_blocks = []
         for index, match in enumerate(top_matches, start=1):
+            item = match.item
+            if hasattr(item, "published_at"):
+                publish_time = item.published_at or item.collected_at
+                time_str = publish_time.isoformat() if publish_time else "无时间"
+            else:
+                time_str = item.publish_time.isoformat()
+            url = getattr(item, "url", None)
+            url_text = url if url else "no url"
             signal_blocks.extend(
                 [
                     f"### 信号 {index}",
                     (
-                        f"{match.item.source_name} 在 {match.item.publish_time.isoformat()} "
-                        f"提到：{match.item.title}"
+                        f"{item.source_name} 在 {time_str} "
+                        f"提到：{item.title}"
                     ),
-                    f"来源：[{match.item.source_name}]({match.item.url})",
+                    f"来源：[{item.source_name}]({url_text})",
                     "",
                 ]
             )
