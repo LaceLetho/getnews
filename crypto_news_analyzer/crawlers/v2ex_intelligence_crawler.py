@@ -413,7 +413,7 @@ class V2EXIntelligenceCrawler(DataSourceInterface):
                 raw_text=raw_text,
                 content_hash=hashlib.sha256(raw_text.encode()).hexdigest()[:16],
                 published_at=published_at,
-                expires_at=now + timedelta(days=180),
+                expires_at=now + timedelta(days=30),
             ),
             published_at,
         )
@@ -442,7 +442,7 @@ class V2EXIntelligenceCrawler(DataSourceInterface):
                 raw_text=raw_text,
                 content_hash=hashlib.sha256(raw_text.encode()).hexdigest()[:16],
                 published_at=published_at,
-                expires_at=now + timedelta(days=180),
+                expires_at=now + timedelta(days=30),
             ),
             published_at,
         )

@@ -193,7 +193,7 @@ class TelegramIntelligenceCrawler(DataSourceInterface):
             raw_text=str(raw_text),
             content_hash=content_hash,
             published_at=published_at,
-            expires_at=now + timedelta(days=180),
+            expires_at=now + timedelta(days=30),
         )
 
     def _message_is_before_cutoff(self, message: Any, cutoff: datetime) -> bool:
