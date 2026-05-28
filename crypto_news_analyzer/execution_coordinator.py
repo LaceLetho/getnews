@@ -720,6 +720,7 @@ class MainController:
             semantic_search_config=semantic_search_config,
             llm_config_payload=dict(self.config_manager.config_data.get("llm_config", {})),
             provider_credentials=provider_credentials,
+            data_manager=self.data_manager,
         )
         self.logger.info("SemanticSearchService初始化完成")
         return self.semantic_search_service

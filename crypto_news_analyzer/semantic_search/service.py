@@ -103,6 +103,7 @@ class SemanticSearchService:
         report_builder: Optional["SemanticSearchReportBuilder"] = None,
         query_planner_prompt_path: str = "./prompts/semantic_search_query_planner.md",
         report_prompt_path: str = "./prompts/semantic_search_report.md",
+        data_manager: Optional[Any] = None,
     ) -> "SemanticSearchService":
         model = llm_config_payload.get("model", {})
         fallback_models = llm_config_payload.get("fallback_models", [])
@@ -134,6 +135,7 @@ class SemanticSearchService:
             report_builder=report_builder,
             query_planner_prompt_path=query_planner_prompt_path,
             report_prompt_path=report_prompt_path,
+            data_manager=data_manager,
         )
 
     def search(self, *, query: str, time_window_hours: int) -> Dict[str, Any]:

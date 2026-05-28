@@ -452,6 +452,26 @@ def _build_service_unified(
     )
 
 
+def test_from_llm_config_payload_preserves_data_manager_for_unified_search():
+    repository = _StubContentRepository([])
+    data_manager = object()
+
+    service = SemanticSearchService.from_llm_config_payload(
+        content_repository=cast(Any, repository),
+        embedding_service=cast(Any, _StubEmbeddingService()),
+        semantic_search_config=SemanticSearchConfig(),
+        llm_config_payload={
+            "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+            "fallback_models": [],
+            "market_model": {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}},
+        },
+        client=object(),
+        data_manager=data_manager,
+    )
+
+    assert service.data_manager is data_manager
+
+
 def test_mixed_hits_produce_domain_labels_in_prompt(monkeypatch):
     """1 news hit + 1 intel hit → prompt contains [News] and [Intelligence]."""
     news_hit = _build_unified_hit("n1", source_domain="news", title="News Item", content="news body")
