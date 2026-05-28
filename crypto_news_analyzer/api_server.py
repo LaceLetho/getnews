@@ -881,6 +881,7 @@ def _build_semantic_search_service(controller: MainController) -> SemanticSearch
         semantic_search_config=config_manager.get_semantic_search_config(),
         llm_config_payload=dict(config_manager.config_data.get("llm_config", {})),
         provider_credentials=provider_credentials,
+        data_manager=getattr(controller, "data_manager", None),
     )
 
 

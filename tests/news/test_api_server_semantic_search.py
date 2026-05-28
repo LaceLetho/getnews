@@ -434,6 +434,27 @@ def test_run_semantic_search_job_persists_completed_lifecycle(
     }
 
 
+def test_build_semantic_search_service_passes_controller_data_manager(monkeypatch):
+    controller = _FakeController()
+    controller.data_manager = object()
+    captured: dict[str, object] = {}
+
+    def _fake_from_payload(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(
+        api_server.SemanticSearchService,
+        "from_llm_config_payload",
+        staticmethod(_fake_from_payload),
+    )
+
+    service = api_server._build_semantic_search_service(controller)
+
+    assert service is not None
+    assert captured["data_manager"] is controller.data_manager
+
+
 def test_run_semantic_search_job_persists_failed_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
 ):
