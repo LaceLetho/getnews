@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
@@ -23,3 +23,4 @@ class UnifiedSemanticSearchHit:
     published_at: Optional[datetime] = None
     collected_at: Optional[datetime] = None
     similarity: float = 0.0
+    matched_subqueries: list[str] = field(default_factory=list)
