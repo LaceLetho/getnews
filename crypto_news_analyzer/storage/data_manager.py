@@ -1594,6 +1594,7 @@ class DataManager:
             url,
             publish_time AS published_at,
             NULL::TIMESTAMPTZ AS collected_at,
+            publish_time AS sort_time,
             1 - (embedding <=> CAST(? AS vector)) AS similarity
         FROM content_items
         WHERE embedding IS NOT NULL
@@ -1614,6 +1615,7 @@ class DataManager:
             source_url AS url,
             published_at,
             collected_at,
+            COALESCE(published_at, collected_at) AS sort_time,
             1 - (embedding <=> CAST(? AS vector)) AS similarity
         FROM raw_intelligence_items
         WHERE embedding IS NOT NULL
@@ -1622,7 +1624,7 @@ class DataManager:
           AND COALESCE(published_at, collected_at) <= ?
         ORDER BY embedding <=> CAST(? AS vector) ASC
         LIMIT ?)
-        ORDER BY similarity DESC, COALESCE(published_at, collected_at) DESC, source_domain ASC, id ASC
+        ORDER BY similarity DESC, sort_time DESC, source_domain ASC, id ASC
         LIMIT ?
         """)
 
@@ -1752,6 +1754,7 @@ class DataManager:
             url,
             publish_time AS published_at,
             NULL::TIMESTAMPTZ AS collected_at,
+            publish_time AS sort_time,
             ({content_score_expr}) AS lexical_score
         FROM content_items
         WHERE publish_time >= ?
@@ -1771,6 +1774,7 @@ class DataManager:
             source_url AS url,
             published_at,
             collected_at,
+            COALESCE(published_at, collected_at) AS sort_time,
             ({intel_score_expr}) AS lexical_score
         FROM raw_intelligence_items
         WHERE COALESCE(published_at, collected_at) >= ?
@@ -1778,7 +1782,7 @@ class DataManager:
           AND ({intel_filter_expr})
         ORDER BY lexical_score DESC, COALESCE(published_at, collected_at) DESC
         LIMIT ?)
-        ORDER BY lexical_score DESC, COALESCE(published_at, collected_at) DESC, source_domain ASC, id ASC
+        ORDER BY lexical_score DESC, sort_time DESC, source_domain ASC, id ASC
         LIMIT ?
         """)
 
