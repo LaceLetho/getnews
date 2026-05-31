@@ -1,0 +1,318 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.2, pytest-9.0.2, pluggy-1.6.0 -- /data/workspace/getnews/.venv/bin/python3
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /data/workspace/getnews
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.12.1, hypothesis-6.151.9, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 114 items
+
+tests/shared/test_config_manager.py::TestConfigManager::test_create_default_config PASSED [  0%]
+tests/shared/test_config_manager.py::TestConfigManager::test_validate_config_success PASSED [  1%]
+tests/shared/test_config_manager.py::TestConfigManager::test_validate_config_failure PASSED [  2%]
+tests/shared/test_config_manager.py::TestConfigManager::test_execution_interval_uses_env_or_default_only PASSED [  3%]
+tests/shared/test_config_manager.py::TestConfigManager::test_time_window_uses_env_or_default_only PASSED [  4%]
+tests/shared/test_config_manager.py::TestConfigManager::test_get_x_auth_credentials_does_not_depend_on_llm_auth_fields PASSED [  5%]
+tests/shared/test_config_manager.py::TestConfigManager::test_load_config_supports_json_comments_in_semantic_search_block PASSED [  6%]
+tests/shared/test_config_manager.py::TestConfigManager::test_storage_config_default_postgres_connect_fields PASSED [  7%]
+tests/shared/test_config_manager.py::TestConfigManager::test_storage_config_valid_explicit_postgres_connect_fields PASSED [  7%]
+tests/shared/test_config_manager.py::TestConfigManager::test_storage_config_zero_max_attempts_raises PASSED [  8%]
+tests/shared/test_config_manager.py::TestConfigManager::test_storage_config_negative_initial_delay_raises PASSED [  9%]
+tests/shared/test_config_manager.py::TestConfigManager::test_storage_config_negative_max_delay_raises PASSED [ 10%]
+tests/shared/test_config_manager.py::TestConfigManager::test_storage_config_max_delay_less_than_initial_delay_raises PASSED [ 11%]
+tests/shared/test_config_manager.py::TestConfigManager::test_storage_config_zero_timeout_raises PASSED [ 12%]
+tests/shared/test_postgres_connection.py::TestConnectPostgresWithRetry::test_connect_postgres_with_retry_succeeds_after_transient_failures PASSED [ 13%]
+tests/shared/test_postgres_connection.py::TestConnectPostgresWithRetry::test_connect_postgres_with_retry_stops_on_permanent_failure PASSED [ 14%]
+tests/shared/test_postgres_connection.py::TestConnectPostgresWithRetry::test_connect_timeout_passed_to_psycopg PASSED [ 14%]
+tests/shared/test_postgres_connection.py::TestCheckPostgresReady::test_check_postgres_ready_executes_select_one PASSED [ 15%]
+tests/shared/test_postgres_connection.py::TestCheckPostgresReady::test_check_postgres_ready_returns_false_on_failure PASSED [ 16%]
+tests/shared/test_postgres_connection.py::TestCheckPostgresReady::test_check_postgres_ready_returns_false_when_psycopg_unavailable PASSED [ 17%]
+tests/shared/test_postgres_storage_path.py::test_data_manager_postgres_initialization_runs_vector_setup PASSED [ 18%]
+tests/shared/test_postgres_storage_path.py::test_config_manager_supports_postgres_via_env_database_url FAILED [ 19%]
+tests/shared/test_postgres_storage_path.py::test_content_repository_time_range_and_hash_exists_path PASSED [ 20%]
+tests/shared/test_postgres_storage_path.py::test_deduplicate_content_uses_portable_having_clause PASSED [ 21%]
+tests/shared/test_postgres_storage_path.py::test_get_content_items_accepts_str_and_datetime_publish_time[True] PASSED [ 21%]
+tests/shared/test_postgres_storage_path.py::test_get_content_items_accepts_str_and_datetime_publish_time[False] PASSED [ 22%]
+tests/shared/test_postgres_storage_path.py::test_get_content_items_since_accepts_str_and_datetime_publish_time[True] PASSED [ 23%]
+tests/shared/test_postgres_storage_path.py::test_get_content_items_since_accepts_str_and_datetime_publish_time[False] PASSED [ 24%]
+tests/shared/test_postgres_storage_path.py::test_get_latest_crawl_status_accepts_str_and_datetime_execution_time[True] PASSED [ 25%]
+tests/shared/test_postgres_storage_path.py::test_get_latest_crawl_status_accepts_str_and_datetime_execution_time[False] PASSED [ 26%]
+tests/shared/test_postgres_storage_path.py::test_get_latest_message_time_accepts_str_and_datetime[True] PASSED [ 27%]
+tests/shared/test_postgres_storage_path.py::test_get_latest_message_time_accepts_str_and_datetime[False] PASSED [ 28%]
+tests/shared/test_postgres_storage_path.py::test_get_last_successful_analysis_time_accepts_str_and_datetime[True] PASSED [ 28%]
+tests/shared/test_postgres_storage_path.py::test_get_last_successful_analysis_time_accepts_str_and_datetime[False] PASSED [ 29%]
+tests/shared/test_postgres_storage_path.py::test_data_manager_postgres_retry_succeeds_after_failure PASSED [ 30%]
+tests/shared/test_postgres_storage_path.py::test_data_manager_postgres_all_attempts_exhausted PASSED [ 31%]
+tests/shared/test_postgres_storage_path.py::test_data_manager_postgres_uses_retry_helper PASSED [ 32%]
+tests/shared/test_postgres_storage_path.py::test_data_manager_postgres_retry_error_wrapped_in_storage_error PASSED [ 33%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_cache_manager_initialization PASSED [ 34%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_cache_sent_messages_basic PASSED [ 35%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_cache_sent_messages_empty_list PASSED [ 35%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_cache_sent_messages_missing_fields PASSED [ 36%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_get_cached_messages_within_24_hours PASSED [ 37%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_get_cached_messages_custom_time_range PASSED [ 38%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_get_cached_messages_empty_cache PASSED [ 39%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_cleanup_expired_cache PASSED [ 40%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_cleanup_expired_cache_empty PASSED [ 41%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_get_cache_statistics PASSED [ 42%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_get_cache_statistics_empty PASSED [ 42%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_clear_all_cache PASSED [ 43%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_context_manager PASSED [ 44%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_thread_safety PASSED [ 45%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_cache_messages_with_special_characters PASSED [ 46%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_cache_messages_with_long_content PASSED [ 47%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_multiple_cache_operations PASSED [ 48%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_format_cached_messages_for_prompt PASSED [ 49%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_format_cached_messages_empty_cache PASSED [ 50%]
+tests/shared/test_cache_manager.py::TestSentMessageCacheManager::test_format_cached_messages_custom_time_range PASSED [ 50%]
+tests/shared/test_cache_manager.py::test_cache_manager_postgres_retry_succeeds_after_failure PASSED [ 51%]
+tests/shared/test_cache_manager.py::test_cache_manager_postgres_all_attempts_exhausted PASSED [ 52%]
+tests/shared/test_cache_manager.py::test_cache_manager_postgres_uses_retry_helper PASSED [ 53%]
+tests/shared/test_cache_manager.py::test_cache_manager_postgres_retry_error_wrapped_in_storage_error PASSED [ 54%]
+tests/news/test_api_server.py::test_health_check_reports_initialized_state PASSED [ 55%]
+tests/news/test_api_server.py::test_analyze_requires_valid_api_key PASSED [ 56%]
+tests/news/test_api_server.py::test_analyze_returns_service_unavailable_when_controller_missing PASSED [ 57%]
+tests/news/test_api_server.py::test_analyze_caps_requested_window_and_enqueues_job PASSED [ 57%]
+tests/news/test_api_server.py::test_analyze_rejects_request_below_min_window PASSED [ 58%]
+tests/news/test_api_server.py::test_analyze_status_returns_job_state PASSED [ 59%]
+tests/news/test_api_server.py::test_analyze_result_returns_queued_payload PASSED [ 60%]
+tests/news/test_api_server.py::test_analyze_result_returns_completed_payload PASSED [ 61%]
+tests/news/test_api_server.py::test_analyze_user_id_invalid_is_rejected[] PASSED [ 62%]
+tests/news/test_api_server.py::test_analyze_user_id_invalid_is_rejected[   ] PASSED [ 63%]
+tests/news/test_api_server.py::test_analyze_user_id_invalid_is_rejected[has space] PASSED [ 64%]
+tests/news/test_api_server.py::test_analyze_user_id_invalid_is_rejected[user!] PASSED [ 64%]
+tests/news/test_api_server.py::test_analyze_user_id_invalid_is_rejected[\u4e2d\u6587] PASSED [ 65%]
+tests/news/test_api_server.py::test_analyze_user_id_invalid_is_rejected[aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] PASSED [ 66%]
+tests/news/test_api_server.py::test_analyze_user_id_same_user_reuses_its_own_dedup_context PASSED [ 67%]
+tests/news/test_api_server.py::test_analyze_user_id_different_users_remain_isolated PASSED [ 68%]
+tests/news/test_api_server.py::test_analyze_user_id_failed_job_does_not_write_success_history_or_cache PASSED [ 69%]
+tests/news/test_api_server.py::test_analyze_job_persists_across_repository_reinitialization PASSED [ 70%]
+tests/news/test_api_server.py::test_datasource_create_list_and_delete_round_trip PASSED [ 71%]
+tests/news/test_api_server.py::test_datasource_endpoints_require_valid_api_key[post-/datasources-payload0] PASSED [ 71%]
+tests/news/test_api_server.py::test_datasource_endpoints_require_valid_api_key[get-/datasources-None] PASSED [ 72%]
+tests/news/test_api_server.py::test_datasource_endpoints_require_valid_api_key[delete-/datasources/test-id-None] PASSED [ 73%]
+tests/news/test_api_server.py::test_datasource_create_duplicate_returns_conflict PASSED [ 74%]
+tests/news/test_api_server.py::test_datasource_delete_returns_conflict_when_active_ingestion_job_exists PASSED [ 75%]
+tests/news/test_api_server.py::test_datasource_delete_returns_409_when_topic_associated PASSED [ 76%]
+tests/news/test_api_server.py::test_datasource_create_invalid_semantic_payload_returns_unprocessable_entity PASSED [ 77%]
+tests/news/test_api_server.py::test_datasource_create_invalid_structural_payload_returns_validation_error PASSED [ 78%]
+tests/news/test_api_server.py::test_create_api_server_lifespan_starts_requested_services_and_cleans_up PASSED [ 78%]
+tests/news/test_api_server.py::test_create_api_server_lifespan_keeps_scheduler_and_listener_disabled_when_start_services_false PASSED [ 79%]
+tests/news/test_api_server.py::test_create_api_server_lifespan_prefers_telegram_webhook_when_available PASSED [ 80%]
+tests/news/test_api_server.py::test_telegram_webhook_endpoint_passes_update_to_handler PASSED [ 81%]
+tests/news/test_api_server.py::test_telegram_webhook_endpoint_rejects_invalid_secret PASSED [ 82%]
+tests/news/test_api_server.py::test_health_check_returns_lightweight_response PASSED [ 83%]
+tests/news/test_api_server.py::test_health_check_does_not_probe_database PASSED [ 84%]
+tests/news/test_api_server.py::test_ready_check_reports_database_ready PASSED [ 85%]
+tests/news/test_api_server.py::test_ready_check_reports_database_unavailable PASSED [ 85%]
+tests/news/test_api_server.py::test_ready_check_does_not_leak_credentials PASSED [ 86%]
+tests/news/test_api_server.py::test_ready_check_sanitizes_database_failure PASSED [ 87%]
+tests/news/test_api_server.py::test_ready_check_when_controller_is_none PASSED [ 88%]
+tests/shared/test_ingestion_runtime.py::test_initialize_ingestion_system_skips_analysis_report_and_telegram FAILED [ 89%]
+tests/shared/test_ingestion_runtime.py::test_run_ingestion_loop_uses_ingestion_initialization_path PASSED [ 90%]
+tests/shared/test_ingestion_runtime.py::test_run_ingestion_service_delegates_to_ingestion_loop PASSED [ 91%]
+tests/shared/test_ingestion_runtime.py::test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped PASSED [ 92%]
+tests/shared/test_ingestion_runtime.py::test_run_analysis_service_starts_telegram_without_scheduler PASSED [ 92%]
+tests/shared/test_ingestion_runtime.py::test_normalize_runtime_mode_accepts_retained_split_service_modes[analysis-service] PASSED [ 93%]
+tests/shared/test_ingestion_runtime.py::test_normalize_runtime_mode_accepts_retained_split_service_modes[api-only] PASSED [ 94%]
+tests/shared/test_ingestion_runtime.py::test_normalize_runtime_mode_accepts_retained_split_service_modes[ingestion] PASSED [ 95%]
+tests/shared/test_ingestion_runtime.py::test_normalize_runtime_mode_rejects_invalid_modes[legacy-mode] PASSED [ 96%]
+tests/shared/test_ingestion_runtime.py::test_normalize_runtime_mode_rejects_invalid_modes[bogus-mode] PASSED [ 97%]
+tests/shared/test_ingestion_runtime.py::test_normalize_runtime_mode_rejects_invalid_modes[unknown] PASSED [ 98%]
+tests/shared/test_ingestion_runtime.py::test_trigger_manual_execution_rejected_in_public_analysis_runtime[api-only] PASSED [ 99%]
+tests/shared/test_ingestion_runtime.py::test_trigger_manual_execution_rejected_in_public_analysis_runtime[analysis-service] PASSED [100%]
+
+=================================== FAILURES ===================================
+__________ test_config_manager_supports_postgres_via_env_database_url __________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-14/test_config_manager_supports_p0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fafa2d3d8d0>
+
+    def test_config_manager_supports_postgres_via_env_database_url(tmp_path, monkeypatch):
+        config_path = tmp_path / "config.jsonc"
+        config_path.write_text(
+            """
+            {
+              "storage": {
+                "retention_days": 30,
+                "max_storage_mb": 1000,
+                "cleanup_frequency": "daily",
+                "backend": "postgres"
+              },
+              "llm_config": {"model": "gpt-4"}
+            }
+            """,
+            encoding="utf-8",
+        )
+    
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        manager = ConfigManager(str(config_path))
+>       config = manager.load_config()
+                 ^^^^^^^^^^^^^^^^^^^^^
+
+tests/shared/test_postgres_storage_path.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <crypto_news_analyzer.config.manager.ConfigManager object at 0x7fafa2d0cd10>
+
+    def load_config(self) -> Dict[str, Any]:
+        """
+        加载配置文件
+    
+        Returns:
+            配置数据字典
+    
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            json.JSONDecodeError: 配置文件格式无效
+        """
+        try:
+            if not self.config_path.exists():
+                self.logger.info(f"配置文件不存在，创建默认配置: {self.config_path}")
+                self._create_default_config()
+    
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.config_data = self.parse_jsonc(f.read())
+    
+            if not self.validate_config(self.config_data):
+>               raise ValueError("配置文件验证失败")
+E               ValueError: 配置文件验证失败
+
+crypto_news_analyzer/config/manager.py:79: ValueError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-31T04:43:10.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-31T04:43:10.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "LLM配置无效: llm_config is missing required fields: fallback_models, market_model."}
+{"timestamp": "2026-05-31T04:43:10.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.config.manager:manager.py:52 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:201 LLM配置无效: llm_config is missing required fields: fallback_models, market_model.
+ERROR    crypto_news_analyzer.config.manager:manager.py:88 加载配置文件失败: 配置文件验证失败
+_____ test_initialize_ingestion_system_skips_analysis_report_and_telegram ______
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-14/test_initialize_ingestion_syst0')
+
+    def test_initialize_ingestion_system_skips_analysis_report_and_telegram(tmp_path):
+        config_path = tmp_path / "config.jsonc"
+        db_path = tmp_path / "ingestion_runtime.db"
+    
+        config_path.write_text(
+            json.dumps(
+                {
+                    "execution_interval": 10,
+                    "time_window_hours": 24,
+                    "storage": {
+                        "retention_days": 30,
+                        "max_storage_mb": 1000,
+                        "cleanup_frequency": "daily",
+                        "database_path": str(db_path),
+                    },
+                    "llm_config": {},
+                    "rss_sources": [],
+                    "x_sources": [],
+                    "rest_api_sources": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+    
+        controller = MainController(str(config_path))
+>       assert controller.initialize_ingestion_system() is True
+E       assert False is True
+E        +  where False = initialize_ingestion_system()
+E        +    where initialize_ingestion_system = <crypto_news_analyzer.execution_coordinator.MainController object at 0x7fafa257b610>.initialize_ingestion_system
+
+tests/shared/test_ingestion_runtime.py:73: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-05-31T04:43:19.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.execution_coordinator", "message": "已加载 2 条执行历史记录"}
+{"timestamp": "2026-05-31T04:43:19.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.execution_coordinator", "message": "主控制器初始化完成"}
+{"timestamp": "2026-05-31T04:43:19.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.execution_coordinator", "message": "开始初始化摄取服务组件（ingestion-only）"}
+{"timestamp": "2026-05-31T04:43:19.%fZ", "level": "INFO", "logger": "crypto_news_analyzer.config.manager", "message": "环境变量已加载"}
+{"timestamp": "2026-05-31T04:43:19.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "LLM配置无效: llm_config is missing required fields: fallback_models, market_model, model."}
+{"timestamp": "2026-05-31T04:43:19.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.config.manager", "message": "加载配置文件失败: 配置文件验证失败"}
+{"timestamp": "2026-05-31T04:43:19.%fZ", "level": "ERROR", "logger": "crypto_news_analyzer.execution_coordinator", "message": "摄取服务初始化失败: 配置文件验证失败"}
+------------------------------ Captured log call -------------------------------
+INFO     crypto_news_analyzer.execution_coordinator:execution_coordinator.py:1751 已加载 2 条执行历史记录
+INFO     crypto_news_analyzer.execution_coordinator:execution_coordinator.py:188 主控制器初始化完成
+INFO     crypto_news_analyzer.execution_coordinator:execution_coordinator.py:437 开始初始化摄取服务组件（ingestion-only）
+INFO     crypto_news_analyzer.config.manager:manager.py:52 环境变量已加载
+ERROR    crypto_news_analyzer.config.manager:manager.py:201 LLM配置无效: llm_config is missing required fields: fallback_models, market_model, model.
+ERROR    crypto_news_analyzer.config.manager:manager.py:88 加载配置文件失败: 配置文件验证失败
+ERROR    crypto_news_analyzer.execution_coordinator:execution_coordinator.py:451 摄取服务初始化失败: 配置文件验证失败
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.11.2-final-0 ________________
+
+Name                                                               Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------------------------------
+crypto_news_analyzer/__init__.py                                       2      0   100%
+crypto_news_analyzer/analyzers/__init__.py                             7      0   100%
+crypto_news_analyzer/analyzers/category_parser.py                    101    101     0%   7-342
+crypto_news_analyzer/analyzers/dynamic_classification_manager.py      97     75    23%   31-45, 62-70, 82-102, 113, 135-162, 180-198, 209, 221-225, 245-262, 276, 280-281, 285-288, 297-301, 310, 326, 341-346
+crypto_news_analyzer/analyzers/llm_analyzer.py                       478    423    12%   39-40, 94-192, 195-221, 224-233, 238-242, 245, 248-252, 255-260, 281-301, 314-329, 344-366, 379-389, 401-414, 426-440, 443-454, 457, 482-627, 653-693, 703-716, 729-740, 755-780, 790-838, 842-860, 864-872, 876-907, 919-924, 939-975, 991-995, 1011-1016, 1031-1055, 1067-1079, 1091-1092, 1101-1102, 1117-1121, 1130-1132, 1136-1139, 1148, 1168-1182, 1191-1201
+crypto_news_analyzer/analyzers/market_snapshot_service.py            309    265    14%   18-19, 44-49, 53-55, 60-62, 66, 71-72, 104-275, 278, 290-340, 354-498, 515-516, 528-540, 552-574, 583-610, 620-635, 653-681, 693-695, 704-720, 735-749, 764-774, 783-809, 818-871, 880-899
+crypto_news_analyzer/analyzers/prompt_manager.py                     145    104    28%   38-40, 49, 58-59, 68-82, 98-120, 132-152, 156-158, 163-178, 182-196, 202-217, 221-222, 235-236, 240, 252, 261, 271, 275-278, 282-283, 287-298, 304, 313-314, 326-340, 344, 357-368
+crypto_news_analyzer/analyzers/structured_output_manager.py          718    628    13%   43-46, 82-96, 102-104, 110-112, 118-120, 126-128, 134-140, 146-156, 160, 175-177, 196-201, 205-209, 213, 222-227, 239-267, 304-360, 389-515, 535-795, 807, 826-841, 854-860, 877-933, 949-1043, 1052-1108, 1125-1142, 1154-1185, 1189-1245, 1248-1262, 1277-1348, 1352-1365, 1376-1387, 1403-1427, 1440-1450, 1465-1507, 1513-1516, 1520-1530, 1533-1536, 1539-1551, 1554-1592, 1595-1602, 1611, 1620, 1634-1666
+crypto_news_analyzer/analyzers/token_usage_tracker.py                 64     38    41%   28, 42-44, 57-59, 81-92, 107-109, 118-136, 152-168, 180-197, 201-202
+crypto_news_analyzer/api_server.py                                  1087    518    52%   98-99, 107-108, 148, 153-156, 294, 311, 468, 477-481, 486-516, 520-565, 569-572, 595-608, 617-624, 629-640, 644-653, 657-683, 690, 701, 721-728, 733, 742, 757-758, 764, 768-771, 775-786, 793, 840-845, 864-880, 894-909, 921-936, 945, 966-974, 991-1001, 1010-1011, 1016-1017, 1019-1021, 1038-1040, 1048-1102, 1147, 1152, 1157-1158, 1162, 1181, 1205-1221, 1247, 1260-1264, 1290, 1306, 1315-1317, 1332-1363, 1378-1382, 1390-1394, 1415-1417, 1433, 1438-1447, 1483-1485, 1488, 1506-1539, 1552-1570, 1583-1607, 1620-1637, 1649-1658, 1675-1684, 1699-1718, 1732-1740, 1757-1783, 1800-1808, 1825-1830, 1843-1849, 1862-1868, 1881-1887, 1904-1909, 1942, 1954, 1962, 1974-1976, 2061-2065, 2109, 2120, 2126, 2136-2137, 2154, 2165-2166
+crypto_news_analyzer/config/__init__.py                                0      0   100%
+crypto_news_analyzer/config/llm_registry.py                          172     44    74%   32, 35, 38, 41, 47, 68, 71, 74, 77, 80, 83, 87, 90, 93, 96, 102, 108, 145, 149, 153, 156, 304-305, 314, 319-320, 329, 335, 344, 348-349, 353, 362-364, 369, 383, 386, 400, 406, 436-438, 448
+crypto_news_analyzer/config/manager.py                               263     90    66%   57, 85-86, 107, 109, 166-167, 173-174, 178-179, 183-184, 189-190, 196, 211-213, 219-221, 227, 233, 238-239, 244-246, 259, 271-273, 277, 285, 293, 303-322, 327, 356-357, 375-376, 384-387, 399, 417, 422-423, 432-433, 449-465, 469, 490-491, 495-496, 500-502, 603-605, 612-614, 619-624
+crypto_news_analyzer/crawlers/__init__.py                             18      4    78%   22-25
+crypto_news_analyzer/crawlers/bird_dependency_manager.py             252    209    17%   66-70, 79-162, 167-181, 185-189, 193-219, 223-237, 241-258, 267-296, 300-310, 314-324, 328-351, 360-403, 407-409, 413-415, 424-433, 442-488, 502-551, 555-556
+crypto_news_analyzer/crawlers/bird_wrapper.py                        286    257    10%   37-48, 52-58, 62-76, 85-86, 95-103, 116-187, 198-209, 213-219, 229-269, 283-320, 341-392, 417-461, 473-488, 492-522, 526-559, 563-603, 612-625, 634-665
+crypto_news_analyzer/crawlers/data_source_factory.py                 148    103    30%   39, 44, 48, 63-71, 94-122, 131, 143, 159-173, 188-212, 226-238, 250-270, 290-314, 323-329, 338, 398-401
+crypto_news_analyzer/crawlers/data_source_interface.py                49     19    61%   45, 64, 77, 90, 100, 109, 118, 130, 142, 156, 163-166, 169-174
+crypto_news_analyzer/crawlers/plugin_system_example.py               148    148     0%   12-349
+crypto_news_analyzer/crawlers/rest_api_crawler.py                    233    200    14%   57-70, 74, 78, 85, 100-160, 176-185, 201-225, 237-271, 279-306, 310-333, 337-357, 362-388, 392-423, 427-437, 441-464, 468-476, 480-484, 488-506, 510-512
+crypto_news_analyzer/crawlers/rss_crawler.py                         223    196    12%   41-60, 74-104, 115-148, 167-188, 201-247, 251-257, 261-304, 309-316, 320-356, 360-388, 392-396, 407, 418-423, 434-450, 462-478
+crypto_news_analyzer/crawlers/rss_crawler_adapter.py                  78     61    22%   32-39, 43, 47, 51, 66-90, 106-111, 127-142, 154-169, 181-206, 218, 227-230
+crypto_news_analyzer/crawlers/telegram_intelligence_crawler.py       176    141    20%   30-32, 39-43, 46, 49, 52, 55-63, 66-98, 101-129, 138-175, 178-188, 200-207, 210, 213, 216-218, 221-223, 233-248, 251-261, 264-266, 269-286, 289-296, 302-304, 307-311
+crypto_news_analyzer/crawlers/v2ex_intelligence_crawler.py           299    259    13%   48-57, 60, 63, 75, 78-135, 138-175, 178-187, 190-191, 194-203, 214-280, 294-302, 311-345, 353-370, 373-378, 381-393, 396, 399-406, 427-435, 457-470, 473-481, 484-488, 491-496, 499-504, 507-521
+crypto_news_analyzer/crawlers/x_crawler.py                           233    211     9%   37-60, 69-79, 83-94, 98-112, 125-169, 182-235, 247-297, 310-342, 346-405, 417-419, 428-440, 444-450, 454
+crypto_news_analyzer/crawlers/x_crawler_adapter.py                   105     87    17%   33-45, 49, 53, 57, 72-96, 112-124, 140-168, 180-219, 231-260, 272, 288-295, 303-306
+crypto_news_analyzer/datasource_payloads.py                          289    169    42%   61, 67, 92, 97, 102, 107, 113, 115, 119, 124, 147-152, 158-197, 201-223, 229-247, 251-275, 279-330, 338, 340, 350, 364, 370, 376, 399, 401, 410, 418, 425-436, 442-463, 467-472, 480-499, 505-509, 513-514
+crypto_news_analyzer/domain/__init__.py                                4      0   100%
+crypto_news_analyzer/domain/models.py                                642    266    59%   119-127, 131-135, 139-154, 163, 214, 218, 222, 226, 238, 262, 312-318, 323, 331, 340, 392, 394, 396, 398, 409, 421, 482-501, 513, 526, 547, 618, 620, 622, 624, 626, 628, 647, 664, 706, 718, 749-764, 784-785, 806, 828, 859-875, 883-884, 893-896, 900-908, 929-946, 950-951, 963-966, 970-974, 996-1020, 1024-1025, 1038-1041, 1045-1048, 1070-1080, 1084-1085, 1088-1091, 1095-1098, 1116-1131, 1135-1136, 1139-1142, 1146-1149, 1163-1169, 1173, 1176-1178, 1182-1184, 1200-1208, 1221-1222, 1233, 1247
+crypto_news_analyzer/domain/repositories.py                          272    114    58%   44, 49, 66, 81, 101, 119, 131, 142, 158, 163, 182, 187, 197, 214, 237, 258, 277, 282, 291, 295, 299, 303, 312, 322, 326, 330, 340, 350, 356, 360, 364, 373, 379, 383, 389, 397, 401, 407, 413, 417, 421, 425-430, 434, 438, 443, 449, 452, 455, 463, 466, 469, 472, 480-491, 494-495, 498, 507, 510, 513, 516, 525, 528, 533, 538, 548, 558-566, 587, 603, 624, 643, 663, 682, 693, 696, 699, 712, 715, 718, 721, 726, 736, 739, 742, 745, 748, 751, 754, 763, 766, 769, 790, 803, 813, 823, 831, 835
+crypto_news_analyzer/execution_coordinator.py                       1128    941    17%   89-90, 112-115, 192-201, 204-209, 217-220, 231-246, 255-267, 274-295, 305-330, 342-433, 440-449, 459-512, 515-545, 548-640, 644-651, 654-689, 692-726, 729-754, 763-766, 787-899, 902-907, 910-915, 918-924, 927, 952-1076, 1091-1178, 1182-1310, 1335-1418, 1428-1454, 1477-1557, 1561-1576, 1580-1583, 1592-1610, 1619-1721, 1725-1731, 1735-1736, 1740, 1753-1756, 1760-1774, 1778-1779, 1786-1797, 1806-1820, 1824-1841, 1845-1849, 1853-1883, 1907-1925, 1936-1937, 1946-1951, 1962-1963, 1971-1978, 1982-1987, 2000-2280, 2290-2308, 2316-2328, 2346-2459, 2474-2496, 2510
+crypto_news_analyzer/intelligence/__init__.py                          2      2     0%   13-15
+crypto_news_analyzer/intelligence/pipeline.py                        134    134     0%   3-244
+crypto_news_analyzer/intelligence/topic_findings.py                  338    338     0%   3-701
+crypto_news_analyzer/intelligence/topic_prompts.py                   284    284     0%   3-714
+crypto_news_analyzer/intelligence/topic_research.py                  296    296     0%   3-766
+crypto_news_analyzer/main.py                                         129     61    53%   35-70, 76-117, 151-153, 180-182, 205-206, 214-215, 222, 226-228, 255-277, 281
+crypto_news_analyzer/models.py                                       734    301    59%   20, 23, 47, 50, 53, 56, 60, 63, 70-71, 97-99, 105, 110-111, 124, 128-135, 139-143, 147, 152, 165, 169-176, 180-184, 188, 193, 209, 213-225, 229-233, 237, 242, 260, 269-295, 301-308, 313-315, 328, 333, 359, 362, 365, 368, 372, 375, 378, 397, 402, 427, 429, 431, 433, 435, 437, 439, 441, 443, 445, 447, 449, 452-457, 460-465, 468, 496, 498, 500, 502, 504, 506, 518-519, 524, 539-549, 569, 571, 573, 575, 577, 580, 582, 584, 600, 624, 626, 628, 630, 637, 639, 648, 671, 675-694, 698, 703, 719-723, 727, 732, 748, 752-765, 769, 774, 778, 783-784, 798, 802-812, 816, 821, 840, 843, 846, 849, 853-857, 861-865, 869-871, 876-883, 903-908, 912-914, 919-921, 925, 930-931, 950, 964-967, 990-991, 995-999, 1004-1008, 1029-1032, 1037-1041, 1058-1060, 1065-1067, 1073-1074, 1079-1081, 1095-1101, 1130-1131, 1136-1137, 1142-1148, 1153-1162, 1171-1178
+crypto_news_analyzer/reporters/__init__.py                             5      0   100%
+crypto_news_analyzer/reporters/report_generator.py                   148    113    24%   59-79, 100-137, 160-162, 179-220, 240-267, 290-317, 340-353, 372-386, 401-408, 421, 433, 443-444, 456, 469-476, 496-504, 522-530, 551-554
+crypto_news_analyzer/reporters/telegram/__init__.py                    0      0   100%
+crypto_news_analyzer/reporters/telegram/datasource_commands.py       268    245     9%   49-121, 128-307, 314-479, 482, 485-513, 516-548, 551, 554-561, 568-576, 579-603, 608-612, 620-672
+crypto_news_analyzer/reporters/telegram/intelligence_commands.py    1005    966     4%   45-47, 50-63, 66, 72-97, 100-113, 118-142, 147-162, 165-166, 169-171, 180-183, 195-246, 249-301, 304-382, 385-426, 429-485, 488-586, 589-628, 631-668, 672-750, 754-868, 872-959, 965-1045, 1048-1113, 1118-1169, 1172-1260, 1263-1288, 1298-1384, 1392-1415, 1420-1719
+crypto_news_analyzer/reporters/telegram_command_handler.py          1101    991    10%   59-62, 93-148, 152-157, 160-164, 175-178, 181-185, 188-199, 202-222, 226-229, 240-257, 265-288, 293, 296-303, 306-309, 312-321, 324-328, 332-341, 345-353, 356-376, 379-382, 391-395, 404-428, 443-489, 507-529, 543-584, 605-632, 644-675, 693-716, 749-762, 770-806, 810-824, 832-870, 874-897, 901-912, 929-961, 976-1056, 1066-1172, 1184-1241, 1254-1308, 1322-1379, 1387-1446, 1454-1482, 1499-1592, 1605-1649, 1652-1657, 1660-1665, 1668-1694, 1697-1732, 1746-1841, 1867-1971, 1987-2062, 2074-2214, 2223-2257, 2264-2295, 2299-2303, 2315, 2339-2388, 2397, 2407-2413, 2423-2441, 2465-2481, 2498, 2512, 2526-2530, 2534-2543, 2547-2550, 2553, 2556, 2559, 2562, 2565, 2572, 2594, 2604
+crypto_news_analyzer/reporters/telegram_formatter.py                 201    167    17%   40-47, 59-67, 78-79, 90-91, 103, 121-122, 134-156, 168-169, 183-197, 211-231, 242-287, 302-333, 347-376, 388-408, 422, 435, 447-450, 482-505, 520-531, 549, 568-573, 585-586, 599-600
+crypto_news_analyzer/reporters/telegram_sender.py                    272    216    21%   63-66, 69-70, 74-75, 79-80, 91-154, 174-220, 227-237, 245-259, 263-264, 271-283, 290-305, 312-329, 346-352, 363-387, 398-417, 429-453, 465-478, 490-512, 520-521, 525, 538, 542-543, 557-567, 571, 575-576, 597, 615-631, 643-661
+crypto_news_analyzer/semantic_search/__init__.py                       8      1    88%   29
+crypto_news_analyzer/semantic_search/backfill_runner.py              186    152    18%   51-70, 75-184, 189-205, 211-246, 249-286, 292-327, 332-352, 363-386
+crypto_news_analyzer/semantic_search/embedding_service.py            108     87    19%   9-10, 32-49, 53, 56, 59-60, 63-72, 75-90, 93-95, 98-124, 127, 132-175
+crypto_news_analyzer/semantic_search/models.py                        19      0   100%
+crypto_news_analyzer/semantic_search/report_builder.py                23     23     0%   3-95
+crypto_news_analyzer/semantic_search/service.py                      470    412    12%   16-17, 61-91, 108-128, 142-202, 219-237, 243-254, 257-307, 310-325, 337-460, 470-484, 493-498, 501-516, 519-547, 550-559, 562-576, 579, 584-601, 615-644, 657-682, 699-718, 723-736, 748, 759-763, 777-791, 804-823, 826-853, 856-862, 867-875, 880-902, 905, 912-931, 934-937, 940-953, 958-989, 996-1015, 1023-1034
+crypto_news_analyzer/storage/__init__.py                               3      0   100%
+crypto_news_analyzer/storage/cache_manager.py                        245     64    74%   18-20, 52, 57, 105-109, 112, 149-194, 221-224, 231, 239, 307-309, 331, 369-371, 381-422, 441, 486-488, 491, 513-523, 569-570, 604-605
+crypto_news_analyzer/storage/data_manager.py                        1143    678    41%   23-25, 60, 65, 79-81, 472-473, 477, 490, 546-548, 560-566, 569-587, 604, 631-635, 638-640, 645, 650-651, 673-675, 735-753, 765-802, 811-863, 872-891, 911, 934-936, 949-984, 990-991, 996-997, 1004, 1038-1043, 1055-1080, 1125-1126, 1147-1149, 1159-1204, 1207-1234, 1252-1293, 1308-1336, 1345-1408, 1417-1513, 1541-1630, 1656-1788, 1794-1830, 1863-1888, 1909, 1979, 1988-2000, 2007-2020, 2047-2059, 2126-2209, 2212-2225, 2233-2245, 2290, 2343-2349, 2364, 2373-2386, 2399-2400, 2402-2403, 2405, 2447-2472, 2480-2484, 2498, 2513-2520, 2524-2526, 2529-2569, 2572-2591, 2596-2607, 2612-2620, 2623-2632, 2635-2648, 2651-2658, 2673, 2691-2693, 2696-2703, 2708-2725, 2728-2743, 2746-2780, 2785-2799, 2804, 2812-2814, 2816, 2833-2850, 2892, 2950-2963, 2972-2991, 2994-3006, 3014-3057, 3065-3087, 3094-3119, 3128-3144, 3170, 3191-3196, 3208-3226, 3230
+crypto_news_analyzer/storage/intelligence_schema.py                   53      1    98%   257
+crypto_news_analyzer/storage/postgres_connection.py                   55      6    89%   18-20, 90-92
+crypto_news_analyzer/storage/repositories.py                         725    503    31%   50-52, 56-58, 85, 94-99, 106-110, 139, 149, 162, 166, 182-185, 195-201, 205-206, 215, 228, 240, 253, 263-264, 313-318, 321, 324, 327, 335, 348, 356, 359, 368, 377, 384, 387, 400, 414, 424, 427, 430, 433, 436, 444, 449, 468-473, 476-479, 487-492, 518, 522, 538, 544-551, 564, 599, 606, 609, 614-617, 620-621, 624-625, 628-641, 647, 650, 653, 658-659, 662, 665-666, 674-675, 678, 681, 685-707, 710-766, 769-778, 781-782, 791-807, 813, 816-858, 861-868, 877-893, 899, 902-920, 925-959, 969, 985-1005, 1014-1029, 1041-1064, 1073-1075, 1084-1109, 1116-1127, 1138-1161, 1169-1194, 1202-1217, 1225-1279, 1282, 1285-1315, 1328-1380, 1383, 1386-1395, 1398-1408, 1416-1435, 1445-1510, 1513, 1516-1575, 1578, 1581-1590, 1599-1618, 1624-1633, 1636, 1639, 1642-1651, 1654-1676, 1679-1681, 1684, 1687-1689, 1692-1700, 1703-1705, 1708-1710, 1713-1718, 1721-1723, 1728-1740, 1743, 1748-1753, 1756-1772, 1777-1790, 1797, 1809-1818, 1826, 1835-1836, 1840-1841, 1848, 1851, 1863-1869
+crypto_news_analyzer/utils/__init__.py                                 0      0   100%
+crypto_news_analyzer/utils/conversation_cache.py                      73     60    18%   23-28, 40-59, 69-90, 100, 112-144, 153-160
+crypto_news_analyzer/utils/errors.py                                 185    102    45%   40, 47-49, 56, 63-65, 72-76, 83-86, 102-104, 115-119, 126-129, 136-138, 145-147, 165, 169, 176-178, 181, 184-185, 192, 195, 202, 205, 212-213, 216, 219, 226-227, 230, 233, 240-248, 262-288, 296-298, 302-304, 316-340, 348, 360-381
+crypto_news_analyzer/utils/llm_logging.py                            142    122    14%   40-55, 66-70, 78-94, 99, 104, 123-175, 179-186, 202, 223-271, 281, 301-305, 322-326, 346-350, 386-405
+crypto_news_analyzer/utils/logging.py                                114     40    65%   32, 39, 44, 48-49, 114, 128-154, 163-164, 185-186, 195-196, 206-207, 216-217, 229-248, 272-273
+crypto_news_analyzer/utils/timezone_utils.py                          32     21    34%   23, 36-42, 59-62, 79-88, 101, 114, 127-132
+------------------------------------------------------------------------------------------------
+TOTAL                                                              16527  12057    27%
+=========================== short test summary info ============================
+FAILED tests/shared/test_postgres_storage_path.py::test_config_manager_supports_postgres_via_env_database_url - ValueError: 配置文件验证失败
+FAILED tests/shared/test_ingestion_runtime.py::test_initialize_ingestion_system_skips_analysis_report_and_telegram - assert False is True
+ +  where False = initialize_ingestion_system()
+ +    where initialize_ingestion_system = <crypto_news_analyzer.execution_coordinator.MainController object at 0x7fafa257b610>.initialize_ingestion_system
+======================== 2 failed, 112 passed in 12.51s ========================

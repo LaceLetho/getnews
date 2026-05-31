@@ -1,0 +1,97 @@
+crypto_news_analyzer/api_server.py:2017:9: F841 local variable 'exc' is assigned to but never used
+crypto_news_analyzer/models.py:390:101: E501 line too long (110 > 100 characters)
+crypto_news_analyzer/storage/cache_manager.py:207:101: E501 line too long (103 > 100 characters)
+crypto_news_analyzer/storage/data_manager.py:1:101: E501 line too long (157 > 100 characters)
+crypto_news_analyzer/storage/data_manager.py:16:1: F401 'typing.Set' imported but unused
+crypto_news_analyzer/storage/data_manager.py:507:101: E501 line too long (111 > 100 characters)
+crypto_news_analyzer/storage/data_manager.py:1523:10: F821 undefined name 'UnifiedSemanticSearchHit'
+crypto_news_analyzer/storage/data_manager.py:1639:10: F821 undefined name 'UnifiedSemanticSearchHit'
+crypto_news_analyzer/storage/data_manager.py:1792:10: F821 undefined name 'UnifiedSemanticSearchHit'
+crypto_news_analyzer/storage/data_manager.py:1820:101: E501 line too long (102 > 100 characters)
+crypto_news_analyzer/storage/data_manager.py:1874:101: E501 line too long (101 > 100 characters)
+crypto_news_analyzer/storage/data_manager.py:2616:101: E501 line too long (103 > 100 characters)
+tests/news/test_api_server.py:1005:101: E501 line too long (115 > 100 characters)
+tests/news/test_api_server.py:1011:101: E501 line too long (115 > 100 characters)
+tests/news/test_api_server.py:1313:1: F811 redefinition of unused 'test_ready_check_sanitizes_database_failure' from line 1276
+tests/news/test_api_server.py:1335:1: F811 redefinition of unused 'test_ready_check_when_controller_is_none' from line 1297
+tests/shared/test_cache_manager.py:11:1: F401 'datetime.datetime' imported but unused
+tests/shared/test_cache_manager.py:11:1: F401 'datetime.timedelta' imported but unused
+tests/shared/test_cache_manager.py:12:1: F401 'pathlib.Path' imported but unused
+tests/shared/test_cache_manager.py:21:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:33:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:38:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:41:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:44:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:49:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:54:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:57:43: W291 trailing whitespace
+tests/shared/test_cache_manager.py:63:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:65:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:85:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:87:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:89:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:94:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:112:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:114:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:117:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:132:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:134:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:136:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:140:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:151:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:153:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:158:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:163:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:168:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:184:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:186:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:190:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:193:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:196:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:200:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:204:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:209:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:230:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:232:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:234:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:242:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:246:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:252:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:267:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:269:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:273:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:277:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:281:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:294:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:301:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:305:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:315:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:321:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:324:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:328:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:348:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:351:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:354:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:360:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:364:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:372:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:375:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:379:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:391:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:406:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:410:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:416:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:436:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:438:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:440:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:445:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:452:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:460:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:465:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:480:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:482:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:486:1: W293 blank line contains whitespace
+tests/shared/test_cache_manager.py:572:5: F841 local variable 'manager' is assigned to but never used
+tests/shared/test_postgres_connection.py:109:101: E501 line too long (103 > 100 characters)
+tests/shared/test_postgres_storage_path.py:5:1: F401 'unittest.mock.MagicMock' imported but unused
+tests/shared/test_postgres_storage_path.py:406:5: F841 local variable 'manager' is assigned to but never used

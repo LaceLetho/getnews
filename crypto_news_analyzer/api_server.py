@@ -19,8 +19,10 @@ from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, cast
 from urllib.parse import urlsplit, urlunsplit, urlparse
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, Response, Request
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 import os
 import logging
 
@@ -52,6 +54,7 @@ from .storage.repositories import (
     PostgresSemanticSearchRepository,
     SQLiteAnalysisRepository,
 )
+from .storage.postgres_connection import check_postgres_ready
 from .domain.repositories import IntelligenceRepository
 
 if TYPE_CHECKING:
@@ -1918,6 +1921,89 @@ def register_infrastructure_routes(app: FastAPI) -> None:
         """健康检查端点"""
         state = _get_app_state(req)
         return {"status": "healthy", "initialized": state.controller is not None}
+
+    @app.get("/ready")
+    async def readiness_check(req: Request):
+        """Database readiness probe. Returns 200 when DB is reachable, 503 otherwise."""
+        state = _get_app_state(req)
+        controller = state.controller
+        if controller is None:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "database": "unavailable",
+                    "initialized": False,
+                    "error": "Controller not initialized",
+                },
+            )
+
+        storage_config = getattr(controller, "storage_config", None)
+        if storage_config is None:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "database": "unavailable",
+                    "initialized": False,
+                    "error": "Storage config not available",
+                },
+            )
+
+        # Skip Postgres check in SQLite mode
+        if storage_config.backend != "postgres":
+            return {
+                "status": "ready",
+                "database": "skipped",
+                "initialized": True,
+            }
+
+        database_url = getattr(storage_config, "database_url", None)
+        if not database_url:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "database": "unavailable",
+                    "initialized": True,
+                    "error": "Database URL not configured",
+                },
+            )
+
+        try:
+            is_ready: bool = await run_in_threadpool(
+                check_postgres_ready,
+                database_url,
+                storage_config,
+            )
+        except Exception as exc:
+            logger.error(f"Database readiness check failed: {exc}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "database": "unavailable",
+                    "initialized": True,
+                    "error": "Database connectivity check failed",
+                },
+            )
+
+        if is_ready:
+            return {
+                "status": "ready",
+                "database": "ready",
+                "initialized": True,
+            }
+        else:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "database": "unavailable",
+                    "initialized": True,
+                    "error": "Database connectivity check failed",
+                },
+            )
 
     @app.post(os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook"))
     async def telegram_webhook(req: Request, background_tasks: BackgroundTasks):

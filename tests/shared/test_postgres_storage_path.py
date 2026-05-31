@@ -9,6 +9,7 @@ from crypto_news_analyzer.config.manager import ConfigManager
 from crypto_news_analyzer.models import StorageConfig, create_content_item_from_raw
 from crypto_news_analyzer.storage.data_manager import DataManager
 from crypto_news_analyzer.storage.repositories import SQLiteContentRepository
+from crypto_news_analyzer.utils.errors import StorageError
 
 
 class _FakeCursor:
@@ -59,9 +60,9 @@ def test_data_manager_postgres_initialization_runs_vector_setup(monkeypatch):
     fake_psycopg = _FakePsycopg(executed)
 
     monkeypatch.setattr(
-        "crypto_news_analyzer.storage.data_manager.psycopg", fake_psycopg
+        "crypto_news_analyzer.storage.postgres_connection.psycopg", fake_psycopg
     )
-    monkeypatch.setattr("crypto_news_analyzer.storage.data_manager.dict_row", object())
+    monkeypatch.setattr("crypto_news_analyzer.storage.postgres_connection.dict_row", object())
 
     manager = DataManager(
         StorageConfig(
@@ -101,7 +102,17 @@ def test_config_manager_supports_postgres_via_env_database_url(tmp_path, monkeyp
             "cleanup_frequency": "daily",
             "backend": "postgres"
           },
-          "llm_config": {"model": "gpt-4"}
+          "llm_config": {
+            "model": {"provider": "opencode-go", "name": "kimi-k2.5", "options": {}},
+            "fallback_models": [
+              {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+            ],
+            "market_model": {
+              "provider": "grok",
+              "name": "grok-4-1-fast-reasoning",
+              "options": {}
+            }
+          }
         }
         """,
         encoding="utf-8",
@@ -335,3 +346,152 @@ def test_get_last_successful_analysis_time_accepts_str_and_datetime(as_string):
 
     result = manager.get_last_successful_analysis_time(chat_id="telegram:123")
     assert result == execution_time
+
+
+class _RetryFakeConnection:
+    def __init__(self, executed):
+        self._executed = executed
+        self.committed = False
+        self.rolled_back = False
+        self.closed = False
+
+    def cursor(self):
+        return _FakeCursor(self._executed)
+
+    def execute(self, query, params=None):
+        self._executed.append((query, params))
+
+    def commit(self):
+        self.committed = True
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def close(self):
+        self.closed = True
+
+
+@contextmanager
+def _retrying_helper(executed, call_counter, fail_on_attempts=1):
+    call_counter["helper_calls"] += 1
+    for _ in range(fail_on_attempts):
+        call_counter["connect_attempts"] += 1
+    call_counter["connect_attempts"] += 1
+    conn = _RetryFakeConnection(executed)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def test_data_manager_postgres_delegates_to_retry_helper_on_failure(monkeypatch):
+    executed = []
+    call_counter = {"helper_calls": 0, "connect_attempts": 0}
+
+    def mock_helper(database_url, *, row_factory=None, config=None, logger=None):
+        return _retrying_helper(executed, call_counter, fail_on_attempts=1)
+
+    monkeypatch.setattr(
+        "crypto_news_analyzer.storage.data_manager.connect_postgres_with_retry",
+        mock_helper,
+    )
+
+    manager = DataManager(
+        StorageConfig(
+            backend="postgres",
+            database_url="postgresql://user:pass@localhost:5432/db",
+            pgvector_dimensions=1536,
+        )
+    )
+
+    assert manager.backend == "postgres"
+    assert call_counter == {"helper_calls": 1, "connect_attempts": 2}
+    assert any(
+        "CREATE EXTENSION IF NOT EXISTS vector" in str(q) for q, _ in executed
+    )
+
+
+def test_data_manager_postgres_all_attempts_exhausted(monkeypatch):
+    call_counter = {"calls": 0}
+
+    def mock_helper_always_fail(
+        database_url, *, row_factory=None, config=None, logger=None
+    ):
+        call_counter["calls"] += 1
+        import psycopg
+
+        raise psycopg.OperationalError("connection refused (persistent)")
+
+    monkeypatch.setattr(
+        "crypto_news_analyzer.storage.data_manager.connect_postgres_with_retry",
+        mock_helper_always_fail,
+    )
+
+    with pytest.raises(StorageError, match="connection refused"):
+        DataManager(
+            StorageConfig(
+                backend="postgres",
+                database_url="postgresql://user:pass@localhost:5432/db",
+                pgvector_dimensions=1536,
+            )
+        )
+
+    assert call_counter["calls"] == 1
+
+
+def test_data_manager_postgres_uses_retry_helper(monkeypatch):
+    executed = []
+    fake_conn = _FakeConnection(executed)
+
+    def fake_connect(*_args, **_kwargs):
+        @contextmanager
+        def ctx():
+            yield fake_conn
+        return ctx()
+
+    monkeypatch.setattr(
+        "crypto_news_analyzer.storage.data_manager.connect_postgres_with_retry",
+        fake_connect,
+    )
+
+    config = StorageConfig(
+        backend="postgres",
+        database_url="postgresql://user:pass@localhost:5432/db",
+        pgvector_dimensions=1536,
+    )
+    manager = DataManager(config)
+
+    with manager._get_connection() as conn:
+        assert conn is fake_conn
+
+
+def test_data_manager_postgres_retry_error_wrapped_in_storage_error(monkeypatch):
+    """Verify that connection failures from the retry helper are wrapped in StorageError."""
+    from crypto_news_analyzer.utils.errors import StorageError
+
+    def failing_connect(*_args, **_kwargs):
+        @contextmanager
+        def ctx():
+            raise RuntimeError("connection refused")
+        return ctx()
+
+    monkeypatch.setattr(
+        "crypto_news_analyzer.storage.data_manager.connect_postgres_with_retry",
+        failing_connect,
+    )
+
+    config = StorageConfig(
+        backend="postgres",
+        database_url="postgresql://user:pass@localhost:5432/db",
+        pgvector_dimensions=1536,
+    )
+
+    with pytest.raises(StorageError) as exc_info:
+        DataManager(config)
+
+    assert "数据库操作失败" in str(exc_info.value)
+    assert exc_info.value.details["operation"] == "database_operation"

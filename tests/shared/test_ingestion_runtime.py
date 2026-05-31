@@ -60,7 +60,25 @@ def test_initialize_ingestion_system_skips_analysis_report_and_telegram(tmp_path
                     "cleanup_frequency": "daily",
                     "database_path": str(db_path),
                 },
-                "llm_config": {},
+                "llm_config": {
+                    "model": {
+                        "provider": "opencode-go",
+                        "name": "kimi-k2.5",
+                        "options": {},
+                    },
+                    "fallback_models": [
+                        {
+                            "provider": "grok",
+                            "name": "grok-4-1-fast-reasoning",
+                            "options": {},
+                        }
+                    ],
+                    "market_model": {
+                        "provider": "grok",
+                        "name": "grok-4-1-fast-reasoning",
+                        "options": {},
+                    },
+                },
                 "rss_sources": [],
                 "x_sources": [],
                 "rest_api_sources": [],

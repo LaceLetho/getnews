@@ -344,6 +344,10 @@ class StorageConfig:
     database_path: str = "./data/crypto_news.db"
     database_url: Optional[str] = None
     pgvector_dimensions: int = 1536
+    postgres_connect_max_attempts: int = 3
+    postgres_connect_initial_delay_seconds: float = 1.0
+    postgres_connect_max_delay_seconds: float = 10.0
+    postgres_connect_timeout_seconds: int = 10
 
     def __post_init__(self):
         """数据验证"""
@@ -372,6 +376,23 @@ class StorageConfig:
 
         if self.pgvector_dimensions <= 0:
             raise ValueError("pgvector_dimensions必须大于0")
+
+        if self.postgres_connect_max_attempts <= 0:
+            raise ValueError("postgres_connect_max_attempts必须大于0")
+
+        if self.postgres_connect_initial_delay_seconds <= 0:
+            raise ValueError("postgres_connect_initial_delay_seconds必须大于0")
+
+        if self.postgres_connect_max_delay_seconds <= 0:
+            raise ValueError("postgres_connect_max_delay_seconds必须大于0")
+
+        if self.postgres_connect_max_delay_seconds < self.postgres_connect_initial_delay_seconds:
+            raise ValueError(
+                "postgres_connect_max_delay_seconds必须大于等于postgres_connect_initial_delay_seconds"
+            )
+
+        if self.postgres_connect_timeout_seconds <= 0:
+            raise ValueError("postgres_connect_timeout_seconds必须大于0")
 
     def to_dict(self) -> Dict[str, Any]:
         """序列化为字典"""

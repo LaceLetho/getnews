@@ -1,7 +1,87 @@
 {
   "schema_version": 2,
-  "active_work_id": "unified-semantic-search-fb8b7e0f",
+  "active_work_id": "railway-serverless-db-wakeup",
   "works": {
+    "railway-serverless-db-wakeup": {
+      "work_id": "railway-serverless-db-wakeup",
+      "active_plan": "/data/workspace/getnews/.omo/plans/railway-serverless-db-wakeup.md",
+      "plan_name": "railway-serverless-db-wakeup",
+      "status": "active",
+      "started_at": "2026-05-31T04:19:03.150Z",
+      "session_ids": [
+        "ses_183be469dffeaPGkG73oZy1tqz"
+      ],
+      "session_origins": {
+        "ses_183be469dffeaPGkG73oZy1tqz": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {
+        "todo:1": {
+          "task_key": "todo:1",
+          "task_label": "1",
+          "task_title": "**Split-Service Architecture Overview**: Two services (`crypto-news-analysis`, `crypto-news-ingestion`) sharing one PostgreSQL/pgvector database. Analysis is public-facing; ingestion is private scheduler.",
+          "session_id": "ses_183ba7db4ffeSmh3h30tOB35Bu",
+          "agent": "Sisyphus-Junior",
+          "category": "writing",
+          "started_at": "2026-05-31T04:21:15.623Z",
+          "ended_at": "2026-05-31T04:26:07.641Z",
+          "elapsed_ms": 292018,
+          "status": "completed",
+          "updated_at": "2026-05-31T04:26:07.641Z"
+        },
+        "todo:2": {
+          "task_key": "todo:2",
+          "task_label": "2",
+          "task_title": "Create shared Postgres connection/readiness helper",
+          "session_id": "ses_183baf066ffeDngYXchKOAVGjI",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-low",
+          "started_at": "2026-05-31T04:24:51.351Z",
+          "status": "completed",
+          "updated_at": "2026-05-31T04:26:11.167Z",
+          "ended_at": "2026-05-31T04:26:11.167Z",
+          "elapsed_ms": 79816
+        },
+        "todo:3": {
+          "task_key": "todo:3",
+          "task_label": "3",
+          "task_title": "Integrate helper into runtime storage connection paths",
+          "session_id": "ses_183b73c6bffe9ZqdnFRhgsOp8l",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-low",
+          "started_at": "2026-05-31T04:41:03.014Z",
+          "status": "completed",
+          "updated_at": "2026-05-31T04:42:01.386Z",
+          "ended_at": "2026-05-31T04:42:01.386Z",
+          "elapsed_ms": 58372
+        },
+        "todo:7": {
+          "task_key": "todo:7",
+          "task_label": "7",
+          "task_title": "Run focused quality gates and no-scope-creep checks",
+          "session_id": "ses_183a8b95cffe3mHpD5I2Sn3FUk",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-low",
+          "started_at": "2026-05-31T04:44:54.596Z",
+          "ended_at": "2026-05-31T04:45:10.731Z",
+          "elapsed_ms": 16135,
+          "status": "completed",
+          "updated_at": "2026-05-31T04:45:10.731Z"
+        },
+        "final-wave:f1": {
+          "task_key": "final-wave:f1",
+          "task_label": "F1",
+          "task_title": "Plan Compliance Audit — oracle",
+          "session_id": "ses_1836bfb80ffe3E5JsQJcZxovX4",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "started_at": "2026-05-31T04:48:00.232Z",
+          "status": "running",
+          "updated_at": "2026-05-31T06:18:56.743Z"
+        }
+      },
+      "updated_at": "2026-05-31T06:18:56.743Z"
+    },
     "unified-semantic-search-fb8b7e0f": {
       "work_id": "unified-semantic-search-fb8b7e0f",
       "active_plan": "/data/workspace/getnews/.omo/plans/unified-semantic-search.md",
@@ -9,6 +89,8 @@
       "status": "completed",
       "started_at": "2026-05-28T10:56:38.600Z",
       "updated_at": "2026-05-28T12:14:32.609Z",
+      "ended_at": "2026-05-28T12:14:32.609Z",
+      "elapsed_ms": 4674009,
       "session_ids": [
         "ses_19224760dffedvHofJ4LihKhBe"
       ],
@@ -16,202 +98,84 @@
         "ses_19224760dffedvHofJ4LihKhBe": "direct"
       },
       "agent": "atlas",
-      "task_sessions": {
-        "todo:1": {
-          "task_key": "todo:1",
-          "task_label": "1",
-          "task_title": "`data_manager.py` `get_raw_intelligence_items_missing_embeddings()` references a column `source_chat_title` that DOES NOT EXIST in `raw_intelligence_items`. The real columns are: id, source_type, source_id, external_id, source_url, chat_id, thread_id, topic_id, raw_text, content_hash, published_at, collected_at, expires_at, edit_status, edit_timestamp, created_at, datasource_id. Fix the SQL to only select columns that exist.",
-          "session_id": "ses_191c3efcfffewSfpIhJbToxaSE",
-          "agent": "Sisyphus-Junior",
-          "started_at": "2026-05-28T11:02:00.262Z",
-          "ended_at": "2026-05-28T11:27:09.709Z",
-          "elapsed_ms": 1509447,
-          "status": "completed",
-          "updated_at": "2026-05-28T11:27:09.709Z"
-        },
-        "todo:3": {
-          "task_key": "todo:3",
-          "task_label": "3",
-          "task_title": "Create unified search DTO and `UNION ALL` storage retrieval",
-          "session_id": "ses_191a84a6effeZbroNHC05nhVI2",
-          "agent": "Sisyphus-Junior",
-          "category": "deep",
-          "updated_at": "2026-05-28T11:33:19.705Z",
-          "started_at": "2026-05-28T11:33:02.481Z",
-          "status": "completed",
-          "ended_at": "2026-05-28T11:33:19.705Z",
-          "elapsed_ms": 17224
-        },
-        "todo:4": {
-          "task_key": "todo:4",
-          "task_label": "4",
-          "task_title": "Update SemanticSearchService and reports for mixed hits",
-          "session_id": "ses_191a306daffep4KxZpSngxhs00",
-          "agent": "Sisyphus-Junior",
-          "category": "unspecified-high",
-          "updated_at": "2026-05-28T11:40:41.204Z",
-          "started_at": "2026-05-28T11:40:26.618Z",
-          "status": "completed",
-          "ended_at": "2026-05-28T11:40:41.204Z",
-          "elapsed_ms": 14586
-        },
-        "todo:5": {
-          "task_key": "todo:5",
-          "task_label": "5",
-          "task_title": "Keep HTTP `/semantic-search` path and update contract to unified behavior",
-          "session_id": "ses_191a84a6effeZbroNHC05nhVI2",
-          "agent": "Sisyphus-Junior",
-          "started_at": "2026-05-28T11:45:13.423Z",
-          "status": "completed",
-          "updated_at": "2026-05-28T11:47:38.304Z",
-          "ended_at": "2026-05-28T11:47:38.304Z",
-          "elapsed_ms": 144881
-        },
-        "todo:7": {
-          "task_key": "todo:7",
-          "task_label": "7",
-          "task_title": "Update README, AGENTS, architecture docs, and smart-news skills",
-          "session_id": "ses_19195ea48ffeIuWjr2YbVSkITZ",
-          "agent": "Sisyphus-Junior",
-          "category": "writing",
-          "started_at": "2026-05-28T11:55:30.408Z",
-          "status": "completed",
-          "updated_at": "2026-05-28T11:55:50.429Z",
-          "ended_at": "2026-05-28T11:55:50.429Z",
-          "elapsed_ms": 20021
-        },
-        "todo:8": {
-          "task_key": "todo:8",
-          "task_label": "8",
-          "task_title": "Validate performance, edge cases, and full regression suite",
-          "session_id": "ses_1918e6484ffesp82UxWDyTA5UP",
-          "agent": "Sisyphus-Junior",
-          "category": "deep",
-          "started_at": "2026-05-28T12:01:22.409Z",
-          "ended_at": "2026-05-28T12:06:57.249Z",
-          "elapsed_ms": 334840,
-          "status": "completed",
-          "updated_at": "2026-05-28T12:06:57.249Z"
-        },
-        "final-wave:f1": {
-          "task_key": "final-wave:f1",
-          "task_label": "F1",
-          "task_title": "Plan Compliance Audit — oracle",
-          "session_id": "ses_191a306daffep4KxZpSngxhs00",
-          "agent": "Sisyphus-Junior",
-          "started_at": "2026-05-28T12:05:38.672Z",
-          "status": "completed",
-          "updated_at": "2026-05-28T12:13:03.980Z",
-          "ended_at": "2026-05-28T12:13:03.980Z",
-          "elapsed_ms": 445308
-        }
-      },
-      "ended_at": "2026-05-28T12:14:32.609Z",
-      "elapsed_ms": 4674009
+      "task_sessions": {}
     }
   },
-  "active_plan": "/data/workspace/getnews/.omo/plans/unified-semantic-search.md",
-  "started_at": "2026-05-28T10:56:38.600Z",
-  "status": "completed",
-  "updated_at": "2026-05-28T12:14:32.609Z",
+  "active_plan": "/data/workspace/getnews/.omo/plans/railway-serverless-db-wakeup.md",
+  "started_at": "2026-05-31T04:19:03.150Z",
+  "status": "active",
   "session_ids": [
-    "ses_19224760dffedvHofJ4LihKhBe"
+    "ses_183be469dffeaPGkG73oZy1tqz"
   ],
   "session_origins": {
-    "ses_19224760dffedvHofJ4LihKhBe": "direct"
+    "ses_183be469dffeaPGkG73oZy1tqz": "direct"
   },
-  "plan_name": "unified-semantic-search",
+  "plan_name": "railway-serverless-db-wakeup",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "`data_manager.py` `get_raw_intelligence_items_missing_embeddings()` references a column `source_chat_title` that DOES NOT EXIST in `raw_intelligence_items`. The real columns are: id, source_type, source_id, external_id, source_url, chat_id, thread_id, topic_id, raw_text, content_hash, published_at, collected_at, expires_at, edit_status, edit_timestamp, created_at, datasource_id. Fix the SQL to only select columns that exist.",
-      "session_id": "ses_191c3efcfffewSfpIhJbToxaSE",
+      "task_title": "**Split-Service Architecture Overview**: Two services (`crypto-news-analysis`, `crypto-news-ingestion`) sharing one PostgreSQL/pgvector database. Analysis is public-facing; ingestion is private scheduler.",
+      "session_id": "ses_183ba7db4ffeSmh3h30tOB35Bu",
       "agent": "Sisyphus-Junior",
-      "started_at": "2026-05-28T11:02:00.262Z",
-      "ended_at": "2026-05-28T11:27:09.709Z",
-      "elapsed_ms": 1509447,
+      "category": "writing",
+      "started_at": "2026-05-31T04:21:15.623Z",
+      "ended_at": "2026-05-31T04:26:07.641Z",
+      "elapsed_ms": 292018,
       "status": "completed",
-      "updated_at": "2026-05-28T11:27:09.709Z"
+      "updated_at": "2026-05-31T04:26:07.641Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "Create shared Postgres connection/readiness helper",
+      "session_id": "ses_183baf066ffeDngYXchKOAVGjI",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-low",
+      "started_at": "2026-05-31T04:24:51.351Z",
+      "status": "completed",
+      "updated_at": "2026-05-31T04:26:11.167Z",
+      "ended_at": "2026-05-31T04:26:11.167Z",
+      "elapsed_ms": 79816
     },
     "todo:3": {
       "task_key": "todo:3",
       "task_label": "3",
-      "task_title": "Create unified search DTO and `UNION ALL` storage retrieval",
-      "session_id": "ses_191a84a6effeZbroNHC05nhVI2",
+      "task_title": "Integrate helper into runtime storage connection paths",
+      "session_id": "ses_183b73c6bffe9ZqdnFRhgsOp8l",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-28T11:33:19.705Z",
-      "started_at": "2026-05-28T11:33:02.481Z",
+      "category": "unspecified-low",
+      "started_at": "2026-05-31T04:41:03.014Z",
       "status": "completed",
-      "ended_at": "2026-05-28T11:33:19.705Z",
-      "elapsed_ms": 17224
-    },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "Update SemanticSearchService and reports for mixed hits",
-      "session_id": "ses_191a306daffep4KxZpSngxhs00",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-28T11:40:41.204Z",
-      "started_at": "2026-05-28T11:40:26.618Z",
-      "status": "completed",
-      "ended_at": "2026-05-28T11:40:41.204Z",
-      "elapsed_ms": 14586
-    },
-    "todo:5": {
-      "task_key": "todo:5",
-      "task_label": "5",
-      "task_title": "Keep HTTP `/semantic-search` path and update contract to unified behavior",
-      "session_id": "ses_191a84a6effeZbroNHC05nhVI2",
-      "agent": "Sisyphus-Junior",
-      "started_at": "2026-05-28T11:45:13.423Z",
-      "status": "completed",
-      "updated_at": "2026-05-28T11:47:38.304Z",
-      "ended_at": "2026-05-28T11:47:38.304Z",
-      "elapsed_ms": 144881
+      "updated_at": "2026-05-31T04:42:01.386Z",
+      "ended_at": "2026-05-31T04:42:01.386Z",
+      "elapsed_ms": 58372
     },
     "todo:7": {
       "task_key": "todo:7",
       "task_label": "7",
-      "task_title": "Update README, AGENTS, architecture docs, and smart-news skills",
-      "session_id": "ses_19195ea48ffeIuWjr2YbVSkITZ",
+      "task_title": "Run focused quality gates and no-scope-creep checks",
+      "session_id": "ses_183a8b95cffe3mHpD5I2Sn3FUk",
       "agent": "Sisyphus-Junior",
-      "category": "writing",
-      "started_at": "2026-05-28T11:55:30.408Z",
+      "category": "unspecified-low",
+      "started_at": "2026-05-31T04:44:54.596Z",
+      "ended_at": "2026-05-31T04:45:10.731Z",
+      "elapsed_ms": 16135,
       "status": "completed",
-      "updated_at": "2026-05-28T11:55:50.429Z",
-      "ended_at": "2026-05-28T11:55:50.429Z",
-      "elapsed_ms": 20021
-    },
-    "todo:8": {
-      "task_key": "todo:8",
-      "task_label": "8",
-      "task_title": "Validate performance, edge cases, and full regression suite",
-      "session_id": "ses_1918e6484ffesp82UxWDyTA5UP",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "started_at": "2026-05-28T12:01:22.409Z",
-      "ended_at": "2026-05-28T12:06:57.249Z",
-      "elapsed_ms": 334840,
-      "status": "completed",
-      "updated_at": "2026-05-28T12:06:57.249Z"
+      "updated_at": "2026-05-31T04:45:10.731Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "Plan Compliance Audit — oracle",
-      "session_id": "ses_191a306daffep4KxZpSngxhs00",
+      "session_id": "ses_1836bfb80ffe3E5JsQJcZxovX4",
       "agent": "Sisyphus-Junior",
-      "started_at": "2026-05-28T12:05:38.672Z",
-      "status": "completed",
-      "updated_at": "2026-05-28T12:13:03.980Z",
-      "ended_at": "2026-05-28T12:13:03.980Z",
-      "elapsed_ms": 445308
+      "category": "unspecified-high",
+      "started_at": "2026-05-31T04:48:00.232Z",
+      "status": "running",
+      "updated_at": "2026-05-31T06:18:56.743Z"
     }
   },
   "agent": "atlas",
-  "ended_at": "2026-05-28T12:14:32.609Z",
-  "elapsed_ms": 4674009
+  "updated_at": "2026-05-31T06:18:56.743Z"
 }

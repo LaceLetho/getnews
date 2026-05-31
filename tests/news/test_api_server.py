@@ -111,7 +111,8 @@ def _rest_api_datasource_request(
 
 
 class _FakeDataManager:
-    def __init__(self):
+    def __init__(self, database_url: Optional[str] = None):
+        self.database_url = database_url
         self.logged_rows: list[_LoggedRow] = []
 
     def log_analysis_execution(
@@ -211,11 +212,15 @@ class _FakeController:
         analysis_repository: Optional[SQLiteAnalysisRepository] = None,
         datasource_repository: Optional[SQLiteDataSourceRepository] = None,
         command_handler: Optional[object] = None,
+        storage_config: Optional[StorageConfig] = None,
     ):
         self.analysis_repository = analysis_repository
         self.datasource_repository = datasource_repository
         self.command_handler = command_handler
-        self.data_manager = _FakeDataManager()
+        self.storage_config = storage_config or StorageConfig()
+        self.data_manager = _FakeDataManager(
+            database_url=self.storage_config.database_url
+        )
         self.cache_manager = _FakeCacheManager()
         self.analyze_calls: list[dict[str, object]] = []
         self.failed_user_ids: set[str] = set()
@@ -997,13 +1002,15 @@ def test_datasource_delete_returns_409_when_topic_associated(
         cursor = conn.cursor()
         cursor.execute(
             data_manager._sql(
-                "INSERT INTO intelligence_topic_datasources (topic_id, datasource_id, created_at) VALUES (?, ?, ?)"
+                "INSERT INTO intelligence_topic_datasources "
+                "(topic_id, datasource_id, created_at) VALUES (?, ?, ?)"
             ),
             (topic_id, datasource.id, "2026-03-01T00:00:00+00:00"),
         )
         cursor.execute(
             data_manager._sql(
-                "INSERT INTO intelligence_topic_datasources (topic_id, datasource_id, created_at) VALUES (?, ?, ?)"
+                "INSERT INTO intelligence_topic_datasources "
+                "(topic_id, datasource_id, created_at) VALUES (?, ?, ?)"
             ),
             (topic_id_2, datasource.id, "2026-03-01T00:00:00+00:00"),
         )
@@ -1165,3 +1172,141 @@ def test_telegram_webhook_endpoint_rejects_invalid_secret(
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Invalid Telegram webhook secret token"}
+
+
+def test_health_check_returns_lightweight_response(monkeypatch: pytest.MonkeyPatch):
+    """GET /health returns lightweight JSON without any database access."""
+    app = _build_test_app(monkeypatch, _FakeController())
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"status": "healthy", "initialized": True}
+    assert isinstance(body["initialized"], bool)
+
+
+def test_health_check_does_not_probe_database(monkeypatch: pytest.MonkeyPatch):
+    """GET /health still returns 200 even when the DB readiness helper fails.
+
+    This proves /health does not invoke check_postgres_ready or any Postgres
+    connection check — it only checks whether the controller is attached.
+    """
+    app = _build_test_app(monkeypatch, _FakeController())
+
+    def _failing_check(*args, **kwargs):
+        raise Exception("DB not available")
+
+    monkeypatch.setattr(
+        "crypto_news_analyzer.storage.postgres_connection.check_postgres_ready",
+        _failing_check,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy", "initialized": True}
+
+
+def test_ready_check_reports_database_ready(monkeypatch: pytest.MonkeyPatch):
+    postgres_config = StorageConfig(
+        backend="postgres",
+        database_url="postgresql://user:pass@localhost:5432/testdb",
+    )
+    app = _build_test_app(monkeypatch, _FakeController(storage_config=postgres_config))
+
+    monkeypatch.setattr(
+        "crypto_news_analyzer.api_server.check_postgres_ready",
+        lambda *_args, **_kwargs: True,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ready"
+    assert body["database"] == "ready"
+    assert body["initialized"] is True
+
+
+def test_ready_check_reports_database_unavailable(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "crypto_news_analyzer.api_server.check_postgres_ready",
+        lambda *_args, **_kwargs: False,
+    )
+    postgres_config = StorageConfig(
+        backend="postgres",
+        database_url="postgresql://user:pass@localhost:5432/testdb",
+    )
+    app = _build_test_app(monkeypatch, _FakeController(storage_config=postgres_config))
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "not_ready"
+    assert body["database"] == "unavailable"
+    assert body["initialized"] is True
+    assert "error" in body
+
+
+def test_ready_check_does_not_leak_credentials(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "crypto_news_analyzer.api_server.check_postgres_ready",
+        lambda *_args, **_kwargs: False,
+    )
+    secret_url = "postgresql://admin:SuperSecret123@db.internal.example.com:5432/production"
+    postgres_config = StorageConfig(backend="postgres", database_url=secret_url)
+    app = _build_test_app(monkeypatch, _FakeController(storage_config=postgres_config))
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    text = response.text
+    assert "SuperSecret123" not in text
+    assert "admin:" not in text
+    assert "db.internal.example.com" not in text
+    assert "postgresql://" not in text
+    assert secret_url not in text
+
+
+def test_ready_check_sanitizes_database_failure(monkeypatch: pytest.MonkeyPatch):
+    """GET /ready 503 response body never leaks DATABASE_URL, credentials, or stack traces."""
+    monkeypatch.setattr(
+        "crypto_news_analyzer.api_server.check_postgres_ready",
+        lambda *_args, **_kwargs: False,
+    )
+    postgres_config = StorageConfig(
+        backend="postgres",
+        database_url="postgresql://user:pass@localhost:5432/testdb",
+    )
+    app = _build_test_app(monkeypatch, _FakeController(storage_config=postgres_config))
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    text = response.text.lower()
+    for forbidden in ["database_url", "postgres://", "//user:pass@", "password"]:
+        assert forbidden not in text, f"Response leaked '{forbidden}'"
+
+
+def test_ready_check_when_controller_is_none(monkeypatch: pytest.MonkeyPatch):
+    """GET /ready returns 503 when controller is not initialized."""
+    app = _build_test_app(monkeypatch, _FakeController())
+
+    with TestClient(app) as client:
+        _app_state(client).controller = None
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "not_ready"
+    assert body["database"] == "unavailable"
+    assert body["initialized"] is False
+    assert "error" in body
