@@ -1616,8 +1616,20 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 )
                 return response
 
+            analysis_config = self.execution_coordinator.config_manager.get_analysis_config()
+            max_hours = analysis_config.get("max_semantic_search_window_hours", 720)
+            if hours > max_hours:
+                truncated_warning = (
+                    f"⚠️ 请求的 {hours} 小时超出上限 {max_hours} 小时，"
+                    f"已自动截断为 {max_hours} 小时。\n\n"
+                )
+                hours = max_hours
+            else:
+                truncated_warning = ""
+
             response_initial = (
                 "🔎 开始语义搜索\n\n"
+                f"{truncated_warning}"
                 f"系统将搜索最近 {hours} 小时内与「{topic}」相关的内容。\n"
                 "执行完成后将自动发送报告到此聊天窗口。"
             )

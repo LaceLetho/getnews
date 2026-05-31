@@ -169,11 +169,16 @@ class DataManager:
                         decomposition_json JSONB,
                         result TEXT,
                         error_message TEXT,
+                        processing_step TEXT,
                         created_at TIMESTAMPTZ NOT NULL,
                         started_at TIMESTAMPTZ,
                         completed_at TIMESTAMPTZ,
                         source TEXT NOT NULL DEFAULT 'api'
                     )
+                    """)
+                cursor.execute("""
+                    ALTER TABLE semantic_search_jobs
+                    ADD COLUMN IF NOT EXISTS processing_step TEXT
                     """)
                 cursor.execute("""
                     ALTER TABLE semantic_search_jobs
@@ -311,6 +316,7 @@ class DataManager:
                         decomposition_json TEXT,
                         result TEXT,
                         error_message TEXT,
+                        processing_step TEXT,
                         created_at DATETIME NOT NULL,
                         started_at DATETIME,
                         completed_at DATETIME,
@@ -2127,6 +2133,7 @@ class DataManager:
         completed_at: Optional[datetime] = None,
         result: Optional[Dict[str, Any]] = None,
         error_message: Optional[str] = None,
+        processing_step: Optional[str] = None,
     ) -> None:
         with self._lock:
             with self._get_connection() as conn:
@@ -2147,8 +2154,8 @@ class DataManager:
                         INSERT INTO semantic_search_jobs
                         (id, recipient_key, query, normalized_intent, time_window_hours, status,
                          matched_count, retained_count, decomposition_json, result,
-                         error_message, created_at, started_at, completed_at, source)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         error_message, processing_step, created_at, started_at, completed_at, source)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT (id) DO UPDATE SET
                             recipient_key = EXCLUDED.recipient_key,
                             query = EXCLUDED.query,
@@ -2160,6 +2167,7 @@ class DataManager:
                             decomposition_json = EXCLUDED.decomposition_json,
                             result = EXCLUDED.result,
                             error_message = EXCLUDED.error_message,
+                            processing_step = EXCLUDED.processing_step,
                             created_at = EXCLUDED.created_at,
                             started_at = EXCLUDED.started_at,
                             completed_at = EXCLUDED.completed_at,
@@ -2177,6 +2185,7 @@ class DataManager:
                             decomposition_payload,
                             result_payload,
                             error_message,
+                            processing_step,
                             created_at.isoformat(),
                             started_at.isoformat() if started_at else None,
                             completed_at.isoformat() if completed_at else None,
@@ -2189,8 +2198,8 @@ class DataManager:
                         INSERT OR REPLACE INTO semantic_search_jobs
                         (id, recipient_key, query, normalized_intent, time_window_hours, status,
                          matched_count, retained_count, decomposition_json, result,
-                         error_message, created_at, started_at, completed_at, source)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         error_message, processing_step, created_at, started_at, completed_at, source)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """),
                         (
                             job_id,
@@ -2204,6 +2213,7 @@ class DataManager:
                             decomposition_payload,
                             result_payload,
                             error_message,
+                            processing_step,
                             created_at.isoformat(),
                             started_at.isoformat() if started_at else None,
                             completed_at.isoformat() if completed_at else None,
@@ -2870,6 +2880,7 @@ class DataManager:
             "completed_at": _serialize_datetime(row["completed_at"]),
             "result": _parse_json_payload(row["result"], "result"),
             "error_message": row["error_message"],
+            "processing_step": row.get("processing_step"),
             "source": row["source"],
         }
 

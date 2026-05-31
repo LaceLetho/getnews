@@ -128,6 +128,7 @@
   },
   "analysis_config": {
     "max_analysis_window_hours": 24,
-    "min_analysis_window_hours": 1
+    "min_analysis_window_hours": 1,
+    "max_semantic_search_window_hours": 720
   }
 }

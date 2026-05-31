@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import re
+import threading
 import uuid
 from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, cast
 from urllib.parse import urlsplit, urlunsplit, urlparse
@@ -171,6 +172,7 @@ class AnalyzeAcceptedResponse(BaseModel):
     time_window_hours: int
     status_url: str
     result_url: str
+    warning: Optional[str] = None
 
 
 class AnalyzeJobStatusResponse(BaseModel):
@@ -203,6 +205,7 @@ class SemanticSearchAcceptedResponse(BaseModel):
     time_window_hours: int
     status_url: str
     result_url: str
+    warning: Optional[str] = None
 
 
 class SemanticSearchJobStatusResponse(BaseModel):
@@ -219,6 +222,7 @@ class SemanticSearchJobStatusResponse(BaseModel):
     completed_at: Optional[str] = None
     error: Optional[str] = None
     result_available: bool = False
+    processing_step: Optional[str] = None
 
 
 class SemanticSearchJobResultResponse(BaseModel):
@@ -290,6 +294,7 @@ class SemanticSearchJobRecord(BaseModel):
     report: str = ""
     error: Optional[str] = None
     source_breakdown: Optional[Dict[str, Dict[str, int]]] = None
+    processing_step: Optional[str] = None
 
     def to_status_response(self) -> SemanticSearchJobStatusResponse:
         return SemanticSearchJobStatusResponse(
@@ -306,6 +311,7 @@ class SemanticSearchJobRecord(BaseModel):
             completed_at=self.completed_at,
             error=self.error,
             result_available=self.status in {"completed", "failed"},
+            processing_step=self.processing_step,
         )
 
     def to_result_response(self) -> SemanticSearchJobResultResponse:
@@ -858,6 +864,7 @@ def _semantic_search_request_to_job_record(
         report=str(result.get("report_content", "")),
         error=error_message,
         source_breakdown=result.get("source_breakdown"),
+        processing_step=job.processing_step or result.get("processing_step"),
     )
 
 
@@ -1045,6 +1052,24 @@ def _run_analyze_job(job_id: str, state: AppState) -> None:
         )
 
 
+SEMANTIC_SEARCH_JOB_TIMEOUT_SECONDS = 300
+
+
+def _run_semantic_search_with_timeout(
+    service: SemanticSearchService, job: SemanticSearchJob, result_container: dict, timeout_seconds: int
+) -> None:
+    try:
+        data = service.search(query=job.query, time_window_hours=job.time_window_hours)
+        result_container["result"] = data
+    except Exception as e:
+        result_container["error"] = e
+
+
+def _update_job_step(job: SemanticSearchJob, repository, step: str) -> None:
+    job.processing_step = step
+    _ = repository.update_semantic_search_job(job)
+
+
 def _run_semantic_search_job(job_id: str, state: AppState) -> None:
     repository = state.semantic_search_repository
     controller = state.controller
@@ -1065,11 +1090,36 @@ def _run_semantic_search_job(job_id: str, state: AppState) -> None:
     started_at = datetime.now(timezone.utc)
     job.status = "running"
     job.started_at = started_at
+    job.processing_step = "embedding"
     _ = repository.update_semantic_search_job(job)
 
     try:
         service = _build_semantic_search_service(controller)
-        result = service.search(query=job.query, time_window_hours=job.time_window_hours)
+
+        result_container: dict = {}
+        search_thread = threading.Thread(
+            target=_run_semantic_search_with_timeout,
+            args=(service, job, result_container, SEMANTIC_SEARCH_JOB_TIMEOUT_SECONDS),
+            daemon=True,
+        )
+        search_thread.start()
+
+        _update_job_step(job, repository, "retrieving")
+        search_thread.join(timeout=SEMANTIC_SEARCH_JOB_TIMEOUT_SECONDS)
+
+        if search_thread.is_alive():
+            raise TimeoutError(
+                f"Semantic search timed out after {SEMANTIC_SEARCH_JOB_TIMEOUT_SECONDS}s"
+            )
+
+        if "error" in result_container:
+            raise result_container["error"]
+
+        result = result_container.get("result")
+        if result is None:
+            raise RuntimeError("Semantic search returned no result")
+
+        _update_job_step(job, repository, "ranking")
         job.status = "completed"
         job.normalized_intent = str(result.get("normalized_intent") or "")
         job.matched_count = int(result.get("matched_count", 0))
@@ -1087,7 +1137,12 @@ def _run_semantic_search_job(job_id: str, state: AppState) -> None:
         }
         job.error_message = None
     except Exception as exc:
-        logger.error(f"Async semantic search job failed: {exc}")
+        is_timeout = isinstance(exc, TimeoutError)
+        logger.error(
+            "Async semantic search job %s: %s",
+            "timed out" if is_timeout else "failed",
+            exc,
+        )
         job.status = "failed"
         job.result = {
             "success": False,
@@ -1098,6 +1153,7 @@ def _run_semantic_search_job(job_id: str, state: AppState) -> None:
             "errors": [str(exc)],
         }
         job.error_message = str(exc)
+        _update_job_step(job, repository, "failed")
     finally:
         job.completed_at = datetime.now(timezone.utc)
         _ = repository.update_semantic_search_job(job)
@@ -1254,6 +1310,18 @@ def register_news_routes(app: FastAPI) -> None:
         if request.hours < min_hours:
             raise HTTPException(status_code=400, detail=f"Hours must be at least {min_hours}")
 
+        warning: Optional[str] = None
+        if request.hours > max_hours:
+            warning = (
+                f"Requested {request.hours}h exceeds the maximum of {max_hours}h; "
+                f"analysis window has been capped to {max_hours}h"
+            )
+            logger.warning(
+                "Analyze hours truncated: requested=%d, capped=%d",
+                request.hours,
+                max_hours,
+            )
+
         hours = min(request.hours, max_hours)
 
         try:
@@ -1275,6 +1343,7 @@ def register_news_routes(app: FastAPI) -> None:
             time_window_hours=hours,
             status_url=status_url,
             result_url=result_url,
+            warning=warning,
         )
 
     @app.get("/analyze/{job_id}", response_model=AnalyzeJobStatusResponse)
@@ -1341,11 +1410,23 @@ def register_news_routes(app: FastAPI) -> None:
         _get_semantic_search_repository(req)
 
         analysis_config = config_manager.get_analysis_config()
-        max_hours = analysis_config.get("max_analysis_window_hours", 24)
+        max_hours = analysis_config.get("max_semantic_search_window_hours", 720)
         min_hours = analysis_config.get("min_analysis_window_hours", 1)
 
         if request.hours < min_hours:
             raise HTTPException(status_code=400, detail=f"Hours must be at least {min_hours}")
+
+        warning: Optional[str] = None
+        if request.hours > max_hours:
+            warning = (
+                f"Requested {request.hours}h exceeds the maximum of {max_hours}h; "
+                f"search window has been capped to {max_hours}h"
+            )
+            logger.warning(
+                "Semantic search hours truncated: requested=%d, capped=%d",
+                request.hours,
+                max_hours,
+            )
 
         hours = min(request.hours, max_hours)
 
@@ -1368,6 +1449,7 @@ def register_news_routes(app: FastAPI) -> None:
             time_window_hours=job.time_window_hours,
             status_url=status_url,
             result_url=result_url,
+            warning=warning,
         )
 
     @app.get(SEMANTIC_SEARCH_JOB_STATUS_PATH, response_model=SemanticSearchJobStatusResponse)

@@ -485,6 +485,10 @@ def test_analyze_caps_requested_window_and_enqueues_job(
         "time_window_hours": 24,
         "status_url": "/analyze/job-123",
         "result_url": "/analyze/job-123/result",
+        "warning": (
+            "Requested 72h exceeds the maximum of 24h; "
+            "analysis window has been capped to 24h"
+        ),
     }
 
 

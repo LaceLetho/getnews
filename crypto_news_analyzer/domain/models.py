@@ -476,6 +476,7 @@ class SemanticSearchJob:
     completed_at: Optional[datetime] = None
     result: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
+    processing_step: Optional[str] = None
     source: str = field(default="api")
 
     def __post_init__(self):
@@ -539,6 +540,7 @@ class SemanticSearchJob:
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "result": self.result,
             "error_message": self.error_message,
+            "processing_step": self.processing_step,
             "source": self.source,
         }
 
@@ -567,6 +569,7 @@ class SemanticSearchJob:
             ),
             result=data.get("result"),
             error_message=data.get("error_message"),
+            processing_step=data.get("processing_step"),
             source=data.get("source", "api"),
         )
 
