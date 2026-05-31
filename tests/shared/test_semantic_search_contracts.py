@@ -134,3 +134,24 @@ def test_semantic_search_runtime_explicitly_rejects_sqlite():
 
     assert exc_info.value.status_code == 503
     assert "SQLite runtime is unsupported" in exc_info.value.detail
+
+
+def test_query_planning_enabled_defaults_to_false():
+    """query_planning_enabled defaults to False so LLM planner is bypassed."""
+    cfg = SemanticSearchConfig()
+    assert cfg.query_planning_enabled is False
+    assert cfg.to_dict()["query_planning_enabled"] is False
+
+
+def test_query_planning_enabled_explicit_true_accepted():
+    """Explicit query_planning_enabled=True is allowed for future re-enable."""
+    cfg = SemanticSearchConfig(query_planning_enabled=True)
+    assert cfg.query_planning_enabled is True
+
+
+def test_query_planning_enabled_rejects_non_bool():
+    """query_planning_enabled must be a bool, matching keyword_search_enabled pattern."""
+    import pytest
+
+    with pytest.raises(ValueError, match="query_planning_enabled"):
+        SemanticSearchConfig(query_planning_enabled="false")

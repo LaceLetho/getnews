@@ -101,7 +101,7 @@
   "semantic_search": {
     // 用户原始检索词允许的最大字符数；过长会直接拒绝
     "query_max_chars": 300,
-    // LLM 最多可将一个主题拆成多少个语义子查询；原始 query 也会保留
+    // [已禁用] LLM 查询规划器默认关闭。仅在 query_planning_enabled: true 时，LLM 将主题拆成多个子查询并生成关键词
     "max_subqueries": 4,
     // 每个子查询最多从 pgvector 召回多少条候选新闻
     "per_subquery_limit": 200,
@@ -115,14 +115,16 @@
     "embedding_model": "text-embedding-3-small",
     // embedding 向量维度；必须与 storage.pgvector_dimensions 保持一致
     "embedding_dimensions": 1536,
-    // 是否启用关键词补召回，用于弥补纯向量检索对渠道/入口类长尾问题的不足
+    // 是否启用关键词补召回（本地确定性试探，不含 LLM 生成的关键词）
     "keyword_search_enabled": true,
     // 所有关键词合并在一次 SQL 里最多返回数目
     "keyword_search_limit": 800,
-    // 本地启发式扩展后最多保留多少个关键词检索片段
+    // 本地确定性扩展后最多保留多少个关键词片段；LLM 关键词仅在 query_planning_enabled: true 时生效
     "max_keyword_queries": 16,
     // 语义搜索总开关；关闭后 HTTP/Telegram 语义搜索都不可用
-    "enabled": true
+    "enabled": true,
+    // 是否启用 LLM 查询规划器 (子查询分解 + 关键词生成)。默认 false，直接使用原始查询嵌入向量
+    "query_planning_enabled": false
   },
   "analysis_config": {
     "max_analysis_window_hours": 24,

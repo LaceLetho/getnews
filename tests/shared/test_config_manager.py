@@ -10,7 +10,7 @@ import os
 from typing import cast
 
 from crypto_news_analyzer.config.manager import ConfigManager
-from crypto_news_analyzer.models import StorageConfig
+from crypto_news_analyzer.models import SemanticSearchConfig, StorageConfig
 
 
 class TestConfigManager:
@@ -80,9 +80,7 @@ class TestConfigManager:
 
     def test_validate_config_failure(self):
         """测试配置验证失败"""
-        invalid_config = {
-            "storage": {"retention_days": 0, "database_path": "./test.db"}
-        }
+        invalid_config = {"storage": {"retention_days": 0, "database_path": "./test.db"}}
 
         assert self.manager.validate_config(invalid_config) is False
 
@@ -104,9 +102,7 @@ class TestConfigManager:
         monkeypatch.setenv("TIME_WINDOW_HOURS", "48")
         assert self.manager.get_time_window_hours() == 48
 
-    def test_get_x_auth_credentials_does_not_depend_on_llm_auth_fields(
-        self, monkeypatch
-    ):
+    def test_get_x_auth_credentials_does_not_depend_on_llm_auth_fields(self, monkeypatch):
         monkeypatch.setenv("X_CT0", "x-ct0-token")
         monkeypatch.setenv("X_AUTH_TOKEN", "x-auth-token")
         monkeypatch.delenv("LLM_API_KEY", raising=False)
@@ -118,12 +114,8 @@ class TestConfigManager:
         assert x_auth["X_CT0"] == "x-ct0-token"
         assert x_auth["X_AUTH_TOKEN"] == "x-auth-token"
 
-    def test_load_config_supports_json_comments_in_semantic_search_block(
-        self, monkeypatch
-    ):
-        monkeypatch.setenv(
-            "DATABASE_URL", "postgresql://postgres:password@host:5432/db"
-        )
+    def test_load_config_supports_json_comments_in_semantic_search_block(self, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", "postgresql://postgres:password@host:5432/db")
 
         config_with_comments = """
         {
@@ -252,3 +244,71 @@ class TestConfigManager:
         storage_config = self.manager.get_storage_config()
 
         assert storage_config.postgres_connect_max_attempts == 5
+
+    def test_query_planning_enabled_omitted_uses_default_false(self):
+        """query_planning_enabled not in config → default False."""
+        manager = ConfigManager(config_path="./nonexistent-config.jsonc")
+        manager.config_data = {
+            "storage": {
+                "retention_days": 30,
+                "max_storage_mb": 1000,
+                "cleanup_frequency": "daily",
+                "backend": "sqlite",
+                "database_path": "./data/crypto_news.db",
+                "pgvector_dimensions": 1536,
+            },
+            "llm_config": {
+                "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+                "fallback_models": [
+                    {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+                ],
+                "market_model": {
+                    "provider": "grok",
+                    "name": "grok-4-1-fast-reasoning",
+                    "options": {},
+                },
+                "temperature": 0.4,
+                "max_tokens": 1000,
+                "batch_size": 7,
+            },
+        }
+        config = manager.get_semantic_search_config()
+        assert config.query_planning_enabled is False
+
+    def test_query_planning_enabled_explicit_true_from_config(self):
+        """Config with explicit query_planning_enabled: true is loaded correctly."""
+        manager = ConfigManager(config_path="./nonexistent-config.jsonc")
+        manager.config_data = {
+            "storage": {
+                "retention_days": 30,
+                "max_storage_mb": 1000,
+                "cleanup_frequency": "daily",
+                "backend": "sqlite",
+                "database_path": "./data/crypto_news.db",
+                "pgvector_dimensions": 1536,
+            },
+            "llm_config": {
+                "model": {"provider": "kimi", "name": "kimi-k2.5", "options": {}},
+                "fallback_models": [
+                    {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+                ],
+                "market_model": {
+                    "provider": "grok",
+                    "name": "grok-4-1-fast-reasoning",
+                    "options": {},
+                },
+                "temperature": 0.4,
+                "max_tokens": 1000,
+                "batch_size": 7,
+            },
+            "semantic_search": {
+                "query_planning_enabled": True,
+            },
+        }
+        config = manager.get_semantic_search_config()
+        assert config.query_planning_enabled is True
+
+    def test_query_planning_enabled_is_validated_type(self):
+        """query_planning_enabled: non-bool config values are rejected."""
+        with pytest.raises(ValueError, match="query_planning_enabled"):
+            SemanticSearchConfig(query_planning_enabled="false")
