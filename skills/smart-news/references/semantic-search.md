@@ -76,7 +76,7 @@ GET /semantic-search/{job_id}
 | `job_id` | string | The semantic search job identifier |
 | `status` | string | Current state: `queued`, `running`, `completed`, or `failed` |
 | `query` | string | Original normalized query |
-| `normalized_intent` | string | LLM-normalized search intent |
+| `normalized_intent` | string | Search intent (equals original query when `query_planning_enabled` is false, which is the default; LLM-normalized only when query planning is explicitly enabled) |
 | `matched_count` | integer | Total matched items before final retention |
 | `retained_count` | integer | Final retained items used for synthesis |
 | `source_breakdown` | object | Per-domain hit counts: `{"news": {"matched_count": N, "retained_count": M}, "intelligence": {"matched_count": N, "retained_count": M}}` |
@@ -105,7 +105,7 @@ GET /semantic-search/{job_id}/result
 | `job_id` | string | The semantic search job identifier |
 | `status` | string | Terminal state: `completed` or `failed` |
 | `query` | string | Original query |
-| `normalized_intent` | string | LLM-normalized search intent |
+| `normalized_intent` | string | Search intent (equals original query when `query_planning_enabled` is false, which is the default; LLM-normalized only when query planning is explicitly enabled) |
 | `matched_count` | integer | Total matched items |
 | `retained_count` | integer | Final retained items |
 | `source_breakdown` | object | Per-domain hit counts: `{"news": {"matched_count": N, "retained_count": M}, "intelligence": {"matched_count": N, "retained_count": M}}` |
@@ -140,10 +140,10 @@ The live service currently returns the headings in Chinese (`# 主题检索报�
 - Requires PostgreSQL with pgvector; SQLite is unsupported
 - Both `content_items` and `raw_intelligence_items` tables require `embedding vector(1536)` columns with HNSW indexes (`idx_content_embedding_hnsw`, `idx_intelligence_embedding_hnsw`) for performance
 - Query length is capped at 300 characters
-- Query decomposition is capped at 4 subqueries
+- LLM query decomposition is disabled by default (`query_planning_enabled: false`). The `max_subqueries` cap (4) only applies when query planning is explicitly re-enabled. When disabled, the raw user query is embedded directly as a single subquery
 - Final retained results are capped at 200 unique items per domain before merging
 - `OPENAI_API_KEY` is required for embedding generation
-- `KIMI_API_KEY` or `GROK_API_KEY` is required for query planning and report synthesis
+- `KIMI_API_KEY` or `GROK_API_KEY` is required for report synthesis (and for query planning only when explicitly enabled)
 
 ## Telegram and Backfill Notes
 

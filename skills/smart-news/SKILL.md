@@ -93,10 +93,10 @@ Operational constraints:
 
 - Semantic search is PostgreSQL-only and returns `503` when the backend does not support pgvector
 - Both `content_items` and `raw_intelligence_items` tables have `embedding vector(1536)` columns with HNSW indexes (`idx_content_embedding_hnsw` and `idx_intelligence_embedding_hnsw`)
-- The API uses vector similarity over stored content embeddings and may combine that with keyword retrieval
-- Query decomposition is capped at 4 subqueries
+- The API uses vector similarity over stored content embeddings and combines that with deterministic local keyword fallback (no LLM-driven keyword expansion)
+- LLM query decomposition is disabled by default (`query_planning_enabled: false`); when disabled the raw user query is embedded directly as the only subquery. The `max_subqueries` cap (4) only applies when query planning is explicitly re-enabled
 - Final retained results are capped at 200 unique items per domain before merging
-- Embedding generation requires `OPENAI_API_KEY`; query planning and report synthesis require `KIMI_API_KEY` or `GROK_API_KEY`
+- Embedding generation requires `OPENAI_API_KEY`; report synthesis requires `KIMI_API_KEY` or `GROK_API_KEY` (query planning also requires an LLM key but is disabled by default)
 
 The result body returns a Markdown report with `query`, `normalized_intent`, `matched_count`, `retained_count`, `time_window_hours`, `source_breakdown`, and `report`.
 
