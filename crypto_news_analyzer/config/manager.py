@@ -392,6 +392,18 @@ class ConfigManager:
             database_path=storage_data.get("database_path", "./data/crypto_news.db"),
             database_url=database_url,
             pgvector_dimensions=storage_data.get("pgvector_dimensions", 1536),
+            postgres_connect_max_attempts=storage_data.get(
+                "postgres_connect_max_attempts", 3
+            ),
+            postgres_connect_initial_delay_seconds=storage_data.get(
+                "postgres_connect_initial_delay_seconds", 1.0
+            ),
+            postgres_connect_max_delay_seconds=storage_data.get(
+                "postgres_connect_max_delay_seconds", 10.0
+            ),
+            postgres_connect_timeout_seconds=storage_data.get(
+                "postgres_connect_timeout_seconds", 10
+            ),
         )
 
     def get_bird_config(self) -> BirdConfig:

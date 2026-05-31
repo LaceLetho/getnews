@@ -4,11 +4,13 @@
 测试ConfigManager类的核心功能。
 """
 
+import pytest
 import tempfile
 import os
 from typing import cast
 
 from crypto_news_analyzer.config.manager import ConfigManager
+from crypto_news_analyzer.models import StorageConfig
 
 
 class TestConfigManager:
@@ -165,3 +167,88 @@ class TestConfigManager:
         assert semantic_search.max_subqueries == 4
         assert semantic_search.embedding_dimensions == 1536
         assert semantic_search.enabled is True
+
+    def test_storage_config_default_postgres_connect_fields(self):
+        """测试StorageConfig新字段的默认值"""
+        config = StorageConfig()
+        assert config.postgres_connect_max_attempts == 3
+        assert config.postgres_connect_initial_delay_seconds == 1.0
+        assert config.postgres_connect_max_delay_seconds == 10.0
+        assert config.postgres_connect_timeout_seconds == 10
+
+    def test_storage_config_valid_explicit_postgres_connect_fields(self):
+        """测试StorageConfig显式设置有效值"""
+        config = StorageConfig(
+            postgres_connect_max_attempts=5,
+            postgres_connect_initial_delay_seconds=2.0,
+            postgres_connect_max_delay_seconds=20.0,
+            postgres_connect_timeout_seconds=30,
+        )
+        assert config.postgres_connect_max_attempts == 5
+        assert config.postgres_connect_initial_delay_seconds == 2.0
+        assert config.postgres_connect_max_delay_seconds == 20.0
+        assert config.postgres_connect_timeout_seconds == 30
+
+    def test_storage_config_zero_max_attempts_raises(self):
+        """测试postgres_connect_max_attempts为0时抛出异常"""
+        with pytest.raises(ValueError, match="postgres_connect_max_attempts必须大于0"):
+            StorageConfig(postgres_connect_max_attempts=0)
+
+    def test_storage_config_negative_initial_delay_raises(self):
+        """测试postgres_connect_initial_delay_seconds为负数时抛出异常"""
+        with pytest.raises(ValueError, match="postgres_connect_initial_delay_seconds必须大于0"):
+            StorageConfig(postgres_connect_initial_delay_seconds=-1.0)
+
+    def test_storage_config_negative_max_delay_raises(self):
+        """测试postgres_connect_max_delay_seconds为负数时抛出异常"""
+        with pytest.raises(ValueError, match="postgres_connect_max_delay_seconds必须大于0"):
+            StorageConfig(postgres_connect_max_delay_seconds=-5.0)
+
+    def test_storage_config_max_delay_less_than_initial_delay_raises(self):
+        """测试postgres_connect_max_delay_seconds小于postgres_connect_initial_delay_seconds时抛出异常"""
+        with pytest.raises(
+            ValueError,
+            match="postgres_connect_max_delay_seconds必须大于等于postgres_connect_initial_delay_seconds",
+        ):
+            StorageConfig(
+                postgres_connect_initial_delay_seconds=5.0,
+                postgres_connect_max_delay_seconds=2.0,
+            )
+
+    def test_storage_config_zero_timeout_raises(self):
+        """测试postgres_connect_timeout_seconds为0时抛出异常"""
+        with pytest.raises(ValueError, match="postgres_connect_timeout_seconds必须大于0"):
+            StorageConfig(postgres_connect_timeout_seconds=0)
+
+    def test_get_storage_config_loads_explicit_postgres_connect_max_attempts(self):
+        """测试ConfigManager从配置文件加载显式postgres_connect_max_attempts值"""
+        import json
+
+        config_with_explicit = {
+            "storage": {
+                "retention_days": 30,
+                "max_storage_mb": 1000,
+                "cleanup_frequency": "daily",
+                "database_path": "./test.db",
+                "postgres_connect_max_attempts": 5,
+            },
+            "llm_config": {
+                "model": {"provider": "opencode-go", "name": "kimi-k2.5", "options": {}},
+                "fallback_models": [
+                    {"provider": "grok", "name": "grok-4-1-fast-reasoning", "options": {}}
+                ],
+                "market_model": {
+                    "provider": "grok",
+                    "name": "grok-4-1-fast-reasoning",
+                    "options": {},
+                },
+            },
+        }
+
+        with open(self.config_path, "w", encoding="utf-8") as handle:
+            json.dump(config_with_explicit, handle)
+
+        self.manager.load_config()
+        storage_config = self.manager.get_storage_config()
+
+        assert storage_config.postgres_connect_max_attempts == 5

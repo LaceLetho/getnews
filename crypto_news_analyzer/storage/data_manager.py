@@ -28,6 +28,7 @@ from ..models import ContentItem, CrawlStatus, StorageConfig
 from ..domain.models import ACTIVE_INGESTION_JOB_STATUSES, DataSource
 from ..utils.logging import get_log_manager
 from ..utils.errors import StorageError, UnsupportedBackendError
+from .postgres_connection import connect_postgres_with_retry
 from .intelligence_schema import initialize_intelligence_tables
 
 logger = get_log_manager().get_logger(__name__)
@@ -428,21 +429,21 @@ class DataManager:
     def _get_connection(self):
         """获取数据库连接（上下文管理器）"""
         if self.backend == "postgres":
-            conn = None
             try:
-                conn = psycopg.connect(self.database_url, row_factory=dict_row)
-                yield conn
-                conn.commit()
+                if self.database_url is None:
+                    raise StorageError(
+                        "PostgreSQL backend requires database_url",
+                        operation="database_operation",
+                    )
+                with connect_postgres_with_retry(
+                    self.database_url, row_factory=dict_row, config=self.config, logger=logger
+                ) as conn:
+                    yield conn
             except Exception as e:
-                if conn is not None:
-                    conn.rollback()
                 logger.error(f"数据库操作失败: {type(e).__name__}: {e}", exc_info=True)
                 raise StorageError(
                     f"数据库操作失败: {type(e).__name__}: {e}", operation="database_operation"
                 )
-            finally:
-                if conn is not None:
-                    conn.close()
             return
 
         thread_id = threading.get_ident()

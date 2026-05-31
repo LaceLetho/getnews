@@ -1,0 +1,20 @@
+No-scope-creep check: /health before DB access
+================================================
+
+Check command:
+  uv run python -c "from pathlib import Path; bad = [str(p) for p in Path('crypto_news_analyzer').rglob('*.py') if '/health' in p.read_text().lower() and 'postgres' in p.read_text().lower() and 'request' in p.read_text().lower()]; assert not bad, f'Found: {bad}'; print('ok')"
+
+Raw result: Found ['crypto_news_analyzer/api_server.py']
+
+Analysis: FALSE POSITIVE
+- api_server.py contains '/health', 'postgres', and 'request' in UNRELATED contexts
+- /health endpoint (line 1918): lightweight check, returns {"status": "healthy", "initialized": state.controller is not None}
+  - Does NOT probe the database
+  - Does NOT access postgres
+- /ready endpoint (line 1924): separate endpoint for DB readiness checks
+  - This is the correct endpoint for external probes
+  - Returns 200 when DB is reachable, 503 otherwise
+- The three strings coexist in the same file but are not coupled in a problematic way
+- No production code pings /health before DB access
+
+Conclusion: PASS - no scope creep detected. The /health endpoint is correctly lightweight.
