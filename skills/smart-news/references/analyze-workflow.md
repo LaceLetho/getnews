@@ -34,7 +34,7 @@ POST /analyze
 
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
-| `hours` | integer | `> 0` | Analysis time window in hours. Values below server minimum return HTTP 400. Values above maximum are capped to the configured limit (typically 24). |
+| `hours` | integer | `> 0` | Analysis time window in hours. Values below server minimum return HTTP 400. Values above maximum are capped to the configured limit (default 24h) and the response includes a `warning` field. |
 | `user_id` | string | `^[A-Za-z0-9_-]{1,128}$` | Requesting user identifier. Server trims whitespace before validation. |
 
 ### Example Request
@@ -55,7 +55,8 @@ curl -X POST "https://news.tradao.xyz/analyze" \
   "status": "queued",
   "time_window_hours": 1,
   "status_url": "/analyze/analyze_job_2f205899562a4104868384e65f81c8c1",
-  "result_url": "/analyze/analyze_job_2f205899562a4104868384e65f81c8c1/result"
+  "result_url": "/analyze/analyze_job_2f205899562a4104868384e65f81c8c1/result",
+  "warning": null
 }
 ```
 
@@ -277,7 +278,7 @@ done
 
 6. **Header case sensitivity**: Cloudflare and some proxies lowercase header names. The `Location` and `Retry-After` headers may appear as `location` and `retry-after`.
 
-7. **Hours capping**: If you request more hours than the server allows, the request succeeds but `time_window_hours` in the response reflects the capped value, not your original request.
+7. **Hours capping**: If you request more hours than the server allows (`max_analysis_window_hours`, default 24), the request succeeds but `time_window_hours` in the response reflects the capped value, not your original request. A `warning` field in the response describes the truncation when it occurs.
 
 8. **User isolation**: Each `user_id` has isolated deduplication context. The same user calling analyze twice will see deduplication of previously reported items. Different users do not share context.
 

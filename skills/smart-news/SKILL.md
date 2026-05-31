@@ -33,7 +33,7 @@ Workflow: `POST /analyze` -> `GET /analyze/{job_id}` -> `GET /analyze/{job_id}/r
 
 Jobs move through these states: `queued`, `running`, `completed`, `failed`.
 
-`POST /semantic-search` creates a job, returns `202 Accepted`, and includes `status_url`, `result_url`, plus a `Retry-After` header.
+`POST /semantic-search` creates a job, returns `202 Accepted`, and includes `status_url`, `result_url`, plus a `Retry-After` header. When `hours` exceeds the server max (720h default), a `warning` field describes the truncation. Semantic search jobs that do not complete within 5 minutes are automatically failed with a timeout error.
 
 Semantic workflow: `POST /semantic-search` -> `GET /semantic-search/{job_id}` -> `GET /semantic-search/{job_id}/result`
 

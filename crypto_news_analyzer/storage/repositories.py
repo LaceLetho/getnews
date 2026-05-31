@@ -462,6 +462,7 @@ class PostgresSemanticSearchRepository(SQLiteSemanticSearchRepository):
             completed_at=job.completed_at,
             result=job.result,
             error_message=job.error_message,
+            processing_step=job.processing_step,
         )
 
     def update_semantic_search_job(self, job: SemanticSearchJob) -> bool:

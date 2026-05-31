@@ -449,6 +449,9 @@ class ConfigManager:
             "min_analysis_window_hours": analysis_data.get(
                 "min_analysis_window_hours", 1
             ),
+            "max_semantic_search_window_hours": analysis_data.get(
+                "max_semantic_search_window_hours", 720
+            ),
         }
 
     def validate_bird_installation(self) -> bool:

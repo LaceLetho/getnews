@@ -255,6 +255,7 @@ def test_post_semantic_search_returns_202_and_uses_dedicated_executor(
         "time_window_hours": 1,
         "status_url": f"/semantic-search/{payload['job_id']}",
         "result_url": f"/semantic-search/{payload['job_id']}/result",
+        "warning": None,
     }
     assert payload["job_id"].startswith("semantic_search_job_")
     assert response.headers["Location"] == payload["status_url"]
@@ -314,6 +315,7 @@ def test_semantic_search_status_endpoint_returns_expected_status(
         ),
         "error": "planner failed" if status == "failed" else None,
         "result_available": status in {"completed", "failed"},
+        "processing_step": None,
     }
 
 

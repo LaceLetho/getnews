@@ -36,7 +36,7 @@ POST /semantic-search
 
 | Field | Type | Constraints | Description |
 |-------|------|-------------|-------------|
-| `hours` | integer | `> 0` | Search time window in hours. Values below server minimum return HTTP 400. Values above server maximum are capped. |
+| `hours` | integer | `> 0` | Search time window in hours. Values below server minimum return HTTP 400. Values above the semantic search maximum (default 720h = 30d) are capped and the response includes a `warning` field. The semantic search hours cap is separate from the analyze cap (24h). |
 | `query` | string | non-blank, max 300 chars | Natural-language topic query for semantic retrieval. |
 | `user_id` | string | `^[A-Za-z0-9_-]{1,128}$` | Requesting user identifier. Server trims whitespace before validation. |
 
@@ -50,6 +50,7 @@ The response body includes:
 - `time_window_hours`
 - `status_url`
 - `result_url`
+- `warning` (present when `hours` exceeds the max; `null` otherwise)
 
 Response headers include:
 
@@ -85,6 +86,7 @@ GET /semantic-search/{job_id}
 | `started_at` | string (ISO 8601) or null | When execution began |
 | `completed_at` | string (ISO 8601) or null | When execution finished |
 | `error` | string or null | Error message if failed |
+| `processing_step` | string or null | Current processing stage: `"embedding"`, `"retrieving"`, `"ranking"`, or `null`. Used to distinguish "still processing" from a stuck job. |
 | `result_available` | boolean | `true` when status is `completed` or `failed` |
 
 Use the `status` field as the source of truth, not the `success` boolean.
@@ -144,6 +146,8 @@ The live service currently returns the headings in Chinese (`# 主题检索报�
 - Final retained results are capped at 200 unique items per domain before merging
 - `OPENAI_API_KEY` is required for embedding generation
 - `KIMI_API_KEY` or `GROK_API_KEY` is required for report synthesis (and for query planning only when explicitly enabled)
+- **Time window**: Semantic search uses a separate, higher limit from `/analyze`. Default max is 720h (30 days), configured via `max_semantic_search_window_hours` in `analysis_config`. The analyze endpoint uses `max_analysis_window_hours` (default 24h). If `hours` exceeds the max, the response `warning` field indicates the cap was applied
+- **Timeout**: Jobs that do not complete within 5 minutes (300 seconds) are automatically marked as `failed` with the error `"Semantic search timed out after 300s"`. The `processing_step` field in the status response helps track progress before timeout
 
 ## Telegram and Backfill Notes
 
