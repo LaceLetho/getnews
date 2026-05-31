@@ -420,6 +420,7 @@ class SemanticSearchConfig:
     keyword_search_limit: int = 30
     max_keyword_queries: int = 12
     enabled: bool = True
+    query_planning_enabled: bool = False
 
     def __post_init__(self):
         self.validate()
@@ -449,6 +450,8 @@ class SemanticSearchConfig:
             raise ValueError("max_keyword_queries必须大于0")
         if not isinstance(self.enabled, bool):
             raise ValueError("enabled必须是布尔值")
+        if not isinstance(self.query_planning_enabled, bool):
+            raise ValueError("query_planning_enabled必须是布尔值")
 
     def validate_query(self, query: str) -> str:
         normalized_query = str(query or "").strip()

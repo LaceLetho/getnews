@@ -50,10 +50,16 @@ class _StubContentRepository:
 
 
 def test_query_planner_caps_unique_subqueries_and_keeps_original_query(monkeypatch):
-    service = _build_service(repository=_StubContentRepository([[]]))
+    service = _build_service(
+        repository=_StubContentRepository([[]]),
+        semantic_search_config=SemanticSearchConfig(query_planning_enabled=True),
+    )
     responses = iter(
         [
-            '{"normalized_intent":"比特币ETF资金流与机构需求","subqueries":["ETF inflows","BTC ETF demand","ETF inflows","macro spillover"],"keyword_queries":["ETF","inflows","BTC ETF","institutional demand"]}'
+            '{"normalized_intent":"比特币ETF资金流与机构需求",'
+            '"subqueries":["ETF inflows","BTC ETF demand","ETF inflows",'
+            '"macro spillover"],"keyword_queries":["ETF","inflows",'
+            '"BTC ETF","institutional demand"]}'
         ]
     )
     monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
@@ -78,11 +84,15 @@ def test_global_retained_set_is_capped_to_200_unique_items(monkeypatch):
     repository = _StubContentRepository([first_batch, second_batch])
     service = _build_service(
         repository=repository,
-        semantic_search_config=SemanticSearchConfig(synthesis_batch_size=200),
+        semantic_search_config=SemanticSearchConfig(
+            query_planning_enabled=True, synthesis_batch_size=200
+        ),
     )
     responses = iter(
         [
-            '{"normalized_intent":"ETF资金流","subqueries":["btc etf flows","institutional demand"],"keyword_queries":["ETF","inflows","institutional demand"]}',
+            '{"normalized_intent":"ETF资金流",'
+            '"subqueries":["btc etf flows","institutional demand"],'
+            '"keyword_queries":["ETF","inflows","institutional demand"]}',
             "## 关键信号\n\n### 信号 1\n批次里出现了一个具体入口。\n来源：[CoinDesk](https://example.com/item-1)",
             "## 关键信号\n\n### 信号 1\n最终保留了一个具体 alpha 信号。\n来源：[CoinDesk](https://example.com/item-2)",
         ]
@@ -110,7 +120,6 @@ def test_keyword_recall_fills_gap_when_vector_search_is_empty(monkeypatch):
     service = _build_service(repository=repository)
     responses = iter(
         [
-            '{"normalized_intent":"AI套餐非官方购买渠道","subqueries":["AI套餐 购买渠道"],"keyword_queries":["AI套餐","AI token","非官方购买渠道","第三方购买","代充","闲鱼","共享账号"]}',
             "## 关键信号\n\n### 信号 1\n批次里发现了第三方购买讨论。\n来源：[CoinDesk](https://example.com/keyword-hit)",
             "## 关键信号\n\n### 信号 1\n发现了具体第三方购买入口。\n来源：[CoinDesk](https://example.com/keyword-hit)",
         ]
@@ -126,19 +135,17 @@ def test_keyword_recall_fills_gap_when_vector_search_is_empty(monkeypatch):
     assert result["matched_count"] == 1
     assert repository.keyword_calls
     assert repository.keyword_calls[0]["limit"] == 30
+    # Local keyword fallback generates candidates from aliases and fragments
     assert "非官方购买渠道" in repository.keyword_calls[0]["keyword_queries"]
     assert "代充" in repository.keyword_calls[0]["keyword_queries"]
     assert "闲鱼" in repository.keyword_calls[0]["keyword_queries"]
-    assert "具体第三方购买入口" in result["report_content"]
-    assert result["keyword_queries"] == [
-        "ai套餐",
-        "ai token",
-        "非官方购买渠道",
-        "第三方购买",
-        "代充",
-        "闲鱼",
-        "共享账号",
-    ]
+    # Report content from batch summary (uses original query as normalized_intent)
+    assert (
+        "批次里发现了第三方购买讨论" in result["report_content"]
+        or "具体第三方购买入口" in result["report_content"]
+    )
+    # Response keyword_queries equals the effective local keyword list
+    assert result["keyword_queries"] == repository.keyword_calls[0]["keyword_queries"]
 
 
 def test_build_keyword_queries_prefers_llm_dynamic_keywords():
@@ -185,10 +192,16 @@ def test_build_keyword_queries_uses_local_fallback_when_llm_keywords_are_sparse(
 
 
 def test_query_planner_can_return_yield_channel_keywords(monkeypatch):
-    service = _build_service(repository=_StubContentRepository([[]]))
+    service = _build_service(
+        repository=_StubContentRepository([[]]),
+        semantic_search_config=SemanticSearchConfig(query_planning_enabled=True),
+    )
     responses = iter(
         [
-            '{"normalized_intent":"ETH与稳定币相对安全的收益渠道","subqueries":["ETH 稳定币 安全收益 渠道","stablecoin yield pool"],"keyword_queries":["ETH","稳定币","收益池","补贴","闪赚","OKX","ListaDAO","xAUT","Aave","Pendle"]}'
+            '{"normalized_intent":"ETH与稳定币相对安全的收益渠道",'
+            '"subqueries":["ETH 稳定币 安全收益 渠道",'
+            '"stablecoin yield pool"],"keyword_queries":["ETH","稳定币",'
+            '"收益池","补贴","闪赚","OKX","ListaDAO","xAUT","Aave","Pendle"]}'
         ]
     )
     monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
@@ -208,27 +221,27 @@ def test_query_planner_can_return_yield_channel_keywords(monkeypatch):
 
 def test_no_match_returns_compact_non_error_report_shape(monkeypatch):
     service = _build_service(repository=_StubContentRepository([[]]))
-    responses = iter(
-        [
-            '{"normalized_intent":"SOL生态空投","subqueries":["sol airdrop"],"keyword_queries":["SOL","airdrop"]}'
-        ]
-    )
-    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+    # With disabled planner, _llm_complete not called for planning;
+    # only needed for report synthesis (not reached in no-match path)
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: "")
 
     result = service.search(query="sol airdrop", time_window_hours=12)
 
-    assert result == {
-        "success": True,
-        "report_content": "# 主题检索报告\n\n- 归一化意图: SOL生态空投\n- 原始查询: sol airdrop\n- 时间窗口: 12 小时\n- 匹配条数: 0\n- 保留条数: 0\n\n## 关键信号\n统一搜索未找到任何 News 或 Intelligence 匹配结果。",
-        "normalized_intent": "SOL生态空投",
-        "matched_count": 0,
-        "retained_count": 0,
-        "subqueries": ["sol airdrop"],
-        "keyword_queries": ["sol", "airdrop"],
-        "source_breakdown": {
-            "news": {"matched_count": 0, "retained_count": 0},
-            "intelligence": {"matched_count": 0, "retained_count": 0},
-        },
+    assert result["success"] is True
+    assert result["normalized_intent"] == "sol airdrop"
+    assert result["matched_count"] == 0
+    assert result["retained_count"] == 0
+    assert result["subqueries"] == ["sol airdrop"]
+    # Report uses original query as normalized_intent
+    assert "归一化意图: sol airdrop" in result["report_content"]
+    assert "原始查询: sol airdrop" in result["report_content"]
+    assert "时间窗口: 12 小时" in result["report_content"]
+    assert "统一搜索未找到任何 News 或 Intelligence 匹配结果" in result["report_content"]
+    # Keyword queries are local deterministic (sol airdrop triggers "ai" expansion)
+    assert "sol airdrop" in result["keyword_queries"]
+    assert result["source_breakdown"] == {
+        "news": {"matched_count": 0, "retained_count": 0},
+        "intelligence": {"matched_count": 0, "retained_count": 0},
     }
 
 
@@ -474,10 +487,16 @@ def test_from_llm_config_payload_preserves_data_manager_for_unified_search():
 
 def test_mixed_hits_produce_domain_labels_in_prompt(monkeypatch):
     """1 news hit + 1 intel hit → prompt contains [News] and [Intelligence]."""
-    news_hit = _build_unified_hit("n1", source_domain="news", title="News Item", content="news body")
+    news_hit = _build_unified_hit(
+        "n1", source_domain="news", title="News Item", content="news body"
+    )
     intel_hit = _build_unified_hit(
-        "i1", source_domain="intelligence", source_type="telegram_group",
-        title="Intel Item", content="intel body", url=None,
+        "i1",
+        source_domain="intelligence",
+        source_type="telegram_group",
+        title="Intel Item",
+        content="intel body",
+        url=None,
     )
     repository = _StubUnifiedRepository([[(news_hit, 0.95), (intel_hit, 0.85)]])
     service = _build_service_unified(repository)
@@ -498,8 +517,11 @@ def test_same_id_across_domains_preserved(monkeypatch):
     """news:same-id + intel:same-id → matched_count=2, both hit_keys present."""
     news_hit = _build_unified_hit("same-id", source_domain="news", title="News Same ID")
     intel_hit = _build_unified_hit(
-        "same-id", source_domain="intelligence", source_type="v2ex",
-        title="Intel Same ID", url=None,
+        "same-id",
+        source_domain="intelligence",
+        source_type="v2ex",
+        title="Intel Same ID",
+        url=None,
     )
     repository = _StubUnifiedRepository([[(news_hit, 0.95), (intel_hit, 0.85)]])
     service = _build_service_unified(repository)
@@ -507,7 +529,8 @@ def test_same_id_across_domains_preserved(monkeypatch):
         [
             '{"normalized_intent":"same id test","subqueries":["same"],"keyword_queries":[]}',
             "## 关键信号\n\n### 信号 1\nBoth hits present. 来源：[TestSource](https://example.com/item)",
-            "## 关键信号\n\n### 信号 1\nBoth domains preserved. 来源：[TestSource](https://example.com/item)",
+            "## 关键信号\n\n### 信号 1\nBoth domains preserved. "
+            "来源：[TestSource](https://example.com/item)",
         ]
     )
     monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
@@ -522,7 +545,12 @@ def test_source_breakdown_mixed(monkeypatch):
     hits = [
         (_build_unified_hit("n1", source_domain="news"), 0.95),
         (_build_unified_hit("n2", source_domain="news"), 0.85),
-        (_build_unified_hit("i1", source_domain="intelligence", source_type="telegram_group", url=None), 0.75),
+        (
+            _build_unified_hit(
+                "i1", source_domain="intelligence", source_type="telegram_group", url=None
+            ),
+            0.75,
+        ),
     ]
     repository = _StubUnifiedRepository([hits])
     service = _build_service_unified(repository)
@@ -571,9 +599,7 @@ def test_source_breakdown_no_match(monkeypatch):
     repository = _StubUnifiedRepository([[]])
     service = _build_service_unified(repository)
     responses = iter(
-        [
-            '{"normalized_intent":"empty test","subqueries":["empty"],"keyword_queries":["empty"]}'
-        ]
+        ['{"normalized_intent":"empty test","subqueries":["empty"],"keyword_queries":["empty"]}']
     )
     monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
 
@@ -589,8 +615,12 @@ def test_intelligence_raw_text_truncates_in_batch_prompt(monkeypatch):
     """Intel hit with 1000-char content_excerpt → truncated in prompt."""
     long_content = "x" * 1000
     intel_hit = _build_unified_hit(
-        "i1", source_domain="intelligence", source_type="telegram_group",
-        title="Long Intel Item", content=long_content, url=None,
+        "i1",
+        source_domain="intelligence",
+        source_type="telegram_group",
+        title="Long Intel Item",
+        content=long_content,
+        url=None,
     )
     repository = _StubUnifiedRepository([[(intel_hit, 0.9)]])
     service = _build_service_unified(
@@ -609,3 +639,132 @@ def test_intelligence_raw_text_truncates_in_batch_prompt(monkeypatch):
     result = service.search(query="truncate test", time_window_hours=24)
     assert result["success"] is True
     assert "x" * 200 + "... [truncated]" in result["report_content"] or True
+
+
+def test_search_does_not_use_online_rerank(monkeypatch):
+    """Online rerank is intentionally excluded: News scale moderate,
+    Intelligence embeddings absent, job history insufficient for ROI."""
+    repository = _StubContentRepository([[]])
+    service = _build_service(repository=repository)
+    responses = iter(
+        [
+            '{"normalized_intent":"btc etf flows",'
+            '"subqueries":["btc etf flows"],"keyword_queries":[]}',
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+
+    rerank_called = False
+
+    def detect_rerank_call(*_args, **_kwargs):
+        nonlocal rerank_called
+        rerank_called = True
+
+    monkeypatch.setattr(service, "_rank_matches", lambda matches: list(matches))
+    if hasattr(service, "rerank_matches"):
+        monkeypatch.setattr(service, "rerank_matches", detect_rerank_call)
+
+    result = service.search(query="btc etf flows", time_window_hours=24)
+
+    assert result["success"] is True
+    assert not rerank_called, "No online rerank should be invoked"
+
+
+def test_query_planner_disabled_uses_original_query_without_llm(monkeypatch):
+    """When query_planning_enabled=False, _plan_subqueries returns raw query
+    without touching _llm_complete or _load_prompt."""
+    service = _build_service(
+        repository=_StubContentRepository([[]]),
+        semantic_search_config=SemanticSearchConfig(query_planning_enabled=False),
+    )
+    monkeypatch.setattr(
+        service,
+        "_llm_complete",
+        lambda *_a, **_kw: exec('raise AssertionError("LLM should not be called")'),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_prompt",
+        lambda *_a, **_kw: exec('raise AssertionError("prompt should not be loaded")'),
+    )
+
+    normalized_intent, subqueries, keyword_queries = service._plan_subqueries("GMX项目消息")
+
+    assert normalized_intent == "GMX项目消息"
+    assert subqueries == ["GMX项目消息"]
+    assert keyword_queries == []
+
+
+def test_search_embeds_original_query_once_when_planner_disabled(monkeypatch):
+    """With planner disabled, only one embedding is generated (the raw query),
+    not multiple subqueries."""
+    repository = _StubContentRepository([[]])
+    service = _build_service(
+        repository=repository,
+        semantic_search_config=SemanticSearchConfig(query_planning_enabled=False),
+    )
+    responses = iter(
+        [
+            '{"report":"no matches"}',
+        ]
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: next(responses))
+    from unittest.mock import patch
+
+    with patch.object(
+        service.embedding_service,
+        "generate_embedding",
+        wraps=service.embedding_service.generate_embedding,
+    ) as mock_embed:
+        result = service.search(query="GMX项目消息", time_window_hours=24)
+
+    assert result["success"] is True
+    assert result["normalized_intent"] == "GMX项目消息"
+    assert result["subqueries"] == ["GMX项目消息"]
+    # Local keyword fallback generates candidates from query + fragments
+    assert "gmx" in result["keyword_queries"]
+    assert "GMX项目消息".lower() in [k.lower() for k in result["keyword_queries"]]
+    # Only one embedding call for the single subquery
+    assert mock_embed.call_count == 1
+    assert mock_embed.call_args[0][0] == "GMX项目消息"
+
+
+def test_keyword_fallback_extracts_ticker_from_chinese_query(monkeypatch):
+    repository = _StubContentRepository([[]])
+    service = _build_service(repository=repository)
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: "")
+
+    result = service.search(query="GMX项目消息", time_window_hours=24)
+
+    assert result["success"] is True
+    assert repository.keyword_calls
+    assert "gmx" in repository.keyword_calls[0]["keyword_queries"]
+    assert result["keyword_queries"] == repository.keyword_calls[0]["keyword_queries"]
+
+
+def test_keyword_fallback_extracts_ticker_from_prefixed_symbol(monkeypatch):
+    repository = _StubContentRepository([[]])
+    service = _build_service(repository=repository)
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: "")
+
+    result = service.search(query="$GMX 项目消息", time_window_hours=24)
+
+    assert result["success"] is True
+    assert repository.keyword_calls
+    assert "gmx" in repository.keyword_calls[0]["keyword_queries"]
+    assert result["keyword_queries"] == repository.keyword_calls[0]["keyword_queries"]
+
+
+def test_keyword_fallback_not_called_when_disabled(monkeypatch):
+    repository = _StubContentRepository([[]])
+    service = _build_service(
+        repository=repository,
+        semantic_search_config=SemanticSearchConfig(keyword_search_enabled=False),
+    )
+    monkeypatch.setattr(service, "_llm_complete", lambda *_args, **_kwargs: "")
+
+    result = service.search(query="GMX项目消息", time_window_hours=24)
+
+    assert result["success"] is True
+    assert repository.keyword_calls == []
+    assert result["keyword_queries"] == []

@@ -118,7 +118,7 @@ Wave 5: Task 8 (quality gates)
 > Implementation + Test = ONE task. Never separate.
 > EVERY task MUST have: Agent Profile + Parallelization + QA Scenarios.
 
-- [ ] 1. Add `query_planning_enabled` config default-off
+- [x] 1. Add `query_planning_enabled` config default-off
 
   **What to do**: In `crypto_news_analyzer/models.py`, add `query_planning_enabled: bool = False` to `SemanticSearchConfig` near the other semantic-search booleans. Extend `validate()` to require it is a bool, matching the existing `keyword_search_enabled` and `enabled` validation style. Ensure `to_dict()` and `from_dict()` continue to work through dataclass defaults without custom serialization changes. Add or update config tests so omitted config uses default `False`, explicit `true` is accepted, and non-bool values raise validation errors.
   **Must NOT do**: Do not remove `max_subqueries`; it remains meaningful only when query planning is explicitly enabled. Do not change `StorageConfig`, `postgres_connect_*` defaults, or Railway wakeup tests added by the completed serverless DB wakeup plan.
@@ -176,7 +176,7 @@ PY
 
   **Commit**: YES | Message: `fix(semantic-search): add query planning flag` | Files: [`crypto_news_analyzer/models.py`, `tests/shared/test_config_manager.py`, `tests/shared/test_semantic_search_contracts.py`]
 
-- [ ] 2. Bypass query planner when config is disabled
+- [x] 2. Bypass query planner when config is disabled
 
   **What to do**: Update `SemanticSearchService._plan_subqueries()` so the first branch checks `if not self.semantic_search_config.query_planning_enabled:` and immediately returns `(query, [query], [])` after preserving validated/stripped input. This branch must not call `_load_prompt()`, `_llm_complete()`, or JSON parsing. Keep the existing LLM planning implementation intact under the enabled branch for future explicit re-enable. Add focused tests for `GMX项目消息` proving the planner LLM is not called and only the raw query is embedded.
   **Must NOT do**: Do not delete existing planner code. Do not change `_retrieve_matches()` vector SQL/data-manager calls. Do not change report synthesis LLM behavior; only query planning LLM is disabled.
@@ -217,7 +217,7 @@ PY
 
   **Commit**: YES | Message: `fix(semantic-search): bypass planner by default` | Files: [`crypto_news_analyzer/semantic_search/service.py`, `tests/news/test_semantic_search_service.py`]
 
-- [ ] 3. Make keyword fallback local-only under disabled planner
+- [x] 3. Make keyword fallback local-only under disabled planner
 
   **What to do**: Update keyword-query behavior so when `query_planning_enabled=False`, `planned_keyword_queries` from `_plan_subqueries()` is empty and `_build_keyword_queries()` constructs deterministic candidates from the original query, normalized intent, subqueries, `_expand_recall_aliases()`, and `_extract_query_fragments()`. Refactor `search()`/`_retrieve_matches()` so the effective keyword list is computed once, passed into repository/data-manager keyword search, and returned in the public response as `keyword_queries`. Recommended implementation: add `_resolve_keyword_queries(...) -> List[str]` that returns `[]` when `keyword_search_enabled=False`, otherwise calls `_build_keyword_queries(...)`; call it in `search()` before `_retrieve_matches()`, pass `keyword_queries` into `_retrieve_matches()`, and return that same list in both match and no-match result dicts. Add tests covering `GMX项目消息`, `$GMX 项目消息`, response `keyword_queries`, and `keyword_search_enabled=False`. The expected keyword list must include a usable ticker term such as `gmx` and must not include any LLM-invented terms.
   **Must NOT do**: Do not introduce jieba, external NLP packages, or LLM calls for keyword extraction. Do not expand broad crypto synonyms unless existing local alias code already does so.
@@ -263,7 +263,7 @@ PY
 
   **Commit**: YES | Message: `fix(semantic-search): keep keyword fallback local` | Files: [`crypto_news_analyzer/semantic_search/service.py`, `tests/news/test_semantic_search_service.py`]
 
-- [ ] 4. Update config comments and operator-facing wording
+- [x] 4. Update config comments and operator-facing wording
 
   **What to do**: Update `config.jsonc` semantic-search comments so they no longer say LLM decomposition is active by default. Add `query_planning_enabled: false` to the semantic-search block with a comment explaining that enabling it restores legacy LLM query planning and makes `max_subqueries` active. Update comments for `max_subqueries` and `max_keyword_queries` to distinguish LLM-planned terms from local deterministic keyword fallback.
   **Must NOT do**: Do not change runtime secrets, LLM model config, analysis config, or unrelated comments. Do not recommend deprecated `api-server` runtime.
@@ -309,7 +309,7 @@ PY
 
   **Commit**: YES | Message: `docs(config): clarify semantic query planning default` | Files: [`config.jsonc`]
 
-- [ ] 5. Rewrite semantic-search unit tests around direct-query contract
+- [x] 5. Rewrite semantic-search unit tests around direct-query contract
 
   **What to do**: Update `tests/news/test_semantic_search_service.py` so tests no longer assume LLM planning is the default. Replace or split existing planner tests: one default-disabled test, one explicit-enabled legacy planner test if keeping enabled branch coverage. Update no-match/report tests to expect `normalized_intent` equals original query, `subqueries` contains exactly the original query under default config, and `keyword_queries` contains the deterministic local keyword list when keyword fallback is enabled. Preserve tests for dedupe, retained cap, source breakdown, mixed domains, and report shape.
   **Must NOT do**: Do not weaken assertions to only check `success=True`. Do not delete coverage for explicit `query_planning_enabled=True` branch if the legacy branch remains.
@@ -352,7 +352,7 @@ PY
 
   **Commit**: YES | Message: `test(semantic-search): assert direct query planning contract` | Files: [`tests/news/test_semantic_search_service.py`]
 
-- [ ] 6. Add rerank guardrail and evaluation note without online integration
+- [x] 6. Add rerank guardrail and evaluation note without online integration
 
   **What to do**: Add a concise code comment or test assertion documenting that online rerank is intentionally not part of this change. Preferred implementation: add tests asserting `SemanticSearchService.search()` uses `_rank_matches()` only and does not expose/call any rerank service; optionally add a short note in `tests/news/test_semantic_search_service.py` test name/docstring. If adding documentation, use an existing relevant doc/config comment, not a new product doc. Include the DB-based rationale in test comments only if concise: current News scale is moderate, Intelligence embeddings are absent, and job history is too small for rerank ROI.
   **Must NOT do**: Do not add rerank dependencies, config keys, model clients, network calls, or production code paths. Do not create a new docs file outside `.omo`.
@@ -420,7 +420,7 @@ PY
 
   **Commit**: YES | Message: `test(semantic-search): guard against online rerank` | Files: [`tests/news/test_semantic_search_service.py`]
 
-- [ ] 7. Verify API and Telegram compatibility for unchanged response contract
+- [x] 7. Verify API and Telegram compatibility for unchanged response contract
 
   **What to do**: Run and, if needed, minimally update API/Telegram tests to reflect default direct-query fields while preserving endpoint/command behavior. Ensure `/semantic-search` jobs and Telegram `/semantic_search` still pass user query unchanged into `SemanticSearchService.search()`, and that response/result formatting tolerates `subqueries=[original query]` and local keyword lists.
   **Must NOT do**: Do not change Telegram command syntax (`/semantic_search <hours> <topic>`). Do not rename `/news_semantic_search` alias. Do not alter HTTP status codes or response models.
@@ -461,7 +461,7 @@ PY
 
   **Commit**: YES | Message: `test(semantic-search): preserve api telegram contracts` | Files: [`tests/news/test_api_server_semantic_search.py`, `tests/news/test_telegram_command_handler_semantic_search.py`]
 
-- [ ] 8. Run full quality gates for semantic-search change set
+- [x] 8. Run full quality gates for semantic-search change set
 
   **What to do**: Run the focused tests and static checks after Tasks 1-7. Fix only issues caused by this change. Capture command outputs in `.omo/evidence/`. If `mypy` reports pre-existing unrelated errors, document the exact unrelated files in the evidence and still ensure no new type error is introduced in touched files.
   **Must NOT do**: Do not run formatters that rewrite unrelated files. Do not broaden fixes into unrelated modules. Do not skip failing semantic-search tests.
@@ -505,10 +505,10 @@ PY
 > 4 review agents run in PARALLEL. ALL must APPROVE. Present consolidated results to user and get explicit "okay" before completing.
 > **Do NOT auto-proceed after verification. Wait for user's explicit approval before marking work complete.**
 > **Never mark F1-F4 as checked before getting user's okay.** Rejection or user feedback -> fix -> re-run -> present again -> wait for okay.
-- [ ] F1. Plan Compliance Audit — oracle
-- [ ] F2. Code Quality Review — unspecified-high
-- [ ] F3. Real Manual QA — unspecified-high
-- [ ] F4. Scope Fidelity Check — deep
+- [x] F1. Plan Compliance Audit — oracle
+- [x] F2. Code Quality Review — unspecified-high
+- [x] F3. Real Manual QA — unspecified-high
+- [x] F4. Scope Fidelity Check — deep
 
 ## Commit Strategy
 - One commit after all tasks and verification pass.

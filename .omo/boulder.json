@@ -1,5 +1,18 @@
 {
   "schema_version": 2,
   "active_work_id": null,
-  "works": {}
+  "works": {
+    "work_disable_semantic_query_planner": {
+      "plan_name": "disable-semantic-query-planner",
+      "plan_path": "/data/workspace/getnews/.omo/plans/disable-semantic-query-planner.md",
+      "started_at": "2026-05-31T10:29:24.894Z",
+      "session_ids": [
+        "opencode:ses_1826b3257ffeUOd22xq6I2rwqR"
+      ],
+      "status": "completed",
+      "elapsed_ms": null,
+      "task_sessions": [],
+      "ended_at": "2026-05-31T10:45:00.000Z"
+    }
+  }
 }
