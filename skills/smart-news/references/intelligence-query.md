@@ -10,7 +10,7 @@ Send `Authorization: Bearer <API_KEY>` with every request. Missing or invalid cr
 
 ## Topic Lifecycle
 
-Topics progress through states: `draft` → `active` → `paused` / `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours.
+Topics progress through states: `draft` → `active` → `paused` / `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours. Finding merge is available through both the HTTP API and the Telegram `/topic_merge` command.
 
 ## Deprecated Routes
 
@@ -361,6 +361,38 @@ curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/archive" \
 
 ---
 
+## POST /intelligence/topics/{topic_id}/merge
+
+Merge active findings for a topic via LLM call, producing consolidated research results. Requires the topic to have an active prompt and at least two active findings.
+
+### Response (200)
+
+```json
+{
+  "success": true,
+  "topic_id": "topic-uuid",
+  "topic_name": "Stablecoin Settlement Channels",
+  "source_findings_count": 5,
+  "merged_findings_count": 2,
+  "source_citations_count": 15,
+  "merged_citations_count": 8,
+  "removed_citations_count": 7,
+  "summary": "Consolidated findings summary...",
+  "change_summary": {}
+}
+```
+
+Returns `400` if no active prompt found or fewer than two active findings available. Returns `404` if the topic ID does not exist.
+
+### Example
+
+```bash
+curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/merge" \
+  -H "Authorization: Bearer ${API_KEY}"
+```
+
+---
+
 ## GET /intelligence/topics/{topic_id}/runs
 
 Get paginated research run logs for a specific topic. Each run includes the prompt version used, execution status, findings count, and timestamps.
@@ -414,7 +446,7 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 | Status | Meaning |
 |--------|---------|
 | `200` | Success |
-| `201` | Topic draft or merge preview created |
+| `201` | Topic draft created |
 | `400` | Invalid parameters or merge preview error |
 | `401` | Missing or invalid Bearer token |
 | `404` | Topic or resource not found |
@@ -427,6 +459,7 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 - All intelligence routes are synchronous — results return immediately without polling.
 - Only `active` topics receive scheduled research from the ingestion service.
 - Merge previews expire after 24 hours; accepting a stale preview is rejected.
+- Finding merge is available through both `POST /intelligence/topics/{id}/merge` (synchronous) and the Telegram `/topic_merge` command. At least two active findings are required.
 - Prompt lifecycle: create draft → revise (optional) → confirm → active. Manual edits via `PUT /prompt` can shortcut this.
 - These endpoints exist only on `analysis-service` / `api-only` deployments. They are not available from `ingestion`.
 
