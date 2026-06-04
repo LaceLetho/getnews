@@ -131,7 +131,15 @@ Synchronous topic workflow endpoints:
 
 These endpoints are synchronous; there is no async job/poll flow. Results return immediately.
 
-Topics have lifecycle states: `draft`, `active`, `paused`, `archived`. Only `active` topics are researched by the ingestion scheduler. Finding merge is available through both `POST /intelligence/topics/{id}/merge` and the Telegram `/topic_merge` command.
+Async topic merge endpoint:
+
+- `POST /intelligence/topics/{topic_id}/merge` — Start an async merge job (returns 202 Accepted with `job_id`, `status_url`, `result_url`)
+- `GET /intelligence/topics/{topic_id}/merge/{job_id}` — Check merge job status
+- `GET /intelligence/topics/{topic_id}/merge/{job_id}/result` — Retrieve completed merge results
+
+Merge workflow: `POST /intelligence/topics/{id}/merge` → poll `GET .../merge/{job_id}` → `GET .../merge/{job_id}/result`. Jobs move through states: `queued`, `running`, `completed`, `failed`. The merge LLM call may take several minutes, so polling is required — do not block on the POST response.
+
+Topics have lifecycle states: `draft`, `active`, `paused`, `archived`. Only `active` topics are researched by the ingestion scheduler. Finding merge is available through both the async HTTP endpoint and the Telegram `/topic_merge` command.
 
 ## Telegram Webhook
 
@@ -164,7 +172,9 @@ Supported HTTP routes:
 - `GET /intelligence/topics/{id}/prompts` - Get prompt versions and active prompt
 - `POST /intelligence/topics/{id}/pause` - Pause topic
 - `POST /intelligence/topics/{id}/archive` - Archive topic
-- `POST /intelligence/topics/{id}/merge` - Merge active findings into consolidated results
+- `POST /intelligence/topics/{id}/merge` - Start async merge job (returns 202)
+- `GET /intelligence/topics/{id}/merge/{job_id}` - Check merge job status
+- `GET /intelligence/topics/{id}/merge/{job_id}/result` - Retrieve completed merge results
 - `GET /intelligence/topics/{id}/datasources` - List datasource associations for a topic
 - `PUT /intelligence/topics/{id}/datasources` - Replace all datasource associations atomically
 - `POST /intelligence/topics/{id}/datasources/{datasource_id}` - Add a datasource association (idempotent)
