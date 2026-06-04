@@ -449,6 +449,19 @@ class TopicLifecycleActionResponse(BaseModel):
     updated_at: Optional[str] = None
 
 
+class TopicMergeResponse(BaseModel):
+    success: bool
+    topic_id: str
+    topic_name: str
+    source_findings_count: int
+    merged_findings_count: int
+    source_citations_count: int
+    merged_citations_count: int
+    removed_citations_count: int
+    summary: str
+    change_summary: Dict[str, Any] = Field(default_factory=dict)
+
+
 class TopicDatasourceSetRequest(BaseModel):
     """Request body for atomic replacement of topic datasource associations."""
 
@@ -1769,6 +1782,68 @@ def register_intelligence_routes(app: FastAPI) -> None:
             topic_id=topic_id,
             lifecycle_status=topic.lifecycle_status,
             updated_at=_datetime_to_iso(topic.updated_at),
+        )
+
+    @app.post(
+        "/intelligence/topics/{topic_id}/merge",
+        response_model=TopicMergeResponse,
+    )
+    async def merge_topic(
+        topic_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Merge active topic findings via LLM call, producing consolidated results."""
+        from .intelligence.topic_findings import MergePreviewError
+
+        controller = _get_controller(req)
+        repository = _get_intelligence_repository(req)
+        merge_service = _get_topic_finding_merge_service(controller, repository)
+
+        topic = repository.get_topic_by_id(topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        active_prompt = repository.get_active_topic_prompt(topic_id)
+        if active_prompt is None:
+            raise HTTPException(
+                status_code=400, detail="No active prompt found. Confirm the topic first."
+            )
+
+        try:
+            merge_result = await merge_service.merge_topic(
+                topic_id=topic_id,
+                prompt_version_id=active_prompt.id,
+                operator="api",
+            )
+        except MergePreviewError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Failed to merge topic {topic_id}: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        merged = merge_result.primary_finding
+        payload = (
+            merged.finding_payload if isinstance(merged.finding_payload, dict) else {}
+        )
+        topic_name = str(payload.get("topic_name", topic_id))
+        summary = str(
+            payload.get("summary") or payload.get("merge_summary") or ""
+        )[:500]
+
+        return TopicMergeResponse(
+            success=True,
+            topic_id=topic_id,
+            topic_name=topic_name,
+            source_findings_count=merge_result.source_findings_count,
+            merged_findings_count=merge_result.merged_findings_count,
+            source_citations_count=merge_result.source_citations_count,
+            merged_citations_count=merge_result.merged_citations_count,
+            removed_citations_count=merge_result.removed_citations_count,
+            summary=summary,
+            change_summary=merge_result.change_summary,
         )
 
     @app.get("/intelligence/topics", response_model=IntelligenceTopicListResponse)

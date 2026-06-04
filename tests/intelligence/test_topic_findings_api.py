@@ -648,6 +648,7 @@ def test_unauthorized_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
             ("post", "/intelligence/topics/topic-1/confirm"),
             ("post", "/intelligence/topics/topic-1/pause"),
             ("post", "/intelligence/topics/topic-1/archive"),
+            ("post", "/intelligence/topics/topic-1/merge"),
             ("get", "/intelligence/topics/topic-1"),
         ]
         for method, path in endpoints:
@@ -776,3 +777,87 @@ def test_archive_topic(monkeypatch: pytest.MonkeyPatch) -> None:
         data = resp.json()
         assert data["success"] is True
         assert data["lifecycle_status"] == "archived"
+
+
+def test_merge_topic_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = InMemoryTopicRepository()
+    topic_id, prompt_id = _make_topic_and_prompt(repo)
+    source_ids = _make_findings(repo, topic_id, prompt_id)
+
+    controller = _TopicApiFakeController(repo, llm_payload=_valid_merge_payload())
+    with _build_topic_test_app(monkeypatch, controller) as client:
+        resp = client.post(f"/intelligence/topics/{topic_id}/merge", headers=_authorized())
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["success"] is True
+        assert data["topic_id"] == topic_id
+        assert data["topic_name"] == "BTC ETF flow"
+        assert data["source_findings_count"] == 3
+        assert data["merged_findings_count"] == 2
+        assert data["source_citations_count"] == 3
+        assert data["merged_citations_count"] == 2
+        assert data["removed_citations_count"] == 1
+        assert data["summary"]
+        assert "similar_findings_merged_count" in data["change_summary"]
+
+        for source_id in source_ids:
+            archived = repo.get_topic_finding_by_id(source_id)
+            assert archived is not None
+            assert archived.status == TopicFindingStatus.SUPERSEDED.value
+
+
+def test_merge_topic_missing_topic_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = InMemoryTopicRepository()
+    controller = _TopicApiFakeController(repo, llm_payload=_valid_merge_payload())
+    with _build_topic_test_app(monkeypatch, controller) as client:
+        resp = client.post(
+            "/intelligence/topics/nonexistent-topic/merge", headers=_authorized()
+        )
+        assert resp.status_code == 404, resp.text
+        assert "Topic not found" in resp.json()["detail"]
+
+
+def test_merge_topic_without_active_prompt_returns_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = InMemoryTopicRepository()
+    topic = IntelligenceTopic.create(name="BTC ETF flow")
+    repo.save_topic(topic)
+    draft_prompt = TopicPrompt.create(
+        intelligence_topic_id=topic.id,
+        prompt_version="1",
+        prompt_text="draft only",
+        schema_version="topic-prompt-generation-v1",
+        status="draft",
+    )
+    repo.create_topic_prompt_version(draft_prompt)
+
+    controller = _TopicApiFakeController(repo, llm_payload=_valid_merge_payload())
+    with _build_topic_test_app(monkeypatch, controller) as client:
+        resp = client.post(f"/intelligence/topics/{topic.id}/merge", headers=_authorized())
+        assert resp.status_code == 400, resp.text
+        assert "active prompt" in resp.json()["detail"].lower()
+
+
+def test_merge_topic_with_too_few_findings_returns_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = InMemoryTopicRepository()
+    topic_id, prompt_id = _make_topic_and_prompt(repo)
+    finding = TopicFinding.create(
+        intelligence_topic_id=topic_id,
+        prompt_version_id=prompt_id,
+        finding_payload={"summary": "only one", "severity": "medium"},
+        content_hash="hash-0",
+        citations=[{"message_id": "raw-0", "message_snippet": "evidence"}],
+        source_raw_item_ids=["raw-0"],
+        confidence=0.8,
+    )
+    finding.id = "finding-0"
+    repo.create_topic_finding(finding)
+
+    controller = _TopicApiFakeController(repo, llm_payload=_valid_merge_payload())
+    with _build_topic_test_app(monkeypatch, controller) as client:
+        resp = client.post(f"/intelligence/topics/{topic_id}/merge", headers=_authorized())
+        assert resp.status_code == 400, resp.text
+        assert "at least two" in resp.json()["detail"].lower()

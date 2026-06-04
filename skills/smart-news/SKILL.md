@@ -18,7 +18,7 @@ Typical triggers:
 - Run asynchronous unified semantic search (News + Intelligence) for a freeform topic query
 - Poll an API job until it finishes and then fetch the final result
 - Create, list, or delete datasources through the HTTP API
-- Query and manage intelligence topics through the topic-first API (create, revise, confirm, merge, detail, list, pause, archive)
+- Query and manage intelligence topics through the topic-first API (create, revise, confirm, merge findings, detail, list, pause, archive)
 - View and manage topic-datasource associations (get, set, add, remove) to scope topic research
 - List intelligence topic research run logs per-topic or globally
 - Check service health before or after an API workflow
@@ -131,7 +131,7 @@ Synchronous topic workflow endpoints:
 
 These endpoints are synchronous; there is no async job/poll flow. Results return immediately.
 
-Topics have lifecycle states: `draft`, `active`, `paused`, `archived`. Only `active` topics are researched by the ingestion scheduler. Finding merge is performed through the Telegram `/topic_merge` command, not through public HTTP endpoints.
+Topics have lifecycle states: `draft`, `active`, `paused`, `archived`. Only `active` topics are researched by the ingestion scheduler. Finding merge is available through both `POST /intelligence/topics/{id}/merge` and the Telegram `/topic_merge` command.
 
 ## Telegram Webhook
 
@@ -164,6 +164,7 @@ Supported HTTP routes:
 - `GET /intelligence/topics/{id}/prompts` - Get prompt versions and active prompt
 - `POST /intelligence/topics/{id}/pause` - Pause topic
 - `POST /intelligence/topics/{id}/archive` - Archive topic
+- `POST /intelligence/topics/{id}/merge` - Merge active findings into consolidated results
 - `GET /intelligence/topics/{id}/datasources` - List datasource associations for a topic
 - `PUT /intelligence/topics/{id}/datasources` - Replace all datasource associations atomically
 - `POST /intelligence/topics/{id}/datasources/{datasource_id}` - Add a datasource association (idempotent)
