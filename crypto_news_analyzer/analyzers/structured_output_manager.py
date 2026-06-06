@@ -35,7 +35,6 @@ class StructuredOutputLibrary(Enum):
 class ValidationResult:
     """验证结果"""
 
-    is_valid: bool
     errors: List[str]
     warnings: List[str]
 
@@ -1161,7 +1160,7 @@ class StructuredOutputManager:
             # 验证批量结果
             if not isinstance(response.get("results"), list):
                 errors.append("results字段必须是列表")
-                return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
+                return ValidationResult(errors=errors, warnings=warnings)
 
             # 验证每个结果项
             for i, item in enumerate(response["results"]):
@@ -1177,12 +1176,12 @@ class StructuredOutputManager:
 
         is_valid = len(errors) == 0
 
-        if is_valid:
+        if not errors:
             logger.info("输出结构验证通过")
         else:
             logger.warning(f"输出结构验证失败: {errors}")
 
-        return ValidationResult(is_valid=is_valid, errors=errors, warnings=warnings)
+        return ValidationResult(errors=errors, warnings=warnings)
 
     def _validate_single_result(self, result: Dict[str, Any]) -> List[str]:
         """验证单个结果项"""

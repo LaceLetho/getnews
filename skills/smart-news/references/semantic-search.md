@@ -151,7 +151,7 @@ The live service currently returns the headings in Chinese (`# 主题检索报�
 
 ## Telegram and Backfill Notes
 
-- Telegram command: `/semantic_search <hours> <topic>` (canonical); `/news_semantic_search` is a deprecated alias
+- Telegram command: `/semantic_search <hours> <topic>`
 - Historical embedding backfill for News content:
 
 ```bash

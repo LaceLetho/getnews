@@ -88,11 +88,9 @@ def main():
         if args.mode == "analysis-service":
             exit_code = run_analysis_service(args.config)
         elif args.mode == "api-only":
-            # 仅API服务模式（Railway拆分架构：analysis服务，无调度器/监听）
             exit_code = run_api_only_service(args.config)
         elif args.mode == "ingestion":
-            # 仅数据摄取服务（Railway拆分架构：ingestion服务）
-            exit_code = run_ingestion_service(args.config)
+            exit_code = run_ingestion_loop(args.config)
         elif args.mode == "embedding-backfill":
             exit_code = run_embedding_backfill(
                 args.config,
@@ -117,69 +115,41 @@ def main():
         sys.exit(1)
 
 
-def run_api_only_service(config_path: str = "./config.jsonc") -> int:
-    """
-    运行隔离的HTTP API服务器（Railway拆分架构：analysis服务）
-
-    此模式仅提供HTTP API端点，不启动调度器或Telegram命令监听。
-    用于Railway拆分部署中的公共API服务。
-
-    Args:
-        config_path: 配置文件路径
-
-    Returns:
-        退出状态码
-    """
+def _run_api_service(config_path: str, enable_telegram: bool, mode: str) -> int:
     import uvicorn
     from .api_server import create_api_server
 
     logger = logging.getLogger(__name__)
-    logger.info("启动 API-only 服务模式（Railway analysis服务）")
+    logger.info("启动 %s 服务模式", mode)
 
     try:
-        os.environ["CRYPTO_NEWS_RUNTIME_MODE"] = "api-only"
-        # start_services=False 确保不启动调度器和Telegram监听
-        app = create_api_server(config_path, start_services=False)
-
-        host = os.environ.get("API_HOST", "0.0.0.0")
-        port = int(os.environ.get("API_PORT", "8080"))
-
-        logger.info(f"API-only 服务启动在 {host}:{port}（无调度器/监听）")
-        uvicorn.run(app, host=host, port=port)
-
-        return 0
-    except Exception as e:
-        logger.error(f"API-only 服务启动失败: {e}")
-        return 1
-
-
-def run_analysis_service(config_path: str = "./config.jsonc") -> int:
-    """运行公网分析服务（API + Telegram，无调度器）。"""
-    import uvicorn
-    from .api_server import create_api_server
-
-    logger = logging.getLogger(__name__)
-    logger.info("启动公网分析服务模式（API + Telegram，无调度器）")
-
-    try:
-        os.environ["CRYPTO_NEWS_RUNTIME_MODE"] = "analysis-service"
+        os.environ["CRYPTO_NEWS_RUNTIME_MODE"] = mode
         app = create_api_server(
             config_path,
-            start_services=False,
-            start_scheduler=False,
-            start_command_listener=True,
+            enable_scheduler=False,
+            enable_telegram=enable_telegram,
         )
 
         host = os.environ.get("API_HOST", "0.0.0.0")
         port = int(os.environ.get("API_PORT", "8080"))
 
-        logger.info(f"公网分析服务启动在 {host}:{port}（无调度器）")
+        telegram_state = "启用Telegram" if enable_telegram else "无Telegram监听"
+        logger.info("%s 服务启动在 %s:%s（无调度器，%s）", mode, host, port, telegram_state)
         uvicorn.run(app, host=host, port=port)
 
         return 0
     except Exception as e:
-        logger.error(f"公网分析服务启动失败: {e}")
+        logger.error("%s 服务启动失败: %s", mode, e)
         return 1
+
+
+def run_api_only_service(config_path: str = "./config.jsonc") -> int:
+    return _run_api_service(config_path, enable_telegram=False, mode="api-only")
+
+
+def run_analysis_service(config_path: str = "./config.jsonc") -> int:
+    """运行公网分析服务（API + Telegram，无调度器）。"""
+    return _run_api_service(config_path, enable_telegram=True, mode="analysis-service")
 
 
 def run_ingestion_loop(config_path: str = "./config.jsonc") -> int:
@@ -226,23 +196,6 @@ def run_ingestion_loop(config_path: str = "./config.jsonc") -> int:
     except Exception as e:
         logger.error(f"数据摄取循环模式启动失败: {e}")
         return 1
-
-
-def run_ingestion_service(config_path: str = "./config.jsonc") -> int:
-    """
-    运行数据摄取服务（Railway拆分架构：ingestion服务）
-
-    此模式仅启动定时数据爬取，不提供分析功能。
-
-    Args:
-        config_path: 配置文件路径
-
-    Returns:
-        退出状态码
-    """
-    logger = logging.getLogger(__name__)
-    logger.info("启动数据摄取服务模式（Railway ingestion服务）")
-    return run_ingestion_loop(config_path)
 
 
 def run_embedding_backfill(

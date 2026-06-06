@@ -46,12 +46,18 @@ def initialize_intelligence_tables(
         CREATE TABLE IF NOT EXISTS intelligence_topics (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            is_active BOOLEAN NOT NULL DEFAULT TRUE,
             lifecycle_status TEXT NOT NULL DEFAULT 'active',
             created_at {datetime_type} DEFAULT CURRENT_TIMESTAMP,
             updated_at {datetime_type} DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # ── Migration: is_active removal + paused→archived
+    cursor.execute("UPDATE intelligence_topics SET lifecycle_status = 'archived' WHERE lifecycle_status = 'paused'")
+    cursor.execute("DROP INDEX IF EXISTS idx_intelligence_topics_active")
+    if backend == "postgres":
+        cursor.execute("ALTER TABLE intelligence_topics DROP COLUMN IF EXISTS is_active")
+
     _initialize_topic_only_tables(
         cursor, backend, json_default_empty_object, json_default_empty_list, datetime_type
     )
@@ -121,10 +127,6 @@ def initialize_intelligence_tables(
         (
             "CREATE INDEX IF NOT EXISTS idx_intelligence_crawl_checkpoints_updated_at "
             "ON intelligence_crawl_checkpoints (updated_at)"
-        ),
-        (
-            "CREATE INDEX IF NOT EXISTS idx_intelligence_topics_active "
-            "ON intelligence_topics (is_active, updated_at DESC)"
         ),
         (
             "CREATE INDEX IF NOT EXISTS idx_intelligence_topics_lifecycle_status "

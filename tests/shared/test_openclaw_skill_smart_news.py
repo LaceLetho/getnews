@@ -134,7 +134,6 @@ def test_skill_endpoint_index_lists_only_supported_live_http_routes() -> None:
         "POST /intelligence/topics/{id}/confirm",
         "GET /intelligence/topics",
         "GET /intelligence/topics/{id}",
-        "POST /intelligence/topics/{id}/pause",
         "POST /intelligence/topics/{id}/archive",
         "GET /intelligence/topics/{id}/runs",
         "GET /intelligence/topic-runs",
@@ -142,7 +141,6 @@ def test_skill_endpoint_index_lists_only_supported_live_http_routes() -> None:
         assert endpoint in endpoint_index, f"Missing supported endpoint: {endpoint}"
 
     for unsupported_surface in [
-        "api-server",
         "crypto-news-api",
         "/run",
         "/docs",
@@ -175,8 +173,6 @@ def test_skill_non_goals_explicitly_exclude_deprecated_and_telegram_flows() -> N
         "/docs",
         "/redoc",
         "/openapi.json",
-        "api-server",
-        "crypto-news-api",
     ]:
         assert exclusion in non_goals, f"Missing exclusion: {exclusion}"
 
@@ -303,17 +299,15 @@ def test_skill_intelligence_query_section_covers_current_routes_and_state() -> N
         "`POST /intelligence/topics/{topic_id}/confirm`",
         "`GET /intelligence/topics`",
         "`GET /intelligence/topics/{topic_id}`",
-        "`POST /intelligence/topics/{topic_id}/pause`",
         "`POST /intelligence/topics/{topic_id}/archive`",
         "`GET /intelligence/topics/{topic_id}/runs`",
         "`GET /intelligence/topic-runs`",
         "no async job/poll flow",
         "`draft`",
         "`active`",
-        "`paused`",
         "`archived`",
         "Topics are the sole first-class intelligence objects",
-        "Finding merge is performed through the Telegram `/topic_merge` command",
+        "Finding merge is available through both the async HTTP endpoint and the Telegram `/topic_merge` command",
     ]:
         assert expected in intelligence_query, f"Missing intelligence API contract: {expected}"
 
@@ -462,7 +456,6 @@ def test_intelligence_query_reference_covers_current_routes_state_and_errors() -
         "POST /intelligence/topics/{topic_id}/confirm",
         "GET /intelligence/topics",
         "GET /intelligence/topics/{topic_id}",
-        "POST /intelligence/topics/{topic_id}/pause",
         "POST /intelligence/topics/{topic_id}/archive",
         "GET /intelligence/topics/{topic_id}/runs",
         "GET /intelligence/topic-runs",
@@ -470,7 +463,6 @@ def test_intelligence_query_reference_covers_current_routes_state_and_errors() -
         "synchronous",
         "`draft`",
         "`active`",
-        "`paused`",
         "`archived`",
         "Topics progress through states",
         "Merge previews expire after 24 hours",

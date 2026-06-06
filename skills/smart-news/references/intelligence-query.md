@@ -10,7 +10,7 @@ Send `Authorization: Bearer <API_KEY>` with every request. Missing or invalid cr
 
 ## Topic Lifecycle
 
-Topics progress through states: `draft` → `active` → `paused` / `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours. Finding merge is available through both the HTTP API and the Telegram `/topic_merge` command.
+Topics progress through states: `draft` → `active` → `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours. Finding merge is available through both the HTTP API and the Telegram `/topic_merge` command.
 
 ## Deprecated Routes
 
@@ -309,32 +309,6 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 
 ---
 
-## POST /intelligence/topics/{topic_id}/pause
-
-Pause a topic, stopping further scheduled research runs.
-
-### Response (200)
-
-```json
-{
-  "success": true,
-  "topic_id": "topic-uuid",
-  "lifecycle_status": "paused",
-  "updated_at": "2026-05-18T11:00:00+00:00"
-}
-```
-
-Returns `404` if the topic ID does not exist.
-
-### Example
-
-```bash
-curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/pause" \
-  -H "Authorization: Bearer ${API_KEY}"
-```
-
----
-
 ## POST /intelligence/topics/{topic_id}/archive
 
 Archive a topic, removing it from active research permanently.
@@ -363,14 +337,75 @@ curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/archive" \
 
 ## POST /intelligence/topics/{topic_id}/merge
 
-Merge active findings for a topic via LLM call, producing consolidated research results. Requires the topic to have an active prompt and at least two active findings.
+Start an **async** merge job for active topic findings. The LLM call may take several minutes — this endpoint returns immediately with a `job_id`. Poll the status endpoint, then fetch the result once the job completes.
+
+### Response (202)
+
+```json
+{
+  "success": true,
+  "job_id": "merge_job_abc123",
+  "topic_id": "topic-uuid",
+  "status": "queued",
+  "status_url": "/intelligence/topics/topic-uuid/merge/merge_job_abc123",
+  "result_url": "/intelligence/topics/topic-uuid/merge/merge_job_abc123/result"
+}
+```
+
+Returns `400` if no active prompt found. Returns `404` if the topic ID does not exist. The `Location` response header points to the status URL.
+
+### Example
+
+```bash
+curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/merge" \
+  -H "Authorization: Bearer ${API_KEY}"
+```
+
+---
+
+## GET /intelligence/topics/{topic_id}/merge/{job_id}
+
+Check the status of a merge job. Jobs progress through `queued`, `running`, `completed`, and `failed` states.
 
 ### Response (200)
 
 ```json
 {
   "success": true,
+  "job_id": "merge_job_abc123",
   "topic_id": "topic-uuid",
+  "status": "completed",
+  "created_at": "2026-06-04T10:00:00+00:00",
+  "started_at": "2026-06-04T10:00:01+00:00",
+  "completed_at": "2026-06-04T10:02:34+00:00",
+  "error": null,
+  "result_available": true
+}
+```
+
+`result_available` is `true` when the job status is `completed` or `failed`. Returns `404` if the job or topic is not found.
+
+### Example
+
+```bash
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topics/topic-uuid/merge/merge_job_abc123"
+```
+
+---
+
+## GET /intelligence/topics/{topic_id}/merge/{job_id}/result
+
+Retrieve the completed merge results. Only available after the job status is `completed` or `failed`.
+
+### Response (200)
+
+```json
+{
+  "success": true,
+  "job_id": "merge_job_abc123",
+  "topic_id": "topic-uuid",
+  "status": "completed",
   "topic_name": "Stablecoin Settlement Channels",
   "source_findings_count": 5,
   "merged_findings_count": 2,
@@ -382,13 +417,23 @@ Merge active findings for a topic via LLM call, producing consolidated research 
 }
 ```
 
-Returns `400` if no active prompt found or fewer than two active findings available. Returns `404` if the topic ID does not exist.
+Returns `404` if the job is not found. The endpoint returns the current job state at any time — poll status with `result_available` to detect completion. Failed jobs return `success: false` with the error in the `error` field.
+
+### Workflow
+
+```
+POST /intelligence/topics/{id}/merge  →  202 Accepted + job_id
+  ↓
+GET  /intelligence/topics/{id}/merge/{job_id}  →  poll until completed/failed
+  ↓
+GET  /intelligence/topics/{id}/merge/{job_id}/result  →  final merge results
+```
 
 ### Example
 
 ```bash
-curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/merge" \
-  -H "Authorization: Bearer ${API_KEY}"
+curl -H "Authorization: Bearer ${API_KEY}" \
+  "https://news.tradao.xyz/intelligence/topics/topic-uuid/merge/merge_job_abc123/result"
 ```
 
 ---
@@ -447,6 +492,7 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 |--------|---------|
 | `200` | Success |
 | `201` | Topic draft created |
+| `202` | Merge job accepted (async — poll for result) |
 | `400` | Invalid parameters or merge preview error |
 | `401` | Missing or invalid Bearer token |
 | `404` | Topic or resource not found |
@@ -456,10 +502,11 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 
 ## Notes
 
-- All intelligence routes are synchronous — results return immediately without polling.
+- Topic lifecycle endpoints are synchronous — results return immediately without polling.
+- The merge endpoint (`POST /intelligence/topics/{id}/merge`) is **async**: returns 202, then poll status → get result.
 - Only `active` topics receive scheduled research from the ingestion service.
 - Merge previews expire after 24 hours; accepting a stale preview is rejected.
-- Finding merge is available through both `POST /intelligence/topics/{id}/merge` (synchronous) and the Telegram `/topic_merge` command. At least two active findings are required.
+- Finding merge is available through both the async HTTP endpoint and the Telegram `/topic_merge` command. At least two active findings are required.
 - Prompt lifecycle: create draft → revise (optional) → confirm → active. Manual edits via `PUT /prompt` can shortcut this.
 - These endpoints exist only on `analysis-service` / `api-only` deployments. They are not available from `ingestion`.
 

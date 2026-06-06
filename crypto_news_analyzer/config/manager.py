@@ -479,10 +479,6 @@ class ConfigManager:
             self.logger.error(f"验证bird工具安装失败: {str(e)}")
             return False
 
-    def load_auth_from_env(self) -> AuthConfig:
-        """从环境变量加载认证配置（别名方法，保持向后兼容）"""
-        return self.get_auth_config()
-
     def validate_storage_path(self, path: str) -> bool:
         """
         验证存储路径有效性

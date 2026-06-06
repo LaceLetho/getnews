@@ -14,8 +14,8 @@ Telegram命令处理器
 - 需求16.11: 未授权用户发送命令时返回权限拒绝消息
 
 SHARED INFRASTRUCTURE — Single bot handler registering BOTH news commands
-(/news_analyze, /news_market, /news_semantic_search, /datasource_*) AND intelligence commands
-(/topic_*). Domain grouping: news → /news_analyze, /news_market, /news_semantic_search,
+(/news_analyze, /news_market, /datasource_*) AND intelligence commands
+(/topic_*). Domain grouping: news → /news_analyze, /news_market, /semantic_search,
 /news_tokens, /datasource_*; intelligence → /topic_*.
 """
 
@@ -238,9 +238,8 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         market snapshots, system status, token stats, and datasource management.
         """
         application.add_handler(CommandHandler("news_analyze", self._handle_analyze_command))
-        application.add_handler(CommandHandler("semantic_search", self._handle_semantic_search_command))
         application.add_handler(
-            CommandHandler("news_semantic_search", self._handle_semantic_search_command)
+            CommandHandler("semantic_search", self._handle_semantic_search_command)
         )
         application.add_handler(CommandHandler("news_market", self._handle_market_command))
         application.add_handler(CommandHandler("status", self._handle_status_command))
@@ -260,7 +259,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         """Register INTELLIGENCE domain Telegram commands.
 
         Intelligence commands operate on RawIntelligenceItem and IntelligenceTopic data:
-        topic creation, revision, confirmation, listing, findings, prompt, merge, pause, archive.
+        topic creation, revision, confirmation, listing, findings, prompt, merge, archive.
         """
         application.add_handler(CommandHandler("topic_create", self._handle_topic_create_command))
         application.add_handler(CommandHandler("topic_revise", self._handle_topic_revise_command))
@@ -274,7 +273,6 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         )
         application.add_handler(CommandHandler("topic_prompt", self._handle_topic_prompt_command))
         application.add_handler(CommandHandler("topic_merge", self._handle_topic_merge_command))
-        application.add_handler(CommandHandler("topic_pause", self._handle_topic_pause_command))
         application.add_handler(CommandHandler("topic_archive", self._handle_topic_archive_command))
         application.add_handler(
             CommandHandler("topic_sources", self._handle_topic_sources_command)
@@ -709,17 +707,11 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         chat_id = str(chat.id)
         chat_type = chat.type
 
-        # Determine is_private and is_group based on chat_type
-        is_private = chat_type == "private"
-        is_group = chat_type in ["group", "supergroup"]
-
         return ChatContext(
             user_id=user_id,
             username=username,
             chat_id=chat_id,
             chat_type=chat_type,
-            is_private=is_private,
-            is_group=is_group,
         )
 
     def _log_authorization_attempt(
@@ -856,7 +848,6 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             commands.append(BotCommand("topic_findings", "查看主题发现"))
             commands.append(BotCommand("topic_prompt", "查看主题提示词"))
             commands.append(BotCommand("topic_merge", "合并主题发现"))
-            commands.append(BotCommand("topic_pause", "暂停主题"))
             commands.append(BotCommand("topic_archive", "归档主题"))
             commands.append(BotCommand("topic_sources", "查看主题数据源关联"))
             commands.append(BotCommand("topic_sources_set", "设置主题数据源关联"))
@@ -1059,9 +1050,9 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
         """
-        处理/news_semantic_search命令
+        处理/semantic_search命令
 
-        语法: /news_semantic_search <hours> <topic>
+        语法: /semantic_search <hours> <topic>
         """
         try:
             chat_context = self._extract_chat_context(update)
@@ -1077,13 +1068,13 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         message = getattr(update, "effective_message", None) or update.message
 
         if message is None:
-            self.logger.error("/news_semantic_search update has no effective message")
+            self.logger.error("/semantic_search update has no effective message")
             return
 
         args = [str(arg).strip() for arg in (context.args or [])]
 
         self.logger.info(
-            f"收到/news_semantic_search命令，用户: {username} ({user_id}), "
+            f"收到/semantic_search命令，用户: {username} ({user_id}), "
             f"聊天类型: {chat_type}, 聊天ID: {chat_id}, 参数: {context.args}"
         )
 
@@ -1092,7 +1083,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 response = "❌ 权限拒绝\n\n您没有权限执行此命令。"
                 await update.message.reply_text(response)
                 self._log_authorization_attempt(
-                    command="/news_semantic_search",
+                    command="/semantic_search",
                     user_id=user_id,
                     username=username,
                     chat_type=chat_type,
@@ -1101,12 +1092,12 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                     reason="user not in authorized list",
                 )
                 self._log_command_execution(
-                    "/news_semantic_search", user_id, username, None, False, response
+                    "/semantic_search", user_id, username, None, False, response
                 )
                 return
 
             self._log_authorization_attempt(
-                command="/news_semantic_search",
+                command="/semantic_search",
                 user_id=user_id,
                 username=username,
                 chat_type=chat_type,
@@ -1119,7 +1110,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 response = f"⏱️ 速率限制\n\n{error_msg}"
                 await update.message.reply_text(response)
                 self._log_command_execution(
-                    "/news_semantic_search", user_id, username, None, False, response
+                    "/semantic_search", user_id, username, None, False, response
                 )
                 return
 
@@ -1165,7 +1156,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             await message.reply_text(response, parse_mode="Markdown")
 
         except Exception as e:
-            error_msg = f"处理/news_semantic_search命令时发生错误: {str(e)}"
+            error_msg = f"处理/semantic_search命令时发生错误: {str(e)}"
             self.logger.error(
                 f"{error_msg}, 用户: {username} ({user_id}), 聊天类型: {chat_type}, 聊天ID: {chat_id}"
             )
@@ -1600,14 +1591,14 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         topic: str,
     ) -> str:
         """
-        处理/news_semantic_search命令的业务逻辑
+        处理/semantic_search命令的业务逻辑
         """
         try:
             semantic_search_service = self._get_semantic_search_service()
             if semantic_search_service is None:
                 response = "❌ 语义搜索服务未初始化\n\n请先完成语义搜索模块配置。"
                 self._log_command_execution(
-                    "/news_semantic_search",
+                    "/semantic_search",
                     user_id,
                     username,
                     None,
@@ -1656,7 +1647,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             error_msg = f"触发语义搜索失败: {str(e)}"
             self.logger.error(error_msg)
             self._log_command_execution(
-                "/news_semantic_search", user_id, username, None, False, error_msg
+                "/semantic_search", user_id, username, None, False, error_msg
             )
             return f"❌ 执行失败\n\n{str(e)}"
 
@@ -1684,24 +1675,11 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         if repository is None:
             return None
         llm_analyzer = getattr(self.execution_coordinator, "llm_analyzer", None)
-        llm_client = getattr(llm_analyzer, "client", None) if llm_analyzer else None
-        model_name = getattr(llm_analyzer, "model", "") if llm_analyzer else ""
-        if llm_client is None:
+        if getattr(llm_analyzer, "client", None) is None:
             return None
-        from ..intelligence.topic_prompts import TopicPromptWorkflowService
+        from ..intelligence.service_factory import get_topic_prompt_workflow_service
 
-        llm_config_payload = (
-            dict(getattr(llm_analyzer, "config", {}) or {})
-            if llm_analyzer
-            else {}
-        )
-
-        service = TopicPromptWorkflowService(
-            repository=repository,
-            llm_client=llm_client,
-            model_name=model_name,
-            config=llm_config_payload,
-        )
+        service = get_topic_prompt_workflow_service(self.execution_coordinator, repository)
         setattr(self.execution_coordinator, "topic_prompt_workflow_service", service)
         return service
 
@@ -1714,32 +1692,15 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             self.logger.warning("_get_topic_finding_merge_service: intelligence_repository is None")
             return None
         llm_analyzer = getattr(self.execution_coordinator, "llm_analyzer", None)
-        llm_client = getattr(llm_analyzer, "client", None) if llm_analyzer else None
-        model_name = getattr(llm_analyzer, "model", "") if llm_analyzer else ""
-        if llm_client is None:
+        if getattr(llm_analyzer, "client", None) is None:
             self.logger.warning(
                 "_get_topic_finding_merge_service: llm_client is None "
-                f"(llm_analyzer={'present' if llm_analyzer else 'None'}, "
-                f"model={model_name})"
+                f"(llm_analyzer={'present' if llm_analyzer else 'None'})"
             )
             return None
-        self.logger.info(
-            f"_get_topic_finding_merge_service: creating service with model={model_name}"
-        )
-        from ..intelligence.topic_findings import TopicFindingMergeService
+        from ..intelligence.service_factory import get_topic_finding_merge_service
 
-        llm_config_payload = (
-            dict(getattr(llm_analyzer, "config", {}) or {})
-            if llm_analyzer
-            else {}
-        )
-
-        service = TopicFindingMergeService(
-            intelligence_repository=repository,
-            llm_client=llm_client,
-            model_name=model_name,
-            config=llm_config_payload,
-        )
+        service = get_topic_finding_merge_service(self.execution_coordinator, repository)
         setattr(self.execution_coordinator, "topic_finding_merge_service", service)
         return service
 
@@ -1773,7 +1734,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                         chat_id,
                     )
                     self._log_command_execution(
-                        "/news_semantic_search",
+                        "/semantic_search",
                         user_id,
                         username,
                         execution_id,
@@ -1797,7 +1758,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                         )
                 else:
                     self._log_command_execution(
-                        "/news_semantic_search",
+                        "/semantic_search",
                         user_id,
                         username,
                         execution_id,
@@ -1816,7 +1777,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
             else:
                 error_msg = "; ".join(errors) if errors else "未知错误"
                 self._log_command_execution(
-                    "/news_semantic_search",
+                    "/semantic_search",
                     user_id,
                     username,
                     execution_id,
@@ -1851,7 +1812,7 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 self.logger.error(f"发送语义搜索错误通知失败: {str(notify_error)}")
 
             self._log_command_execution(
-                "/news_semantic_search",
+                "/semantic_search",
                 user_id,
                 username,
                 None,
@@ -2103,7 +2064,6 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 "topic_findings",
                 "topic_prompt",
                 "topic_merge",
-                "topic_pause",
                 "topic_archive",
                 "topic_sources",
                 "topic_sources_set",
@@ -2126,11 +2086,11 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
                 "不传参数时自动估算时间窗口，支持例如 /news_analyze 24。\n"
             )
 
-        if "semantic_search" in user_permissions or "news_semantic_search" in user_permissions or not user_permissions:
+        if "semantic_search" in user_permissions or not user_permissions:
             help_text.append(
                 "/semantic_search <hours> <topic> - 按时间窗口执行语义搜索\n"
                 "hours 为必填参数，例如 /semantic_search 24 BTC adoption。\n"
-                "(/news_semantic_search 为别名，已废弃)\n"
+
             )
 
         if "news_market" in user_permissions:
@@ -2199,7 +2159,6 @@ class TelegramCommandHandler(IntelligenceCommandsMixin, DatasourceCommandsMixin)
         help_text.append("/topic_findings <topic_id> - 查看主题发现\n")
         help_text.append("/topic_prompt <topic_id> - 查看主题提示词\n")
         help_text.append("/topic_merge <topic_id> - 合并主题发现\n")
-        help_text.append("/topic_pause <topic_id> - 暂停主题\n")
         help_text.append("/topic_archive <topic_id> - 归档主题\n")
         help_text.append("/topic_sources <topic_id> - 查看主题数据源关联\n")
         help_text.append("/topic_sources_set <topic_id> <ds_id...|none> - 设置主题数据源关联\n")

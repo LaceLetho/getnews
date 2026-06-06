@@ -42,19 +42,19 @@ class InMemoryTopicDatasourceRepo:
 
     def list_topics(
         self,
-        is_active: Optional[bool] = None,
+        lifecycle_status: Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
     ) -> List[IntelligenceTopic]:
         results = list(self.topics.values())
-        if is_active is not None:
-            results = [t for t in results if t.is_active == is_active]
+        if lifecycle_status is not None:
+            results = [t for t in results if t.lifecycle_status == lifecycle_status]
         return results[offset : offset + limit]
 
     def count_topics(self, is_active: Optional[bool] = None) -> int:
         topics = list(self.topics.values())
         if is_active is not None:
-            topics = [t for t in topics if t.is_active == is_active]
+            topics = [t for t in topics if (t.lifecycle_status == "active") == is_active]
         return len(topics)
 
     # ── Datasource CRUD (minimal) ────────────────────────────────────
@@ -282,9 +282,8 @@ def _build_topic_test_app(
     monkeypatch.setattr(api_server, "MainController", lambda *_args, **_kwargs: controller)
     app = api_server.create_api_server(
         "./config.jsonc",
-        start_services=False,
-        start_scheduler=False,
-        start_command_listener=False,
+        enable_scheduler=False,
+        enable_telegram=False,
     )
     return TestClient(app)
 

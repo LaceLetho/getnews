@@ -629,9 +629,8 @@ def _build_topic_test_app(
     monkeypatch.setattr(api_server, "MainController", lambda *_args, **_kwargs: controller)
     app = api_server.create_api_server(
         "./config.jsonc",
-        start_services=False,
-        start_scheduler=False,
-        start_command_listener=False,
+        enable_scheduler=False,
+        enable_telegram=False,
     )
     return TestClient(app)
 
@@ -646,10 +645,11 @@ def test_unauthorized_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
             ("post", "/intelligence/topics/topic-1/revise"),
             ("put", "/intelligence/topics/topic-1/prompt"),
             ("post", "/intelligence/topics/topic-1/confirm"),
-            ("post", "/intelligence/topics/topic-1/pause"),
             ("post", "/intelligence/topics/topic-1/archive"),
-            ("post", "/intelligence/topics/topic-1/merge"),
             ("get", "/intelligence/topics/topic-1"),
+            ("post", "/intelligence/topics/topic-1/merge"),
+            ("get", "/intelligence/topics/topic-1/merge/job-1"),
+            ("get", "/intelligence/topics/topic-1/merge/job-1/result"),
         ]
         for method, path in endpoints:
             if method == "get":
@@ -750,20 +750,16 @@ def test_merge_preview_and_accept_api_removed(monkeypatch: pytest.MonkeyPatch) -
         assert accept_resp.status_code == 404
 
 
-def test_pause_topic(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pause_topic_route_is_removed(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = InMemoryTopicRepository()
     topic_id, _ = _make_topic_and_prompt(repo)
-    # Promote to active first
     active_topics = list(repo.topics.values())
     active_topics[0].lifecycle_status = TopicLifecycleStatus.ACTIVE.value
 
     controller = _TopicApiFakeController(repo)
     with _build_topic_test_app(monkeypatch, controller) as client:
         resp = client.post(f"/intelligence/topics/{topic_id}/pause", headers=_authorized())
-        assert resp.status_code == 200, resp.text
-        data = resp.json()
-        assert data["success"] is True
-        assert data["lifecycle_status"] == "paused"
+        assert resp.status_code == 404
 
 
 def test_archive_topic(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -780,25 +776,59 @@ def test_archive_topic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_merge_topic_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
     repo = InMemoryTopicRepository()
     topic_id, prompt_id = _make_topic_and_prompt(repo)
     source_ids = _make_findings(repo, topic_id, prompt_id)
 
     controller = _TopicApiFakeController(repo, llm_payload=_valid_merge_payload())
     with _build_topic_test_app(monkeypatch, controller) as client:
-        resp = client.post(f"/intelligence/topics/{topic_id}/merge", headers=_authorized())
-        assert resp.status_code == 200, resp.text
+        # POST: enqueue async merge job
+        resp = client.post(
+            f"/intelligence/topics/{topic_id}/merge", headers=_authorized()
+        )
+        assert resp.status_code == 202, resp.text
         data = resp.json()
         assert data["success"] is True
+        assert data["job_id"].startswith("merge_job_")
         assert data["topic_id"] == topic_id
-        assert data["topic_name"] == "BTC ETF flow"
-        assert data["source_findings_count"] == 3
-        assert data["merged_findings_count"] == 2
-        assert data["source_citations_count"] == 3
-        assert data["merged_citations_count"] == 2
-        assert data["removed_citations_count"] == 1
-        assert data["summary"]
-        assert "similar_findings_merged_count" in data["change_summary"]
+        assert data["status"] == "queued"
+        assert data["status_url"]
+        assert data["result_url"]
+
+        status_url = data["status_url"]
+        result_url = data["result_url"]
+
+        # Poll until completed
+        deadline = time.time() + 10
+        final_status = None
+        while time.time() < deadline:
+            status_resp = client.get(status_url, headers=_authorized())
+            assert status_resp.status_code == 200, status_resp.text
+            final_status = status_resp.json()
+            if final_status["status"] in ("completed", "failed"):
+                break
+            time.sleep(0.1)
+
+        assert final_status is not None
+        assert final_status["status"] == "completed", f"Expected completed, got: {final_status}"
+        assert final_status["result_available"] is True
+
+        # GET result
+        result_resp = client.get(result_url, headers=_authorized())
+        assert result_resp.status_code == 200, result_resp.text
+        result = result_resp.json()
+        assert result["success"] is True
+        assert result["topic_id"] == topic_id
+        assert result["topic_name"] == "BTC ETF flow"
+        assert result["source_findings_count"] == 3
+        assert result["merged_findings_count"] == 2
+        assert result["source_citations_count"] == 3
+        assert result["merged_citations_count"] == 2
+        assert result["removed_citations_count"] == 1
+        assert result["summary"]
+        assert "similar_findings_merged_count" in result["change_summary"]
 
         for source_id in source_ids:
             archived = repo.get_topic_finding_by_id(source_id)
@@ -839,9 +869,11 @@ def test_merge_topic_without_active_prompt_returns_400(
         assert "active prompt" in resp.json()["detail"].lower()
 
 
-def test_merge_topic_with_too_few_findings_returns_400(
+def test_merge_topic_with_too_few_findings_fails_async(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import time
+
     repo = InMemoryTopicRepository()
     topic_id, prompt_id = _make_topic_and_prompt(repo)
     finding = TopicFinding.create(
@@ -858,6 +890,77 @@ def test_merge_topic_with_too_few_findings_returns_400(
 
     controller = _TopicApiFakeController(repo, llm_payload=_valid_merge_payload())
     with _build_topic_test_app(monkeypatch, controller) as client:
-        resp = client.post(f"/intelligence/topics/{topic_id}/merge", headers=_authorized())
-        assert resp.status_code == 400, resp.text
-        assert "at least two" in resp.json()["detail"].lower()
+        resp = client.post(
+            f"/intelligence/topics/{topic_id}/merge", headers=_authorized()
+        )
+        assert resp.status_code == 202, resp.text
+        data = resp.json()
+        status_url = data["status_url"]
+
+        deadline = time.time() + 10
+        final_status = None
+        while time.time() < deadline:
+            status_resp = client.get(status_url, headers=_authorized())
+            final_status = status_resp.json()
+            if final_status["status"] in ("completed", "failed"):
+                break
+            time.sleep(0.1)
+
+        assert final_status is not None
+        assert final_status["status"] == "failed"
+        assert "at least two" in final_status["error"].lower()
+
+
+def test_merge_job_not_found_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = InMemoryTopicRepository()
+    topic_id, _ = _make_topic_and_prompt(repo)
+
+    controller = _TopicApiFakeController(repo, llm_payload=_valid_merge_payload())
+    with _build_topic_test_app(monkeypatch, controller) as client:
+        status_resp = client.get(
+            f"/intelligence/topics/{topic_id}/merge/nonexistent-job",
+            headers=_authorized(),
+        )
+        assert status_resp.status_code == 404, status_resp.text
+        assert "not found" in status_resp.json()["detail"].lower()
+
+        result_resp = client.get(
+            f"/intelligence/topics/{topic_id}/merge/nonexistent-job/result",
+            headers=_authorized(),
+        )
+        assert result_resp.status_code == 404, result_resp.text
+        assert "not found" in result_resp.json()["detail"].lower()
+
+
+def test_merge_result_returns_200_with_error_when_job_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    repo = InMemoryTopicRepository()
+    topic_id, prompt_id = _make_topic_and_prompt(repo)
+    _make_findings(repo, topic_id, prompt_id)
+
+    controller = _TopicApiFakeController(repo, llm_payload=_valid_merge_payload())
+    with _build_topic_test_app(monkeypatch, controller) as client:
+        resp = client.post(
+            f"/intelligence/topics/{topic_id}/merge", headers=_authorized()
+        )
+        assert resp.status_code == 202, resp.text
+        data = resp.json()
+        status_url = data["status_url"]
+        result_url = data["result_url"]
+
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            status_resp = client.get(status_url, headers=_authorized())
+            if status_resp.json()["status"] in ("completed", "failed"):
+                break
+            time.sleep(0.1)
+
+        result_resp = client.get(result_url, headers=_authorized())
+        assert result_resp.status_code == 200, result_resp.text
+        result = result_resp.json()
+        assert result["success"] is True
+        assert result["status"] == "completed"
+        assert result["topic_name"] == "BTC ETF flow"

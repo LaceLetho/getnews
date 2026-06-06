@@ -456,13 +456,13 @@ class IntelligenceRepository(ABC):
 
     def list_topics(
         self,
-        is_active: Optional[bool] = None,
+        lifecycle_status: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> List["IntelligenceTopic"]:
         return []
 
-    def count_topics(self, is_active: Optional[bool] = None) -> int:
+    def count_topics(self, lifecycle_status: Optional[str] = None) -> int:
         return 0
 
     def save_topic_prompt(self, prompt: TopicPrompt) -> str:

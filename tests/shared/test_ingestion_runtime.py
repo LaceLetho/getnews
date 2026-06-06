@@ -117,19 +117,8 @@ def test_run_ingestion_loop_uses_ingestion_initialization_path(monkeypatch):
     assert fake_controller.start_scheduler_called is True
 
 
-def test_run_ingestion_service_delegates_to_ingestion_loop(monkeypatch):
-    captured = {"config_path": None}
-
-    def _fake_run_ingestion_loop(config_path):
-        captured["config_path"] = config_path
-        return 0
-
-    monkeypatch.setattr(main, "run_ingestion_loop", _fake_run_ingestion_loop)
-
-    exit_code = main.run_ingestion_service("custom-config.jsonc")
-
-    assert exit_code == 0
-    assert captured["config_path"] == "custom-config.jsonc"
+def test_ingestion_service_alias_removed():
+    assert not hasattr(main, "run_" + "ingestion_service")
 
 
 def test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped(
@@ -137,9 +126,8 @@ def test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped(
 ):
     captured = {
         "config_path": None,
-        "start_services": None,
-        "start_scheduler": None,
-        "start_command_listener": None,
+        "enable_scheduler": None,
+        "enable_telegram": None,
         "app": None,
         "uvicorn_app": None,
         "host": None,
@@ -148,15 +136,13 @@ def test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped(
 
     def _fake_create_api_server(
         config_path,
-        start_services=True,
-        start_scheduler=None,
-        start_command_listener=None,
+        enable_scheduler=False,
+        enable_telegram=False,
     ):
         app = object()
         captured["config_path"] = config_path
-        captured["start_services"] = start_services
-        captured["start_scheduler"] = start_scheduler
-        captured["start_command_listener"] = start_command_listener
+        captured["enable_scheduler"] = enable_scheduler
+        captured["enable_telegram"] = enable_telegram
         captured["app"] = app
         return app
 
@@ -173,9 +159,8 @@ def test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped(
 
     assert exit_code == 0
     assert captured["config_path"] == "./custom-config.jsonc"
-    assert captured["start_services"] is False
-    assert captured["start_scheduler"] is None
-    assert captured["start_command_listener"] is None
+    assert captured["enable_scheduler"] is False
+    assert captured["enable_telegram"] is False
     assert captured["uvicorn_app"] is captured["app"]
     assert captured["host"] == "0.0.0.0"
     assert captured["port"] == 8080
@@ -185,9 +170,8 @@ def test_run_api_only_service_sets_api_only_runtime_and_keeps_services_stopped(
 def test_run_analysis_service_starts_telegram_without_scheduler(monkeypatch):
     captured = {
         "config_path": None,
-        "start_services": None,
-        "start_scheduler": None,
-        "start_command_listener": None,
+        "enable_scheduler": None,
+        "enable_telegram": None,
         "app": None,
         "uvicorn_app": None,
         "host": None,
@@ -196,15 +180,13 @@ def test_run_analysis_service_starts_telegram_without_scheduler(monkeypatch):
 
     def _fake_create_api_server(
         config_path,
-        start_services=True,
-        start_scheduler=None,
-        start_command_listener=None,
+        enable_scheduler=False,
+        enable_telegram=False,
     ):
         app = object()
         captured["config_path"] = config_path
-        captured["start_services"] = start_services
-        captured["start_scheduler"] = start_scheduler
-        captured["start_command_listener"] = start_command_listener
+        captured["enable_scheduler"] = enable_scheduler
+        captured["enable_telegram"] = enable_telegram
         captured["app"] = app
         return app
 
@@ -221,9 +203,8 @@ def test_run_analysis_service_starts_telegram_without_scheduler(monkeypatch):
 
     assert exit_code == 0
     assert captured["config_path"] == "./custom-config.jsonc"
-    assert captured["start_services"] is False
-    assert captured["start_scheduler"] is False
-    assert captured["start_command_listener"] is True
+    assert captured["enable_scheduler"] is False
+    assert captured["enable_telegram"] is True
     assert captured["uvicorn_app"] is captured["app"]
     assert captured["host"] == "0.0.0.0"
     assert captured["port"] == 8080

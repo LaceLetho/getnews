@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import re
+import asyncio
 import threading
 import uuid
 from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, cast
@@ -88,6 +89,8 @@ class AppState:
             max_workers=1,
             thread_name_prefix="api-search",
         )
+        self.merge_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="api-merge")
+        self.merge_jobs: Dict = {}
         self.telegram_uses_webhook = False
         self.intelligence_repository: Optional[IntelligenceRepository] = None
 
@@ -114,6 +117,8 @@ class AppState:
             self.analyze_executor.shutdown(wait=False)
         if self.semantic_search_executor:
             self.semantic_search_executor.shutdown(wait=False)
+        if self.merge_executor:
+            self.merge_executor.shutdown(wait=False)
 
         # Clear references
         self.controller = None
@@ -462,6 +467,92 @@ class TopicMergeResponse(BaseModel):
     change_summary: Dict[str, Any] = Field(default_factory=dict)
 
 
+class TopicMergeAcceptedResponse(BaseModel):
+    success: bool
+    job_id: str
+    topic_id: str
+    status: str
+    status_url: str
+    result_url: str
+
+
+class TopicMergeJobStatusResponse(BaseModel):
+    success: bool
+    job_id: str
+    topic_id: str
+    status: str
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error: Optional[str] = None
+    result_available: bool = False
+
+
+class TopicMergeJobResultResponse(BaseModel):
+    success: bool
+    job_id: str
+    topic_id: str
+    status: str
+    topic_name: str = ""
+    source_findings_count: int = 0
+    merged_findings_count: int = 0
+    source_citations_count: int = 0
+    merged_citations_count: int = 0
+    removed_citations_count: int = 0
+    summary: str = ""
+    change_summary: Dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+
+
+class TopicMergeJobRecord(BaseModel):
+    job_id: str
+    topic_id: str
+    status: str  # queued, running, completed, failed
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    result: Optional[TopicMergeResponse] = None
+    error: Optional[str] = None
+
+    def to_status_response(self) -> TopicMergeJobStatusResponse:
+        return TopicMergeJobStatusResponse(
+            success=self.status == "completed",
+            job_id=self.job_id,
+            topic_id=self.topic_id,
+            status=self.status,
+            created_at=self.created_at,
+            started_at=self.started_at,
+            completed_at=self.completed_at,
+            error=self.error,
+            result_available=self.status in {"completed", "failed"},
+        )
+
+    def to_result_response(self) -> TopicMergeJobResultResponse:
+        if self.status != "completed" or self.result is None:
+            return TopicMergeJobResultResponse(
+                success=False,
+                job_id=self.job_id,
+                topic_id=self.topic_id,
+                status=self.status,
+                error=self.error or "Result not available",
+            )
+        r = self.result
+        return TopicMergeJobResultResponse(
+            success=True,
+            job_id=self.job_id,
+            topic_id=self.topic_id,
+            status=self.status,
+            topic_name=r.topic_name,
+            source_findings_count=r.source_findings_count,
+            merged_findings_count=r.merged_findings_count,
+            source_citations_count=r.source_citations_count,
+            merged_citations_count=r.merged_citations_count,
+            removed_citations_count=r.removed_citations_count,
+            summary=r.summary,
+            change_summary=r.change_summary,
+        )
+
+
 class TopicDatasourceSetRequest(BaseModel):
     """Request body for atomic replacement of topic datasource associations."""
 
@@ -488,7 +579,7 @@ def _topic_to_dict(topic: Any) -> Dict[str, Any]:
     return {
         "id": str(getattr(topic, "id", "")),
         "name": str(getattr(topic, "name", "")),
-        "is_active": bool(getattr(topic, "is_active", True)),
+        "is_active": getattr(topic, "lifecycle_status", "active") == "active",
         "updated_at": _datetime_to_iso(getattr(topic, "updated_at", None)),
     }
 
@@ -730,6 +821,80 @@ def _job_urls(job_id: str) -> tuple[str, str]:
     return (f"/analyze/{job_id}", f"/analyze/{job_id}/result")
 
 
+def _merge_job_urls(topic_id: str, job_id: str) -> tuple[str, str]:
+    return (
+        f"/intelligence/topics/{topic_id}/merge/{job_id}",
+        f"/intelligence/topics/{topic_id}/merge/{job_id}/result",
+    )
+
+
+def _run_merge_job(job_id: str, state: AppState) -> None:
+    """Run topic merge job in background thread."""
+    from .intelligence.topic_findings import MergePreviewError
+
+    job = state.merge_jobs.get(job_id)
+    if job is None:
+        logger.error(f"Merge job {job_id} not found in store")
+        return
+
+    controller = state.controller
+    repository = state.intelligence_repository
+    if controller is None or repository is None:
+        job.status = "failed"
+        job.error = "System not initialized"
+        job.completed_at = _utcnow_iso()
+        return
+
+    job.status = "running"
+    job.started_at = _utcnow_iso()
+
+    try:
+        merge_service = _get_topic_finding_merge_service(controller, repository)
+
+        active_prompt = repository.get_active_topic_prompt(job.topic_id)
+        if active_prompt is None:
+            raise MergePreviewError("No active prompt found. Confirm the topic first.")
+
+        merge_result = asyncio.run(
+            merge_service.merge_topic(
+                topic_id=job.topic_id,
+                prompt_version_id=active_prompt.id,
+                operator="api",
+            )
+        )
+
+        merged = merge_result.primary_finding
+        payload = merged.finding_payload if isinstance(merged.finding_payload, dict) else {}
+        topic_name = str(payload.get("topic_name", job.topic_id))
+        summary = str(
+            payload.get("summary") or payload.get("merge_summary") or ""
+        )[:500]
+
+        job.result = TopicMergeResponse(
+            success=True,
+            topic_id=job.topic_id,
+            topic_name=topic_name,
+            source_findings_count=merge_result.source_findings_count,
+            merged_findings_count=merge_result.merged_findings_count,
+            source_citations_count=merge_result.source_citations_count,
+            merged_citations_count=merge_result.merged_citations_count,
+            removed_citations_count=merge_result.removed_citations_count,
+            summary=summary,
+            change_summary=merge_result.change_summary,
+        )
+        job.status = "completed"
+    except MergePreviewError as exc:
+        job.status = "failed"
+        job.error = str(exc)
+        logger.warning(f"Merge job {job_id} failed: {exc}")
+    except Exception as exc:
+        job.status = "failed"
+        job.error = str(exc)
+        logger.error(f"Merge job {job_id} failed: {exc}", exc_info=True)
+    finally:
+        job.completed_at = _utcnow_iso()
+
+
 def _map_topic_datasource_error(exc: ValueError) -> HTTPException:
     """Map ValueError from topic-datasource repo methods to HTTP status codes.
 
@@ -912,54 +1077,18 @@ def _get_topic_prompt_workflow_service(
     controller: MainController,
     repository: IntelligenceRepository,
 ) -> "TopicPromptWorkflowService":
-    from .intelligence.topic_prompts import TopicPromptWorkflowService
+    from .intelligence.service_factory import get_topic_prompt_workflow_service
 
-    llm_analyzer = getattr(controller, "llm_analyzer", None)
-    llm_client = getattr(llm_analyzer, "client", None) if llm_analyzer else None
-    model_name = ""
-    if llm_analyzer and hasattr(llm_analyzer, "analysis_model_runtime"):
-        runtime = llm_analyzer.analysis_model_runtime
-        model_name = getattr(runtime, "model_name", "") if runtime else ""
-
-    llm_config_payload = (
-        dict(getattr(llm_analyzer, "config", {}) or {})
-        if llm_analyzer
-        else {}
-    )
-
-    return TopicPromptWorkflowService(
-        repository=repository,
-        llm_client=llm_client,
-        model_name=model_name,
-        config=llm_config_payload,
-    )
+    return get_topic_prompt_workflow_service(controller, repository)
 
 
 def _get_topic_finding_merge_service(
     controller: MainController,
     repository: IntelligenceRepository,
 ) -> "TopicFindingMergeService":
-    from .intelligence.topic_findings import TopicFindingMergeService
+    from .intelligence.service_factory import get_topic_finding_merge_service
 
-    llm_analyzer = getattr(controller, "llm_analyzer", None)
-    llm_client = getattr(llm_analyzer, "client", None) if llm_analyzer else None
-    model_name = ""
-    if llm_analyzer and hasattr(llm_analyzer, "analysis_model_runtime"):
-        runtime = llm_analyzer.analysis_model_runtime
-        model_name = getattr(runtime, "model_name", "") if runtime else ""
-
-    llm_config_payload = (
-        dict(getattr(llm_analyzer, "config", {}) or {})
-        if llm_analyzer
-        else {}
-    )
-
-    return TopicFindingMergeService(
-        intelligence_repository=repository,
-        llm_client=llm_client,
-        model_name=model_name,
-        config=llm_config_payload,
-    )
+    return get_topic_finding_merge_service(controller, repository)
 
 
 def _prompt_to_response(prompt: Any) -> TopicPromptVersionResponse:
@@ -1733,32 +1862,6 @@ def register_intelligence_routes(app: FastAPI) -> None:
         return _prompt_to_response(prompt)
 
     @app.post(
-        "/intelligence/topics/{topic_id}/pause",
-        response_model=TopicLifecycleActionResponse,
-    )
-    async def pause_topic(
-        topic_id: str,
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-    ):
-        """Pause a topic, stopping further research runs."""
-        repository = _get_intelligence_repository(req)
-        topic = repository.get_topic_by_id(topic_id)
-        if topic is None:
-            raise HTTPException(status_code=404, detail="Topic not found")
-
-        topic.lifecycle_status = TopicLifecycleStatus.PAUSED.value
-        topic.updated_at = datetime.now(timezone.utc)
-        repository.save_topic(topic)
-
-        return TopicLifecycleActionResponse(
-            success=True,
-            topic_id=topic_id,
-            lifecycle_status=topic.lifecycle_status,
-            updated_at=_datetime_to_iso(topic.updated_at),
-        )
-
-    @app.post(
         "/intelligence/topics/{topic_id}/archive",
         response_model=TopicLifecycleActionResponse,
     )
@@ -1786,19 +1889,18 @@ def register_intelligence_routes(app: FastAPI) -> None:
 
     @app.post(
         "/intelligence/topics/{topic_id}/merge",
-        response_model=TopicMergeResponse,
+        response_model=TopicMergeAcceptedResponse,
+        status_code=202,
     )
-    async def merge_topic(
+    async def merge_topic_async(
         topic_id: str,
+        response: Response,
         req: Request,
         _: Annotated[str, Depends(verify_api_key)],
     ):
-        """Merge active topic findings via LLM call, producing consolidated results."""
-        from .intelligence.topic_findings import MergePreviewError
-
-        controller = _get_controller(req)
+        """Start an async merge job for active topic findings. Poll status for result."""
         repository = _get_intelligence_repository(req)
-        merge_service = _get_topic_finding_merge_service(controller, repository)
+        state = _get_app_state(req)
 
         topic = repository.get_topic_by_id(topic_id)
         if topic is None:
@@ -1810,41 +1912,67 @@ def register_intelligence_routes(app: FastAPI) -> None:
                 status_code=400, detail="No active prompt found. Confirm the topic first."
             )
 
-        try:
-            merge_result = await merge_service.merge_topic(
-                topic_id=topic_id,
-                prompt_version_id=active_prompt.id,
-                operator="api",
-            )
-        except MergePreviewError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc))
-        except Exception as exc:
-            logger.error(f"Failed to merge topic {topic_id}: {exc}")
-            raise HTTPException(status_code=500, detail=str(exc))
-
-        merged = merge_result.primary_finding
-        payload = (
-            merged.finding_payload if isinstance(merged.finding_payload, dict) else {}
-        )
-        topic_name = str(payload.get("topic_name", topic_id))
-        summary = str(
-            payload.get("summary") or payload.get("merge_summary") or ""
-        )[:500]
-
-        return TopicMergeResponse(
-            success=True,
+        job_id = f"merge_job_{uuid.uuid4().hex}"
+        job = TopicMergeJobRecord(
+            job_id=job_id,
             topic_id=topic_id,
-            topic_name=topic_name,
-            source_findings_count=merge_result.source_findings_count,
-            merged_findings_count=merge_result.merged_findings_count,
-            source_citations_count=merge_result.source_citations_count,
-            merged_citations_count=merge_result.merged_citations_count,
-            removed_citations_count=merge_result.removed_citations_count,
-            summary=summary,
-            change_summary=merge_result.change_summary,
+            status="queued",
+            created_at=_utcnow_iso(),
         )
+        state.merge_jobs[job_id] = job
+
+        status_url, result_url = _merge_job_urls(topic_id, job_id)
+        response.headers["Location"] = status_url
+        response.headers["Retry-After"] = "5"
+
+        _ = state.merge_executor.submit(_run_merge_job, job_id, state)
+
+        return TopicMergeAcceptedResponse(
+            success=True,
+            job_id=job_id,
+            topic_id=topic_id,
+            status="queued",
+            status_url=status_url,
+            result_url=result_url,
+        )
+
+    @app.get(
+        "/intelligence/topics/{topic_id}/merge/{job_id}",
+        response_model=TopicMergeJobStatusResponse,
+    )
+    async def get_merge_job_status(
+        topic_id: str,
+        job_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Get merge job status."""
+        state = _get_app_state(req)
+        job = state.merge_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Merge job not found")
+        if job.topic_id != topic_id:
+            raise HTTPException(status_code=404, detail="Merge job not found for this topic")
+        return job.to_status_response()
+
+    @app.get(
+        "/intelligence/topics/{topic_id}/merge/{job_id}/result",
+        response_model=TopicMergeJobResultResponse,
+    )
+    async def get_merge_job_result(
+        topic_id: str,
+        job_id: str,
+        req: Request,
+        _: Annotated[str, Depends(verify_api_key)],
+    ):
+        """Get merge job result. Returns the current job state; status indicates completion."""
+        state = _get_app_state(req)
+        job = state.merge_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Merge job not found")
+        if job.topic_id != topic_id:
+            raise HTTPException(status_code=404, detail="Merge job not found for this topic")
+        return job.to_result_response()
 
     @app.get("/intelligence/topics", response_model=IntelligenceTopicListResponse)
     async def list_intelligence_topics(
@@ -1856,11 +1984,11 @@ def register_intelligence_routes(app: FastAPI) -> None:
     ):
         repository = _get_intelligence_repository(req)
         topics = repository.list_topics(
-            is_active=True if active_only else None,
+            lifecycle_status='active' if active_only else None,
             limit=max(1, page_size),
             offset=max(0, page - 1) * max(1, page_size),
         )
-        total = repository.count_topics(is_active=True if active_only else None)
+        total = repository.count_topics(lifecycle_status='active' if active_only else None)
         items = []
         for topic in topics:
             findings = repository.list_topic_findings(topic.id) or []
@@ -2210,9 +2338,8 @@ def register_infrastructure_routes(app: FastAPI) -> None:
 
 def create_api_server(
     config_path: str = "./config.jsonc",
-    start_services: bool = True,
-    start_scheduler: Optional[bool] = None,
-    start_command_listener: Optional[bool] = None,
+    enable_scheduler: bool = False,
+    enable_telegram: bool = False,
 ) -> FastAPI:
     """创建并初始化API服务器。"""
 
@@ -2246,18 +2373,13 @@ def create_api_server(
                     IntelligenceRepository, repositories.get("intelligence")
                 )
 
-        effective_start_scheduler = start_services if start_scheduler is None else start_scheduler
-        effective_start_command_listener = (
-            start_services if start_command_listener is None else start_command_listener
-        )
-
-        if effective_start_scheduler:
+        if enable_scheduler:
             controller.start_scheduler()
             logger.info("Scheduler started in API runtime")
         else:
             logger.info("Scheduler disabled in API runtime")
 
-        if effective_start_command_listener:
+        if enable_telegram:
             if controller.command_handler:
                 if (
                     hasattr(controller.command_handler, "uses_webhook")

@@ -2,7 +2,7 @@
 
 Tests the topic-only intelligence refactor Telegram surface:
 topic_create, topic_revise, topic_set_prompt, topic_confirm,
-topic_list, topic_findings, topic_prompt, topic_merge, topic_pause, topic_archive.
+topic_list, topic_findings, topic_prompt, topic_merge, topic_archive.
 """
 
 import asyncio
@@ -306,11 +306,7 @@ def test_topic_merge_sends_progress_before_failure():
             assert "合并失败: TimeoutError: model timeout" in sent_texts[1]
 
 
-# --- Topic Pause / Archive ---
-
-
-def test_topic_pause_archive():
-    """/topic_pause and /topic_archive change lifecycle status."""
+def test_topic_archive_changes_lifecycle_status():
     handler = _make_handler()
     handler.is_authorized_user = Mock(return_value=True)
     handler._log_command_execution = Mock()
@@ -321,20 +317,12 @@ def test_topic_pause_archive():
     repo.save_topic = Mock()
     handler._get_intelligence_repository = Mock(return_value=repo)
 
-    # Test pause
-    update = _make_update(text="/topic_pause topic-001")
+    update = _make_update(text="/topic_archive topic-001")
     context = SimpleNamespace(args=["topic-001"])
-    asyncio.run(handler._handle_topic_pause_command(update, context))
-
-    assert fake_topic.lifecycle_status == "paused"
-    repo.save_topic.assert_called_once_with(fake_topic)
-
-    # Test archive
-    update2 = _make_update(text="/topic_archive topic-001")
-    context2 = SimpleNamespace(args=["topic-001"])
-    asyncio.run(handler._handle_topic_archive_command(update2, context2))
+    asyncio.run(handler._handle_topic_archive_command(update, context))
 
     assert fake_topic.lifecycle_status == "archived"
+    repo.save_topic.assert_called_once_with(fake_topic)
 
 
 # --- Intel commands not registered ---

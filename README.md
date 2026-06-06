@@ -19,7 +19,7 @@
 - 🔄 **多源数据收集**: 支持 RSS 订阅、X/Twitter 内容爬取和 REST API 数据源
 - 🤖 **智能分析**: 使用大语言模型进行内容分析和分类（Kimi / Grok / OpenCode Go），支持大户动向、利率事件、监管政策、真相揭露等多种分类
 - 📊 **结构化报告**: 生成 Markdown 格式的分析报告，通过 Telegram Bot 自动发送
-- 🔎 **统一语义搜索**: 跨域检索 News `content_items` 和 Intelligence `raw_intelligence_items`，通过 `UnifiedSemanticSearchHit` DTO 返回统一结果（含 `source_type`、`source_breakdown` 等字段），底层使用 UNION ALL + pgvector HNSW 索引。支持 `POST /semantic-search` 异步检索与 `/semantic_search` Telegram 命令（`/news_semantic_search` 为已弃用别名）
+- 🔎 **统一语义搜索**: 跨域检索 News `content_items` 和 Intelligence `raw_intelligence_items`，通过 `UnifiedSemanticSearchHit` DTO 返回统一结果（含 `source_type`、`source_breakdown` 等字段），底层使用 UNION ALL + pgvector HNSW 索引。支持 `POST /semantic-search` 异步检索与 `/semantic_search` Telegram 命令
 - 🔧 **数据库优先的数据源管理**: 首次启动从 `config.jsonc` 导入，运行时通过数据库管理，支持 REST API 和 Telegram 命令操作
 
 ### 情报研究域（Intelligence）
@@ -248,7 +248,6 @@ uv run flake8 crypto_news_analyzer/
 
 - `/news_analyze [hours]` - 按时间窗口分析历史消息（不传参数时按“距上次成功分析时间”自动估算，最大24小时）
 - `/semantic_search <hours> <topic>` - 统一语义搜索（跨 News + Intelligence 两域，返回 `source_breakdown`）
-- `/news_semantic_search <hours> <topic>` - 已弃用别名，等同于 `/semantic_search`
 - `/news_market` - 获取当前市场快照
 - `/status` - 查询系统运行状态
 - `/news_tokens` - 查看token使用统计
@@ -264,7 +263,7 @@ uv run flake8 crypto_news_analyzer/
 - `/topic_findings <topic_id>` - 查看主题研究成果
 - `/topic_prompt <topic_id>` - 查看主题提示词
 - `/topic_merge <topic_id>` - 合并主题研究成果
-- `/topic_pause <topic_id>` - 暂停主题研究
+
 - `/topic_archive <topic_id>` - 归档主题
 - `/topic_logs <topic_id>` - 查看主题研究运行日志
 - `/topic_sources <topic_id>` - 查看主题数据源关联（空关联时跳过定时研究）

@@ -71,8 +71,6 @@ async def test_handle_analyze_command_extracts_chat_context(handler):
             username="testuser",
             chat_id="123456789",
             chat_type="private",
-            is_private=True,
-            is_group=False,
         )
         with patch.object(handler, "is_authorized_user", return_value=True):
             with patch.object(handler, "check_rate_limit", return_value=(True, None)):

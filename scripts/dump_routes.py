@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from crypto_news_analyzer.api_server import create_api_server
 
-app = create_api_server("./config.jsonc", start_services=False)
+app = create_api_server("./config.jsonc", enable_scheduler=False, enable_telegram=False)
 
 routes = []
 for route in app.routes:

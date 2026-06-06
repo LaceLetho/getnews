@@ -1,0 +1,9 @@
+Found 8 banned legacy reference(s) in actionable repo files:
+AGENTS.md:54: [scheduler] 5. **The `ingestion` runtime mode runs BOTH domains.** When the system is started with `--mode ingestion`, it runs the news crawling loop AND the intelligence collection loop AND the daily topic research scheduler. These are parallel concerns, not alternatives.
+AGENTS.md:58: [api-server] 7. **Do NOT recommend legacy api-server as primary runtime.** The `api-server` mode is deprecated. Always direct users to `analysis-service`, `api-only`, or `ingestion`.
+AGENTS.md:210: [scheduler] ├── intelligence/              # Topic-only research pipeline (prompt workflow, scheduler, findings merge)
+docs/ARCHITECTURE_BOUNDARIES.md:47: [scheduler] The `ingestion` runtime mode runs both domains' collection loops and the Intelligence daily topic research scheduler. They execute as parallel concerns, not as alternatives or sub-components of each other.
+docs/ARCHITECTURE_BOUNDARIES.md:97: [api-server] - Legacy `api-server` — deprecated compatibility alias, unchanged
+docs/RAILWAY_DEPLOYMENT.md:16: [api-server] The deprecated `api-server` runtime mode is **not recommended** for production. It exists only as a compatibility alias for `analysis-service` and should not be used in new deployments.
+docs/RAILWAY_DEPLOYMENT.md:219: [api-server] - [ ] Legacy `api-server` runtime is not in use (both services run `analysis-service` or `ingestion` modes)
+docs/TOPIC_LIFECYCLE.md:25: [scheduler] /topic_create   /topic_revise  /topic_confirm  [scheduler]  /topic_merge

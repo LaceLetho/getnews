@@ -108,7 +108,7 @@ class FakeTopicRepository:
         else:
             topics = [self.topic]
         if is_active is not None:
-            topics = [t for t in topics if t.is_active == is_active]
+            topics = [t for t in topics if (t.lifecycle_status == "active") == is_active]
         return topics
 
     def get_active_topic_prompt(self, topic_id: str):
@@ -472,7 +472,7 @@ def test_scheduled_research_does_not_count_validation_failure_as_completed() -> 
 
 
 def test_skips_inactive_topics() -> None:
-    """Draft, paused, and archived topics are skipped by run_scheduled_topic_research."""
+    """Draft and archived topics are skipped by run_scheduled_topic_research."""
     active_topic = IntelligenceTopic.create(
         name="Active Topic",
         lifecycle_status=TopicLifecycleStatus.ACTIVE.value,
@@ -481,18 +481,14 @@ def test_skips_inactive_topics() -> None:
         name="Draft Topic",
         lifecycle_status=TopicLifecycleStatus.DRAFT.value,
     )
-    paused_topic = IntelligenceTopic.create(
-        name="Paused Topic",
-        lifecycle_status=TopicLifecycleStatus.PAUSED.value,
-    )
     archived_topic = IntelligenceTopic.create(
         name="Archived Topic",
         lifecycle_status=TopicLifecycleStatus.ARCHIVED.value,
     )
 
     repository = FakeTopicRepository()
-    repository.set_topics([active_topic, draft_topic, paused_topic, archived_topic])
-    for t in [active_topic, draft_topic, paused_topic, archived_topic]:
+    repository.set_topics([active_topic, draft_topic, archived_topic])
+    for t in [active_topic, draft_topic, archived_topic]:
         prompt = TopicPrompt.create(
             intelligence_topic_id=t.id,
             prompt_version="1",
@@ -528,7 +524,7 @@ def test_skips_inactive_topics() -> None:
     assert repository.runs[0].intelligence_topic_id == active_topic.id
 
     # Inactive topics have no runs
-    inactive_ids = {draft_topic.id, paused_topic.id, archived_topic.id}
+    inactive_ids = {draft_topic.id, archived_topic.id}
     for run in repository.runs:
         assert run.intelligence_topic_id not in inactive_ids
 

@@ -33,7 +33,7 @@ This repo is a single package (NOT two repos or two services). The two domains s
 | Primary Data Models | ContentItem, AnalysisResult | RawIntelligenceItem, IntelligenceTopic, TopicPrompt, TopicFinding |
 | Source Types | rss, x, rest_api (DataSourcePurpose.NEWS) | telegram_group, v2ex (DataSourcePurpose.INTELLIGENCE) |
 | API Surfaces | /analyze, /semantic-search (unified, cross-domain), /datasources | /intelligence/* |
-| Telegram Commands | /news_analyze, /news_market, /semantic_search (canonical), /news_semantic_search (alias), /news_tokens, /datasource_* | /topic_* |
+| Telegram Commands | /news_analyze, /news_market, /semantic_search, /news_tokens, /datasource_* | /topic_* |
 | Primary Modules | analyzers/, reporters/, semantic_search/ | intelligence/ (pipeline, topic_research, prompts, findings) |
 | Shared Infrastructure | execution_coordinator.py, storage/, config/, models.py, domain/, utils/, PostgreSQL, pgvector, LLM/embedding providers | |
 
@@ -47,7 +47,7 @@ AI agents MUST observe the following rules when working on this codebase:
 
 2. **News commands are for ContentItem analysis.** The `/news_analyze`, `/news_market`, `/news_tokens` Telegram commands and their HTTP equivalents operate on ContentItem data. They produce AnalysisResult and Markdown reports.
 
-3. **Semantic search is unified across both domains.** `/semantic_search` (canonical) and `/news_semantic_search` (deprecated alias) retrieve from both `content_items` and `raw_intelligence_items` via UNION ALL, returning `UnifiedSemanticSearchHit` DTOs. The HTTP `/semantic-search` endpoint returns a `source_breakdown` with per-domain hit counts. Do NOT pass `RawIntelligenceItem` into News analyzers — the DTO is a shared contract, not a domain model mix. The domain boundary between ContentItem and RawIntelligenceItem remains in place for all analysis pipelines.
+3. **Semantic search is unified across both domains.** `/semantic_search` retrieves from both `content_items` and `raw_intelligence_items` via UNION ALL, returning `UnifiedSemanticSearchHit` DTOs. The HTTP `/semantic-search` endpoint returns a `source_breakdown` with per-domain hit counts. Do NOT pass `RawIntelligenceItem` into News analyzers — the DTO is a shared contract, not a domain model mix. The domain boundary between ContentItem and RawIntelligenceItem remains in place for all analysis pipelines.
 
 4. **Intelligence commands are for topic research.** The `/topic_*` Telegram commands and `/intelligence/*` HTTP endpoints operate on RawIntelligenceItem, IntelligenceTopic, TopicPrompt, and TopicFinding. They drive a prompt lifecycle: create, revise, confirm, research, merge, archive.
 
@@ -55,7 +55,7 @@ AI agents MUST observe the following rules when working on this codebase:
 
 6. **Deprecated entry-based intelligence is compatibility-only.** EntryType, ExtractionObservation, and CanonicalIntelligenceEntry belong to the old entry extraction pipeline. These models remain in the codebase for backward compatibility with deprecated modules but are NOT wired into the active runtime. The active intelligence path is topic-only, managed through IntelligenceTopic, TopicPrompt, TopicFinding, and TopicResearchRun.
 
-7. **Do NOT recommend legacy api-server as primary runtime.** The `api-server` mode is deprecated. Always direct users to `analysis-service`, `api-only`, or `ingestion`.
+7. **Do NOT recommend legacy API runtime names as primary runtime.** Use `analysis-service`, `api-only`, or `ingestion`.
 
 ## Build/Lint/Test Commands
 

@@ -253,13 +253,13 @@ class TopicResearchScheduler:
     def run_scheduled_topic_research(self) -> int:
         """Load active topics and run research for each. Partial success allowed.
 
-        Only topics with lifecycle_status='active' (is_active=True) are researched.
+        Only topics with lifecycle_status='active' (lifecycle_status='active') are researched.
         Draft, paused, and archived topics are silently skipped.
 
         Returns:
             Number of topics successfully researched.
         """
-        topics = list(self.repository.list_topics(is_active=True, limit=100))
+        topics = list(self.repository.list_topics(lifecycle_status='active', limit=100))
         if not topics:
             logger.info("没有活跃的主题需要研究")
             return 0
@@ -311,10 +311,6 @@ class TopicResearchScheduler:
             total,
         )
         return completed
-
-    # Backward-compatible alias
-    def run_due_topics(self) -> int:
-        return self.run_scheduled_topic_research()
 
     def run_topic(self, topic: Any, prompt: Any) -> TopicResearchRun:
         """Backward-compatible public entry for per-topic research."""

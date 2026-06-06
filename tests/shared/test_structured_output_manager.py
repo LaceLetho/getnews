@@ -266,7 +266,7 @@ class TestStructuredOutputManager:
         }
 
         result = manager.validate_output_structure(response)
-        assert result.is_valid
+        assert not result.errors
         assert len(result.errors) == 0
 
     def test_validate_output_structure_single_invalid(self):
@@ -281,7 +281,7 @@ class TestStructuredOutputManager:
         }
 
         result = manager.validate_output_structure(response)
-        assert not result.is_valid
+        assert result.errors
         assert len(result.errors) > 0
 
     def test_validate_output_structure_batch_valid(self):
@@ -310,7 +310,7 @@ class TestStructuredOutputManager:
         }
 
         result = manager.validate_output_structure(response)
-        assert result.is_valid
+        assert not result.errors
         assert len(result.errors) == 0
 
     def test_validate_output_structure_batch_empty(self):
@@ -320,7 +320,7 @@ class TestStructuredOutputManager:
         response = {"results": []}
 
         result = manager.validate_output_structure(response)
-        assert result.is_valid
+        assert not result.errors
         assert len(result.warnings) > 0  # 应该有警告
 
     def test_validate_output_structure_batch_invalid(self):
@@ -342,7 +342,7 @@ class TestStructuredOutputManager:
         }
 
         result = manager.validate_output_structure(response)
-        assert not result.is_valid
+        assert result.errors
         assert len(result.errors) > 0
 
     def test_create_example_response_single(self):
@@ -511,17 +511,17 @@ class TestValidationResult:
 
     def test_valid_result(self):
         """测试有效的验证结果"""
-        result = ValidationResult(is_valid=True, errors=[], warnings=[])
+        result = ValidationResult(errors=[], warnings=[])
 
-        assert result.is_valid
+        assert not result.errors
         assert len(result.errors) == 0
         assert len(result.warnings) == 0
 
     def test_invalid_result_with_errors(self):
         """测试包含错误的验证结果"""
-        result = ValidationResult(is_valid=False, errors=["错误1", "错误2"], warnings=["警告1"])
+        result = ValidationResult(errors=["错误1", "错误2"], warnings=["警告1"])
 
-        assert not result.is_valid
+        assert result.errors
         assert len(result.errors) == 2
         assert len(result.warnings) == 1
 

@@ -162,7 +162,9 @@ def _build_test_app(
     controller: _FakeController,
 ):
     monkeypatch.setattr(api_server, "MainController", lambda *_args, **_kwargs: controller)
-    return api_server.create_api_server("./config.jsonc", start_services=False)
+    return api_server.create_api_server(
+        "./config.jsonc", enable_scheduler=False, enable_telegram=False
+    )
 
 
 def _app_state(client: TestClient) -> api_server.AppState:

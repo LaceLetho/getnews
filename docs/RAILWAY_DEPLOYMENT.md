@@ -13,7 +13,7 @@ The system runs as two long-lived Railway app services sharing one PostgreSQL/pg
 
 Both services run from the same monorepo and share a single PostgreSQL/pgvector database. The ingestion service is a long-running scheduler loop; it must never sleep. The analysis service handles on-demand API traffic and is a candidate for Serverless.
 
-The deprecated `api-server` runtime mode is **not recommended** for production. It exists only as a compatibility alias for `analysis-service` and should not be used in new deployments.
+Use `analysis-service` for the public API runtime. Legacy API runtime names are not part of the active production topology.
 
 ### Environment Variables (Shared)
 
@@ -216,4 +216,4 @@ After initial deployment, the operator must verify:
 - [ ] Serverless is **disabled** on `crypto-news-ingestion` (Settings > Deploy > Serverless)
 - [ ] `GET /ready` returns 200 with `{"database": "ready"}` when the database is reachable
 - [ ] External monitor intervals are greater than 10 minutes or monitors are disabled
-- [ ] Legacy `api-server` runtime is not in use (both services run `analysis-service` or `ingestion` modes)
+- [ ] Both services run active modes (`analysis-service` or `ingestion`)

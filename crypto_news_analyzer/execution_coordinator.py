@@ -50,14 +50,6 @@ from .models import (
 from .utils.errors import ErrorRecoveryManager
 
 
-class ExecutionMode(Enum):
-    """执行模式"""
-
-    ONE_TIME = "one_time"  # 一次性执行
-    SCHEDULED = "scheduled"  # 定时调度
-    COMMAND_TRIGGERED = "command_triggered"  # 命令触发
-
-
 class ExecutionStatus(Enum):
     """执行状态"""
 

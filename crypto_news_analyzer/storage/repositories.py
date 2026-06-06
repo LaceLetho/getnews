@@ -668,15 +668,15 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
 
     def list_topics(
         self,
-        is_active: Optional[bool] = None,
+        lifecycle_status: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> List[IntelligenceTopic]:
-        rows = self._data.list_intelligence_topics(is_active=is_active, limit=limit, offset=offset)
+        rows = self._data.list_intelligence_topics(lifecycle_status=lifecycle_status, limit=limit, offset=offset)
         return [IntelligenceTopic.from_dict(row) for row in rows]
 
-    def count_topics(self, is_active: Optional[bool] = None) -> int:
-        return self._data.count_intelligence_topics(is_active=is_active)
+    def count_topics(self, lifecycle_status: Optional[str] = None) -> int:
+        return self._data.count_intelligence_topics(lifecycle_status=lifecycle_status)
 
     def create_topic_prompt_version(self, prompt: TopicPrompt) -> str:
         return self.save_topic_prompt(prompt)
@@ -1629,7 +1629,6 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         if _as_naive_utc(preview.expires_at) <= now or not self._merge_preview_sources_are_active(
             preview
         ):
-            self._set_merge_preview_state(preview_id, "expired", None)
             return False
         return self._set_merge_preview_state(preview_id, "applied", now)
 
@@ -1677,8 +1676,6 @@ class SQLiteIntelligenceRepository(IntelligenceRepository):
         return value
 
     def _json_value(self, value: Any) -> Any:
-        if self._data.backend == "postgres":
-            return json.dumps(value, ensure_ascii=False)
         return json.dumps(value, ensure_ascii=False)
 
     def _row_dict(self, row: Any) -> Dict[str, Any]:
