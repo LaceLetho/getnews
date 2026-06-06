@@ -311,7 +311,7 @@ curl -H "Authorization: Bearer ${API_KEY}" \
 
 ## POST /intelligence/topics/{topic_id}/archive
 
-Archive a topic, removing it from active research permanently.
+Archive a topic, stopping further scheduled research runs.
 
 ### Response (200)
 

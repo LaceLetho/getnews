@@ -94,7 +94,7 @@ SKILL_DIR="${SCRIPT_DIR}/${SKILL_NAME}"
 SLUG="${CLAWHUB_SKILL_SLUG:-${SKILL_NAME}}"
 DISPLAY_NAME="${CLAWHUB_SKILL_NAME:-$(printf '%s' "${SKILL_NAME}" | tr '-' ' ' | awk '{for (i = 1; i <= NF; i++) $i = toupper(substr($i, 1, 1)) substr($i, 2); print}')}"
 TAGS="${CLAWHUB_TAGS:-latest}"
-TEST_PATH="${REPO_ROOT}/tests/test_openclaw_skill_${SKILL_NAME//-/_}.py"
+TEST_PATH="${REPO_ROOT}/tests/shared/test_openclaw_skill_${SKILL_NAME//-/_}.py"
 
 if [[ ! -d "${SKILL_DIR}" || ! -f "${SKILL_DIR}/SKILL.md" ]]; then
   echo "Skill directory not found or missing SKILL.md: ${SKILL_DIR}" >&2

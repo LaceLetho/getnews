@@ -47,7 +47,7 @@ When updating this skill reference to match code changes, follow this workflow t
 These files contain the ground truth for HTTP behavior:
 
 1. **`crypto_news_analyzer/api_server.py`** - FastAPI route definitions, health endpoint, and webhook handler
-2. **`tests/test_api_server.py`** - Contract tests for endpoints, including webhook secret validation
+2. **`tests/news/test_api_server.py`** - Contract tests for endpoints, including webhook secret validation
 3. **`docs/AI_ANALYZE_API_GUIDE.md`** - Production verification notes and API usage guidance
 
 ### Verification Commands
@@ -55,9 +55,9 @@ These files contain the ground truth for HTTP behavior:
 Before merge, run the full planned verification suite to verify the skill docs, the backing API contract, and the legacy-reference guardrails stay aligned:
 
 ```bash
-uv run pytest tests/test_openclaw_skill_smart_news.py -v
-uv run pytest tests/test_api_server.py -k "health or analyze or datasource or webhook" -v
-uv run pytest tests/test_banned_legacy_reference_scan.py -v
+uv run pytest tests/shared/test_openclaw_skill_smart_news.py -v
+uv run pytest tests/news/test_api_server.py -k "health or analyze or datasource or webhook" -v
+uv run pytest tests/shared/test_banned_legacy_reference_scan.py -v
 uv run python tests/helpers/banned_legacy_reference_scan.py
 ```
 
@@ -82,4 +82,4 @@ Use a semver version string. The script checks `clawhub` login state and runs th
 
 ### Source Precedence
 
-When documentation sources conflict, trust code and tests over prose. The live implementation in `api_server.py` and its test coverage in `test_api_server.py` are the authoritative references.
+When documentation sources conflict, trust code and tests over prose. The live implementation in `api_server.py` and its test coverage in `tests/news/test_api_server.py` are the authoritative references.
