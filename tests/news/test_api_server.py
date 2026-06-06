@@ -370,16 +370,14 @@ def db_datasource_repository(tmp_path: Path):
 def _build_test_app(
     monkeypatch: pytest.MonkeyPatch,
     controller: _FakeController,
-    start_services: bool = False,
-    start_scheduler: Optional[bool] = None,
-    start_command_listener: Optional[bool] = None,
+    enable_scheduler: bool = False,
+    enable_telegram: bool = False,
 ):
     monkeypatch.setattr(api_server, "MainController", lambda *_args, **_kwargs: controller)
     return api_server.create_api_server(
         "./config.jsonc",
-        start_services=start_services,
-        start_scheduler=start_scheduler,
-        start_command_listener=start_command_listener,
+        enable_scheduler=enable_scheduler,
+        enable_telegram=enable_telegram,
     )
 
 
@@ -986,7 +984,6 @@ def test_datasource_delete_returns_409_when_topic_associated(
         {
             "id": "topic-api-123",
             "name": "API Test Topic",
-            "is_active": True,
             "lifecycle_status": "active",
             "created_at": "2026-03-01T00:00:00+00:00",
             "updated_at": "2026-03-01T00:00:00+00:00",
@@ -996,7 +993,6 @@ def test_datasource_delete_returns_409_when_topic_associated(
         {
             "id": "topic-api-456",
             "name": "API Test Topic 2",
-            "is_active": True,
             "lifecycle_status": "active",
             "created_at": "2026-03-01T00:00:00+00:00",
             "updated_at": "2026-03-01T00:00:00+00:00",
@@ -1080,9 +1076,8 @@ def test_create_api_server_lifespan_starts_requested_services_and_cleans_up(
     app = _build_test_app(
         monkeypatch,
         fake_controller,
-        start_services=False,
-        start_scheduler=False,
-        start_command_listener=True,
+        enable_scheduler=False,
+        enable_telegram=True,
     )
 
     with TestClient(app):
@@ -1095,14 +1090,13 @@ def test_create_api_server_lifespan_starts_requested_services_and_cleans_up(
     assert fake_controller.stop_command_listener_called is True
 
 
-def test_create_api_server_lifespan_keeps_scheduler_and_listener_disabled_when_start_services_false(
+def test_create_api_server_lifespan_keeps_scheduler_and_listener_disabled_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ):
     fake_controller = _FakeController(command_handler=_FakeCommandHandler())
     app = _build_test_app(
         monkeypatch,
         fake_controller,
-        start_services=False,
     )
 
     with TestClient(app):
@@ -1123,9 +1117,8 @@ def test_create_api_server_lifespan_prefers_telegram_webhook_when_available(
     app = _build_test_app(
         monkeypatch,
         fake_controller,
-        start_services=False,
-        start_scheduler=False,
-        start_command_listener=True,
+        enable_scheduler=False,
+        enable_telegram=True,
     )
 
     with TestClient(app):

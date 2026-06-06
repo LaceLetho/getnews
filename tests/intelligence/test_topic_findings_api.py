@@ -629,9 +629,8 @@ def _build_topic_test_app(
     monkeypatch.setattr(api_server, "MainController", lambda *_args, **_kwargs: controller)
     app = api_server.create_api_server(
         "./config.jsonc",
-        start_services=False,
-        start_scheduler=False,
-        start_command_listener=False,
+        enable_scheduler=False,
+        enable_telegram=False,
     )
     return TestClient(app)
 
@@ -646,7 +645,6 @@ def test_unauthorized_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
             ("post", "/intelligence/topics/topic-1/revise"),
             ("put", "/intelligence/topics/topic-1/prompt"),
             ("post", "/intelligence/topics/topic-1/confirm"),
-            ("post", "/intelligence/topics/topic-1/pause"),
             ("post", "/intelligence/topics/topic-1/archive"),
             ("get", "/intelligence/topics/topic-1"),
             ("post", "/intelligence/topics/topic-1/merge"),
@@ -752,20 +750,16 @@ def test_merge_preview_and_accept_api_removed(monkeypatch: pytest.MonkeyPatch) -
         assert accept_resp.status_code == 404
 
 
-def test_pause_topic(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pause_topic_route_is_removed(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = InMemoryTopicRepository()
     topic_id, _ = _make_topic_and_prompt(repo)
-    # Promote to active first
     active_topics = list(repo.topics.values())
     active_topics[0].lifecycle_status = TopicLifecycleStatus.ACTIVE.value
 
     controller = _TopicApiFakeController(repo)
     with _build_topic_test_app(monkeypatch, controller) as client:
         resp = client.post(f"/intelligence/topics/{topic_id}/pause", headers=_authorized())
-        assert resp.status_code == 200, resp.text
-        data = resp.json()
-        assert data["success"] is True
-        assert data["lifecycle_status"] == "paused"
+        assert resp.status_code == 404
 
 
 def test_archive_topic(monkeypatch: pytest.MonkeyPatch) -> None:

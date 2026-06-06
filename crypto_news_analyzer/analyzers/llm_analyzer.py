@@ -1089,7 +1089,7 @@ class LLMAnalyzer:
             是否有效
         """
         validation_result = self.structured_output_manager.validate_output_structure(response)
-        return validation_result.is_valid
+        return not validation_result.errors
 
     def handle_empty_batch_response(self) -> List[StructuredAnalysisResult]:
         """

@@ -585,48 +585,6 @@ class IntelligenceCommandsMixin:
             except Exception as send_error:
                 self.logger.error("发送/topic_merge失败响应失败: %s", send_error)
 
-    async def _handle_topic_pause_command(self, update: Any, context: Any) -> None:
-        try:
-            msg = update.effective_message or update.message
-            if msg is None:
-                return
-            user_id = str(update.effective_user.id if update.effective_user else "unknown")
-            username = update.effective_user.username if update.effective_user else "unknown"
-
-            if not self.is_authorized_user(user_id, username):
-                await msg.reply_text("\u274c 权限拒绝")
-                return
-
-            args = [str(arg).strip() for arg in (context.args or []) if str(arg).strip()]
-            if not args:
-                await msg.reply_text("用法: /topic_pause <topic_id>")
-                return
-
-            topic_id = args[0]
-            repository = self._get_intelligence_repository()
-            if repository is None:
-                await msg.reply_text("\u274c 仓储未初始化")
-                return
-
-            topic = repository.get_topic_by_id(topic_id)
-            if topic is None:
-                await msg.reply_text("\u274c 主题未找到")
-                return
-
-            topic.lifecycle_status = "paused"
-            repository.save_topic(topic)
-            esc = self._escape_markdown_v1
-            await msg.reply_text(
-                f"\u23f8\ufe0f 主题已暂停: `{esc(topic_id)}`", parse_mode="Markdown"
-            )
-            self._log_command_execution("/topic_pause", user_id, username, topic_id, True, "")
-        except Exception as e:
-            self.logger.error(f"处理/topic_pause命令时发生错误: {e}")
-            try:
-                await msg.reply_text(f"\u274c 暂停失败: {str(e)}")
-            except Exception:
-                pass
-
     async def _handle_topic_archive_command(self, update: Any, context: Any) -> None:
         try:
             msg = update.effective_message or update.message
@@ -1121,8 +1079,8 @@ class IntelligenceCommandsMixin:
                 return "❌ 情报仓储未初始化"
             page_size = 20
             offset = (page - 1) * page_size
-            topics = repository.list_topics(is_active=True, limit=page_size + 1, offset=offset)
-            total = repository.count_topics(is_active=True)
+            topics = repository.list_topics(lifecycle_status='active', limit=page_size + 1, offset=offset)
+            total = repository.count_topics(lifecycle_status='active')
             has_more = len(topics) > page_size
             topics = topics[:page_size]
             if not topics and page == 1:

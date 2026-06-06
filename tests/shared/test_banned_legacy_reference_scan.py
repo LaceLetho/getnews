@@ -6,7 +6,7 @@ from tests.helpers.banned_legacy_reference_scan import iter_candidate_files
 from tests.helpers.banned_legacy_reference_scan import scan_repo
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 KNOWN_HOTSPOTS = {
     "README.md",
     "AGENTS.md",
@@ -17,7 +17,7 @@ KNOWN_HOTSPOTS = {
     "docker-entrypoint.sh",
     "tests/telegram-multi-user-authorization/test_task_8_1_handle_analyze_command.py",
 }
-IGNORED_PREFIXES = (".git/", ".venv/", ".sisyphus/evidence/")
+IGNORED_PREFIXES = (".git/", ".venv/", ".sisyphus/evidence/", ".omo/")
 
 
 def _write_file(root: Path, relative_path: str, content: str) -> None:

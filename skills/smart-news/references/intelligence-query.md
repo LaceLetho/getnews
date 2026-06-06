@@ -10,7 +10,7 @@ Send `Authorization: Bearer <API_KEY>` with every request. Missing or invalid cr
 
 ## Topic Lifecycle
 
-Topics progress through states: `draft` → `active` → `paused` / `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours. Finding merge is available through both the HTTP API and the Telegram `/topic_merge` command.
+Topics progress through states: `draft` → `active` → `archived`. Only `active` topics are researched by the ingestion scheduler. Merge previews expire after 24 hours. Finding merge is available through both the HTTP API and the Telegram `/topic_merge` command.
 
 ## Deprecated Routes
 
@@ -305,32 +305,6 @@ Return all prompt versions and the currently active prompt for a topic.
 ```bash
 curl -H "Authorization: Bearer ${API_KEY}" \
   "https://news.tradao.xyz/intelligence/topics/topic-uuid/prompts"
-```
-
----
-
-## POST /intelligence/topics/{topic_id}/pause
-
-Pause a topic, stopping further scheduled research runs.
-
-### Response (200)
-
-```json
-{
-  "success": true,
-  "topic_id": "topic-uuid",
-  "lifecycle_status": "paused",
-  "updated_at": "2026-05-18T11:00:00+00:00"
-}
-```
-
-Returns `404` if the topic ID does not exist.
-
-### Example
-
-```bash
-curl -X POST "https://news.tradao.xyz/intelligence/topics/topic-uuid/pause" \
-  -H "Authorization: Bearer ${API_KEY}"
 ```
 
 ---

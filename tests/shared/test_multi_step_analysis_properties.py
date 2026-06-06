@@ -393,7 +393,7 @@ class TestStructuredOutputConsistency:
         }
         
         validation_result = manager.validate_output_structure(valid_response)
-        assert validation_result.is_valid, "有效响应应该通过验证"
+        assert not validation_result.errors, "有效响应应该通过验证"
         assert len(validation_result.errors) == 0, "有效响应不应该有错误"
         
         # 无效的响应（缺少字段）
@@ -404,7 +404,7 @@ class TestStructuredOutputConsistency:
         }
         
         validation_result = manager.validate_output_structure(invalid_response)
-        assert not validation_result.is_valid, "无效响应应该验证失败"
+        assert validation_result.errors, "无效响应应该验证失败"
         assert len(validation_result.errors) > 0, "无效响应应该有错误信息"
 
 

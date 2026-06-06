@@ -945,9 +945,17 @@ class ChatContext:
     user_id: str
     username: str
     chat_id: str
-    chat_type: str  # "private", "group", or "supergroup"
-    is_private: bool
-    is_group: bool
+    chat_type: str  # "private", "group", "supergroup", or "channel"
+
+    @property
+    def is_private(self) -> bool:
+        """True if this is a private chat"""
+        return self.chat_type == "private"
+
+    @property
+    def is_group(self) -> bool:
+        """True if this is a group or supergroup chat"""
+        return self.chat_type in ("group", "supergroup")
 
     @property
     def context_description(self) -> str:

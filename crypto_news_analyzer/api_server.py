@@ -579,7 +579,7 @@ def _topic_to_dict(topic: Any) -> Dict[str, Any]:
     return {
         "id": str(getattr(topic, "id", "")),
         "name": str(getattr(topic, "name", "")),
-        "is_active": bool(getattr(topic, "is_active", True)),
+        "is_active": getattr(topic, "lifecycle_status", "active") == "active",
         "updated_at": _datetime_to_iso(getattr(topic, "updated_at", None)),
     }
 
@@ -1077,54 +1077,18 @@ def _get_topic_prompt_workflow_service(
     controller: MainController,
     repository: IntelligenceRepository,
 ) -> "TopicPromptWorkflowService":
-    from .intelligence.topic_prompts import TopicPromptWorkflowService
+    from .intelligence.service_factory import get_topic_prompt_workflow_service
 
-    llm_analyzer = getattr(controller, "llm_analyzer", None)
-    llm_client = getattr(llm_analyzer, "client", None) if llm_analyzer else None
-    model_name = ""
-    if llm_analyzer and hasattr(llm_analyzer, "analysis_model_runtime"):
-        runtime = llm_analyzer.analysis_model_runtime
-        model_name = getattr(runtime, "model_name", "") if runtime else ""
-
-    llm_config_payload = (
-        dict(getattr(llm_analyzer, "config", {}) or {})
-        if llm_analyzer
-        else {}
-    )
-
-    return TopicPromptWorkflowService(
-        repository=repository,
-        llm_client=llm_client,
-        model_name=model_name,
-        config=llm_config_payload,
-    )
+    return get_topic_prompt_workflow_service(controller, repository)
 
 
 def _get_topic_finding_merge_service(
     controller: MainController,
     repository: IntelligenceRepository,
 ) -> "TopicFindingMergeService":
-    from .intelligence.topic_findings import TopicFindingMergeService
+    from .intelligence.service_factory import get_topic_finding_merge_service
 
-    llm_analyzer = getattr(controller, "llm_analyzer", None)
-    llm_client = getattr(llm_analyzer, "client", None) if llm_analyzer else None
-    model_name = ""
-    if llm_analyzer and hasattr(llm_analyzer, "analysis_model_runtime"):
-        runtime = llm_analyzer.analysis_model_runtime
-        model_name = getattr(runtime, "model_name", "") if runtime else ""
-
-    llm_config_payload = (
-        dict(getattr(llm_analyzer, "config", {}) or {})
-        if llm_analyzer
-        else {}
-    )
-
-    return TopicFindingMergeService(
-        intelligence_repository=repository,
-        llm_client=llm_client,
-        model_name=model_name,
-        config=llm_config_payload,
-    )
+    return get_topic_finding_merge_service(controller, repository)
 
 
 def _prompt_to_response(prompt: Any) -> TopicPromptVersionResponse:
@@ -1898,32 +1862,6 @@ def register_intelligence_routes(app: FastAPI) -> None:
         return _prompt_to_response(prompt)
 
     @app.post(
-        "/intelligence/topics/{topic_id}/pause",
-        response_model=TopicLifecycleActionResponse,
-    )
-    async def pause_topic(
-        topic_id: str,
-        req: Request,
-        _: Annotated[str, Depends(verify_api_key)],
-    ):
-        """Pause a topic, stopping further research runs."""
-        repository = _get_intelligence_repository(req)
-        topic = repository.get_topic_by_id(topic_id)
-        if topic is None:
-            raise HTTPException(status_code=404, detail="Topic not found")
-
-        topic.lifecycle_status = TopicLifecycleStatus.PAUSED.value
-        topic.updated_at = datetime.now(timezone.utc)
-        repository.save_topic(topic)
-
-        return TopicLifecycleActionResponse(
-            success=True,
-            topic_id=topic_id,
-            lifecycle_status=topic.lifecycle_status,
-            updated_at=_datetime_to_iso(topic.updated_at),
-        )
-
-    @app.post(
         "/intelligence/topics/{topic_id}/archive",
         response_model=TopicLifecycleActionResponse,
     )
@@ -2046,11 +1984,11 @@ def register_intelligence_routes(app: FastAPI) -> None:
     ):
         repository = _get_intelligence_repository(req)
         topics = repository.list_topics(
-            is_active=True if active_only else None,
+            lifecycle_status='active' if active_only else None,
             limit=max(1, page_size),
             offset=max(0, page - 1) * max(1, page_size),
         )
-        total = repository.count_topics(is_active=True if active_only else None)
+        total = repository.count_topics(lifecycle_status='active' if active_only else None)
         items = []
         for topic in topics:
             findings = repository.list_topic_findings(topic.id) or []
@@ -2400,9 +2338,8 @@ def register_infrastructure_routes(app: FastAPI) -> None:
 
 def create_api_server(
     config_path: str = "./config.jsonc",
-    start_services: bool = True,
-    start_scheduler: Optional[bool] = None,
-    start_command_listener: Optional[bool] = None,
+    enable_scheduler: bool = False,
+    enable_telegram: bool = False,
 ) -> FastAPI:
     """创建并初始化API服务器。"""
 
@@ -2436,18 +2373,13 @@ def create_api_server(
                     IntelligenceRepository, repositories.get("intelligence")
                 )
 
-        effective_start_scheduler = start_services if start_scheduler is None else start_scheduler
-        effective_start_command_listener = (
-            start_services if start_command_listener is None else start_command_listener
-        )
-
-        if effective_start_scheduler:
+        if enable_scheduler:
             controller.start_scheduler()
             logger.info("Scheduler started in API runtime")
         else:
             logger.info("Scheduler disabled in API runtime")
 
-        if effective_start_command_listener:
+        if enable_telegram:
             if controller.command_handler:
                 if (
                     hasattr(controller.command_handler, "uses_webhook")

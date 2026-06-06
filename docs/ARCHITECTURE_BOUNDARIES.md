@@ -20,7 +20,7 @@ RSS/X/REST → ContentItem → LLMAnalyzer → ReportGenerator (Markdown)
 - **Primary data models:** `ContentItem`, `AnalysisResult`
 - **Primary modules:** `analyzers/`, `reporters/`, `semantic_search/`, `crawlers/`
 - **API surfaces:** `POST /analyze`, `POST /semantic-search` (unified, searches both `content_items` and `raw_intelligence_items`), `GET/POST/DELETE /datasources`
-- **Telegram commands:** `/news_analyze`, `/news_market`, `/semantic_search` (canonical, unified), `/news_semantic_search` (deprecated alias), `/news_tokens`, `/datasource_*`
+- **Telegram commands:** `/news_analyze`, `/news_market`, `/semantic_search` (unified), `/news_tokens`, `/datasource_*`
 
 ### Intelligence Domain
 
@@ -36,7 +36,7 @@ Telegram/V2EX → RawIntelligenceItem → TopicResearchScheduler → TopicFindin
 - **Primary data models:** `RawIntelligenceItem`, `IntelligenceTopic`, `TopicPrompt`, `TopicFinding`, `TopicResearchRun`
 - **Primary modules:** `intelligence/` (pipeline, topics, topic_prompts, topic_research, topic_findings, merge, search, topic_enricher)
 - **API surfaces:** `/intelligence/*` (topics CRUD, revise, confirm)
-- **Telegram commands:** `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_findings`, `/topic_prompt`, `/topic_merge`, `/topic_pause`, `/topic_archive`, `/topic_logs`
+- **Telegram commands:** `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_findings`, `/topic_prompt`, `/topic_merge`, `/topic_archive`, `/topic_logs`
 
 ### Critical Boundary Rule
 
@@ -86,15 +86,15 @@ The following surfaces are **invariant** under the current boundary-refactoring 
 - `GET /health` — unchanged
 
 ### Telegram Commands
-- News: `/news_analyze`, `/news_market`, `/semantic_search` (canonical, unified cross-domain), `/news_semantic_search` (deprecated alias), `/news_tokens`, `/datasource_list`, `/datasource_add`, `/datasource_delete`, `/status`, `/help` — unchanged
-- Intelligence: `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_findings`, `/topic_prompt`, `/topic_merge`, `/topic_pause`, `/topic_archive`, `/topic_logs` — unchanged
+- News: `/news_analyze`, `/news_market`, `/semantic_search` (unified cross-domain), `/news_tokens`, `/datasource_list`, `/datasource_add`, `/datasource_delete`, `/status`, `/help`
+- Intelligence: `/topic_create`, `/topic_revise`, `/topic_set_prompt`, `/topic_confirm`, `/topic_list`, `/topic_findings`, `/topic_prompt`, `/topic_merge`, `/topic_archive`, `/topic_logs`
 
 ### CLI Runtime Modes
 - `--mode analysis-service` — unchanged
 - `--mode api-only` — unchanged
 - `--mode ingestion` — unchanged
 - `--mode embedding-backfill` — unchanged
-- Legacy `api-server` — deprecated compatibility alias, unchanged
+- Legacy API runtime aliases are removed from the active runtime surface.
 
 ### Environment Variables
 All shared and domain-specific env vars remain unchanged: `DATABASE_URL`, `API_KEY`, `KIMI_API_KEY`, `GROK_API_KEY`, `OPENCODE_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL_ID`, `TELEGRAM_AUTHORIZED_USERS`, `X_CT0`, `X_AUTH_TOKEN`, `EXECUTION_INTERVAL`, `TIME_WINDOW_HOURS`, `LOG_LEVEL`, `CONFIG_PATH`, `API_HOST`, `API_PORT`.
@@ -135,7 +135,7 @@ The following refactors are explicitly **out of scope**. This means: no repo spl
 - **Database split:** Both domains continue to share one PostgreSQL + pgvector database. No per-domain database.
 - **Service split:** The two Railway services (`crypto-news-analysis`, `crypto-news-ingestion`) remain as-is. No per-domain service (e.g., no separate `crypto-news-intelligence` service).
 - **Endpoint renames or removals:** No URL path changes, no command renames, no API surface restructuring.
-- **Telegram command renames:** News commands use `/news_` prefix (`/news_analyze`, `/news_market`, `/news_tokens`). `/semantic_search` is the canonical cross-domain search command; `/news_semantic_search` remains as a deprecated alias. Intelligence commands use `/topic_` prefix. No further renames.
+- **Telegram command names:** News commands use `/news_` prefix (`/news_analyze`, `/news_market`, `/news_tokens`) except `/semantic_search`, which is the cross-domain search command. Intelligence commands use `/topic_` prefix.
 - **Config format changes:** `config.jsonc` structure remains as-is. No new top-level keys or format migration.
 - **MainController extraction:** `execution_coordinator.py` remains the shared orchestrator. No extraction into per-domain controllers.
 - **Shared module splits:** `storage/`, `models.py`, `domain/`, `utils/` remain shared. No per-domain fork of these.

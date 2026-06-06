@@ -67,7 +67,6 @@ class CheckpointStatus(str, Enum):
 class TopicLifecycleStatus(str, Enum):
     DRAFT = "draft"
     ACTIVE = "active"
-    PAUSED = "paused"
     ARCHIVED = "archived"
 
 
@@ -86,14 +85,13 @@ class TopicFindingStatus(str, Enum):
 class MergePreviewState(str, Enum):
     PENDING = "pending"
     APPLIED = "applied"
-    EXPIRED = "expired"
     CANCELLED = "cancelled"
 
 
 ACTIVE_INGESTION_JOB_STATUSES = frozenset({"pending", "running"})
 
 _CHECKPOINT_STATUS_VALUES = {item.value for item in CheckpointStatus}
-_TOPIC_LIFECYCLE_STATUS_VALUES = {item.value for item in TopicLifecycleStatus}
+_TOPIC_LIFECYCLE_STATUS_VALUES = frozenset({item.value for item in TopicLifecycleStatus})
 _TOPIC_PROMPT_STATUS_VALUES = {item.value for item in TopicPromptStatus}
 _TOPIC_FINDING_STATUS_VALUES = {item.value for item in TopicFindingStatus}
 _MERGE_PREVIEW_STATE_VALUES = {item.value for item in MergePreviewState}
@@ -193,9 +191,7 @@ class DataSourceAlreadyExistsError(ValueError):
         super().__init__(f"Datasource '{purpose}:{source_type}:{source_name}' already exists")
 
 
-def _normalize_datasource_tags(tags: Optional[List[str]]) -> List[str]:
-    normalized_tags = {str(tag).strip().lower() for tag in (tags or []) if str(tag).strip()}
-    return sorted(normalized_tags)
+from ..datasource_payloads import normalize_datasource_tags
 
 
 @dataclass
@@ -228,7 +224,7 @@ class DataSource:
         self.purpose = normalized_purpose
         self.source_type = normalized_source_type
         self.name = normalized_name
-        self.tags = _normalize_datasource_tags(self.tags)
+        self.tags = normalize_datasource_tags(self.tags)
         self.config_payload = _validate_public_payload(
             dict(self.config_payload or {}), "config_payload"
         )
@@ -315,7 +311,7 @@ class SafeDataSourceSummary:
             raise ValueError("source_type is required")
         if not self.name:
             raise ValueError("name is required")
-        self.tags = _normalize_datasource_tags(self.tags)
+        self.tags = normalize_datasource_tags(self.tags)
 
     @classmethod
     def from_datasource(cls, datasource: "DataSource") -> "SafeDataSourceSummary":
@@ -687,7 +683,7 @@ class IngestionJob:
 
 
 @dataclass
-class AnalysisResult:
+class AnalysisResultPayload:
     """
     Analysis result data - SHARED CONTRACT
 
@@ -716,7 +712,7 @@ class AnalysisResult:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "AnalysisResult":
+    def from_dict(cls, data: Dict[str, Any]) -> "AnalysisResultPayload":
         """Deserialize from dictionary"""
         return cls(
             success=data["success"],
@@ -853,7 +849,6 @@ class RawIntelligenceItem:
 class IntelligenceTopic:
     id: str
     name: str
-    is_active: bool = True
     lifecycle_status: str = TopicLifecycleStatus.ACTIVE.value
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -866,16 +861,7 @@ class IntelligenceTopic:
             raise ValueError("name is required")
         self.lifecycle_status = str(self.lifecycle_status).strip().lower()
         if self.lifecycle_status not in _TOPIC_LIFECYCLE_STATUS_VALUES:
-            raise ValueError("lifecycle_status must be one of: draft, active, paused, archived")
-        self.is_active = bool(self.is_active)
-        if self.lifecycle_status in {
-            TopicLifecycleStatus.DRAFT.value,
-            TopicLifecycleStatus.PAUSED.value,
-            TopicLifecycleStatus.ARCHIVED.value,
-        }:
-            self.is_active = False
-        elif self.lifecycle_status == TopicLifecycleStatus.ACTIVE.value:
-            self.is_active = True
+            raise ValueError("lifecycle_status must be one of: draft, active, archived")
 
     @classmethod
     def create(
@@ -900,13 +886,13 @@ class IntelligenceTopic:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "IntelligenceTopic":
-        allowed = {"id", "name", "is_active", "lifecycle_status", "created_at", "updated_at"}
+        allowed = {"id", "name", "lifecycle_status", "created_at", "updated_at"}
         payload = {key: value for key, value in dict(data).items() if key in allowed}
         for key in ("created_at", "updated_at"):
             payload[key] = _parse_optional_datetime(payload.get(key))
         payload.setdefault(
             "lifecycle_status",
-            TopicLifecycleStatus.ACTIVE.value if payload.get("is_active", True) else TopicLifecycleStatus.PAUSED.value,
+            TopicLifecycleStatus.ACTIVE.value,
         )
         return cls(**payload)
 
@@ -1131,7 +1117,7 @@ class MergePreview:
         self.expires_at = _parse_optional_datetime(self.expires_at) or datetime.utcnow()
         self.state = str(self.state).strip().lower()
         if self.state not in _MERGE_PREVIEW_STATE_VALUES:
-            raise ValueError("state must be one of: pending, applied, expired, cancelled")
+            raise ValueError("state must be one of: pending, applied, cancelled")
 
     @classmethod
     def create(cls, intelligence_topic_id: str, source_finding_ids: List[str], preview_payload: Dict[str, Any], content_hash: str, expires_at: datetime, **kwargs: Any) -> "MergePreview":

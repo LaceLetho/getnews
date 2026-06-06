@@ -2676,7 +2676,6 @@ class DataManager:
         columns = [
             "id",
             "name",
-            "is_active",
             "lifecycle_status",
             "created_at",
             "updated_at",
@@ -2703,9 +2702,7 @@ class DataManager:
                 return str(topic["id"])
 
     def _serialize_intelligence_topic_row(self, row: Any) -> Dict[str, Any]:
-        data = {key: self._dt_out(row[key]) for key in row.keys()}
-        data["is_active"] = bool(data.get("is_active", True))
-        return data
+        return {key: self._dt_out(row[key]) for key in row.keys()}
 
     def get_intelligence_topic_by_id(self, topic_id: str) -> Optional[Dict[str, Any]]:
         with self._get_connection() as conn:
@@ -2718,13 +2715,13 @@ class DataManager:
         return self._serialize_intelligence_topic_row(row) if row else None
 
     def list_intelligence_topics(
-        self, is_active: Optional[bool] = None, limit: int = 100, offset: int = 0
+        self, lifecycle_status: Optional[str] = None, limit: int = 100, offset: int = 0
     ) -> List[Dict[str, Any]]:
         filters: List[str] = []
         params: List[Any] = []
-        if is_active is not None:
-            filters.append("is_active = ?")
-            params.append(is_active)
+        if lifecycle_status is not None:
+            filters.append("lifecycle_status = ?")
+            params.append(lifecycle_status)
         where = f"WHERE {' AND '.join(filters)}" if filters else ""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -2739,12 +2736,12 @@ class DataManager:
             )
             return [self._serialize_intelligence_topic_row(row) for row in cursor.fetchall()]
 
-    def count_intelligence_topics(self, is_active: Optional[bool] = None) -> int:
+    def count_intelligence_topics(self, lifecycle_status: Optional[str] = None) -> int:
         filters: List[str] = []
         params: List[Any] = []
-        if is_active is not None:
-            filters.append("is_active = ?")
-            params.append(is_active)
+        if lifecycle_status is not None:
+            filters.append("lifecycle_status = ?")
+            params.append(lifecycle_status)
         where = f"WHERE {' AND '.join(filters)}" if filters else ""
         with self._get_connection() as conn:
             cursor = conn.cursor()

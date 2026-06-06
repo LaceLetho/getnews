@@ -21,8 +21,6 @@ class TestChatContextDataclass:
             username="testuser",
             chat_id="123456",
             chat_type="private",
-            is_private=True,
-            is_group=False
         )
         
         assert context.user_id == "123456"
@@ -40,8 +38,6 @@ class TestChatContextDataclass:
             username="groupuser",
             chat_id="-987654",
             chat_type="group",
-            is_private=False,
-            is_group=True
         )
         
         assert context.user_id == "789012"
@@ -59,8 +55,6 @@ class TestChatContextDataclass:
             username="supergroupuser",
             chat_id="-100123456789",
             chat_type="supergroup",
-            is_private=False,
-            is_group=True
         )
         
         assert context.user_id == "345678"
@@ -86,8 +80,6 @@ class TestChatContextDataclass:
                 username="user",
                 chat_id=chat_id,
                 chat_type=chat_type,
-                is_private=(chat_type == "private"),
-                is_group=(chat_type in ["group", "supergroup"])
             )
             assert context.context_description == expected_desc
     
@@ -107,8 +99,6 @@ class TestChatContextDataclass:
             username="user",
             chat_id="456",
             chat_type="private",
-            is_private=True,
-            is_group=False
         )
         
         assert isinstance(context.user_id, str)
@@ -125,8 +115,6 @@ class TestChatContextDataclass:
             username="user_name-123",
             chat_id="456",
             chat_type="private",
-            is_private=True,
-            is_group=False
         )
         
         assert context.username == "user_name-123"
@@ -139,8 +127,6 @@ class TestChatContextDataclass:
             username="",
             chat_id="456",
             chat_type="private",
-            is_private=True,
-            is_group=False
         )
         
         assert context.username == ""
@@ -154,8 +140,6 @@ class TestChatContextDataclass:
             username="user",
             chat_id="123",
             chat_type="private",
-            is_private=True,
-            is_group=False
         )
         assert private_context.is_private is True
         assert private_context.is_group is False
@@ -166,8 +150,6 @@ class TestChatContextDataclass:
             username="user",
             chat_id="-456",
             chat_type="group",
-            is_private=False,
-            is_group=True
         )
         assert group_context.is_private is False
         assert group_context.is_group is True
@@ -178,8 +160,6 @@ class TestChatContextDataclass:
             username="user",
             chat_id="-100789",
             chat_type="supergroup",
-            is_private=False,
-            is_group=True
         )
         assert supergroup_context.is_private is False
         assert supergroup_context.is_group is True

@@ -33,7 +33,7 @@ def _seed_topic(conn: sqlite3.Connection, topic: IntelligenceTopic) -> None:
         (
             topic.id,
             topic.name,
-            int(topic.is_active),
+            1 if topic.lifecycle_status == "active" else 0,
             topic.lifecycle_status,
             (topic.created_at or datetime.utcnow()).isoformat(),
             (topic.updated_at or datetime.utcnow()).isoformat(),

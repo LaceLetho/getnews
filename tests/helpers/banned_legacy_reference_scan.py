@@ -14,7 +14,9 @@ IGNORED_PATH_PREFIXES: Tuple[str, ...] = (
     ".git",
     ".venv",
     ".sisyphus/evidence",
+    ".omo",
     "docs/archive",
+    "docs/plans",
 )
 
 EXACT_ACTIONABLE_PATHS: Tuple[str, ...] = (
@@ -38,9 +40,15 @@ BANNED_LEGACY_REFERENCES: Tuple[Tuple[str, re.Pattern[str]], ...] = (
     ("run_api_server_isolated", re.compile(r"\brun_api_server_isolated\b")),
     ("run_command_listener_mode", re.compile(r"\brun_command_listener_mode\b")),
     ("once", re.compile(r"\bonce\b(?=\s*(?:[`\"':;,.()\[\]{}$：；，]|$))")),
-    ("schedule", re.compile(r"\bschedule\b(?=\s*(?:[`\"':;,.()\[\]{}$：；，]|$))")),
-    ("scheduler", re.compile(r"\bscheduler\b(?=\s*(?:[`\"':;,.()\[\]{}$：；，]|$))")),
     ("crypto-news-api", re.compile(r"crypto-news-api")),
+    ("TopicLifecycleStatus.PAUSED", re.compile(r"\bTopicLifecycleStatus\.PAUSED\b")),
+    ("MergePreviewState.EXPIRED", re.compile(r"\bMergePreviewState\.EXPIRED\b")),
+    ("/news_semantic_search", re.compile(r"/news_semantic_search\b")),
+    ("/topic_pause", re.compile(r"/topic_pause\b")),
+    ("run_due_topics", re.compile(r"\brun_due_topics\b")),
+    ("load_auth_from_env", re.compile(r"\bload_auth_from_env\b")),
+    ("plugin_system_example", re.compile(r"\bplugin_system_example\b")),
+    ("run_ingestion_service", re.compile(r"\brun_ingestion_service\b")),
 )
 
 

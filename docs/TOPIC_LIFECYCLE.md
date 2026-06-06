@@ -8,11 +8,11 @@
 
 | 实体 | 说明 | 关键状态 |
 |---|---|---|
-| **Topic**（主题） | 研究主题本身，如"Bitcoin ETF 资金流" | `draft` → `active` → `paused` / `archived` |
+| **Topic**（主题） | 研究主题本身，如"Bitcoin ETF 资金流" | `draft` → `active` → `archived` |
 | **Prompt**（提示词） | 指导 LLM 如何研究的指令，支持版本管理 | `draft` → `active` → `archived` |
 | **Finding**（发现） | 每次研究产出的结构化结果 | `active` / `archived` / `superseded` |
 
-**Topic 与 Prompt 的状态是独立的**：Topic 有 `lifecycle_status`（draft/active/paused/archived），Prompt 有 `status`（draft/active/archived）。研究调度器只对 **Topic `lifecycle_status=active` 且 Prompt `status=active`** 的主题执行研究。
+**Topic 与 Prompt 的状态是独立的**：Topic 有 `lifecycle_status`（draft/active/archived），Prompt 有 `status`（draft/active/archived）。研究调度器只对 **Topic `lifecycle_status=active` 且 Prompt `status=active`** 的主题执行研究。
 
 ---
 
@@ -25,9 +25,7 @@
 /topic_create   /topic_revise  /topic_confirm  [scheduler]  /topic_merge
   │              /topic_set_prompt
   │
-  ├── 暂停 ── /topic_pause （停止研究，可恢复）
-  │
-  └── 归档 ── /topic_archive （永久停用，不可逆）
+  └── 归档 ── /topic_archive （停止研究）
 ```
 
 ---
@@ -163,26 +161,9 @@ Topic ID: abc123-def456
 
 ---
 
-### 7. `/topic_pause <topic_id>`
+### 7. `/topic_archive <topic_id>`
 
-暂停主题研究。已产出的 findings 保留，但不再自动研究。
-
-```
-用法: /topic_pause <topic_id>
-```
-
-**发生了什么：**
-- Topic 的 `lifecycle_status` 改为 `paused`
-- `is_active` 改为 `false`
-- 研究调度器将跳过此 topic
-
-> 暂停后可以通过重新 `/topic_confirm` 恢复（如果仍有 active prompt）。
-
----
-
-### 8. `/topic_archive <topic_id>`
-
-永久归档主题。所有数据保留，但不再可激活。
+归档主题。所有数据保留，但不再参与自动研究。
 
 ```
 用法: /topic_archive <topic_id>
@@ -190,7 +171,7 @@ Topic ID: abc123-def456
 
 **发生了什么：**
 - Topic 的 `lifecycle_status` 改为 `archived`
-- 不可逆操作（除非直接修改数据库）
+- 研究调度器将跳过此 topic
 
 ---
 
@@ -260,8 +241,7 @@ Topic ID: abc123-def456
    → 直接完成合并
 
 6. 【研究饱和后】
-   → /topic_pause xxxxx  暂停
-   → 或 /topic_archive xxxxx  归档
+   → /topic_archive xxxxx  归档
 ```
 
 ---
@@ -280,6 +260,6 @@ Topic ID: abc123-def456
 
 **A:** 可以。使用 `/topic_set_prompt` 会创建新 draft，然后用 `/topic_confirm` 激活新版本。旧 active prompt 会自动归档。
 
-### Q: `/topic_pause` 和 `/topic_archive` 的区别？
+### Q: 如何停止一个主题的自动研究？
 
-**A:** `pause` 是临时暂停（可恢复），`archive` 是永久归档（不可逆）。
+**A:** 使用 `/topic_archive <topic_id>` 将主题归档，归档主题不会被调度器研究。

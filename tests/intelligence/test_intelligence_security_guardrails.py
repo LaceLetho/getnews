@@ -103,9 +103,8 @@ def _build_client(monkeypatch: pytest.MonkeyPatch, controller: _FakeController) 
     monkeypatch.setattr(api_server, "MainController", lambda *_args, **_kwargs: controller)
     app = api_server.create_api_server(
         "./config.jsonc",
-        start_services=False,
-        start_scheduler=False,
-        start_command_listener=False,
+        enable_scheduler=False,
+        enable_telegram=False,
     )
     return TestClient(app)
 

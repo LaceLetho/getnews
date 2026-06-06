@@ -5,13 +5,23 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Union
 from urllib.parse import urlparse
 
-from .domain.models import DataSource, DataSourcePurpose, DataSourceType
 from .models import RESTAPISource, RSSSource, XSource
 
 RuntimeSource = Union[RSSSource, XSource, RESTAPISource]
 
-SUPPORTED_DATASOURCE_TYPES = {item.value for item in DataSourceType}
-SUPPORTED_DATASOURCE_PURPOSES = {item.value for item in DataSourcePurpose}
+
+def _get_supported_datasource_types() -> set[str]:
+    from .domain.models import DataSourceType
+
+    return {item.value for item in DataSourceType}
+
+
+def _get_supported_datasource_purposes() -> set[str]:
+    from .domain.models import DataSourcePurpose
+
+    return {item.value for item in DataSourcePurpose}
+
+
 REQUIRED_REST_API_MAPPING_FIELDS = ("title_field", "content_field", "url_field", "time_field")
 MAX_DATASOURCE_TAGS = 16
 MAX_DATASOURCE_TAG_LENGTH = 32
@@ -79,7 +89,9 @@ class ValidatedDataSourcePayload:
     tags: List[str]
     config_payload: Dict[str, Any]
 
-    def to_domain_datasource(self) -> DataSource:
+    def to_domain_datasource(self) -> "DataSource":
+        from .domain.models import DataSource
+
         return DataSource.create(
             name=self.name,
             source_type=self.source_type,
@@ -98,12 +110,12 @@ def validate_datasource_create_payload(payload: Mapping[str, Any]) -> ValidatedD
 
     raw_purpose = payload.get("purpose")
     purpose = str(raw_purpose or "").strip().lower()
-    if purpose not in SUPPORTED_DATASOURCE_PURPOSES:
+    if purpose not in _get_supported_datasource_purposes():
         raise DataSourcePayloadValidationError("purpose must be one of: news, intelligence")
 
     raw_source_type = payload.get("source_type")
     source_type = str(raw_source_type or "").strip().lower()
-    if source_type not in SUPPORTED_DATASOURCE_TYPES:
+    if source_type not in _get_supported_datasource_types():
         raise DataSourcePayloadValidationError(
             "source_type must be one of: rss, x, rest_api, telegram_group, v2ex"
         )
@@ -137,6 +149,8 @@ def validate_datasource_create_payload(payload: Mapping[str, Any]) -> ValidatedD
 def validate_datasource_config_payload(
     source_type: str, payload: Mapping[str, Any]
 ) -> Dict[str, Any]:
+    from .domain.models import DataSourceType  # lazy import to avoid cycle
+
     normalized_source_type = str(source_type or "").strip().lower()
     if normalized_source_type == DataSourceType.RSS.value:
         return _validate_rss_payload(payload)
@@ -153,8 +167,10 @@ def validate_datasource_config_payload(
 
 
 def runtime_source_from_record(
-    record: Union[DataSource, ValidatedDataSourcePayload, Mapping[str, Any]],
+    record: Union[Any, ValidatedDataSourcePayload, Mapping[str, Any]],
 ) -> RuntimeSource:
+    from .domain.models import DataSource, DataSourceType
+
     if isinstance(record, ValidatedDataSourcePayload):
         source_type = record.source_type
         config_payload = record.config_payload
@@ -226,6 +242,8 @@ def parse_telegram_datasource_command_json(command_text: str, command_name: str)
 def validate_telegram_datasource_create_payload(
     payload: Mapping[str, Any],
 ) -> ValidatedDataSourcePayload:
+    from .domain.models import DataSourceType
+
     raw_source_type = str(payload.get("source_type") or "").strip().lower()
     raw_config_payload = payload.get("config_payload")
     if raw_source_type == DataSourceType.REST_API.value and isinstance(raw_config_payload, Mapping):

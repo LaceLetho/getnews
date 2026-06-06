@@ -9,7 +9,7 @@ Version: 1.0.0
 from .models import (
     AnalysisRequest,
     IngestionJob,
-    AnalysisResult,
+    AnalysisResultPayload,
     JobStatus,
     IngestionJobStatus,
     Priority,
@@ -28,7 +28,7 @@ __all__ = [
     # Models
     "AnalysisRequest",
     "IngestionJob",
-    "AnalysisResult",
+    "AnalysisResultPayload",
     # Enums
     "JobStatus",
     "IngestionJobStatus",

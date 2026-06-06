@@ -71,7 +71,7 @@ def test_no_audit_domain_model_introduced():
 def test_topic_lifecycle_prompt_version_and_research_run_models():
     topic = IntelligenceTopic.create(name="Exploit watch", lifecycle_status="draft")
     active = IntelligenceTopic.from_dict({**topic.to_dict(), "lifecycle_status": "active"})
-    paused = IntelligenceTopic.from_dict({**topic.to_dict(), "lifecycle_status": "paused"})
+    archived = IntelligenceTopic.from_dict({**topic.to_dict(), "lifecycle_status": "archived"})
     prompt = TopicPrompt.create(
         intelligence_topic_id=topic.id,
         prompt_version="topic-prompt-v1",
@@ -89,8 +89,8 @@ def test_topic_lifecycle_prompt_version_and_research_run_models():
     )
 
     assert topic.lifecycle_status == "draft"
-    assert active.is_active is True
-    assert paused.is_active is False
+    assert active.lifecycle_status == "active"
+    assert archived.lifecycle_status == "archived"
     assert TopicPrompt.from_dict(prompt.to_dict()).audit_history[0]["event"] == "activated"
     assert TopicResearchRun.from_dict(run.to_dict()).checkpoint_cursor == "raw-42"
     with pytest.raises(ValueError, match="lifecycle_status"):
