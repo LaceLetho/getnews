@@ -305,3 +305,17 @@ Telegram commands reject inline authentication secrets. The `rest_api` payload c
 - Use `__post_init__` for dataclass validation
 - X/Twitter requires Bird CLI: `npm install -g @laceletho/bird`
 - For Railway production debugging, use the `crypto-news-debug` skill instead of guessing deployment state
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues (`LaceLetho/getnews`), managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.
